@@ -36,7 +36,7 @@ export default function Layout() {
       minHeight: "100vh",
       background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
     }}>
-      {/* Header */}
+      {/* Header Desktop & Mobile */}
       <header style={{
         background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
         padding: "16px 20px",
@@ -44,12 +44,13 @@ export default function Layout() {
         position: "sticky",
         top: 0,
         zIndex: 100,
+        borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
       }}>
         <div style={{
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          maxWidth: "1200px",
+          maxWidth: "1400px",
           margin: "0 auto",
           gap: 15,
         }}>
@@ -85,7 +86,56 @@ export default function Layout() {
             </span>
           </div>
 
-          {/* Desktop Actions */}
+          {/* Navigation Desktop (cachée sur mobile) */}
+          <nav style={{ 
+            display: "flex", 
+            gap: 8,
+            flex: 1,
+            justifyContent: "center",
+            maxWidth: "800px",
+          }} className="desktop-nav">
+            {visibleMenuItems.map((item) => (
+              <button
+                key={item.path}
+                onClick={() => navigate(item.path)}
+                style={{
+                  padding: "10px 18px",
+                  background: location.pathname === item.path 
+                    ? "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" 
+                    : "rgba(255, 255, 255, 0.05)",
+                  color: "white",
+                  border: location.pathname === item.path
+                    ? "1px solid rgba(102, 126, 234, 0.5)"
+                    : "1px solid rgba(255, 255, 255, 0.05)",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: location.pathname === item.path ? "700" : "500",
+                  transition: "all 0.3s ease",
+                  boxShadow: location.pathname === item.path 
+                    ? "0 4px 15px rgba(102, 126, 234, 0.4)" 
+                    : "none",
+                  whiteSpace: "nowrap",
+                }}
+                onMouseEnter={(e) => {
+                  if (location.pathname !== item.path) {
+                    e.target.style.background = "rgba(255, 255, 255, 0.08)";
+                    e.target.style.transform = "translateY(-2px)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (location.pathname !== item.path) {
+                    e.target.style.background = "rgba(255, 255, 255, 0.05)";
+                    e.target.style.transform = "translateY(0)";
+                  }
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          {/* Actions Desktop (cachées sur mobile) */}
           <div style={{ display: "flex", alignItems: "center", gap: 10 }} className="desktop-actions">
             <button
               onClick={() => navigate("/MyProfile")}
@@ -100,6 +150,7 @@ export default function Layout() {
                 fontWeight: "600",
                 boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
                 transition: "all 0.3s ease",
+                whiteSpace: "nowrap",
               }}
               onMouseEnter={(e) => {
                 e.target.style.transform = "translateY(-2px)";
@@ -139,7 +190,7 @@ export default function Layout() {
             </button>
           </div>
 
-          {/* Mobile Menu Button */}
+          {/* Bouton Menu Mobile (caché sur desktop) */}
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             style={{
@@ -160,7 +211,7 @@ export default function Layout() {
         </div>
       </header>
 
-      {/* Bottom Navigation (Mobile) */}
+      {/* Bottom Navigation Mobile (cachée sur desktop) */}
       <nav style={{
         display: "none",
         position: "fixed",
@@ -171,6 +222,7 @@ export default function Layout() {
         padding: "8px 0",
         boxShadow: "0 -4px 20px rgba(0, 0, 0, 0.5)",
         zIndex: 100,
+        borderTop: "1px solid rgba(255, 255, 255, 0.05)",
       }} className="mobile-nav">
         <div style={{
           display: "flex",
@@ -212,7 +264,7 @@ export default function Layout() {
         </div>
       </nav>
 
-      {/* Mobile Drawer Menu */}
+      {/* Menu Drawer Mobile (caché sur desktop) */}
       {menuOpen && (
         <div
           onClick={() => setMenuOpen(false)}
@@ -223,6 +275,7 @@ export default function Layout() {
             zIndex: 200,
             animation: "fadeIn 0.3s ease",
           }}
+          className="mobile-drawer-overlay"
         >
           <div
             onClick={(e) => e.stopPropagation()}
@@ -318,7 +371,7 @@ export default function Layout() {
         flex: 1,
         padding: "20px",
         paddingBottom: "80px",
-        maxWidth: "1200px",
+        maxWidth: "1400px",
         margin: "0 auto",
         width: "100%",
       }}>
@@ -335,7 +388,34 @@ export default function Layout() {
           from { transform: translateX(100%); }
           to { transform: translateX(0); }
         }
-        @media (max-width: 768px) {
+
+        /* DESKTOP (≥ 768px) */
+        @media (min-width: 768px) {
+          .desktop-nav {
+            display: flex !important;
+          }
+          .desktop-actions {
+            display: flex !important;
+          }
+          .mobile-menu-toggle {
+            display: none !important;
+          }
+          .mobile-nav {
+            display: none !important;
+          }
+          .mobile-drawer-overlay {
+            display: none !important;
+          }
+          main {
+            padding-bottom: 20px !important;
+          }
+        }
+
+        /* MOBILE (< 768px) */
+        @media (max-width: 767px) {
+          .desktop-nav {
+            display: none !important;
+          }
           .desktop-actions {
             display: none !important;
           }
@@ -345,6 +425,31 @@ export default function Layout() {
           .mobile-nav {
             display: block !important;
           }
+        }
+
+        /* Scrollbar personnalisée */
+        * {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(102, 126, 234, 0.5) rgba(0, 0, 0, 0.2);
+        }
+        
+        *::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        
+        *::-webkit-scrollbar-track {
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 10px;
+        }
+        
+        *::-webkit-scrollbar-thumb {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border-radius: 10px;
+        }
+        
+        *::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
         }
       `}</style>
     </div>
