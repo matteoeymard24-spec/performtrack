@@ -1,29 +1,27 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react({
-      include: '**/*.{jsx,js}',  // Accepte JSX dans les fichiers .js
-    })
+      include: /\.(jsx|js|tsx|ts)$/,
+      jsxRuntime: 'automatic',
+    }),
   ],
-  build: {
-    outDir: 'dist',
-    sourcemap: false,
-  },
-  server: {
-    port: 3000,
-  },
   esbuild: {
-    loader: 'jsx',
-    include: /.*\.js$/,  // Traite tous les .js comme du JSX
+    jsx: 'automatic',
+    jsxFactory: 'React.createElement',
+    jsxFragment: 'React.Fragment',
   },
   optimizeDeps: {
     esbuildOptions: {
-      loader: {
-        '.js': 'jsx',  // Charge les .js comme du JSX
-      },
+      jsx: 'automatic',
+    },
+  },
+  build: {
+    outDir: 'dist',
+    commonjsOptions: {
+      transformMixedEsModules: true,
     },
   },
 })
