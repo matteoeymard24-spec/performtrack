@@ -729,7 +729,7 @@ export default function Workout() {
     <div
       style={{
         padding: 20,
-        background: "#1a1a1a",
+        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
         minHeight: "100vh",
         color: "#fff",
         maxWidth: 1200,
@@ -737,7 +737,7 @@ export default function Workout() {
       }}
     >
       <h2 style={{ fontSize: 24, marginBottom: 10 }}>🏋️ Workout</h2>
-      <p style={{ color: "#b0b0b0", marginBottom: 20, fontSize: 14 }}>
+      <p style={{ color: "#888", marginBottom: 20, fontSize: 14 }}>
         Planifie et suis tes séances
       </p>
 
@@ -760,7 +760,7 @@ export default function Workout() {
             }}
             style={{
               padding: "12px 24px",
-              background: "#27ae60",
+              background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
               color: "white",
               border: "none",
               borderRadius: 8,
@@ -775,7 +775,7 @@ export default function Workout() {
             onClick={() => setShowDuplicateModal(true)}
             style={{
               padding: "12px 24px",
-              background: "#2f80ed",
+              background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
               color: "white",
               border: "none",
               borderRadius: 8,
@@ -793,7 +793,7 @@ export default function Workout() {
       {!showForm && !selectedSession && (
         <div
           style={{
-            background: "#2a2a2a",
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
             padding: 15,
             borderRadius: 8,
             marginBottom: 20,
@@ -808,7 +808,7 @@ export default function Workout() {
               style={{
                 width: 20,
                 height: 20,
-                background: "#9b59b6",
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
                 borderRadius: 4,
               }}
             ></div>
@@ -819,7 +819,7 @@ export default function Workout() {
               style={{
                 width: 20,
                 height: 20,
-                background: "#e74c3c",
+                background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
                 borderRadius: 4,
               }}
             ></div>
@@ -830,7 +830,7 @@ export default function Workout() {
               style={{
                 width: 20,
                 height: 20,
-                background: "#27ae60",
+                background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
                 borderRadius: 4,
               }}
             ></div>
@@ -855,7 +855,7 @@ export default function Workout() {
         >
           <div
             style={{
-              background: "#2a2a2a",
+              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
               padding: 30,
               borderRadius: 12,
               maxWidth: 460,
@@ -875,7 +875,7 @@ export default function Workout() {
                 padding: 12,
                 borderRadius: 8,
                 border: "1px solid #555",
-                background: "#1a1a1a",
+                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                 color: "#fff",
                 fontSize: 16,
                 marginBottom: 18,
@@ -887,7 +887,7 @@ export default function Workout() {
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "#27ae60",
+                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -925,7 +925,7 @@ export default function Workout() {
       {showForm && userRole === "admin" && (
         <div
           style={{
-            background: "#2a2a2a",
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
             padding: 25,
             borderRadius: 12,
             border: "2px solid #27ae60",
@@ -1050,7 +1050,7 @@ export default function Workout() {
                 padding: 12,
                 borderRadius: 8,
                 border: "1px solid #555",
-                background: "#1a1a1a",
+                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                 color: "#fff",
                 fontSize: 16,
               }}
@@ -1079,7 +1079,7 @@ export default function Workout() {
                 padding: 12,
                 borderRadius: 8,
                 border: "1px solid #555",
-                background: "#1a1a1a",
+                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                 color: "#fff",
                 fontSize: 16,
               }}
@@ -1105,7 +1105,7 @@ export default function Workout() {
                 padding: 12,
                 borderRadius: 8,
                 border: "1px solid #555",
-                background: "#1a1a1a",
+                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                 color: "#fff",
                 fontSize: 16,
               }}
@@ -1137,7 +1137,7 @@ export default function Workout() {
                   padding: 12,
                   borderRadius: 8,
                   border: "1px solid #555",
-                  background: "#1a1a1a",
+                  background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                   color: "#fff",
                   fontSize: 16,
                 }}
@@ -1159,11 +1159,11 @@ export default function Workout() {
             <div
               key={bIdx}
               style={{
-                background: "#1a1a1a",
+                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                 padding: 18,
                 borderRadius: 10,
                 marginBottom: 16,
-                border: "1px solid #444",
+                border: "1px solid rgba(255, 255, 255, 0.05)",
               }}
             >
               <div
@@ -1183,7 +1183,7 @@ export default function Workout() {
                     padding: 10,
                     borderRadius: 6,
                     border: "1px solid #555",
-                    background: "#2a2a2a",
+                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                     color: "#fff",
                     fontSize: 16,
                     fontWeight: "bold",
@@ -1194,7 +1194,7 @@ export default function Workout() {
                   style={{
                     marginLeft: 10,
                     padding: "6px 12px",
-                    background: "#e74c3c",
+                    background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
                     color: "white",
                     border: "none",
                     borderRadius: 6,
@@ -1209,7 +1209,7 @@ export default function Workout() {
                 <div
                   key={eIdx}
                   style={{
-                    background: "#2a2a2a",
+                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                     padding: 14,
                     borderRadius: 8,
                     marginBottom: 10,
@@ -1234,7 +1234,7 @@ export default function Workout() {
                         padding: 10,
                         borderRadius: 6,
                         border: "1px solid #555",
-                        background: "#1a1a1a",
+                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                         color: "#fff",
                       }}
                     />
@@ -1284,7 +1284,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1309,7 +1309,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1343,7 +1343,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1368,7 +1368,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1402,7 +1402,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1428,7 +1428,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1521,7 +1521,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1546,7 +1546,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1571,7 +1571,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1605,7 +1605,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1629,7 +1629,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           >
@@ -1698,7 +1698,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1723,7 +1723,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1748,7 +1748,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1782,7 +1782,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1807,7 +1807,7 @@ export default function Workout() {
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "#1a1a1a",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
                           />
@@ -1818,7 +1818,7 @@ export default function Workout() {
                             alignItems: "center",
                             gap: 8,
                             padding: "8px 12px",
-                            background: "#1a1a1a",
+                            background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                             borderRadius: 6,
                             cursor: "pointer",
                             fontSize: 14,
@@ -1922,7 +1922,7 @@ export default function Workout() {
                 style={{
                   width: "100%",
                   padding: 10,
-                  background: "#2f80ed",
+                  background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
                   color: "white",
                   border: "none",
                   borderRadius: 6,
@@ -1959,7 +1959,7 @@ export default function Workout() {
               style={{
                 flex: 1,
                 padding: 14,
-                background: "#27ae60",
+                background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
                 color: "white",
                 border: "none",
                 borderRadius: 8,
@@ -1993,7 +1993,7 @@ export default function Workout() {
       {selectedSession && !showForm && (
         <div
           style={{
-            background: "#2a2a2a",
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
             padding: 25,
             borderRadius: 12,
             border: `2px solid ${getColor(selectedSession)}`,
@@ -2044,7 +2044,7 @@ export default function Workout() {
                     onClick={() => editSession(selectedSession)}
                     style={{
                       padding: "8px 16px",
-                      background: "#2f80ed",
+                      background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -2058,7 +2058,7 @@ export default function Workout() {
                     onClick={() => deleteSession(selectedSession.id)}
                     style={{
                       padding: "8px 16px",
-                      background: "#e74c3c",
+                      background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -2149,7 +2149,7 @@ export default function Workout() {
                     style={{
                       width: "100%",
                       padding: 16,
-                      background: "#e74c3c",
+                      background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
                       color: "white",
                       border: "none",
                       borderRadius: 12,
@@ -2167,7 +2167,7 @@ export default function Workout() {
                   style={{
                     width: "100%",
                     padding: 16,
-                    background: "#27ae60",
+                    background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
                     color: "white",
                     border: "none",
                     borderRadius: 12,
@@ -2187,7 +2187,7 @@ export default function Workout() {
             <div
               key={bIdx}
               style={{
-                background: "#1a1a1a",
+                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                 padding: 18,
                 borderRadius: 10,
                 marginBottom: 16,
@@ -2205,7 +2205,7 @@ export default function Workout() {
                   <div
                     key={eIdx}
                     style={{
-                      background: "#2a2a2a",
+                      background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                       padding: 15,
                       borderRadius: 8,
                       marginBottom: 12,
@@ -2221,7 +2221,7 @@ export default function Workout() {
                         <div
                           style={{
                             fontSize: 14,
-                            color: "#b0b0b0",
+                            color: "#888",
                             marginBottom: 10,
                           }}
                         >
@@ -2255,7 +2255,7 @@ export default function Workout() {
                         <div
                           style={{
                             fontSize: 14,
-                            color: "#b0b0b0",
+                            color: "#888",
                             marginBottom: 10,
                           }}
                         >
@@ -2300,7 +2300,7 @@ export default function Workout() {
                                   <div
                                     style={{
                                       fontSize: 14,
-                                      color: "#b0b0b0",
+                                      color: "#888",
                                       marginBottom: 10,
                                     }}
                                   >
@@ -2417,7 +2417,7 @@ export default function Workout() {
               justifyContent: "space-between",
               alignItems: "center",
               marginBottom: 12,
-              background: "#2a2a2a",
+              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
               padding: "10px 18px",
               borderRadius: 8,
             }}
@@ -2506,7 +2506,7 @@ export default function Workout() {
           {selectedDate && (
             <div
               style={{
-                background: "#2a2a2a",
+                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                 padding: 20,
                 borderRadius: 12,
                 marginBottom: 20,
@@ -2532,7 +2532,7 @@ export default function Workout() {
                         key={session.id}
                         onClick={() => setSelectedSession(session)}
                         style={{
-                          background: "#1a1a1a",
+                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                           padding: 18,
                           borderRadius: 10,
                           border: `2px solid ${getColor(session)}`,
@@ -2605,7 +2605,7 @@ export default function Workout() {
         >
           <div
             style={{
-              background: "#2a2a2a",
+              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
               padding: 28,
               borderRadius: 12,
               maxWidth: 480,
@@ -2648,7 +2648,7 @@ export default function Workout() {
                       padding: 12,
                       borderRadius: 8,
                       border: "1px solid #555",
-                      background: "#1a1a1a",
+                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                       color: "#fff",
                       fontSize: 16,
                     }}
@@ -2680,7 +2680,7 @@ export default function Workout() {
                       padding: 12,
                       borderRadius: 8,
                       border: "1px solid #555",
-                      background: "#1a1a1a",
+                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                       color: "#fff",
                       fontSize: 16,
                     }}
@@ -2718,7 +2718,7 @@ export default function Workout() {
                       padding: 12,
                       borderRadius: 8,
                       border: "1px solid #555",
-                      background: "#1a1a1a",
+                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                       color: "#fff",
                       fontSize: 16,
                     }}
@@ -2751,7 +2751,7 @@ export default function Workout() {
                       padding: 12,
                       borderRadius: 8,
                       border: "1px solid #555",
-                      background: "#1a1a1a",
+                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                       color: "#fff",
                       fontSize: 14,
                       resize: "vertical",
@@ -2819,7 +2819,7 @@ export default function Workout() {
                 style={{
                   textAlign: "center",
                   fontSize: 15,
-                  color: "#b0b0b0",
+                  color: "#888",
                   marginTop: 4,
                   fontWeight: "bold",
                 }}
@@ -2834,7 +2834,7 @@ export default function Workout() {
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "#27ae60",
+                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
