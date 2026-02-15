@@ -1,0 +1,160 @@
+/* ================================================
+   RESET CSS COMPLET - SUPPRESSION TOTALE DES MARGES
+   ================================================ */
+
+/* Reset universel - Force tout à 0 */
+*, *::before, *::after {
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* HTML - Fullscreen */
+html {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100vh !important;
+  overflow-x: hidden !important;
+  background: #000000 !important;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
+/* BODY - Fullscreen */
+body {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100vh !important;
+  overflow-x: hidden !important;
+  background: #000000 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: #ffffff !important;
+}
+
+/* ROOT - Fullscreen */
+#root {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  min-height: 100vh !important;
+  overflow-x: hidden !important;
+  background: #000000 !important;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Supprime marges par défaut de tous les éléments */
+div, p, h1, h2, h3, h4, h5, h6, 
+ul, ol, li, dl, dt, dd,
+form, fieldset, legend,
+input, button, select, textarea,
+blockquote, pre, code,
+table, thead, tbody, tfoot, tr, th, td,
+article, aside, details, figcaption, figure,
+footer, header, hgroup, menu, nav, section {
+  margin: 0;
+  padding: 0;
+}
+
+/* Liste sans puces */
+ul, ol {
+  list-style: none;
+}
+
+/* Liens sans soulignement */
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Images responsive */
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Supprime les contours sur focus */
+button:focus,
+input:focus,
+select:focus,
+textarea:focus,
+a:focus {
+  outline: none;
+}
+
+/* Boutons sans style par défaut */
+button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* Inputs sans style par défaut */
+input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  border: none;
+  background: none;
+}
+
+/* ================================================
+   SCROLLBAR PERSONNALISÉE
+   ================================================ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(102, 126, 234, 0.5) rgba(0, 0, 0, 0.2);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+/* ================================================
+   RESPONSIVE MOBILE
+   ================================================ */
+
+@media (max-width: 767px) {
+  body {
+    overflow-x: hidden !important;
+  }
+  
+  #root {
+    overflow-x: hidden !important;
+  }
+}
+
+/* ================================================
+   SAFE AREA (iPhone notch, etc.)
+   ================================================ */
+
+@supports(padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
