@@ -261,10 +261,10 @@ export default function Dashboard() {
       const today = getLocalDateStr(new Date());
       const newWeight = Number(athleteWeight);
 
-      await updateDoc(doc(db, "users", currentUser.uid), {
+      await setDoc(doc(db, "users", currentUser.uid), {
         weight: newWeight,
         updatedAt: new Date().toISOString(),
-      });
+      }, { merge: true });
 
       const historyRef = doc(
         collection(db, "users", currentUser.uid, "weight_history")
@@ -469,7 +469,7 @@ export default function Dashboard() {
           padding: 40,
           textAlign: "center",
           color: "#fff",
-          background: "#1a1a1a",
+          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
           minHeight: "100vh",
         }}
       >
@@ -495,7 +495,7 @@ export default function Dashboard() {
       <div
         style={{
           padding: 20,
-          background: "#1a1a1a",
+          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
           minHeight: "100vh",
           color: "#fff",
           maxWidth: 600,
@@ -505,7 +505,7 @@ export default function Dashboard() {
         <h2 style={{ fontSize: 24, marginBottom: 5 }}>
           Bonjour {userProfile?.firstName || "Athlète"} ! 👋
         </h2>
-        <p style={{ color: "#b0b0b0", marginBottom: 30, fontSize: 14 }}>
+        <p style={{ color: "#888", marginBottom: 30, fontSize: 14 }}>
           {new Date().toLocaleDateString("fr-FR", {
             weekday: "long",
             day: "numeric",
@@ -537,7 +537,7 @@ export default function Dashboard() {
         {todayScore !== null && (
           <div
             style={{
-              background: "#2a2a2a",
+              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
               padding: 20,
               borderRadius: 12,
               border: "2px solid #2f80ed",
@@ -555,7 +555,7 @@ export default function Dashboard() {
             >
               <div
                 style={{
-                  background: "#1a1a1a",
+                  background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                   padding: 12,
                   borderRadius: 8,
                   textAlign: "center",
@@ -572,7 +572,7 @@ export default function Dashboard() {
               </div>
               <div
                 style={{
-                  background: "#1a1a1a",
+                  background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                   padding: 12,
                   borderRadius: 8,
                   textAlign: "center",
@@ -601,8 +601,8 @@ export default function Dashboard() {
                   <YAxis domain={[0, 10]} stroke="#888" fontSize={10} />
                   <Tooltip
                     contentStyle={{
-                      background: "#1a1a1a",
-                      border: "1px solid #444",
+                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                      border: "1px solid rgba(255, 255, 255, 0.05)",
                       fontSize: 12,
                     }}
                   />
@@ -621,7 +621,7 @@ export default function Dashboard() {
 
         <div
           style={{
-            background: "#2a2a2a",
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
             padding: 20,
             borderRadius: 12,
             border: "2px solid #2f80ed",
@@ -686,7 +686,7 @@ export default function Dashboard() {
                     style={{
                       width: "100%",
                       padding: 12,
-                      background: "#2f80ed",
+                      background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -708,7 +708,7 @@ export default function Dashboard() {
 
         <div
           style={{
-            background: "#2a2a2a",
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
             padding: 20,
             borderRadius: 12,
             border: "2px solid #9b59b6",
@@ -758,7 +758,7 @@ export default function Dashboard() {
                   padding: 12,
                   borderRadius: 8,
                   border: "1px solid #555",
-                  background: "#1a1a1a",
+                  background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                   color: "#fff",
                   fontSize: 16,
                   marginBottom: 10,
@@ -770,7 +770,7 @@ export default function Dashboard() {
                   style={{
                     flex: 1,
                     padding: 12,
-                    background: "#27ae60",
+                    background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
                     color: "white",
                     border: "none",
                     borderRadius: 8,
@@ -837,8 +837,8 @@ export default function Dashboard() {
                   />
                   <Tooltip
                     contentStyle={{
-                      background: "#1a1a1a",
-                      border: "1px solid #444",
+                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                      border: "1px solid rgba(255, 255, 255, 0.05)",
                       fontSize: 12,
                     }}
                   />
@@ -859,10 +859,10 @@ export default function Dashboard() {
         {athleteRMHistory.length > 0 && (
           <div
             style={{
-              background: "#2a2a2a",
+              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
               padding: 20,
               borderRadius: 12,
-              border: "1px solid #444",
+              border: "1px solid rgba(255, 255, 255, 0.05)",
             }}
           >
             <h3 style={{ marginTop: 0, fontSize: 18, marginBottom: 15 }}>
@@ -875,7 +875,7 @@ export default function Dashboard() {
                   <div
                     key={i}
                     style={{
-                      background: "#1a1a1a",
+                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                       padding: 15,
                       borderRadius: 8,
                       display: "flex",
@@ -929,7 +929,7 @@ export default function Dashboard() {
     <div
       style={{
         padding: 20,
-        background: "#1a1a1a",
+        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
         minHeight: "100vh",
         color: "#fff",
         maxWidth: 1200,
@@ -948,7 +948,7 @@ export default function Dashboard() {
           <h2 style={{ fontSize: 24, margin: "0 0 5px 0" }}>
             📊 Dashboard Admin
           </h2>
-          <p style={{ color: "#b0b0b0", margin: 0, fontSize: 14 }}>
+          <p style={{ color: "#888", margin: 0, fontSize: 14 }}>
             Suivi wellness et performance
           </p>
         </div>
@@ -957,7 +957,7 @@ export default function Dashboard() {
             onClick={() => (window.location.href = "/workout")}
             style={{
               padding: "12px 20px",
-              background: "#2f80ed",
+              background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
               color: "white",
               border: "none",
               borderRadius: 8,
@@ -1035,7 +1035,7 @@ export default function Dashboard() {
       {athletes.length === 0 ? (
         <div
           style={{
-            background: "#2a2a2a",
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
             padding: 40,
             borderRadius: 12,
             textAlign: "center",
@@ -1051,7 +1051,7 @@ export default function Dashboard() {
               key={athlete.id}
               onClick={() => loadAthleteDetail(athlete)}
               style={{
-                background: "#2a2a2a",
+                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                 padding: 18,
                 borderRadius: 10,
                 border: `2px solid ${athlete.status?.color || "#444"}`,
@@ -1183,7 +1183,7 @@ export default function Dashboard() {
             style={{
               maxWidth: 1100,
               margin: "0 auto",
-              background: "#1a1a1a",
+              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
               borderRadius: 12,
               padding: 30,
             }}
@@ -1235,7 +1235,7 @@ export default function Dashboard() {
               {showAthleteDetail.wellnessScore !== null && (
                 <div
                   style={{
-                    background: "#2a2a2a",
+                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                     padding: 18,
                     borderRadius: 10,
                     textAlign: "center",
@@ -1268,7 +1268,7 @@ export default function Dashboard() {
               {athleteDetails.dailyScore !== null && (
                 <div
                   style={{
-                    background: "#2a2a2a",
+                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                     padding: 18,
                     borderRadius: 10,
                     textAlign: "center",
@@ -1291,7 +1291,7 @@ export default function Dashboard() {
               {athleteDetails.weeklyAvg && (
                 <div
                   style={{
-                    background: "#2a2a2a",
+                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                     padding: 18,
                     borderRadius: 10,
                     textAlign: "center",
@@ -1314,7 +1314,7 @@ export default function Dashboard() {
               {showAthleteDetail.acwr !== null && (
                 <div
                   style={{
-                    background: "#2a2a2a",
+                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                     padding: 18,
                     borderRadius: 10,
                     textAlign: "center",
@@ -1344,7 +1344,7 @@ export default function Dashboard() {
               )}
               <div
                 style={{
-                  background: "#2a2a2a",
+                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                   padding: 18,
                   borderRadius: 10,
                   textAlign: "center",
@@ -1366,7 +1366,7 @@ export default function Dashboard() {
             {/* Séance */}
             <div
               style={{
-                background: "#2a2a2a",
+                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                 padding: 18,
                 borderRadius: 10,
                 marginBottom: 25,
@@ -1553,7 +1553,7 @@ export default function Dashboard() {
             {acwrHistory.length > 0 ? (
               <div
                 style={{
-                  background: "#2a2a2a",
+                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                   padding: 20,
                   borderRadius: 10,
                   marginBottom: 25,
@@ -1574,8 +1574,8 @@ export default function Dashboard() {
                     <YAxis stroke="#888" fontSize={11} domain={[0, 2]} />
                     <Tooltip
                       contentStyle={{
-                        background: "#1a1a1a",
-                        border: "1px solid #444",
+                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                        border: "1px solid rgba(255, 255, 255, 0.05)",
                         borderRadius: 8,
                         fontSize: 12,
                       }}
@@ -1605,7 +1605,7 @@ export default function Dashboard() {
             ) : (
               <div
                 style={{
-                  background: "#2a2a2a",
+                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                   padding: 20,
                   borderRadius: 10,
                   marginBottom: 25,
@@ -1628,7 +1628,7 @@ export default function Dashboard() {
             {athleteDetails.wellness.length > 0 && (
               <div
                 style={{
-                  background: "#2a2a2a",
+                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                   padding: 20,
                   borderRadius: 10,
                   marginBottom: 25,
@@ -1649,8 +1649,8 @@ export default function Dashboard() {
                     <YAxis domain={[0, 10]} stroke="#888" fontSize={11} />
                     <Tooltip
                       contentStyle={{
-                        background: "#1a1a1a",
-                        border: "1px solid #444",
+                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                        border: "1px solid rgba(255, 255, 255, 0.05)",
                         borderRadius: 8,
                         fontSize: 12,
                       }}
@@ -1721,7 +1721,7 @@ export default function Dashboard() {
             {athleteDetails.weightHistory.length > 0 && (
               <div
                 style={{
-                  background: "#2a2a2a",
+                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                   padding: 20,
                   borderRadius: 10,
                   marginBottom: 25,
@@ -1760,8 +1760,8 @@ export default function Dashboard() {
                     />
                     <Tooltip
                       contentStyle={{
-                        background: "#1a1a1a",
-                        border: "1px solid #444",
+                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                        border: "1px solid rgba(255, 255, 255, 0.05)",
                         borderRadius: 8,
                         fontSize: 12,
                       }}
@@ -1800,7 +1800,7 @@ export default function Dashboard() {
             {/* COURBES RM PAR EXERCICE */}
             {Object.keys(detailedAthleteRMHistory).length > 0 && (
               <div
-                style={{ background: "#2a2a2a", padding: 20, borderRadius: 10 }}
+                style={{ background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)", padding: 20, borderRadius: 10 }}
               >
                 <h3 style={{ margin: "0 0 15px 0", fontSize: 17 }}>
                   💪 Évolution des RM
@@ -1817,7 +1817,7 @@ export default function Dashboard() {
                       <div
                         key={exercise}
                         style={{
-                          background: "#1a1a1a",
+                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                           padding: 15,
                           borderRadius: 8,
                         }}
@@ -1858,7 +1858,7 @@ export default function Dashboard() {
                               <Tooltip
                                 contentStyle={{
                                   background: "#000",
-                                  border: "1px solid #444",
+                                  border: "1px solid rgba(255, 255, 255, 0.05)",
                                   fontSize: 11,
                                 }}
                               />
