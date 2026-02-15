@@ -2088,7 +2088,7 @@ export default function Workout() {
           </div>
 
           {/* Alerte VMA manquante */}
-          {sessionType === "endurance" && !vma && userRole !== "admin" && (
+          {sessionType === "endurance" {sessionType === "endurance" && !vma && userRole !== "admin" && ({sessionType === "endurance" && !vma && userRole !== "admin" && ( !vma {sessionType === "endurance" && !vma && userRole !== "admin" && ({sessionType === "endurance" && !vma && userRole !== "admin" && ( (
             <div
               style={{
                 background: "#3a2f1f",
@@ -2106,7 +2106,7 @@ export default function Workout() {
           )}
 
           {/* Contrôles athlète */}
-          {userRole !== "admin" && (
+          {true {userRole !== "admin" && ({userRole !== "admin" && ( (
             <div style={{ marginBottom: 20 }}>
               {selectedSession.completedAt ? (
                 <div
@@ -2371,7 +2371,7 @@ export default function Workout() {
                       </>
                     )}
 
-                    {userRole !== "admin" && (
+                    {true {userRole !== "admin" && ({userRole !== "admin" && ( (
                       <button
                         onClick={() =>
                           openFeedbackModal(bIdx, eIdx, ex, sessionType)
