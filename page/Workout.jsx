@@ -203,19 +203,46 @@ export default function Workout() {
     return "Maximal";
   };
 
+  /* ===================== HELPERS MULTI-UTILISATEURS ===================== */
+  const getUserProgress = (session, userId = currentUser?.uid) => {
+    if (!session || !userId) return null;
+    return session.userProgress?.[userId] || null;
+  };
+
+  const isUserSessionCompleted = (session, userId = currentUser?.uid) => {
+    const progress = getUserProgress(session, userId);
+    return progress?.completedAt ? true : false;
+  };
+
+  const isUserSessionInProgress = (session, userId = currentUser?.uid) => {
+    const progress = getUserProgress(session, userId);
+    return progress?.inProgress === true && !progress?.completedAt;
+  };
+
+  const getUserFeedback = (session, userId = currentUser?.uid) => {
+    const progress = getUserProgress(session, userId);
+    return progress?.feedback || {};
+  };
+
   /* ===================== GESTION SÉANCE ===================== */
   const startSession = async (session) => {
     try {
       const startTime = new Date().toISOString();
-      await updateDoc(doc(db, "workout", session.id), {
+      
+      // Structure par utilisateur
+      const userProgress = session.userProgress || {};
+      userProgress[currentUser.uid] = {
         startedAt: startTime,
-        startedBy: currentUser.uid,
         inProgress: true,
+      };
+      
+      await updateDoc(doc(db, "workout", session.id), {
+        userProgress,
       });
+      
       setSessionInProgress({
         ...session,
-        startedAt: startTime,
-        inProgress: true,
+        userProgress,
       });
       setSessionStartTime(startTime);
       setSessionFeedback({});
@@ -233,8 +260,9 @@ export default function Workout() {
     sessionType
   ) => {
     const key = `${blockIndex}-${exerciseIndex}`;
+    const userFeedback = getUserFeedback(selectedSession);
     const existing =
-      sessionFeedback[key] || selectedSession?.feedback?.[key] || {};
+      sessionFeedback[key] || userFeedback?.[key] || {};
 
     if (sessionType === "muscu") {
       setCurrentExerciseFeedback({
@@ -359,16 +387,26 @@ export default function Workout() {
     if (!sessionInProgress) return;
     try {
       const endTime = new Date().toISOString();
+      const userProgressData = sessionInProgress.userProgress?.[currentUser.uid] || {};
+      const startTime = userProgressData.startedAt || sessionStartTime;
       const duration = Math.round(
-        (new Date(endTime) - new Date(sessionStartTime)) / 60000
+        (new Date(endTime) - new Date(startTime)) / 60000
       );
-      await updateDoc(doc(db, "workout", sessionInProgress.id), {
+      
+      // Structure par utilisateur
+      const userProgress = sessionInProgress.userProgress || {};
+      userProgress[currentUser.uid] = {
+        ...userProgressData,
         completedAt: endTime,
-        completedBy: currentUser.uid,
         actualDuration: duration,
         feedback: sessionFeedback,
         inProgress: false,
+      };
+      
+      await updateDoc(doc(db, "workout", sessionInProgress.id), {
+        userProgress,
       });
+      
       await adjustRMFromFeedback(sessionFeedback, sessionInProgress);
       alert("Séance terminée ! Bravo 🎉");
       setSessionInProgress(null);
@@ -2108,7 +2146,7 @@ export default function Workout() {
           {/* Contrôles séance - Pour tous (athlètes ET admins) */}
           {(
             <div style={{ marginBottom: 20 }}>
-              {selectedSession.completedAt ? (
+              {isUserSessionCompleted(selectedSession) ? (
                 <div
                   style={{
                     padding: 14,
@@ -2121,11 +2159,11 @@ export default function Workout() {
                   }}
                 >
                   ✅ Séance complétée –{" "}
-                  {new Date(selectedSession.completedAt).toLocaleString(
+                  {new Date(getUserProgress(selectedSession)?.completedAt).toLocaleString(
                     "fr-FR"
                   )}
                 </div>
-              ) : sessionInProgress?.id === selectedSession.id ? (
+              ) : isUserSessionInProgress(selectedSession) ? (
                 <>
                   <div
                     style={{
@@ -2198,8 +2236,9 @@ export default function Workout() {
               </h4>
               {block.exercises.map((ex, eIdx) => {
                 const key = `${bIdx}-${eIdx}`;
+                const userFeedback = getUserFeedback(selectedSession);
                 const fb =
-                  sessionFeedback[key] || selectedSession.feedback?.[key];
+                  sessionFeedback[key] || userFeedback?.[key];
 
                 return (
                   <div
@@ -2378,7 +2417,7 @@ export default function Workout() {
                           openFeedbackModal(bIdx, eIdx, ex, sessionType)
                         }
                         disabled={
-                          !sessionInProgress && !selectedSession.completedAt
+                          !isUserSessionInProgress(selectedSession) && !isUserSessionCompleted(selectedSession)
                         }
                         style={{
                           width: "100%",
@@ -2388,11 +2427,11 @@ export default function Workout() {
                           border: "none",
                           borderRadius: 8,
                           cursor:
-                            sessionInProgress || selectedSession.completedAt
+                            isUserSessionInProgress(selectedSession) || isUserSessionCompleted(selectedSession)
                               ? "pointer"
                               : "not-allowed",
                           opacity:
-                            sessionInProgress || selectedSession.completedAt
+                            isUserSessionInProgress(selectedSession) || isUserSessionCompleted(selectedSession)
                               ? 1
                               : 0.5,
                           fontSize: 14,
@@ -2558,7 +2597,7 @@ export default function Workout() {
                           </span>
                           {" • "}
                           {session.estimatedDuration || "?"} min
-                          {session.completedAt && (
+                          {isUserSessionCompleted(session) && (
                             <span
                               style={{
                                 marginLeft: 10,
@@ -2569,7 +2608,7 @@ export default function Workout() {
                               ✅ Complétée
                             </span>
                           )}
-                          {session.inProgress && !session.completedAt && (
+                          {isUserSessionInProgress(session) && (
                             <span
                               style={{
                                 marginLeft: 10,
