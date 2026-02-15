@@ -14,12 +14,12 @@ export default function Layout() {
   };
 
   const menuItems = [
-    { path: "/dashboard", label: "📊 Dashboard", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/workout", label: "🏋️ Workout", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/wellness", label: "💚 Wellness", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/myrm", label: "💪 My RM", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/acwr", label: "📈 ACWR", roles: ["superadmin", "admin"] },
-    { path: "/athletes", label: "👥 Athletes", roles: ["superadmin", "admin"] },
+    { path: "/dashboard", label: "📊 Dashboard", icon: "📊", text: "Dashboard", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/workout", label: "🏋️ Workout", icon: "🏋️", text: "Workout", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/wellness", label: "💚 Wellness", icon: "💚", text: "Wellness", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/myrm", label: "💪 My RM", icon: "💪", text: "My RM", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/acwr", label: "📈 ACWR", icon: "📈", text: "ACWR", roles: ["superadmin", "admin"] },
+    { path: "/athletes", label: "👥 Athletes", icon: "👥", text: "Athletes", roles: ["superadmin", "admin"] },
   ];
 
   const visibleMenuItems = menuItems.filter((item) => {
@@ -34,7 +34,11 @@ export default function Layout() {
       display: "flex",
       flexDirection: "column",
       minHeight: "100vh",
+      width: "100%",
       background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+      margin: 0,
+      padding: 0,
+      position: "relative",
     }}>
       {/* Header Desktop & Mobile */}
       <header style={{
@@ -45,6 +49,7 @@ export default function Layout() {
         top: 0,
         zIndex: 100,
         borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
+        width: "100%",
       }}>
         <div style={{
           display: "flex",
@@ -53,9 +58,10 @@ export default function Layout() {
           maxWidth: "1400px",
           margin: "0 auto",
           gap: 15,
+          width: "100%",
         }}>
           {/* Logo + Badge */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
             <h1 style={{
               margin: 0,
               fontSize: 26,
@@ -81,6 +87,7 @@ export default function Layout() {
               textTransform: "uppercase",
               letterSpacing: "0.5px",
               boxShadow: "0 4px 15px rgba(0, 0, 0, 0.3)",
+              whiteSpace: "nowrap",
             }}>
               {isSuperAdmin ? "SUPERADMIN" : userRole === "admin" ? "ADMIN" : "ATHLETE"}
             </span>
@@ -93,6 +100,7 @@ export default function Layout() {
             flex: 1,
             justifyContent: "center",
             maxWidth: "800px",
+            overflow: "hidden",
           }} className="desktop-nav">
             {visibleMenuItems.map((item) => (
               <button
@@ -136,7 +144,7 @@ export default function Layout() {
           </nav>
 
           {/* Actions Desktop (cachées sur mobile) */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }} className="desktop-actions">
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }} className="desktop-actions">
             <button
               onClick={() => navigate("/MyProfile")}
               style={{
@@ -219,45 +227,49 @@ export default function Layout() {
         left: 0,
         right: 0,
         background: "linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%)",
-        padding: "8px 0",
+        padding: "8px 0 calc(8px + env(safe-area-inset-bottom))",
         boxShadow: "0 -4px 20px rgba(0, 0, 0, 0.5)",
         zIndex: 100,
         borderTop: "1px solid rgba(255, 255, 255, 0.05)",
       }} className="mobile-nav">
         <div style={{
-          display: "flex",
-          justifyContent: "space-around",
-          alignItems: "center",
-          maxWidth: "600px",
-          margin: "0 auto",
+          display: "grid",
+          gridTemplateColumns: `repeat(${Math.min(visibleMenuItems.length, 5)}, 1fr)`,
+          gap: 0,
+          width: "100%",
+          maxWidth: "100%",
         }}>
           {visibleMenuItems.slice(0, 5).map((item) => (
             <button
               key={item.path}
               onClick={() => navigate(item.path)}
               style={{
-                flex: 1,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: 4,
-                padding: "10px 8px",
+                padding: "10px 4px",
                 background: "transparent",
                 color: location.pathname === item.path ? "#667eea" : "#888",
                 border: "none",
                 cursor: "pointer",
-                fontSize: 24,
                 transition: "all 0.3s ease",
+                minWidth: 0,
               }}
             >
-              <span style={{ fontSize: 24 }}>{item.label.split(" ")[0]}</span>
+              <span style={{ fontSize: 22 }}>{item.icon}</span>
               <span style={{
-                fontSize: 10,
+                fontSize: 9,
                 fontWeight: location.pathname === item.path ? "700" : "400",
                 textTransform: "uppercase",
-                letterSpacing: "0.5px",
+                letterSpacing: "0.3px",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                maxWidth: "100%",
               }}>
-                {item.label.split(" ")[1]}
+                {item.text}
               </span>
             </button>
           ))}
@@ -284,8 +296,8 @@ export default function Layout() {
               top: 0,
               right: 0,
               bottom: 0,
-              width: "80%",
-              maxWidth: "300px",
+              width: "85%",
+              maxWidth: "320px",
               background: "linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%)",
               boxShadow: "-4px 0 20px rgba(0, 0, 0, 0.5)",
               padding: "20px",
@@ -295,7 +307,7 @@ export default function Layout() {
           >
             <div style={{ marginBottom: 30 }}>
               <h2 style={{ color: "white", fontSize: 18, marginBottom: 8 }}>Menu</h2>
-              <p style={{ color: "#888", fontSize: 12 }}>{currentUser?.email}</p>
+              <p style={{ color: "#888", fontSize: 12, wordBreak: "break-all" }}>{currentUser?.email}</p>
             </div>
             {visibleMenuItems.map((item) => (
               <button
@@ -369,12 +381,12 @@ export default function Layout() {
       {/* Main Content */}
       <main style={{
         flex: 1,
-        padding: "20px",
-        paddingBottom: "80px",
-        maxWidth: "1400px",
-        margin: "0 auto",
         width: "100%",
-      }}>
+        maxWidth: "100%",
+        margin: 0,
+        padding: 0,
+        paddingBottom: "env(safe-area-inset-bottom)",
+      }} className="main-content">
         <Outlet />
       </main>
 
@@ -406,8 +418,8 @@ export default function Layout() {
           .mobile-drawer-overlay {
             display: none !important;
           }
-          main {
-            padding-bottom: 20px !important;
+          .main-content {
+            padding: 20px !important;
           }
         }
 
@@ -425,31 +437,10 @@ export default function Layout() {
           .mobile-nav {
             display: block !important;
           }
-        }
-
-        /* Scrollbar personnalisée */
-        * {
-          scrollbar-width: thin;
-          scrollbar-color: rgba(102, 126, 234, 0.5) rgba(0, 0, 0, 0.2);
-        }
-        
-        *::-webkit-scrollbar {
-          width: 8px;
-          height: 8px;
-        }
-        
-        *::-webkit-scrollbar-track {
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 10px;
-        }
-        
-        *::-webkit-scrollbar-thumb {
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          border-radius: 10px;
-        }
-        
-        *::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+          .main-content {
+            padding: 10px !important;
+            padding-bottom: calc(70px + env(safe-area-inset-bottom)) !important;
+          }
         }
       `}</style>
     </div>
