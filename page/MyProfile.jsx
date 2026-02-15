@@ -4,18 +4,21 @@ import { db } from "../firebase";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 export default function MyProfile() {
-  const { currentUser, userRole } = useAuth();
+  const { currentUser, userRole, isSuperAdmin } = useAuth();
   const [profile, setProfile] = useState({
     firstName: "",
     lastName: "",
     age: "",
     height: "", // en cm
-    weight: "", // en kg
+    weight: "", // en kg - Seulement pour admins
     email: "",
     group: "",
   });
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Détermine si c'est un admin (admin ou superadmin)
+  const isAdmin = userRole === "admin" || isSuperAdmin;
 
   useEffect(() => {
     if (!currentUser) return;
@@ -60,29 +63,47 @@ export default function MyProfile() {
 
     try {
       const docRef = doc(db, "users", currentUser.uid);
-      await updateDoc(docRef, {
+      const updateData = {
         firstName: profile.firstName,
         lastName: profile.lastName,
         age: profile.age ? Number(profile.age) : null,
         height: profile.height ? Number(profile.height) : null,
-        weight: profile.weight ? Number(profile.weight) : null,
         displayName:
           `${profile.firstName} ${profile.lastName}`.trim() || profile.email,
         updatedAt: new Date().toISOString(),
-      });
+      };
 
-      alert("Profil mis à jour avec succès !");
+      // Ajouter le poids SEULEMENT si admin
+      if (isAdmin) {
+        updateData.weight = profile.weight ? Number(profile.weight) : null;
+      }
+
+      await updateDoc(docRef, updateData);
+
+      alert("✅ Profil mis à jour avec succès !");
       setEditing(false);
     } catch (error) {
       console.error("Erreur mise à jour profil:", error);
-      alert("Erreur lors de la mise à jour du profil");
+      alert("❌ Erreur lors de la mise à jour du profil");
     }
+  };
+
+  const handleChange = (field, value) => {
+    setProfile((prev) => ({ ...prev, [field]: value }));
   };
 
   if (loading) {
     return (
-      <div style={{ padding: 20, textAlign: "center", color: "#ffffff" }}>
-        Chargement...
+      <div
+        style={{
+          padding: 20,
+          textAlign: "center",
+          color: "#ffffff",
+          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+          minHeight: "100vh",
+        }}
+      >
+        <div style={{ fontSize: 18, marginTop: 40 }}>⏳ Chargement du profil...</div>
       </div>
     );
   }
@@ -91,285 +112,351 @@ export default function MyProfile() {
     <div
       style={{
         padding: 20,
-        maxWidth: 600,
-        margin: "0 auto",
-        background: "#1a1a1a",
+        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
         minHeight: "100vh",
         color: "#ffffff",
       }}
     >
-      <h2 style={{ color: "#ffffff", marginBottom: 10, fontSize: 24 }}>
-        Mon Profil
-      </h2>
-      <p style={{ color: "#b0b0b0", marginBottom: 30, fontSize: 14 }}>
-        Gérez vos informations personnelles
-      </p>
+      {/* Header */}
+      <div
+        style={{
+          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          padding: "24px 20px",
+          borderRadius: 12,
+          marginBottom: 25,
+          boxShadow: "0 4px 20px rgba(102, 126, 234, 0.4)",
+          textAlign: "center",
+        }}
+      >
+        <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
+        <h2 style={{ margin: 0, fontSize: 24, fontWeight: "800" }}>
+          Mon Profil
+        </h2>
+        <div style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>
+          {isAdmin ? "👑 Administrateur" : "🏃 Athlète"}
+        </div>
+      </div>
 
       {/* Carte principale */}
       <div
         style={{
-          background: "#2a2a2a",
-          padding: 30,
+          background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+          padding: 25,
           borderRadius: 12,
-          border: "1px solid #444",
-          marginBottom: 20,
+          border: "1px solid rgba(255, 255, 255, 0.05)",
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.5)",
+          maxWidth: "600px",
+          margin: "0 auto",
         }}
       >
-        {/* En-tête avec avatar */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            marginBottom: 30,
-            paddingBottom: 20,
-            borderBottom: "1px solid #444",
-          }}
-        >
-          <div
+        {/* Email (non éditable) */}
+        <div style={{ marginBottom: 20 }}>
+          <label
             style={{
-              width: 80,
-              height: 80,
-              borderRadius: "50%",
-              background: "#2f80ed",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 36,
-              fontWeight: "bold",
-              marginRight: 20,
+              display: "block",
+              fontSize: 13,
+              fontWeight: "600",
+              color: "#888",
+              marginBottom: 8,
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
             }}
           >
-            {profile.firstName ? profile.firstName[0].toUpperCase() : "A"}
-          </div>
-          <div>
-            <h3 style={{ margin: "0 0 5px 0", color: "#ffffff", fontSize: 24 }}>
-              {profile.firstName && profile.lastName
-                ? `${profile.firstName} ${profile.lastName}`
-                : "Athlète"}
-            </h3>
-            <p style={{ margin: 0, color: "#b0b0b0", fontSize: 14 }}>
-              {profile.email}
-            </p>
-            <p style={{ margin: "5px 0 0 0", color: "#888", fontSize: 12 }}>
-              Rôle : {userRole === "admin" ? "Administrateur" : "Athlète"}
-            </p>
+            📧 Email
+          </label>
+          <div
+            style={{
+              padding: 14,
+              background: "#0d0d0d",
+              borderRadius: 10,
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              color: "#666",
+              fontSize: 15,
+            }}
+          >
+            {profile.email}
           </div>
         </div>
 
-        {/* Formulaire */}
+        {/* Prénom */}
+        <div style={{ marginBottom: 20 }}>
+          <label
+            style={{
+              display: "block",
+              fontSize: 13,
+              fontWeight: "600",
+              color: "#888",
+              marginBottom: 8,
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}
+          >
+            👤 Prénom
+          </label>
+          <input
+            type="text"
+            value={profile.firstName}
+            onChange={(e) => handleChange("firstName", e.target.value)}
+            disabled={!editing}
+            style={{
+              width: "100%",
+              padding: 14,
+              fontSize: 15,
+              borderRadius: 10,
+              border: editing
+                ? "2px solid rgba(102, 126, 234, 0.5)"
+                : "1px solid rgba(255, 255, 255, 0.1)",
+              background: editing ? "#1a1a1a" : "#0d0d0d",
+              color: "white",
+              transition: "all 0.3s ease",
+              outline: "none",
+            }}
+            placeholder="Entrez votre prénom"
+          />
+        </div>
+
+        {/* Nom */}
+        <div style={{ marginBottom: 20 }}>
+          <label
+            style={{
+              display: "block",
+              fontSize: 13,
+              fontWeight: "600",
+              color: "#888",
+              marginBottom: 8,
+              textTransform: "uppercase",
+              letterSpacing: "0.5px",
+            }}
+          >
+            👤 Nom
+          </label>
+          <input
+            type="text"
+            value={profile.lastName}
+            onChange={(e) => handleChange("lastName", e.target.value)}
+            disabled={!editing}
+            style={{
+              width: "100%",
+              padding: 14,
+              fontSize: 15,
+              borderRadius: 10,
+              border: editing
+                ? "2px solid rgba(102, 126, 234, 0.5)"
+                : "1px solid rgba(255, 255, 255, 0.1)",
+              background: editing ? "#1a1a1a" : "#0d0d0d",
+              color: "white",
+              transition: "all 0.3s ease",
+              outline: "none",
+            }}
+            placeholder="Entrez votre nom"
+          />
+        </div>
+
+        {/* Grid 2 colonnes : Âge + Taille */}
         <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 15,
+            marginBottom: 20,
+          }}
         >
+          {/* Âge */}
           <div>
             <label
               style={{
                 display: "block",
-                marginBottom: 5,
-                fontSize: 14,
-                color: "#e0e0e0",
-                fontWeight: "bold",
+                fontSize: 13,
+                fontWeight: "600",
+                color: "#888",
+                marginBottom: 8,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
               }}
             >
-              Prénom
-            </label>
-            <input
-              type="text"
-              value={profile.firstName}
-              onChange={(e) =>
-                setProfile({ ...profile, firstName: e.target.value })
-              }
-              disabled={!editing}
-              placeholder="Votre prénom"
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "1px solid #555",
-                background: editing ? "#1a1a1a" : "#333",
-                color: "#ffffff",
-                fontSize: 16,
-              }}
-            />
-          </div>
-
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 5,
-                fontSize: 14,
-                color: "#e0e0e0",
-                fontWeight: "bold",
-              }}
-            >
-              Nom
-            </label>
-            <input
-              type="text"
-              value={profile.lastName}
-              onChange={(e) =>
-                setProfile({ ...profile, lastName: e.target.value })
-              }
-              disabled={!editing}
-              placeholder="Votre nom"
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "1px solid #555",
-                background: editing ? "#1a1a1a" : "#333",
-                color: "#ffffff",
-                fontSize: 16,
-              }}
-            />
-          </div>
-
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 5,
-                fontSize: 14,
-                color: "#e0e0e0",
-                fontWeight: "bold",
-              }}
-            >
-              Âge
+              🎂 Âge
             </label>
             <input
               type="number"
               value={profile.age}
-              onChange={(e) => setProfile({ ...profile, age: e.target.value })}
+              onChange={(e) => handleChange("age", e.target.value)}
               disabled={!editing}
-              placeholder="Votre âge"
               style={{
                 width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "1px solid #555",
-                background: editing ? "#1a1a1a" : "#333",
-                color: "#ffffff",
-                fontSize: 16,
+                padding: 14,
+                fontSize: 15,
+                borderRadius: 10,
+                border: editing
+                  ? "2px solid rgba(102, 126, 234, 0.5)"
+                  : "1px solid rgba(255, 255, 255, 0.1)",
+                background: editing ? "#1a1a1a" : "#0d0d0d",
+                color: "white",
+                transition: "all 0.3s ease",
+                outline: "none",
               }}
+              placeholder="Âge"
             />
           </div>
 
+          {/* Taille */}
           <div>
             <label
               style={{
                 display: "block",
-                marginBottom: 5,
-                fontSize: 14,
-                color: "#e0e0e0",
-                fontWeight: "bold",
+                fontSize: 13,
+                fontWeight: "600",
+                color: "#888",
+                marginBottom: 8,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
               }}
             >
-              Groupe
-            </label>
-            <select
-              value={profile.group}
-              onChange={(e) =>
-                setProfile({ ...profile, group: e.target.value })
-              }
-              disabled={!editing || userRole === "admin"}
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "1px solid #555",
-                background:
-                  editing && userRole !== "admin" ? "#1a1a1a" : "#333",
-                color: "#ffffff",
-                fontSize: 16,
-              }}
-            >
-              <option value="">Non défini</option>
-              <option value="total">Total</option>
-              <option value="avant">Avant</option>
-              <option value="trois-quarts">Trois-quarts</option>
-            </select>
-          </div>
-
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 5,
-                fontSize: 14,
-                color: "#e0e0e0",
-                fontWeight: "bold",
-              }}
-            >
-              Taille (cm)
+              📏 Taille (cm)
             </label>
             <input
               type="number"
               value={profile.height}
-              onChange={(e) =>
-                setProfile({ ...profile, height: e.target.value })
-              }
+              onChange={(e) => handleChange("height", e.target.value)}
               disabled={!editing}
-              placeholder="ex: 180"
               style={{
                 width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "1px solid #555",
-                background: editing ? "#1a1a1a" : "#333",
-                color: "#ffffff",
-                fontSize: 16,
+                padding: 14,
+                fontSize: 15,
+                borderRadius: 10,
+                border: editing
+                  ? "2px solid rgba(102, 126, 234, 0.5)"
+                  : "1px solid rgba(255, 255, 255, 0.1)",
+                background: editing ? "#1a1a1a" : "#0d0d0d",
+                color: "white",
+                transition: "all 0.3s ease",
+                outline: "none",
               }}
-            />
-          </div>
-
-          <div>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 5,
-                fontSize: 14,
-                color: "#e0e0e0",
-                fontWeight: "bold",
-              }}
-            >
-              Poids (kg)
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={profile.weight}
-              onChange={(e) =>
-                setProfile({ ...profile, weight: e.target.value })
-              }
-              disabled={!editing}
-              placeholder="ex: 75"
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "1px solid #555",
-                background: editing ? "#1a1a1a" : "#333",
-                color: "#ffffff",
-                fontSize: 16,
-              }}
+              placeholder="Taille"
             />
           </div>
         </div>
 
+        {/* Poids - SEULEMENT POUR LES ADMINS */}
+        {isAdmin && (
+          <div style={{ marginBottom: 20 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 13,
+                fontWeight: "600",
+                color: "#888",
+                marginBottom: 8,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+              }}
+            >
+              ⚖️ Poids (kg) - Admin uniquement
+            </label>
+            <input
+              type="number"
+              value={profile.weight}
+              onChange={(e) => handleChange("weight", e.target.value)}
+              disabled={!editing}
+              style={{
+                width: "100%",
+                padding: 14,
+                fontSize: 15,
+                borderRadius: 10,
+                border: editing
+                  ? "2px solid rgba(102, 126, 234, 0.5)"
+                  : "1px solid rgba(255, 255, 255, 0.1)",
+                background: editing ? "#1a1a1a" : "#0d0d0d",
+                color: "white",
+                transition: "all 0.3s ease",
+                outline: "none",
+              }}
+              placeholder="Poids"
+            />
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 12,
+                color: "#667eea",
+                fontStyle: "italic",
+              }}
+            >
+              ℹ️ Les athlètes gèrent leur poids depuis le Dashboard
+            </div>
+          </div>
+        )}
+
+        {/* Groupe (non éditable, juste affiché) */}
+        {profile.group && (
+          <div style={{ marginBottom: 20 }}>
+            <label
+              style={{
+                display: "block",
+                fontSize: 13,
+                fontWeight: "600",
+                color: "#888",
+                marginBottom: 8,
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+              }}
+            >
+              👥 Groupe
+            </label>
+            <div
+              style={{
+                padding: 14,
+                background: "#0d0d0d",
+                borderRadius: 10,
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                color: "#888",
+                fontSize: 15,
+              }}
+            >
+              {profile.group === "total"
+                ? "Groupe Total"
+                : profile.group === "1"
+                ? "Groupe 1"
+                : profile.group === "2"
+                ? "Groupe 2"
+                : profile.group}
+            </div>
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 12,
+                color: "#888",
+                fontStyle: "italic",
+              }}
+            >
+              ℹ️ Votre groupe est géré par les administrateurs
+            </div>
+          </div>
+        )}
+
         {/* Boutons */}
-        <div style={{ display: "flex", gap: 10, marginTop: 30 }}>
+        <div style={{ display: "flex", gap: 12, marginTop: 30 }}>
           {!editing ? (
             <button
               onClick={() => setEditing(true)}
               style={{
-                padding: "12px 24px",
-                background: "#2f80ed",
+                flex: 1,
+                padding: 16,
+                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
                 color: "white",
                 border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
+                borderRadius: 12,
                 fontSize: 16,
-                fontWeight: "bold",
+                fontWeight: "700",
+                cursor: "pointer",
+                boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
+                transition: "all 0.3s ease",
+              }}
+              onMouseEnter={(e) => {
+                e.target.style.transform = "translateY(-2px)";
+                e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+              }}
+              onMouseLeave={(e) => {
+                e.target.style.transform = "translateY(0)";
+                e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
               }}
             >
               ✏️ Modifier
@@ -379,73 +466,78 @@ export default function MyProfile() {
               <button
                 onClick={handleSave}
                 style={{
-                  padding: "12px 24px",
-                  background: "#27ae60",
+                  flex: 1,
+                  padding: 16,
+                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
                   color: "white",
                   border: "none",
-                  borderRadius: 8,
-                  cursor: "pointer",
+                  borderRadius: 12,
                   fontSize: 16,
-                  fontWeight: "bold",
+                  fontWeight: "700",
+                  cursor: "pointer",
+                  boxShadow: "0 4px 15px rgba(17, 153, 142, 0.4)",
+                  transition: "all 0.3s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.transform = "translateY(-2px)";
+                  e.target.style.boxShadow = "0 6px 20px rgba(17, 153, 142, 0.6)";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.transform = "translateY(0)";
+                  e.target.style.boxShadow = "0 4px 15px rgba(17, 153, 142, 0.4)";
                 }}
               >
                 ✅ Enregistrer
               </button>
               <button
-                onClick={() => {
-                  setEditing(false);
-                  // Recharger les données
-                  window.location.reload();
-                }}
+                onClick={() => setEditing(false)}
                 style={{
-                  padding: "12px 24px",
-                  background: "#95a5a6",
+                  flex: 1,
+                  padding: 16,
+                  background: "rgba(255, 255, 255, 0.1)",
                   color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: "pointer",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  borderRadius: 12,
                   fontSize: 16,
+                  fontWeight: "700",
+                  cursor: "pointer",
+                  transition: "all 0.3s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.background = "rgba(255, 255, 255, 0.15)";
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.background = "rgba(255, 255, 255, 0.1)";
                 }}
               >
-                Annuler
+                ❌ Annuler
               </button>
             </>
           )}
         </div>
       </div>
 
-      {/* Info */}
-      <div
-        style={{
-          marginTop: 20,
-          padding: 20,
-          background: "#3a2f1f",
-          borderRadius: 10,
-          border: "2px solid #8b6914",
-        }}
-      >
-        <h4 style={{ marginTop: 0, color: "#f1c40f" }}>
-          💡 Pourquoi remplir mon profil ?
-        </h4>
-        <ul style={{ color: "#f8e6a0", lineHeight: 1.8, margin: 0 }}>
-          <li>
-            Votre <strong>prénom</strong> apparaît dans les messages de
-            bienvenue
-          </li>
-          <li>
-            Les <strong>admins</strong> vous identifient facilement dans les
-            listes
-          </li>
-          <li>
-            Vos <strong>stats physiques</strong> permettent un suivi
-            personnalisé
-          </li>
-          <li>
-            Votre <strong>poids</strong> peut être mis à jour directement depuis
-            le Dashboard
-          </li>
-        </ul>
-      </div>
+      {/* Info card - Athlètes uniquement */}
+      {!isAdmin && (
+        <div
+          style={{
+            maxWidth: "600px",
+            margin: "20px auto 0",
+            padding: 16,
+            background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+            borderRadius: 12,
+            boxShadow: "0 4px 15px rgba(79, 172, 254, 0.3)",
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: "600", display: "flex", alignItems: "center", gap: 8 }}>
+            <span>💡</span>
+            <span>Votre poids se gère depuis le Dashboard</span>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>
+            Mettez à jour votre poids quotidiennement depuis votre tableau de bord personnel.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
