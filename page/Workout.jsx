@@ -2088,7 +2088,7 @@ export default function Workout() {
           </div>
 
           {/* Alerte VMA manquante */}
-          {sessionType === "endurance" {sessionType === "endurance" && !vma && userRole !== "admin" && ({sessionType === "endurance" && !vma && userRole !== "admin" && ( !vma {sessionType === "endurance" && !vma && userRole !== "admin" && ({sessionType === "endurance" && !vma && userRole !== "admin" && ( (
+          {sessionType === "endurance" && !vma && (
             <div
               style={{
                 background: "#3a2f1f",
@@ -2105,8 +2105,8 @@ export default function Workout() {
             </div>
           )}
 
-          {/* Contrôles athlète */}
-          {true {userRole !== "admin" && ({userRole !== "admin" && ( (
+          {/* Contrôles séance - Pour tous (athlètes ET admins) */}
+          {(
             <div style={{ marginBottom: 20 }}>
               {selectedSession.completedAt ? (
                 <div
@@ -2371,7 +2371,8 @@ export default function Workout() {
                       </>
                     )}
 
-                    {true {userRole !== "admin" && ({userRole !== "admin" && ( (
+                    {/* Bouton feedback - Pour tous (athlètes ET admins) */}
+                    {(
                       <button
                         onClick={() =>
                           openFeedbackModal(bIdx, eIdx, ex, sessionType)
@@ -2382,7 +2383,7 @@ export default function Workout() {
                         style={{
                           width: "100%",
                           padding: "10px 16px",
-                          background: fb ? "#2f80ed" : "#27ae60",
+                          background: fb ? "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)" : "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
                           color: "white",
                           border: "none",
                           borderRadius: 8,
