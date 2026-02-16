@@ -50,6 +50,50 @@ export default function Dashboard() {
   const [lastWeightDate, setLastWeightDate] = useState(null);
   const [canUpdateWeight, setCanUpdateWeight] = useState(true);
 
+  /* ===================== HELPERS MULTI-UTILISATEURS ===================== */
+  const getUserProgress = (workout, userId = currentUser?.uid) => {
+    if (!workout || !userId) {
+      console.log("[getUserProgress] workout ou userId manquant", { workout: !!workout, userId });
+      return null;
+    }
+    const progress = workout.userProgress?.[userId] || null;
+    console.log("[getUserProgress]", { 
+      userId, 
+      hasUserProgress: !!workout.userProgress,
+      hasThisUser: !!progress,
+      progress 
+    });
+    return progress;
+  };
+
+  const isWorkoutCompleted = (workout, userId = currentUser?.uid) => {
+    const progress = getUserProgress(workout, userId);
+    const completed = progress?.completedAt ? true : false;
+    console.log("[isWorkoutCompleted]", { 
+      userId, 
+      workoutId: workout?.id,
+      hasProgress: !!progress, 
+      completedAt: progress?.completedAt,
+      result: completed,
+      // Info sur ancienne structure (pour debug)
+      oldCompletedAt: workout?.completedAt,
+      oldCompletedBy: workout?.completedBy
+    });
+    return completed;
+  };
+
+  const isWorkoutInProgress = (workout, userId = currentUser?.uid) => {
+    const progress = getUserProgress(workout, userId);
+    const inProgress = progress?.inProgress === true && !progress?.completedAt;
+    console.log("[isWorkoutInProgress]", { userId, result: inProgress });
+    return inProgress;
+  };
+
+  const getUserFeedback = (workout, userId = currentUser?.uid) => {
+    const progress = getUserProgress(workout, userId);
+    return progress?.feedback || {};
+  };
+
   const calculateWellnessScore = (entry) => {
     if (!entry) return 0;
     const s =
@@ -81,14 +125,15 @@ export default function Dashboard() {
     return { label: "Surcharge", color: "#e74c3c" };
   };
 
-  const calculateACWR = (workouts) => {
-    if (!workouts || workouts.length === 0) return null;
+  const calculateACWR = (workouts, userId = currentUser?.uid) => {
+    if (!workouts || workouts.length === 0 || !userId) return null;
 
     const calcLoad = (w) => {
-      if (!w.feedback) return 0;
+      const feedback = getUserFeedback(w, userId);
+      if (!feedback || Object.keys(feedback).length === 0) return 0;
       let total = 0,
         count = 0;
-      Object.values(w.feedback).forEach((fb) => {
+      Object.values(feedback).forEach((fb) => {
         if (fb.rpe) {
           total += Number(fb.rpe);
           count++;
@@ -100,11 +145,11 @@ export default function Dashboard() {
     const today = new Date();
     const last7 = workouts.filter((w) => {
       const diff = (today - new Date(w.date + "T12:00:00")) / 86400000;
-      return diff >= 0 && diff < 7 && w.completedAt;
+      return diff >= 0 && diff < 7 && isWorkoutCompleted(w, userId);
     });
     const last28 = workouts.filter((w) => {
       const diff = (today - new Date(w.date + "T12:00:00")) / 86400000;
-      return diff >= 0 && diff < 28 && w.completedAt;
+      return diff >= 0 && diff < 28 && isWorkoutCompleted(w, userId);
     });
 
     if (last28.length < 10) return null;
@@ -115,14 +160,15 @@ export default function Dashboard() {
     return chronic === 0 ? null : (acute / chronic).toFixed(2);
   };
 
-  const calculateACWRHistory = (workouts) => {
-    if (!workouts || workouts.length === 0) return [];
+  const calculateACWRHistory = (workouts, userId = currentUser?.uid) => {
+    if (!workouts || workouts.length === 0 || !userId) return [];
 
     const calcLoad = (w) => {
-      if (!w.feedback) return 0;
+      const feedback = getUserFeedback(w, userId);
+      if (!feedback || Object.keys(feedback).length === 0) return 0;
       let total = 0,
         count = 0;
-      Object.values(w.feedback).forEach((fb) => {
+      Object.values(feedback).forEach((fb) => {
         if (fb.rpe) {
           total += Number(fb.rpe);
           count++;
@@ -132,7 +178,7 @@ export default function Dashboard() {
     };
 
     const completedWorkouts = workouts
-      .filter((w) => w.completedAt)
+      .filter((w) => isWorkoutCompleted(w, userId))
       .sort((a, b) => a.date.localeCompare(b.date));
     if (completedWorkouts.length < 10) return [];
 
@@ -330,7 +376,7 @@ export default function Dashboard() {
           );
           const todayWorkout = uWorkouts.find((w) => w.date === today);
 
-          const acwr = calculateACWR(uWorkouts);
+          const acwr = calculateACWR(uWorkouts, u.id);
 
           return {
             ...u,
@@ -339,9 +385,9 @@ export default function Dashboard() {
             status: wScore !== null ? getWellnessStatus(wScore) : null,
             acwr: acwr,
             acwrStatus: getACWRStatus(acwr),
-            todayCompleted: todayWorkout ? !!todayWorkout.completedAt : false,
+            todayCompleted: todayWorkout ? isWorkoutCompleted(todayWorkout, u.id) : false,
             todayWorkoutTitle: todayWorkout?.title || null,
-            todayWorkoutInProgress: todayWorkout?.inProgress || false,
+            todayWorkoutInProgress: todayWorkout ? isWorkoutInProgress(todayWorkout, u.id) : false,
           };
         });
 
@@ -429,7 +475,7 @@ export default function Dashboard() {
       );
       const todayW = uWorkouts.find((w) => w.date === today) || null;
 
-      const acwrHist = calculateACWRHistory(uWorkouts);
+      const acwrHist = calculateACWRHistory(uWorkouts, athlete.id);
 
       setShowAthleteDetail(athlete);
       setDetailedAthleteRMHistory(rmByEx);
@@ -641,7 +687,7 @@ export default function Dashboard() {
               <div style={{ fontSize: 14, color: "#888", marginBottom: 10 }}>
                 Durée estimée : {todayWorkout.estimatedDuration || "N/A"} min
               </div>
-              {todayWorkout.completedAt ? (
+              {isWorkoutCompleted(todayWorkout) ? (
                 <div
                   style={{
                     padding: 12,
@@ -654,7 +700,7 @@ export default function Dashboard() {
                 >
                   ✅ Séance validée
                 </div>
-              ) : todayWorkout.inProgress ? (
+              ) : isWorkoutInProgress(todayWorkout) ? (
                 <div
                   style={{
                     padding: 12,
@@ -1386,7 +1432,7 @@ export default function Dashboard() {
                   >
                     {athleteDetails.todayWorkout.title}
                   </div>
-                  {athleteDetails.todayWorkout.completedAt ? (
+                  {isWorkoutCompleted(athleteDetails.todayWorkout, showAthleteDetail.id) ? (
                     <div
                       style={{
                         padding: 12,
@@ -1398,10 +1444,10 @@ export default function Dashboard() {
                     >
                       ✅ Validée –{" "}
                       {new Date(
-                        athleteDetails.todayWorkout.completedAt
+                        getUserProgress(athleteDetails.todayWorkout, showAthleteDetail.id)?.completedAt
                       ).toLocaleString("fr-FR")}
                     </div>
-                  ) : athleteDetails.todayWorkout.inProgress ? (
+                  ) : isWorkoutInProgress(athleteDetails.todayWorkout, showAthleteDetail.id) ? (
                     <div
                       style={{
                         padding: 12,
@@ -1599,7 +1645,7 @@ export default function Dashboard() {
                   }}
                 >
                   Zone optimale: 0.8 - 1.3 | Zone attention: 1.3 - 1.5 |
-                  Surcharge: > 1.5
+                  Surcharge: {'>'} 1.5
                 </div>
               </div>
             ) : (
