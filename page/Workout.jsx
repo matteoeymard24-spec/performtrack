@@ -912,11 +912,21 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #555",
-                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                border: "2px solid rgba(102, 126, 234, 0.3)",
+                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                 color: "#fff",
                 fontSize: 16,
                 marginBottom: 18,
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+              }}
+              onFocus={(e) => {
+                e.target.style.border = "2px solid rgba(102, 126, 234, 0.6)";
+                e.target.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.3)";
+              }}
+              onBlur={(e) => {
+                e.target.style.border = "2px solid rgba(102, 126, 234, 0.3)";
+                e.target.style.boxShadow = "none";
               }}
             />
             <div style={{ display: "flex", gap: 10 }}>
@@ -1116,10 +1126,20 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #555",
-                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                border: "2px solid rgba(102, 126, 234, 0.3)",
+                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                 color: "#fff",
                 fontSize: 16,
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+              }}
+              onFocus={(e) => {
+                e.target.style.border = "2px solid rgba(102, 126, 234, 0.6)";
+                e.target.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.3)";
+              }}
+              onBlur={(e) => {
+                e.target.style.border = "2px solid rgba(102, 126, 234, 0.3)";
+                e.target.style.boxShadow = "none";
               }}
             />
           </div>
@@ -1142,10 +1162,20 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #555",
-                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                border: "2px solid rgba(102, 126, 234, 0.3)",
+                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                 color: "#fff",
                 fontSize: 16,
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+              }}
+              onFocus={(e) => {
+                e.target.style.border = "2px solid rgba(102, 126, 234, 0.6)";
+                e.target.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.3)";
+              }}
+              onBlur={(e) => {
+                e.target.style.border = "2px solid rgba(102, 126, 234, 0.3)";
+                e.target.style.boxShadow = "none";
               }}
             >
               <option value="total">Total (tous)</option>
@@ -1174,10 +1204,20 @@ export default function Workout() {
                   width: "100%",
                   padding: 12,
                   borderRadius: 8,
-                  border: "1px solid #555",
-                  background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                  border: "2px solid rgba(102, 126, 234, 0.3)",
+                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
                   color: "#fff",
                   fontSize: 16,
+                  cursor: "pointer",
+                  transition: "all 0.3s ease",
+                }}
+                onFocus={(e) => {
+                  e.target.style.border = "2px solid rgba(102, 126, 234, 0.6)";
+                  e.target.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.3)";
+                }}
+                onBlur={(e) => {
+                  e.target.style.border = "2px solid rgba(102, 126, 234, 0.3)";
+                  e.target.style.boxShadow = "none";
                 }}
               >
                 <option value="">-- Choisir --</option>
@@ -2907,6 +2947,47 @@ export default function Workout() {
           </div>
         </div>
       )}
+
+      {/* Style global pour inputs et selects */}
+      <style>{`
+        /* Force le style des inputs date */
+        input[type="date"] {
+          color-scheme: dark !important;
+        }
+        
+        input[type="date"]::-webkit-calendar-picker-indicator {
+          filter: invert(1);
+          cursor: pointer;
+        }
+        
+        /* Force le style des selects et options */
+        select {
+          color: #ffffff !important;
+          background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%) !important;
+        }
+        
+        select option {
+          background: #1a1a1a !important;
+          color: #ffffff !important;
+          padding: 8px !important;
+        }
+        
+        select option:hover {
+          background: #2a2a2a !important;
+        }
+        
+        /* Style pour inputs text et number */
+        input[type="text"],
+        input[type="number"] {
+          color: #ffffff !important;
+          background: #1a1a1a !important;
+        }
+        
+        input[type="text"]::placeholder,
+        input[type="number"]::placeholder {
+          color: #666 !important;
+        }
+      `}</style>
     </div>
   );
 }
