@@ -47,6 +47,7 @@ export default function Workout() {
       exercises: [
         {
           name: "",
+          description: "",
           series: 3,
           reps: 8,
           tempo: "2-0-2",
@@ -523,6 +524,7 @@ export default function Workout() {
         exercises: [
           {
             name: "",
+            description: "",
             series: 3,
             reps: 8,
             tempo: "2-0-2",
@@ -566,9 +568,9 @@ export default function Workout() {
     if (workoutType === "muscu") {
       newExercise = {
         name: "",
+        description: "",
         series: 3,
         reps: 8,
-        holdTime: 0, // Temps de maintien en secondes (isométrie)
         tempo: "2-0-2",
         restMin: 2,
         rmPercent: 70,
@@ -577,6 +579,7 @@ export default function Workout() {
     } else if (workoutType === "sprint") {
       newExercise = {
         name: "",
+        description: "",
         distance: 30,
         recovery: 60,
         reps: 6,
@@ -586,6 +589,7 @@ export default function Workout() {
     } else {
       newExercise = {
         name: "",
+        description: "",
         vmaPercentage: 85,
         effortTime: 30,
         recoveryTime: 30,
@@ -611,9 +615,9 @@ export default function Workout() {
     if (workoutType === "muscu") {
       newExercise = {
         name: "",
+        description: "",
         series: 3,
         reps: 8,
-        holdTime: 0, // Temps de maintien en secondes (isométrie)
         tempo: "2-0-2",
         restMin: 2,
         rmPercent: 70,
@@ -622,6 +626,7 @@ export default function Workout() {
     } else if (workoutType === "sprint") {
       newExercise = {
         name: "",
+        description: "",
         distance: 30,
         recovery: 60,
         reps: 6,
@@ -631,6 +636,7 @@ export default function Workout() {
     } else {
       newExercise = {
         name: "",
+        description: "",
         vmaPercentage: 85,
         effortTime: 30,
         recoveryTime: 30,
@@ -1333,13 +1339,38 @@ export default function Workout() {
                     </button>
                   </div>
 
+                  {/* Champ description */}
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 12, color: "#888", marginBottom: 4, display: "block" }}>
+                      Description / Notes
+                    </label>
+                    <textarea
+                      placeholder="Ex: Position des mains, consignes techniques, etc."
+                      value={ex.description || ""}
+                      onChange={(e) =>
+                        updateExercise(bIdx, eIdx, "description", e.target.value)
+                      }
+                      rows={2}
+                      style={{
+                        width: "100%",
+                        padding: 8,
+                        borderRadius: 6,
+                        border: "1px solid #555",
+                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                        color: "#fff",
+                        fontSize: 13,
+                        resize: "vertical",
+                      }}
+                    />
+                  </div>
+
                   {/* FORMULAIRE MUSCU */}
                   {workoutType === "muscu" && (
                     <>
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(3, 1fr)",
+                          gridTemplateColumns: "repeat(2, 1fr)",
                           gap: 10,
                           marginBottom: 10,
                         }}
@@ -1384,32 +1415,6 @@ export default function Workout() {
                                 Number(e.target.value)
                               )
                             }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
-                            Temps (s)
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.holdTime || 0}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "holdTime",
-                                Number(e.target.value)
-                              )
-                            }
-                            placeholder="0"
                             style={{
                               width: "100%",
                               padding: 8,
@@ -1490,19 +1495,19 @@ export default function Workout() {
                       >
                         <div>
                           <label style={{ fontSize: 12, color: "#888" }}>
-                            % RM
+                            Intensité
                           </label>
-                          <input
-                            type="number"
-                            value={ex.rmPercent}
-                            onChange={(e) =>
+                          <select
+                            value={ex.rmPercent === "PDC" ? "PDC" : ex.rmPercent || 70}
+                            onChange={(e) => {
+                              const val = e.target.value;
                               updateExercise(
                                 bIdx,
                                 eIdx,
                                 "rmPercent",
-                                Number(e.target.value)
-                              )
-                            }
+                                val === "PDC" ? "PDC" : Number(val)
+                              );
+                            }}
                             style={{
                               width: "100%",
                               padding: 8,
@@ -1511,7 +1516,18 @@ export default function Workout() {
                               background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                               color: "#fff",
                             }}
-                          />
+                          >
+                            <option value="PDC">PDC (Poids du corps)</option>
+                            {[...Array(19)].map((_, i) => {
+                              const percent = (i + 1) * 5;
+                              return (
+                                <option key={percent} value={percent}>
+                                  {percent}% RM
+                                </option>
+                              );
+                            })}
+                            <option value={100}>100% RM</option>
+                          </select>
                         </div>
                         <div>
                           <label style={{ fontSize: 12, color: "#888" }}>
@@ -1529,19 +1545,23 @@ export default function Workout() {
                                 e.target.value
                               )
                             }
+                            disabled={ex.rmPercent === "PDC"}
                             style={{
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              background: ex.rmPercent === "PDC" 
+                                ? "#1a1a1a" 
+                                : "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                              color: ex.rmPercent === "PDC" ? "#666" : "#fff",
+                              cursor: ex.rmPercent === "PDC" ? "not-allowed" : "text",
                             }}
                           />
                         </div>
                       </div>
                       {/* CALCUL POIDS CIBLE */}
-                      {ex.rmName &&
+                      {ex.rmPercent !== "PDC" && ex.rmName &&
                         ex.rmPercent &&
                         (() => {
                           const rm = userRM[ex.rmName.toLowerCase()];
@@ -1593,6 +1613,19 @@ export default function Workout() {
                             );
                           }
                         })()}
+                      {ex.rmPercent === "PDC" && (
+                        <div
+                          style={{
+                            padding: 12,
+                            background: "#1a2a3a",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            color: "#b4d4f8",
+                          }}
+                        >
+                          💪 <strong>Poids du corps</strong> - Aucun poids additionnel
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -2321,6 +2354,24 @@ export default function Workout() {
                     <h5 style={{ margin: "0 0 8px 0", fontSize: 16 }}>
                       {ex.name}
                     </h5>
+                    
+                    {/* Description si présente */}
+                    {ex.description && (
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: "#aaa",
+                          marginBottom: 8,
+                          fontStyle: "italic",
+                          padding: 8,
+                          background: "#0a0a0a",
+                          borderRadius: 6,
+                          borderLeft: "3px solid #2f80ed",
+                        }}
+                      >
+                        📝 {ex.description}
+                      </div>
+                    )}
 
                     {/* AFFICHAGE MUSCU */}
                     {sessionType === "muscu" && (
@@ -2332,8 +2383,15 @@ export default function Workout() {
                             marginBottom: 10,
                           }}
                         >
-                          {ex.series} × {ex.reps}{ex.holdTime > 0 ? ` (${ex.holdTime}s)` : ""} @ {ex.rmPercent}% (
-                          {calculateWeight(ex.rmName, ex.rmPercent)} kg) •
+                          {ex.series} × {ex.reps} @{" "}
+                          {ex.rmPercent === "PDC" ? (
+                            <strong style={{ color: "#2f80ed" }}>PDC</strong>
+                          ) : (
+                            <>
+                              {ex.rmPercent}% ({calculateWeight(ex.rmName, ex.rmPercent)} kg)
+                            </>
+                          )}
+                          {" • "}
                           Tempo: {ex.tempo} • Repos: {ex.restMin} min
                         </div>
                         {fb && (
