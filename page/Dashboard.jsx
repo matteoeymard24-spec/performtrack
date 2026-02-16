@@ -20,6 +20,7 @@ import {
   AreaChart,
   Area,
 } from "recharts";
+import BodyScan from "../component/BodyScan";
 
 const getLocalDateStr = (date) => {
   const d = date instanceof Date ? date : new Date(date);
@@ -1311,29 +1312,6 @@ export default function Dashboard() {
                   </div>
                 </div>
               )}
-              {athleteDetails.dailyScore !== null && (
-                <div
-                  style={{
-                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-                    padding: 18,
-                    borderRadius: 10,
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: 11, color: "#888", marginBottom: 5 }}>
-                    MOY. QUOTIDIENNE
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 30,
-                      fontWeight: "bold",
-                      color: "#2f80ed",
-                    }}
-                  >
-                    {athleteDetails.dailyScore.toFixed(1)}/10
-                  </div>
-                </div>
-              )}
               {athleteDetails.weeklyAvg && (
                 <div
                   style={{
@@ -1480,9 +1458,9 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* DOULEURS DÉTAILLÉES */}
+            {/* DOULEURS DÉTAILLÉES AVEC BODYSCAN VISUEL */}
             {showAthleteDetail.lastWellness &&
-              showAthleteDetail.lastWellness.douleur > 3 && (
+              showAthleteDetail.lastWellness.douleur > 0 && (
                 <div
                   style={{
                     background: "#3a1f1f",
@@ -1518,7 +1496,7 @@ export default function Dashboard() {
                         marginBottom: 4,
                       }}
                     >
-                      INTENSITÉ TOTALE
+                      INTENSITÉ GLOBALE
                     </div>
                     <div
                       style={{
@@ -1531,65 +1509,25 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Douleurs spécifiques du bodyscan */}
-                  {showAthleteDetail.lastWellness.bodyscan &&
-                    Object.keys(showAthleteDetail.lastWellness.bodyscan)
+                  {/* Bodyscan visuel */}
+                  {showAthleteDetail.lastWellness.painMap &&
+                    Object.keys(showAthleteDetail.lastWellness.painMap)
                       .length > 0 && (
-                      <div>
+                      <div style={{ marginTop: 15 }}>
                         <div
                           style={{
                             fontSize: 13,
                             color: "#f8b4b4",
-                            marginBottom: 10,
+                            marginBottom: 15,
                             fontWeight: "bold",
                           }}
                         >
-                          LOCALISATIONS SPÉCIFIQUES :
+                          📍 LOCALISATION DES DOULEURS :
                         </div>
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns:
-                              "repeat(auto-fill, minmax(150px, 1fr))",
-                            gap: 10,
-                          }}
-                        >
-                          {Object.entries(
-                            showAthleteDetail.lastWellness.bodyscan
-                          ).map(
-                            ([zone, intensity]) =>
-                              intensity > 0 && (
-                                <div
-                                  key={zone}
-                                  style={{
-                                    background: "#2a1a1a",
-                                    padding: 10,
-                                    borderRadius: 6,
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      fontSize: 11,
-                                      color: "#f8b4b4",
-                                      marginBottom: 4,
-                                    }}
-                                  >
-                                    {zone}
-                                  </div>
-                                  <div
-                                    style={{
-                                      fontSize: 18,
-                                      fontWeight: "bold",
-                                      color:
-                                        intensity > 5 ? "#e74c3c" : "#f39c12",
-                                    }}
-                                  >
-                                    {intensity}/10
-                                  </div>
-                                </div>
-                              )
-                          )}
-                        </div>
+                        <BodyScan
+                          painMap={showAthleteDetail.lastWellness.painMap}
+                          setPainMap={() => {}} // Mode lecture seule pour admin
+                        />
                       </div>
                     )}
                 </div>
