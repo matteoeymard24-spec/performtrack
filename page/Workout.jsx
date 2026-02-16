@@ -568,6 +568,7 @@ export default function Workout() {
         name: "",
         series: 3,
         reps: 8,
+        holdTime: 0, // Temps de maintien en secondes (isométrie)
         tempo: "2-0-2",
         restMin: 2,
         rmPercent: 70,
@@ -612,6 +613,7 @@ export default function Workout() {
         name: "",
         series: 3,
         reps: 8,
+        holdTime: 0, // Temps de maintien en secondes (isométrie)
         tempo: "2-0-2",
         restMin: 2,
         rmPercent: 70,
@@ -1337,7 +1339,7 @@ export default function Workout() {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(2, 1fr)",
+                          gridTemplateColumns: "repeat(3, 1fr)",
                           gap: 10,
                           marginBottom: 10,
                         }}
@@ -1382,6 +1384,32 @@ export default function Workout() {
                                 Number(e.target.value)
                               )
                             }
+                            style={{
+                              width: "100%",
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #555",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                              color: "#fff",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#888" }}>
+                            Temps (s)
+                          </label>
+                          <input
+                            type="number"
+                            value={ex.holdTime || 0}
+                            onChange={(e) =>
+                              updateExercise(
+                                bIdx,
+                                eIdx,
+                                "holdTime",
+                                Number(e.target.value)
+                              )
+                            }
+                            placeholder="0"
                             style={{
                               width: "100%",
                               padding: 8,
@@ -2304,7 +2332,7 @@ export default function Workout() {
                             marginBottom: 10,
                           }}
                         >
-                          {ex.series} × {ex.reps} @ {ex.rmPercent}% (
+                          {ex.series} × {ex.reps}{ex.holdTime > 0 ? ` (${ex.holdTime}s)` : ""} @ {ex.rmPercent}% (
                           {calculateWeight(ex.rmName, ex.rmPercent)} kg) •
                           Tempo: {ex.tempo} • Repos: {ex.restMin} min
                         </div>
