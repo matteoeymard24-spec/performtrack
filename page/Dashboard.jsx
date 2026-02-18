@@ -54,39 +54,21 @@ export default function Dashboard() {
   /* ===================== HELPERS MULTI-UTILISATEURS ===================== */
   const getUserProgress = (workout, userId = currentUser?.uid) => {
     if (!workout || !userId) {
-      console.log("[getUserProgress] workout ou userId manquant", { workout: !!workout, userId });
       return null;
     }
     const progress = workout.userProgress?.[userId] || null;
-    console.log("[getUserProgress]", { 
-      userId, 
-      hasUserProgress: !!workout.userProgress,
-      hasThisUser: !!progress,
-      progress 
-    });
     return progress;
   };
 
   const isWorkoutCompleted = (workout, userId = currentUser?.uid) => {
     const progress = getUserProgress(workout, userId);
     const completed = progress?.completedAt ? true : false;
-    console.log("[isWorkoutCompleted]", { 
-      userId, 
-      workoutId: workout?.id,
-      hasProgress: !!progress, 
-      completedAt: progress?.completedAt,
-      result: completed,
-      // Info sur ancienne structure (pour debug)
-      oldCompletedAt: workout?.completedAt,
-      oldCompletedBy: workout?.completedBy
-    });
     return completed;
   };
 
   const isWorkoutInProgress = (workout, userId = currentUser?.uid) => {
     const progress = getUserProgress(workout, userId);
     const inProgress = progress?.inProgress === true && !progress?.completedAt;
-    console.log("[isWorkoutInProgress]", { userId, result: inProgress });
     return inProgress;
   };
 
