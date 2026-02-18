@@ -8,6 +8,7 @@ import {
   orderBy,
   addDoc,
   getDocs,
+  getDoc,
   serverTimestamp,
   updateDoc,
   doc,
@@ -70,6 +71,9 @@ export default function Workout() {
   const [currentExerciseFeedback, setCurrentExerciseFeedback] = useState(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateWeekStart, setDuplicateWeekStart] = useState(null);
+  const [showDuplicateSessionModal, setShowDuplicateSessionModal] = useState(false);
+  const [sessionToDuplicate, setSessionToDuplicate] = useState(null);
+  const [duplicateTargetDate, setDuplicateTargetDate] = useState(null);
 
   /* ===================== RM + VMA ===================== */
   useEffect(() => {
@@ -385,17 +389,38 @@ export default function Workout() {
   };
 
   const endSession = async () => {
-    if (!sessionInProgress) return;
+    if (!sessionInProgress) {
+      console.log("[endSession] Pas de session en cours");
+      return;
+    }
+    
     try {
+      console.log("[endSession] Début de la terminaison de séance", sessionInProgress.id);
       const endTime = new Date().toISOString();
-      const userProgressData = sessionInProgress.userProgress?.[currentUser.uid] || {};
+      
+      // IMPORTANT: Récupérer la séance à jour depuis la DB
+      const sessionRef = doc(db, "workout", sessionInProgress.id);
+      const sessionSnap = await getDoc(sessionRef);
+      
+      if (!sessionSnap.exists()) {
+        console.error("[endSession] Séance introuvable !");
+        alert("❌ Erreur : Séance introuvable");
+        return;
+      }
+      
+      const currentSessionData = sessionSnap.data();
+      console.log("[endSession] Données séance récupérées", currentSessionData);
+      
+      const userProgressData = currentSessionData.userProgress?.[currentUser.uid] || {};
       const startTime = userProgressData.startedAt || sessionStartTime;
       const duration = Math.round(
         (new Date(endTime) - new Date(startTime)) / 60000
       );
       
+      console.log("[endSession] Durée calculée:", duration, "min");
+      
       // Structure par utilisateur
-      const userProgress = sessionInProgress.userProgress || {};
+      const userProgress = currentSessionData.userProgress || {};
       userProgress[currentUser.uid] = {
         ...userProgressData,
         completedAt: endTime,
@@ -404,9 +429,13 @@ export default function Workout() {
         inProgress: false,
       };
       
-      await updateDoc(doc(db, "workout", sessionInProgress.id), {
+      console.log("[endSession] Mise à jour userProgress pour", currentUser.uid);
+      
+      await updateDoc(sessionRef, {
         userProgress,
       });
+      
+      console.log("[endSession] Séance mise à jour avec succès");
       
       await adjustRMFromFeedback(sessionFeedback, sessionInProgress);
       alert("Séance terminée ! Bravo 🎉");
@@ -415,8 +444,8 @@ export default function Workout() {
       setSelectedSession(null);
       await fetchSessions();
     } catch (e) {
-      console.error(e);
-      alert("Erreur fin séance");
+      console.error("[endSession] Erreur complète:", e);
+      alert(`❌ Erreur fin séance: ${e.message}`);
     }
   };
 
@@ -461,6 +490,39 @@ export default function Workout() {
     } catch (e) {
       console.error(e);
       alert("Erreur duplication");
+    }
+  };
+
+  /* ===================== DUPLICATION SÉANCE UNIQUE ===================== */
+  const duplicateSession = async () => {
+    if (!sessionToDuplicate || !duplicateTargetDate) {
+      alert("⚠️ Veuillez sélectionner une date");
+      return;
+    }
+    
+    try {
+      // Créer la nouvelle séance dupliquée
+      await addDoc(collection(db, "workout"), {
+        title: sessionToDuplicate.title,
+        date: duplicateTargetDate,
+        group: sessionToDuplicate.group,
+        targetUserId: sessionToDuplicate.targetUserId || null,
+        blocks: sessionToDuplicate.blocks,
+        type: sessionToDuplicate.type || "muscu",
+        estimatedDuration: sessionToDuplicate.estimatedDuration,
+        createdBy: currentUser.uid,
+        createdAt: serverTimestamp(),
+        duplicatedFrom: sessionToDuplicate.id,
+      });
+      
+      alert("✅ Séance dupliquée avec succès !");
+      setShowDuplicateSessionModal(false);
+      setSessionToDuplicate(null);
+      setDuplicateTargetDate(null);
+      await fetchSessions();
+    } catch (e) {
+      console.error("[duplicateSession] Erreur:", e);
+      alert(`❌ Erreur duplication: ${e.message}`);
     }
   };
 
@@ -958,6 +1020,139 @@ export default function Workout() {
                 onClick={() => {
                   setShowDuplicateModal(false);
                   setDuplicateWeekStart(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  background: "#95a5a6",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 16,
+                  cursor: "pointer",
+                }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ MODAL DUPLICATION SÉANCE UNIQUE ============ */}
+      {showDuplicateSessionModal && sessionToDuplicate && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.85)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              padding: 30,
+              borderRadius: 12,
+              maxWidth: 500,
+              width: "100%",
+              border: "2px solid #11998e",
+            }}
+          >
+            <h3 style={{ margin: "0 0 10px 0", color: "#38ef7d" }}>
+              📋 Dupliquer la séance
+            </h3>
+            <div
+              style={{
+                padding: 15,
+                background: "#0a0a0a",
+                borderRadius: 8,
+                marginBottom: 20,
+                borderLeft: "3px solid #2f80ed",
+              }}
+            >
+              <div style={{ fontSize: 16, fontWeight: "bold", marginBottom: 4 }}>
+                {sessionToDuplicate.title}
+              </div>
+              <div style={{ fontSize: 13, color: "#888" }}>
+                Date originale :{" "}
+                {new Date(
+                  sessionToDuplicate.date + "T12:00:00"
+                ).toLocaleDateString("fr-FR")}
+              </div>
+              <div style={{ fontSize: 13, color: "#888" }}>
+                Type :{" "}
+                {sessionToDuplicate.type === "sprint"
+                  ? "⚡ Sprint"
+                  : sessionToDuplicate.type === "endurance"
+                  ? "🏃 Endurance"
+                  : "💪 Muscu"}
+              </div>
+            </div>
+
+            <label
+              style={{
+                display: "block",
+                fontSize: 14,
+                color: "#aaa",
+                marginBottom: 8,
+                fontWeight: "bold",
+              }}
+            >
+              📅 Nouvelle date :
+            </label>
+            <input
+              type="date"
+              value={duplicateTargetDate || ""}
+              onChange={(e) => setDuplicateTargetDate(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 12,
+                borderRadius: 8,
+                border: "2px solid rgba(56, 239, 125, 0.3)",
+                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                color: "#fff",
+                fontSize: 16,
+                marginBottom: 20,
+                cursor: "pointer",
+                transition: "all 0.3s ease",
+              }}
+              onFocus={(e) => {
+                e.target.style.border = "2px solid rgba(56, 239, 125, 0.6)";
+                e.target.style.boxShadow = "0 0 15px rgba(56, 239, 125, 0.3)";
+              }}
+              onBlur={(e) => {
+                e.target.style.border = "2px solid rgba(56, 239, 125, 0.3)";
+                e.target.style.boxShadow = "none";
+              }}
+            />
+
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={duplicateSession}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 16,
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                }}
+              >
+                ✅ Dupliquer
+              </button>
+              <button
+                onClick={() => {
+                  setShowDuplicateSessionModal(false);
+                  setSessionToDuplicate(null);
+                  setDuplicateTargetDate(null);
                 }}
                 style={{
                   flex: 1,
@@ -2192,6 +2387,24 @@ export default function Workout() {
                     }}
                   >
                     ✏️ Modifier
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSessionToDuplicate(selectedSession);
+                      setDuplicateTargetDate(selectedSession.date);
+                      setShowDuplicateSessionModal(true);
+                    }}
+                    style={{
+                      padding: "8px 16px",
+                      background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: 14,
+                    }}
+                  >
+                    📋 Dupliquer
                   </button>
                   <button
                     onClick={() => deleteSession(selectedSession.id)}
