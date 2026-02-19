@@ -245,16 +245,19 @@ export default function Workout() {
         userProgress,
       });
       
-      setSessionInProgress({
+      const updatedSession = {
         ...session,
         userProgress,
-      });
+      };
+      
+      setSessionInProgress(updatedSession);
+      setSelectedSession(updatedSession); // Synchroniser selectedSession
       setSessionStartTime(startTime);
       setSessionFeedback({});
       await fetchSessions();
     } catch (e) {
-      console.error(e);
-      alert("Erreur démarrage");
+      console.error("[startSession] Erreur:", e);
+      alert(`❌ Erreur démarrage: ${e.message}`);
     }
   };
 
@@ -389,35 +392,51 @@ export default function Workout() {
   };
 
   const endSession = async () => {
-    if (!sessionInProgress) {
-      console.log("[endSession] Pas de session en cours");
+    // Utiliser sessionInProgress ou selectedSession comme fallback
+    const workoutSession = sessionInProgress || selectedSession;
+    
+    if (!workoutSession) {
+      console.log("[endSession] ❌ Aucune session disponible");
+      alert("⚠️ Aucune séance sélectionnée");
       return;
     }
     
+    console.log("[endSession] ✅ Session trouvée:", workoutSession.id);
+    console.log("[endSession] sessionInProgress:", !!sessionInProgress);
+    console.log("[endSession] selectedSession:", !!selectedSession);
+    
     try {
-      console.log("[endSession] Début de la terminaison de séance", sessionInProgress.id);
+      console.log("[endSession] 🏁 Début de la terminaison de séance", workoutSession.id);
       const endTime = new Date().toISOString();
       
       // IMPORTANT: Récupérer la séance à jour depuis la DB
-      const sessionRef = doc(db, "workout", sessionInProgress.id);
+      const sessionRef = doc(db, "workout", workoutSession.id);
       const sessionSnap = await getDoc(sessionRef);
       
       if (!sessionSnap.exists()) {
-        console.error("[endSession] Séance introuvable !");
-        alert("❌ Erreur : Séance introuvable");
+        console.error("[endSession] ❌ Séance introuvable dans Firestore !");
+        alert("❌ Erreur : Séance introuvable dans la base de données");
         return;
       }
       
       const currentSessionData = sessionSnap.data();
-      console.log("[endSession] Données séance récupérées", currentSessionData);
+      console.log("[endSession] 📊 Données séance récupérées:", {
+        id: workoutSession.id,
+        title: currentSessionData.title,
+        hasUserProgress: !!currentSessionData.userProgress,
+        userIds: Object.keys(currentSessionData.userProgress || {})
+      });
       
       const userProgressData = currentSessionData.userProgress?.[currentUser.uid] || {};
+      console.log("[endSession] 👤 UserProgress actuel:", userProgressData);
+      
       const startTime = userProgressData.startedAt || sessionStartTime;
       const duration = Math.round(
         (new Date(endTime) - new Date(startTime)) / 60000
       );
       
-      console.log("[endSession] Durée calculée:", duration, "min");
+      console.log("[endSession] ⏱️ Durée calculée:", duration, "min");
+      console.log("[endSession] 📝 Feedback à sauvegarder:", sessionFeedback);
       
       // Structure par utilisateur
       const userProgress = currentSessionData.userProgress || {};
@@ -429,22 +448,24 @@ export default function Workout() {
         inProgress: false,
       };
       
-      console.log("[endSession] Mise à jour userProgress pour", currentUser.uid);
+      console.log("[endSession] 💾 Mise à jour userProgress pour", currentUser.uid);
       
       await updateDoc(sessionRef, {
         userProgress,
       });
       
-      console.log("[endSession] Séance mise à jour avec succès");
+      console.log("[endSession] ✅ Séance mise à jour avec succès dans Firestore");
       
-      await adjustRMFromFeedback(sessionFeedback, sessionInProgress);
+      await adjustRMFromFeedback(sessionFeedback, workoutSession);
       alert("Séance terminée ! Bravo 🎉");
       setSessionInProgress(null);
       setSessionFeedback({});
       setSelectedSession(null);
       await fetchSessions();
+      console.log("[endSession] 🎉 Terminé avec succès !");
     } catch (e) {
-      console.error("[endSession] Erreur complète:", e);
+      console.error("[endSession] ❌ Erreur complète:", e);
+      console.error("[endSession] ❌ Stack trace:", e.stack);
       alert(`❌ Erreur fin séance: ${e.message}`);
     }
   };
@@ -3289,4 +3310,4 @@ export default function Workout() {
       `}</style>
     </div>
   );
-}
+  }
