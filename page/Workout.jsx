@@ -2000,14 +2000,7 @@ export default function Workout() {
                           />
                         </div>
                       </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, 1fr)",
-                          gap: 10,
-                          marginBottom: 10,
-                        }}
-                      >
+                      <div style={{ marginBottom: 10 }}>
                         <div>
                           <label style={{ fontSize: 12, color: "#888" }}>
                             Intensité
@@ -2260,16 +2253,8 @@ export default function Workout() {
                             }}
                           />
                         </div>
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
-                            }}
-                          />
-                        </div>
+                      </div>
+                      <div style={{ marginBottom: 10 }}>
                         <label
                           style={{
                             display: "flex",
