@@ -664,7 +664,8 @@ export default function Workout() {
         name: "",
         description: "",
         distance: 30,
-        recovery: 1, // en minutes
+        recoveryMin: 1,
+        recoverySec: 0,
         reps: 6,
         sets: 3,
         intensity: "Max",
@@ -675,10 +676,12 @@ export default function Workout() {
         description: "",
         vmaPercentage: 85,
         effortTime: 30,
-        recoveryTime: 0.5, // en minutes
+        recoveryMin: 0,
+        recoverySec: 30,
         reps: 10,
         groundWork: false,
-        blockRecovery: 3, // en minutes
+        blockRecoveryMin: 3,
+        blockRecoverySec: 0,
       };
     }
     setBlocks([
@@ -711,7 +714,8 @@ export default function Workout() {
         name: "",
         description: "",
         distance: 30,
-        recovery: 1, // en minutes
+        recoveryMin: 1,
+        recoverySec: 0,
         reps: 6,
         sets: 3,
         intensity: "Max",
@@ -722,10 +726,12 @@ export default function Workout() {
         description: "",
         vmaPercentage: 85,
         effortTime: 30,
-        recoveryTime: 0.5, // en minutes
+        recoveryMin: 0,
+        recoverySec: 30,
         reps: 10,
         groundWork: false,
-        blockRecovery: 3, // en minutes
+        blockRecoveryMin: 3,
+        blockRecoverySec: 0,
       };
     }
     nb[bIdx].exercises.push(newExercise);
@@ -1255,7 +1261,8 @@ export default function Workout() {
                             {
                               name: "",
                               distance: 30,
-                              recovery: 1, // en minutes
+                              recoveryMin: 1,
+                              recoverySec: 0,
                               reps: 6,
                               sets: 3,
                               intensity: "Max",
@@ -1272,10 +1279,12 @@ export default function Workout() {
                               name: "",
                               vmaPercentage: 85,
                               effortTime: 30,
-                              recoveryTime: 0.5, // en minutes
+                              recoveryMin: 0,
+                              recoverySec: 30,
                               reps: 10,
                               groundWork: false,
-                              blockRecovery: 3, // en minutes
+                              blockRecoveryMin: 3,
+                              blockRecoverySec: 0,
                             },
                           ],
                         },
@@ -1946,13 +1955,12 @@ export default function Workout() {
                           </label>
                           <input
                             type="number"
-                            step="0.5"
-                            value={ex.recovery}
+                            value={ex.recoveryMin || 0}
                             onChange={(e) =>
                               updateExercise(
                                 bIdx,
                                 eIdx,
-                                "recovery",
+                                "recoveryMin",
                                 Number(e.target.value)
                               )
                             }
@@ -1966,6 +1974,40 @@ export default function Workout() {
                             }}
                           />
                         </div>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#888" }}>
+                            Récup (sec)
+                          </label>
+                          <input
+                            type="number"
+                            value={ex.recoverySec || 0}
+                            onChange={(e) =>
+                              updateExercise(
+                                bIdx,
+                                eIdx,
+                                "recoverySec",
+                                Number(e.target.value)
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #555",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                              color: "#fff",
+                            }}
+                          />
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(2, 1fr)",
+                          gap: 10,
+                          marginBottom: 10,
+                        }}
+                      >
                         <div>
                           <label style={{ fontSize: 12, color: "#888" }}>
                             Intensité
@@ -2090,13 +2132,37 @@ export default function Workout() {
                           </label>
                           <input
                             type="number"
-                            step="0.5"
-                            value={ex.recoveryTime}
+                            value={ex.recoveryMin || 0}
                             onChange={(e) =>
                               updateExercise(
                                 bIdx,
                                 eIdx,
-                                "recoveryTime",
+                                "recoveryMin",
+                                Number(e.target.value)
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #555",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                              color: "#fff",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#888" }}>
+                            Récup (sec)
+                          </label>
+                          <input
+                            type="number"
+                            value={ex.recoverySec || 0}
+                            onChange={(e) =>
+                              updateExercise(
+                                bIdx,
+                                eIdx,
+                                "recoverySec",
                                 Number(e.target.value)
                               )
                             }
@@ -2150,16 +2216,50 @@ export default function Workout() {
                           </label>
                           <input
                             type="number"
-                            step="0.5"
-                            value={ex.blockRecovery || 3}
+                            value={ex.blockRecoveryMin || 0}
                             onChange={(e) =>
                               updateExercise(
                                 bIdx,
                                 eIdx,
-                                "blockRecovery",
+                                "blockRecoveryMin",
                                 Number(e.target.value)
                               )
                             }
+                            style={{
+                              width: "100%",
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #555",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                              color: "#fff",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#888" }}>
+                            Récup blocs (sec)
+                          </label>
+                          <input
+                            type="number"
+                            value={ex.blockRecoverySec || 0}
+                            onChange={(e) =>
+                              updateExercise(
+                                bIdx,
+                                eIdx,
+                                "blockRecoverySec",
+                                Number(e.target.value)
+                              )
+                            }
+                            style={{
+                              width: "100%",
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #555",
+                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                              color: "#fff",
+                            }}
+                          />
+                        </div>
                             style={{
                               width: "100%",
                               padding: 8,
@@ -2663,7 +2763,14 @@ export default function Workout() {
                         >
                           {ex.distance}m × {ex.reps} reps × {ex.sets} séries ={" "}
                           <strong>{ex.distance * ex.reps * ex.sets}m</strong> •
-                          Récup: {ex.recovery}min • Intensité: {ex.intensity}
+                          Récup: {(() => {
+                            const min = ex.recoveryMin || 0;
+                            const sec = ex.recoverySec || 0;
+                            if (min > 0 && sec > 0) return `${min}min${sec}`;
+                            if (min > 0) return `${min}min`;
+                            if (sec > 0) return `${sec}sec`;
+                            return "0sec";
+                          })()} • Intensité: {ex.intensity}
                         </div>
                         {fb && (
                           <div
@@ -2709,12 +2816,28 @@ export default function Workout() {
                                     {ex.vmaPercentage}% VMA →{" "}
                                     <strong>{metrics.paceKmh} km/h</strong> (
                                     {metrics.paceDisplay}) •{ex.effortTime}s/
-                                    {ex.recoveryTime}min × {ex.reps} reps
-                                    {ex.blockRecovery && (
+                                    {(() => {
+                                      const min = ex.recoveryMin || 0;
+                                      const sec = ex.recoverySec || 0;
+                                      if (min > 0 && sec > 0) return `${min}min${sec}`;
+                                      if (min > 0) return `${min}min`;
+                                      if (sec > 0) return `${sec}sec`;
+                                      return "0sec";
+                                    })()} × {ex.reps} reps
+                                    {(ex.blockRecoveryMin > 0 || ex.blockRecoverySec > 0) && (
                                       <span>
                                         {" "}
                                         • Récup blocs:{" "}
-                                        <strong>{ex.blockRecovery}min</strong>
+                                        <strong>
+                                          {(() => {
+                                            const min = ex.blockRecoveryMin || 0;
+                                            const sec = ex.blockRecoverySec || 0;
+                                            if (min > 0 && sec > 0) return `${min}min${sec}`;
+                                            if (min > 0) return `${min}min`;
+                                            if (sec > 0) return `${sec}sec`;
+                                            return "0sec";
+                                          })()}
+                                        </strong>
                                       </span>
                                     )}{" "}
                                     • Distance:{" "}
