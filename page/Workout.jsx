@@ -664,7 +664,7 @@ export default function Workout() {
         name: "",
         description: "",
         distance: 30,
-        recovery: 60,
+        recovery: 1, // en minutes
         reps: 6,
         sets: 3,
         intensity: "Max",
@@ -675,10 +675,10 @@ export default function Workout() {
         description: "",
         vmaPercentage: 85,
         effortTime: 30,
-        recoveryTime: 30,
+        recoveryTime: 0.5, // en minutes
         reps: 10,
         groundWork: false,
-        blockRecovery: 180,
+        blockRecovery: 3, // en minutes
       };
     }
     setBlocks([
@@ -711,7 +711,7 @@ export default function Workout() {
         name: "",
         description: "",
         distance: 30,
-        recovery: 60,
+        recovery: 1, // en minutes
         reps: 6,
         sets: 3,
         intensity: "Max",
@@ -722,10 +722,10 @@ export default function Workout() {
         description: "",
         vmaPercentage: 85,
         effortTime: 30,
-        recoveryTime: 30,
+        recoveryTime: 0.5, // en minutes
         reps: 10,
         groundWork: false,
-        blockRecovery: 180,
+        blockRecovery: 3, // en minutes
       };
     }
     nb[bIdx].exercises.push(newExercise);
@@ -1255,7 +1255,7 @@ export default function Workout() {
                             {
                               name: "",
                               distance: 30,
-                              recovery: 60,
+                              recovery: 1, // en minutes
                               reps: 6,
                               sets: 3,
                               intensity: "Max",
@@ -1272,10 +1272,10 @@ export default function Workout() {
                               name: "",
                               vmaPercentage: 85,
                               effortTime: 30,
-                              recoveryTime: 30,
+                              recoveryTime: 0.5, // en minutes
                               reps: 10,
                               groundWork: false,
-                              blockRecovery: 180,
+                              blockRecovery: 3, // en minutes
                             },
                           ],
                         },
@@ -1942,10 +1942,11 @@ export default function Workout() {
                       >
                         <div>
                           <label style={{ fontSize: 12, color: "#888" }}>
-                            Récup (s)
+                            Récup (min)
                           </label>
                           <input
                             type="number"
+                            step="0.5"
                             value={ex.recovery}
                             onChange={(e) =>
                               updateExercise(
@@ -2085,10 +2086,11 @@ export default function Workout() {
                         </div>
                         <div>
                           <label style={{ fontSize: 12, color: "#888" }}>
-                            Récup (s)
+                            Récup (min)
                           </label>
                           <input
                             type="number"
+                            step="0.5"
                             value={ex.recoveryTime}
                             onChange={(e) =>
                               updateExercise(
@@ -2144,11 +2146,12 @@ export default function Workout() {
                         </div>
                         <div>
                           <label style={{ fontSize: 12, color: "#888" }}>
-                            Récup blocs (s)
+                            Récup blocs (min)
                           </label>
                           <input
                             type="number"
-                            value={ex.blockRecovery || 180}
+                            step="0.5"
+                            value={ex.blockRecovery || 3}
                             onChange={(e) =>
                               updateExercise(
                                 bIdx,
@@ -2660,7 +2663,7 @@ export default function Workout() {
                         >
                           {ex.distance}m × {ex.reps} reps × {ex.sets} séries ={" "}
                           <strong>{ex.distance * ex.reps * ex.sets}m</strong> •
-                          Récup: {ex.recovery}s • Intensité: {ex.intensity}
+                          Récup: {ex.recovery}min • Intensité: {ex.intensity}
                         </div>
                         {fb && (
                           <div
@@ -2706,12 +2709,12 @@ export default function Workout() {
                                     {ex.vmaPercentage}% VMA →{" "}
                                     <strong>{metrics.paceKmh} km/h</strong> (
                                     {metrics.paceDisplay}) •{ex.effortTime}s/
-                                    {ex.recoveryTime}s × {ex.reps} reps
+                                    {ex.recoveryTime}min × {ex.reps} reps
                                     {ex.blockRecovery && (
                                       <span>
                                         {" "}
                                         • Récup blocs:{" "}
-                                        <strong>{ex.blockRecovery}s</strong>
+                                        <strong>{ex.blockRecovery}min</strong>
                                       </span>
                                     )}{" "}
                                     • Distance:{" "}
@@ -3310,4 +3313,4 @@ export default function Workout() {
       `}</style>
     </div>
   );
-  }
+}
