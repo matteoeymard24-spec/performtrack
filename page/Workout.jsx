@@ -114,6 +114,7 @@ export default function Workout() {
       const filtered = data.filter((s) => {
         if (userRole === "admin") return true;
         if (s.group === "total") return true;
+        if (s.group === "moi" && s.createdBy === currentUser.uid) return true; // Séances privées
         if (s.group === userGroup) return true;
         if (s.targetUserId === currentUser.uid) return true;
         return false;
@@ -756,6 +757,12 @@ export default function Workout() {
 
   /* ===================== COULEURS ===================== */
   const getColor = (session) => {
+    // Couleur spéciale pour le groupe "moi"
+    if (session.group === "moi") {
+      return "#f39c12"; // Or/Doré pour les séances personnelles
+    }
+    
+    // Couleurs par type pour les autres groupes
     const type = session.type || "muscu";
     if (type === "sprint") return "#e74c3c";
     if (type === "endurance") return "#27ae60";
@@ -847,7 +854,7 @@ export default function Workout() {
                   cursor: "pointer",
                 }}
               >
-                {evt.title}
+                {evt.group === "moi" && "🌟 "}{evt.title}
               </div>
             ))}
           </div>
@@ -1412,6 +1419,7 @@ export default function Workout() {
               }}
             >
               <option value="total">Total (tous)</option>
+              <option value="moi">🌟 Moi (privé)</option>
               <option value="avant">Avant</option>
               <option value="trois-quarts">Trois-quarts</option>
               <option value="individuel">Individuel</option>
@@ -2469,6 +2477,20 @@ export default function Workout() {
                     ? "🏃 ENDURANCE"
                     : "💪 MUSCU"}
                 </span>
+                {selectedSession.group === "moi" && (
+                  <span
+                    style={{
+                      background: "linear-gradient(135deg, #f39c12 0%, #e67e22 100%)",
+                      padding: "4px 12px",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: "bold",
+                      marginLeft: 8,
+                    }}
+                  >
+                    🌟 PRIVÉ
+                  </span>
+                )}
               </div>
               <h3 style={{ margin: 0, fontSize: 20 }}>
                 {selectedSession.title}
@@ -2825,7 +2847,9 @@ export default function Workout() {
                                         </strong>
                                       </span>
                                     )}{" "}
-                                    • Distance:{" "}
+                                    • Distance/rep:{" "}
+                                    <strong>{metrics.distancePerRep}m</strong>
+                                    {" "}• Distance totale:{" "}
                                     <strong>{metrics.totalDistance}m</strong>
                                     {ex.groundWork && (
                                       <span style={{ color: "#f39c12" }}>
