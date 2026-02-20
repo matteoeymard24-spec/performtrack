@@ -870,12 +870,14 @@ export default function Workout() {
   return (
     <div
       style={{
-        padding: 20,
+        padding: window.innerWidth <= 768 ? "10px" : "20px",
         background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
         minHeight: "100vh",
         color: "#fff",
-        maxWidth: 1200,
+        maxWidth: window.innerWidth <= 768 ? "100%" : "1200px",
         margin: "0 auto",
+        width: "100%",
+        overflowX: "hidden",
       }}
     >
       <h2 style={{ fontSize: 24, marginBottom: 10 }}>🏋️ Workout</h2>
