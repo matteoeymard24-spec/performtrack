@@ -780,10 +780,15 @@ export default function Workout() {
     const cells = [];
 
     for (let i = 0; i < startDow; i++) {
+      const isMobile = window.innerWidth <= 768;
       cells.push(
         <div
           key={`e${i}`}
-          style={{ minHeight: 90, background: "#111", borderRadius: 6 }}
+          style={{ 
+            minHeight: isMobile ? 50 : 90, 
+            background: "#111", 
+            borderRadius: isMobile ? 3 : 6 
+          }}
         />
       );
     }
@@ -793,6 +798,7 @@ export default function Workout() {
       const isToday = dateStr === todayStr;
       const isSelected = selectedDate === dateStr;
       const dayEvents = events.filter((e) => e.date === dateStr);
+      const isMobile = window.innerWidth <= 768;
 
       cells.push(
         <div
@@ -805,9 +811,9 @@ export default function Workout() {
               : isToday
               ? "2px solid #27ae60"
               : "1px solid #333",
-            borderRadius: 6,
-            padding: 6,
-            minHeight: 90,
+            borderRadius: isMobile ? 3 : 6,
+            padding: isMobile ? 2 : 6,
+            minHeight: isMobile ? 50 : 90,
             cursor: "pointer",
             display: "flex",
             flexDirection: "column",
@@ -816,10 +822,10 @@ export default function Workout() {
         >
           <div
             style={{
-              fontSize: 13,
+              fontSize: isMobile ? 10 : 13,
               fontWeight: isToday ? "bold" : 500,
               color: isToday ? "#27ae60" : "#ccc",
-              marginBottom: 4,
+              marginBottom: isMobile ? 1 : 4,
             }}
           >
             {day}
@@ -829,7 +835,7 @@ export default function Workout() {
               flex: 1,
               display: "flex",
               flexDirection: "column",
-              gap: 2,
+              gap: isMobile ? 1 : 2,
               overflow: "hidden",
             }}
           >
@@ -843,9 +849,9 @@ export default function Workout() {
                 }}
                 style={{
                   background: getColor(evt),
-                  borderRadius: 3,
-                  padding: "1px 5px",
-                  fontSize: 10,
+                  borderRadius: 2,
+                  padding: isMobile ? "1px 2px" : "1px 5px",
+                  fontSize: isMobile ? 7 : 10,
                   fontWeight: "bold",
                   color: "#fff",
                   whiteSpace: "nowrap",
@@ -870,7 +876,7 @@ export default function Workout() {
   return (
     <div
       style={{
-        padding: window.innerWidth <= 768 ? "10px" : "20px",
+        padding: window.innerWidth <= 768 ? "5px" : "20px",
         background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
         minHeight: "100vh",
         color: "#fff",
@@ -903,12 +909,12 @@ export default function Workout() {
               );
             }}
             style={{
-              padding: "12px 24px",
+              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
               background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
               color: "white",
               border: "none",
               borderRadius: 8,
-              fontSize: 15,
+              fontSize: window.innerWidth <= 768 ? 13 : 15,
               fontWeight: "bold",
               cursor: "pointer",
             }}
@@ -918,12 +924,12 @@ export default function Workout() {
           <button
             onClick={() => setShowDuplicateModal(true)}
             style={{
-              padding: "12px 24px",
+              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
               background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
               color: "white",
               border: "none",
               borderRadius: 8,
-              fontSize: 15,
+              fontSize: window.innerWidth <= 768 ? 13 : 15,
               fontWeight: "bold",
               cursor: "pointer",
             }}
@@ -2955,7 +2961,7 @@ export default function Workout() {
               alignItems: "center",
               marginBottom: 12,
               background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-              padding: "10px 18px",
+              padding: window.innerWidth <= 768 ? "8px 12px" : "10px 18px",
               borderRadius: 8,
             }}
           >
@@ -2966,19 +2972,23 @@ export default function Workout() {
                 setCurrentMonth(d);
               }}
               style={{
-                padding: "6px 16px",
+                padding: window.innerWidth <= 768 ? "4px 10px" : "6px 16px",
                 background: "#444",
                 color: "white",
                 border: "none",
                 borderRadius: 6,
                 cursor: "pointer",
-                fontSize: 18,
+                fontSize: window.innerWidth <= 768 ? 16 : 18,
               }}
             >
               ←
             </button>
             <h3
-              style={{ margin: 0, fontSize: 20, textTransform: "capitalize" }}
+              style={{ 
+                margin: 0, 
+                fontSize: window.innerWidth <= 768 ? 16 : 20, 
+                textTransform: "capitalize" 
+              }}
             >
               {currentMonth.toLocaleDateString("fr-FR", {
                 month: "long",
@@ -2992,13 +3002,13 @@ export default function Workout() {
                 setCurrentMonth(d);
               }}
               style={{
-                padding: "6px 16px",
+                padding: window.innerWidth <= 768 ? "4px 10px" : "6px 16px",
                 background: "#444",
                 color: "white",
                 border: "none",
                 borderRadius: 6,
                 cursor: "pointer",
-                fontSize: 18,
+                fontSize: window.innerWidth <= 768 ? 16 : 18,
               }}
             >
               →
@@ -3009,7 +3019,7 @@ export default function Workout() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(7, 1fr)",
-              gap: 5,
+              gap: window.innerWidth <= 768 ? 1 : 5,
               marginBottom: 6,
             }}
           >
@@ -3018,7 +3028,7 @@ export default function Workout() {
                 key={d}
                 style={{
                   textAlign: "center",
-                  fontSize: 12,
+                  fontSize: window.innerWidth <= 768 ? 9 : 12,
                   color: "#888",
                   fontWeight: "bold",
                   paddingBottom: 4,
@@ -3033,7 +3043,7 @@ export default function Workout() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(7, 1fr)",
-              gap: 5,
+              gap: window.innerWidth <= 768 ? 1 : 5,
               marginBottom: 25,
             }}
           >
