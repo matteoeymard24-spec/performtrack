@@ -230,6 +230,32 @@ export default function Workout() {
     return progress?.feedback || {};
   };
 
+  /* ===================== HELPERS FEEDBACK ===================== */
+  const isCMJ = (exerciseName) => {
+    if (!exerciseName) return false;
+    const name = exerciseName.toLowerCase().trim();
+    return name === "cmj" || name.includes("counter movement jump");
+  };
+
+  // Normaliser le feedback pour rétrocompatibilité
+  const normalizeFeedback = (feedback) => {
+    if (!feedback) return null;
+    // Si ancien format (actualWeight direct)
+    if (feedback.actualWeight !== undefined && !feedback.series) {
+      return {
+        series: [{
+          set: 1,
+          actualWeight: feedback.actualWeight,
+          actualReps: feedback.actualReps,
+          rpe: feedback.rpe
+        }],
+        notes: feedback.notes || ""
+      };
+    }
+    // Si nouveau format avec series
+    return feedback;
+  };
+
   /* ===================== GESTION SÉANCE ===================== */
   const startSession = async (session) => {
     try {
@@ -270,22 +296,38 @@ export default function Workout() {
   ) => {
     const key = `${blockIndex}-${exerciseIndex}`;
     const userFeedback = getUserFeedback(selectedSession);
-    const existing =
-      sessionFeedback[key] || userFeedback?.[key] || {};
+    const existing = sessionFeedback[key] || userFeedback?.[key] || {};
+    const normalized = normalizeFeedback(existing);
 
     if (sessionType === "muscu") {
+      // Initialiser un tableau de séries
+      const numSeries = exercise.series || 3;
+      let series = [];
+      
+      if (normalized && normalized.series) {
+        // Réutiliser les séries existantes
+        series = normalized.series;
+      } else {
+        // Créer de nouvelles séries
+        const defaultWeight = calculateWeight(exercise.rmName, exercise.rmPercent) || 0;
+        for (let i = 0; i < numSeries; i++) {
+          series.push({
+            set: i + 1,
+            actualWeight: defaultWeight,
+            actualReps: exercise.reps || 0,
+            rpe: 5
+          });
+        }
+      }
+
       setCurrentExerciseFeedback({
         key,
         blockIndex,
         exerciseIndex,
         exercise,
         sessionType,
-        actualWeight:
-          existing.actualWeight ||
-          calculateWeight(exercise.rmName, exercise.rmPercent) ||
-          0,
-        actualReps: existing.actualReps || exercise.reps || 0,
-        rpe: existing.rpe || 5,
+        series: series,
+        notes: normalized?.notes || ""
       });
     } else if (sessionType === "sprint") {
       setCurrentExerciseFeedback({
@@ -325,9 +367,8 @@ export default function Workout() {
       setSessionFeedback({
         ...sessionFeedback,
         [currentExerciseFeedback.key]: {
-          actualWeight: Number(currentExerciseFeedback.actualWeight),
-          actualReps: Number(currentExerciseFeedback.actualReps),
-          rpe: Number(currentExerciseFeedback.rpe),
+          series: currentExerciseFeedback.series,
+          notes: currentExerciseFeedback.notes || ""
         },
       });
     } else {
@@ -351,14 +392,31 @@ export default function Workout() {
       for (const [key, fb] of Object.entries(feedback)) {
         const [bIdx, eIdx] = key.split("-").map(Number);
         const exercise = session.blocks[bIdx]?.exercises[eIdx];
-        if (!exercise?.rmName || !fb.rpe || !fb.actualWeight || !fb.actualReps)
-          continue;
+        if (!exercise?.rmName) continue;
+        
+        // Normaliser le feedback (rétrocompatibilité)
+        const normalized = normalizeFeedback(fb);
+        if (!normalized || !normalized.series || normalized.series.length === 0) continue;
+        
+        // Ignorer CMJ (pas de calcul RM pour le CMJ)
+        if (isCMJ(exercise.name)) continue;
+        
+        // Trouver la meilleure série (charge maximale)
+        const bestSeries = normalized.series.reduce((best, current) => {
+          const currentWeight = Number(current.actualWeight) || 0;
+          const bestWeight = Number(best.actualWeight) || 0;
+          return currentWeight > bestWeight ? current : best;
+        }, normalized.series[0]);
+        
+        // Vérifier que la meilleure série a toutes les données
+        if (!bestSeries.rpe || !bestSeries.actualWeight || !bestSeries.actualReps) continue;
+        
         const rmName = exercise.rmName.toLowerCase();
         const currentRM = userRM[rmName];
         const predicted = calculatePredictedRM(
-          fb.actualWeight,
-          fb.actualReps,
-          fb.rpe
+          bestSeries.actualWeight,
+          bestSeries.actualReps,
+          bestSeries.rpe
         );
         if (predicted) {
           let finalRM = predicted;
@@ -373,9 +431,9 @@ export default function Workout() {
             previousRM: currentRM || 0,
             updatedAt: new Date().toISOString(),
             autoAdjusted: true,
-            lastRPE: fb.rpe,
-            lastWeight: fb.actualWeight,
-            lastReps: fb.actualReps,
+            lastRPE: bestSeries.rpe,
+            lastWeight: bestSeries.actualWeight,
+            lastReps: bestSeries.actualReps,
           });
         }
       }
@@ -2746,23 +2804,44 @@ export default function Workout() {
                           {" • "}
                           Tempo: {ex.tempo} • Repos: {ex.restMin} min
                         </div>
-                        {fb && (
-                          <div
-                            style={{
-                              padding: 10,
-                              background: "#1a3a2a",
-                              borderRadius: 8,
-                              marginBottom: 10,
-                              border: "1px solid #27ae60",
-                            }}
-                          >
-                            <div style={{ fontSize: 13 }}>
-                              <strong>Charge :</strong> {fb.actualWeight} kg •{" "}
-                              <strong>Reps :</strong> {fb.actualReps} •{" "}
-                              <strong>RPE :</strong> {fb.rpe}/10
+                        {fb && (() => {
+                          const normalized = normalizeFeedback(fb);
+                          const isCMJEx = isCMJ(ex.name);
+                          return (
+                            <div
+                              style={{
+                                padding: 10,
+                                background: "#1a3a2a",
+                                borderRadius: 8,
+                                marginBottom: 10,
+                                border: "1px solid #27ae60",
+                              }}
+                            >
+                              {normalized && normalized.series && normalized.series.map((serie, sIdx) => (
+                                <div key={sIdx} style={{ fontSize: 13, marginBottom: sIdx < normalized.series.length - 1 ? 6 : 0 }}>
+                                  <strong>Série {serie.set || (sIdx + 1)}:</strong>{" "}
+                                  {isCMJEx ? (
+                                    <>
+                                      <strong>Hauteur:</strong> {serie.actualWeight} cm
+                                    </>
+                                  ) : (
+                                    <>
+                                      <strong>Charge:</strong> {serie.actualWeight} kg
+                                    </>
+                                  )}
+                                  {" • "}
+                                  <strong>Reps:</strong> {serie.actualReps} •{" "}
+                                  <strong>RPE:</strong> {serie.rpe}/10
+                                </div>
+                              ))}
+                              {normalized && normalized.notes && (
+                                <div style={{ fontSize: 12, color: "#a0d0a0", marginTop: 8, fontStyle: "italic" }}>
+                                  📝 {normalized.notes}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                       </>
                     )}
 
@@ -3169,39 +3248,178 @@ export default function Workout() {
             {/* FEEDBACK MUSCU */}
             {currentExerciseFeedback.sessionType === "muscu" && (
               <>
-                <div style={{ marginBottom: 18 }}>
-                  <label
+                {currentExerciseFeedback.series && currentExerciseFeedback.series.map((serie, idx) => (
+                  <div
+                    key={idx}
                     style={{
-                      display: "block",
-                      marginBottom: 6,
-                      fontSize: 14,
-                      fontWeight: "bold",
+                      marginBottom: 24,
+                      padding: 16,
+                      background: "#1a1a1a",
+                      borderRadius: 8,
+                      border: "1px solid #333"
                     }}
                   >
-                    Charge réelle (kg)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={currentExerciseFeedback.actualWeight}
-                    onChange={(e) =>
-                      setCurrentExerciseFeedback({
-                        ...currentExerciseFeedback,
-                        actualWeight: Number(e.target.value),
-                      })
-                    }
-                    style={{
-                      width: "100%",
-                      padding: 12,
-                      borderRadius: 8,
-                      border: "1px solid #555",
-                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                      color: "#fff",
+                    <h4 style={{ 
+                      margin: "0 0 14px 0", 
                       fontSize: 16,
-                    }}
-                  />
-                </div>
+                      color: "#27ae60"
+                    }}>
+                      Série {idx + 1}
+                    </h4>
 
+                    {/* Charge ou Hauteur selon exercice */}
+                    <div style={{ marginBottom: 14 }}>
+                      <label
+                        style={{
+                          display: "block",
+                          marginBottom: 6,
+                          fontSize: 14,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        {isCMJ(currentExerciseFeedback.exercise.name) 
+                          ? "Hauteur de saut (cm)" 
+                          : "Charge réelle (kg)"}
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        value={serie.actualWeight}
+                        onChange={(e) => {
+                          const newSeries = [...currentExerciseFeedback.series];
+                          newSeries[idx] = {
+                            ...newSeries[idx],
+                            actualWeight: Number(e.target.value)
+                          };
+                          setCurrentExerciseFeedback({
+                            ...currentExerciseFeedback,
+                            series: newSeries
+                          });
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: 12,
+                          borderRadius: 8,
+                          border: "1px solid #555",
+                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                          color: "#fff",
+                          fontSize: 16,
+                        }}
+                      />
+                    </div>
+
+                    {/* Répétitions */}
+                    <div style={{ marginBottom: 14 }}>
+                      <label
+                        style={{
+                          display: "block",
+                          marginBottom: 6,
+                          fontSize: 14,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        Répétitions effectuées
+                      </label>
+                      <input
+                        type="number"
+                        value={serie.actualReps}
+                        onChange={(e) => {
+                          const newSeries = [...currentExerciseFeedback.series];
+                          newSeries[idx] = {
+                            ...newSeries[idx],
+                            actualReps: Number(e.target.value)
+                          };
+                          setCurrentExerciseFeedback({
+                            ...currentExerciseFeedback,
+                            series: newSeries
+                          });
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: 12,
+                          borderRadius: 8,
+                          border: "1px solid #555",
+                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                          color: "#fff",
+                          fontSize: 16,
+                        }}
+                      />
+                    </div>
+
+                    {/* RPE par série */}
+                    <div style={{ marginBottom: 8 }}>
+                      <label
+                        style={{
+                          display: "block",
+                          marginBottom: 6,
+                          fontSize: 14,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        RPE – Échelle Foster (0–10)
+                      </label>
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={serie.rpe}
+                        onChange={(e) => {
+                          const newSeries = [...currentExerciseFeedback.series];
+                          newSeries[idx] = {
+                            ...newSeries[idx],
+                            rpe: Number(e.target.value)
+                          };
+                          setCurrentExerciseFeedback({
+                            ...currentExerciseFeedback,
+                            series: newSeries
+                          });
+                        }}
+                        style={{
+                          width: "100%",
+                          height: 6,
+                          borderRadius: 3,
+                          outline: "none",
+                          background:
+                            "linear-gradient(to right, #27ae60, #f39c12, #e74c3c)",
+                          WebkitAppearance: "none",
+                          appearance: "none",
+                          cursor: "pointer",
+                        }}
+                      />
+                      <div style={{ textAlign: "center", marginTop: 6 }}>
+                        <span
+                          style={{
+                            fontSize: 32,
+                            fontWeight: "bold",
+                            color:
+                              serie.rpe <= 4
+                                ? "#27ae60"
+                                : serie.rpe <= 6
+                                ? "#2f80ed"
+                                : serie.rpe <= 8
+                                ? "#f39c12"
+                                : "#e74c3c",
+                          }}
+                        >
+                          {serie.rpe}/10
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          textAlign: "center",
+                          fontSize: 13,
+                          color: "#888",
+                          marginTop: 2,
+                        }}
+                      >
+                        {getFosterDescription(serie.rpe)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Notes globales */}
                 <div style={{ marginBottom: 18 }}>
                   <label
                     style={{
@@ -3211,17 +3429,17 @@ export default function Workout() {
                       fontWeight: "bold",
                     }}
                   >
-                    Répétitions effectuées
+                    Notes
                   </label>
-                  <input
-                    type="number"
-                    value={currentExerciseFeedback.actualReps}
+                  <textarea
+                    value={currentExerciseFeedback.notes || ""}
                     onChange={(e) =>
                       setCurrentExerciseFeedback({
                         ...currentExerciseFeedback,
-                        actualReps: Number(e.target.value),
+                        notes: e.target.value,
                       })
                     }
+                    placeholder="Notes sur l'exercice..."
                     style={{
                       width: "100%",
                       padding: 12,
@@ -3229,7 +3447,9 @@ export default function Workout() {
                       border: "1px solid #555",
                       background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
                       color: "#fff",
-                      fontSize: 16,
+                      fontSize: 14,
+                      resize: "vertical",
+                      minHeight: 80,
                     }}
                   />
                 </div>
@@ -3308,72 +3528,75 @@ export default function Workout() {
               </>
             )}
 
-            {/* RPE (commun) */}
-            <div style={{ marginBottom: 22 }}>
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: 6,
-                  fontSize: 14,
-                  fontWeight: "bold",
-                }}
-              >
-                RPE – Échelle Foster (0–10)
-              </label>
-              <input
-                type="range"
-                min="0"
-                max="10"
-                step="0.5"
-                value={currentExerciseFeedback.rpe}
-                onChange={(e) =>
-                  setCurrentExerciseFeedback({
-                    ...currentExerciseFeedback,
-                    rpe: Number(e.target.value),
-                  })
-                }
-                style={{
-                  width: "100%",
-                  height: 8,
-                  borderRadius: 5,
-                  outline: "none",
-                  background:
-                    "linear-gradient(to right, #27ae60, #f39c12, #e74c3c)",
-                  WebkitAppearance: "none",
-                  appearance: "none",
-                  cursor: "pointer",
-                }}
-              />
-              <div style={{ textAlign: "center", marginTop: 10 }}>
-                <span
+            {/* RPE (pour sprint/endurance seulement, muscu a RPE par série) */}
+            {(currentExerciseFeedback.sessionType === "sprint" ||
+              currentExerciseFeedback.sessionType === "endurance") && (
+              <div style={{ marginBottom: 22 }}>
+                <label
                   style={{
-                    fontSize: 48,
+                    display: "block",
+                    marginBottom: 6,
+                    fontSize: 14,
                     fontWeight: "bold",
-                    color:
-                      currentExerciseFeedback.rpe <= 4
-                        ? "#27ae60"
-                        : currentExerciseFeedback.rpe <= 6
-                        ? "#2f80ed"
-                        : currentExerciseFeedback.rpe <= 8
-                        ? "#f39c12"
-                        : "#e74c3c",
                   }}
                 >
-                  {currentExerciseFeedback.rpe}/10
-                </span>
+                  RPE – Échelle Foster (0–10)
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  step="0.5"
+                  value={currentExerciseFeedback.rpe}
+                  onChange={(e) =>
+                    setCurrentExerciseFeedback({
+                      ...currentExerciseFeedback,
+                      rpe: Number(e.target.value),
+                    })
+                  }
+                  style={{
+                    width: "100%",
+                    height: 8,
+                    borderRadius: 5,
+                    outline: "none",
+                    background:
+                      "linear-gradient(to right, #27ae60, #f39c12, #e74c3c)",
+                    WebkitAppearance: "none",
+                    appearance: "none",
+                    cursor: "pointer",
+                  }}
+                />
+                <div style={{ textAlign: "center", marginTop: 10 }}>
+                  <span
+                    style={{
+                      fontSize: 48,
+                      fontWeight: "bold",
+                      color:
+                        currentExerciseFeedback.rpe <= 4
+                          ? "#27ae60"
+                          : currentExerciseFeedback.rpe <= 6
+                          ? "#2f80ed"
+                          : currentExerciseFeedback.rpe <= 8
+                          ? "#f39c12"
+                          : "#e74c3c",
+                    }}
+                  >
+                    {currentExerciseFeedback.rpe}/10
+                  </span>
+                </div>
+                <div
+                  style={{
+                    textAlign: "center",
+                    fontSize: 15,
+                    color: "#888",
+                    marginTop: 4,
+                    fontWeight: "bold",
+                  }}
+                >
+                  {getFosterDescription(currentExerciseFeedback.rpe)}
+                </div>
               </div>
-              <div
-                style={{
-                  textAlign: "center",
-                  fontSize: 15,
-                  color: "#888",
-                  marginTop: 4,
-                  fontWeight: "bold",
-                }}
-              >
-                {getFosterDescription(currentExerciseFeedback.rpe)}
-              </div>
-            </div>
+            )}
 
             <div style={{ display: "flex", gap: 10 }}>
               <button
