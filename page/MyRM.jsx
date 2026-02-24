@@ -28,6 +28,12 @@ export default function MyRM() {
   const [vmaValue, setVmaValue] = useState("");
   const [vmaHistory, setVmaHistory] = useState([]);
 
+  // États CMJ
+  const [cmj, setCmj] = useState(null);
+  const [editingCMJ, setEditingCMJ] = useState(false);
+  const [cmjValue, setCmjValue] = useState("");
+  const [cmjHistory, setCmjHistory] = useState([]);
+
   // États RM
   const [rmHistory, setRmHistory] = useState({});
   const [selectedExercise, setSelectedExercise] = useState(null);
@@ -64,10 +70,12 @@ export default function MyRM() {
         collection(db, "users", currentUser.uid, "rm")
       );
 
-      // Séparer VMA et RM
+      // Séparer VMA, CMJ et RM
       const grouped = {};
       let vmaData = null;
       let vmaHist = [];
+      let cmjData = null;
+      let cmjHist = [];
 
       rmSnap.docs.forEach((d) => {
         const data = d.data();
@@ -77,6 +85,11 @@ export default function MyRM() {
         if (name === "vma" || d.id === "VMA") {
           vmaData = data;
           vmaHist = data.history || [];
+        }
+        // CMJ
+        else if (name === "cmj" || d.id === "CMJ") {
+          cmjData = data;
+          cmjHist = data.history || [];
         } else {
           // RM normaux
           if (!grouped[name]) {
@@ -101,6 +114,8 @@ export default function MyRM() {
       setRmHistory(grouped);
       setVma(vmaData);
       setVmaHistory(vmaHist);
+      setCmj(cmjData);
+      setCmjHistory(cmjHist);
       setLoading(false);
     } catch (error) {
       console.error("Erreur chargement:", error);
@@ -166,6 +181,64 @@ export default function MyRM() {
       alert("✅ VMA supprimée !");
     } catch (e) {
       console.error("Erreur suppression VMA:", e);
+      alert("Erreur: " + e.message);
+    }
+  };
+
+  /* ===================== CMJ ===================== */
+  const saveCMJ = async () => {
+    if (!currentUser || !cmjValue) return;
+
+    try {
+      const history = [...cmjHistory];
+
+      // Ajouter nouvelle entrée à l'historique
+      if (cmj && cmj.kg !== Number(cmjValue)) {
+        history.push({
+          date: new Date().toISOString(),
+          kg: Number(cmjValue),
+        });
+      } else if (!cmj) {
+        history.push({
+          date: new Date().toISOString(),
+          kg: Number(cmjValue),
+        });
+      }
+
+      await setDoc(doc(db, "users", currentUser.uid, "rm", "CMJ"), {
+        kg: Number(cmjValue),
+        exerciseName: "CMJ",
+        updatedAt: new Date().toISOString(),
+        autoAdjusted: false,
+        history: history.slice(-20),
+      });
+
+      setCmj({
+        kg: Number(cmjValue),
+        exerciseName: "CMJ",
+        updatedAt: new Date().toISOString(),
+        history: history.slice(-20),
+      });
+      setCmjHistory(history.slice(-20));
+      setEditingCMJ(false);
+      setCmjValue("");
+      alert("✅ CMJ mis à jour !");
+    } catch (e) {
+      console.error("Erreur save CMJ:", e);
+      alert("Erreur: " + e.message);
+    }
+  };
+
+  const deleteCMJ = async () => {
+    if (!window.confirm("Supprimer ton CMJ ?")) return;
+
+    try {
+      await deleteDoc(doc(db, "users", currentUser.uid, "rm", "CMJ"));
+      setCmj(null);
+      setCmjHistory([]);
+      alert("✅ CMJ supprimé !");
+    } catch (e) {
+      console.error("Erreur suppression CMJ:", e);
       alert("Erreur: " + e.message);
     }
   };
@@ -293,9 +366,9 @@ export default function MyRM() {
         margin: "0 auto",
       }}
     >
-      <h2 style={{ fontSize: 24, marginBottom: 10 }}>💪 Mes RM & VMA</h2>
+      <h2 style={{ fontSize: 24, marginBottom: 10 }}>💪 Mes RM, VMA & CMJ</h2>
       <p style={{ color: "#b0b0b0", marginBottom: 30, fontSize: 14 }}>
-        Gère tes charges maximales, ta VMA et suis ta progression
+        Gère tes charges maximales, ta VMA, ton CMJ et suis ta progression
       </p>
 
       {/* ==================== VMA CARD ==================== */}
@@ -523,6 +596,234 @@ export default function MyRM() {
         >
           💡 <strong>Info :</strong> La VMA est utilisée pour calculer
           automatiquement les allures et distances des séances d'endurance.
+        </div>
+      </div>
+
+      {/* ==================== CMJ CARD ==================== */}
+      <div
+        style={{
+          background: "#2a2a2a",
+          padding: 20,
+          borderRadius: 12,
+          border: "2px solid #f39c12",
+          marginBottom: 30,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 15,
+          }}
+        >
+          <h3 style={{ margin: 0, fontSize: 18, color: "#f39c12" }}>
+            🦘 CMJ (Counter Movement Jump)
+          </h3>
+        </div>
+
+        {!editingCMJ ? (
+          <div>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: cmjHistory.length > 1 ? 15 : 0,
+              }}
+            >
+              <div>
+                <div
+                  style={{ fontSize: 36, fontWeight: "bold", color: "#f39c12" }}
+                >
+                  {cmj ? `${cmj.kg} cm` : "Non renseigné"}
+                </div>
+                {cmj && cmj.updatedAt && (
+                  <div style={{ fontSize: 12, color: "#888", marginTop: 5 }}>
+                    Mis à jour le{" "}
+                    {new Date(cmj.updatedAt).toLocaleDateString("fr-FR")}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => {
+                    setEditingCMJ(true);
+                    setCmjValue(cmj?.kg || "");
+                  }}
+                  style={{
+                    padding: "10px 20px",
+                    background: "#f39c12",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontSize: 14,
+                    fontWeight: "bold",
+                  }}
+                >
+                  {cmj ? "✏️ Modifier" : "➕ Ajouter"}
+                </button>
+                {cmj && (
+                  <button
+                    onClick={deleteCMJ}
+                    style={{
+                      padding: "10px 20px",
+                      background: "#e74c3c",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: 14,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Courbe évolution CMJ */}
+            {cmjHistory.length > 1 && (
+              <div
+                style={{
+                  marginTop: 20,
+                  background: "#1a1a1a",
+                  padding: 15,
+                  borderRadius: 8,
+                }}
+              >
+                <h4
+                  style={{ fontSize: 14, marginBottom: 10, color: "#f39c12" }}
+                >
+                  📈 Évolution
+                </h4>
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={cmjHistory}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                    <XAxis
+                      dataKey="date"
+                      tickFormatter={(date) =>
+                        new Date(date).toLocaleDateString("fr-FR", {
+                          day: "2-digit",
+                          month: "short",
+                        })
+                      }
+                      stroke="#888"
+                      style={{ fontSize: 12 }}
+                    />
+                    <YAxis stroke="#888" style={{ fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#2a2a2a",
+                        border: "1px solid #f39c12",
+                        borderRadius: 8,
+                      }}
+                      labelFormatter={(date) =>
+                        new Date(date).toLocaleDateString("fr-FR")
+                      }
+                      formatter={(value) => [`${value} cm`, "CMJ"]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="kg"
+                      stroke="#f39c12"
+                      strokeWidth={2}
+                      dot={{ fill: "#f39c12" }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div
+                  style={{
+                    marginTop: 10,
+                    fontSize: 12,
+                    color: "#888",
+                    textAlign: "center",
+                  }}
+                >
+                  {cmjHistory.length} entrée(s) • Progression:{" "}
+                  {cmjHistory.length > 1
+                    ? `${(
+                        ((cmjHistory[cmjHistory.length - 1].kg -
+                          cmjHistory[0].kg) /
+                          cmjHistory[0].kg) *
+                        100
+                      ).toFixed(1)}%`
+                    : "N/A"}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <input
+              type="number"
+              step="0.5"
+              value={cmjValue}
+              onChange={(e) => setCmjValue(e.target.value)}
+              placeholder="Ex: 45"
+              style={{
+                width: "100%",
+                padding: 12,
+                marginBottom: 10,
+                background: "#1a1a1a",
+                border: "1px solid #555",
+                borderRadius: 8,
+                color: "#fff",
+                fontSize: 16,
+              }}
+            />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={saveCMJ}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  background: "#f39c12",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                ✅ Enregistrer
+              </button>
+              <button
+                onClick={() => {
+                  setEditingCMJ(false);
+                  setCmjValue("");
+                }}
+                style={{
+                  flex: 1,
+                  padding: 12,
+                  background: "#e74c3c",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                ✕ Annuler
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div
+          style={{
+            marginTop: 15,
+            padding: 12,
+            background: "#3a2a1a",
+            borderRadius: 8,
+            fontSize: 13,
+            color: "#e0c090",
+          }}
+        >
+          💡 <strong>Info :</strong> Le CMJ mesure ta détente verticale en
+          centimètres. Utilisé pour suivre ta puissance explosive.
         </div>
       </div>
 
