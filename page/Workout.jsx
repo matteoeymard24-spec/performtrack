@@ -937,7 +937,6 @@ export default function Workout() {
               </div>
             )}
           </div>
-          </div>
         </div>
       );
     }
