@@ -843,7 +843,7 @@ export default function Workout() {
         <div
           key={`e${i}`}
           style={{ 
-            minHeight: isMobile ? 50 : 90, 
+            height: isMobile ? 70 : 90,  // height fixe au lieu de minHeight
             background: "#111", 
             borderRadius: isMobile ? 3 : 6 
           }}
@@ -871,11 +871,12 @@ export default function Workout() {
               : "1px solid #333",
             borderRadius: isMobile ? 3 : 6,
             padding: isMobile ? 2 : 6,
-            minHeight: isMobile ? 50 : 90,
+            height: isMobile ? 70 : 90,  // height fixe au lieu de minHeight
             cursor: "pointer",
             display: "flex",
             flexDirection: "column",
             transition: "border 0.15s",
+            overflow: "hidden",  // Empêcher le débordement
           }}
         >
           <div
@@ -884,6 +885,7 @@ export default function Workout() {
               fontWeight: isToday ? "bold" : 500,
               color: isToday ? "#27ae60" : "#ccc",
               marginBottom: isMobile ? 1 : 4,
+              flexShrink: 0,  // Le numéro ne rétrécit pas
             }}
           >
             {day}
@@ -894,10 +896,10 @@ export default function Workout() {
               display: "flex",
               flexDirection: "column",
               gap: isMobile ? 1 : 2,
-              overflow: "hidden",
+              overflow: "hidden",  // Cache les événements qui dépassent
             }}
           >
-            {dayEvents.map((evt, i) => (
+            {dayEvents.slice(0, isMobile ? 1 : 3).map((evt, i) => (
               <div
                 key={i}
                 onClick={(e) => {
@@ -916,11 +918,25 @@ export default function Workout() {
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   cursor: "pointer",
+                  flexShrink: 0,  // Les événements ne rétrécissent pas
                 }}
               >
                 {evt.group === "moi" && "🌟 "}{evt.title}
               </div>
             ))}
+            {isMobile && dayEvents.length > 1 && (
+              <div
+                style={{
+                  fontSize: 7,
+                  color: "#888",
+                  textAlign: "center",
+                  flexShrink: 0,
+                }}
+              >
+                +{dayEvents.length - 1}
+              </div>
+            )}
+          </div>
           </div>
         </div>
       );
@@ -3122,8 +3138,10 @@ export default function Workout() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(7, 1fr)",
+              gridAutoRows: window.innerWidth <= 768 ? "70px" : "90px",  // Force la hauteur des lignes
               gap: window.innerWidth <= 768 ? 1 : 5,
               marginBottom: 25,
+              alignItems: "stretch",  // Force les cellules à s'étirer
             }}
           >
             {renderCalendar()}
