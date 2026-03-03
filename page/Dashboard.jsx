@@ -50,6 +50,13 @@ export default function Dashboard() {
   const [weightHistory, setWeightHistory] = useState([]);
   const [lastWeightDate, setLastWeightDate] = useState(null);
   const [canUpdateWeight, setCanUpdateWeight] = useState(true);
+  
+  // États pour le comptage des séances
+  const [totalSessions, setTotalSessions] = useState(0);
+  const [completedSessions, setCompletedSessions] = useState(0);
+  
+  // État pour la recherche d'athlète (admin)
+  const [athleteSearchQuery, setAthleteSearchQuery] = useState("");
 
   /* ===================== HELPERS MULTI-UTILISATEURS ===================== */
   const getUserProgress = (workout, userId = currentUser?.uid) => {
@@ -262,11 +269,28 @@ export default function Dashboard() {
         );
         const userGrp = userProfile?.group || "total";
 
+        // Filtrer toutes les séances de l'athlète (pas seulement aujourd'hui)
+        const userWorkouts = allWorkouts.filter((w) => {
+          return (
+            w.group === "total" ||
+            w.group === userGrp ||
+            w.group === "moi" && w.createdBy === currentUser.uid ||
+            w.targetUserId === currentUser.uid
+          );
+        });
+        
+        // Compter le total et les complétées
+        setTotalSessions(userWorkouts.length);
+        setCompletedSessions(
+          userWorkouts.filter((w) => isWorkoutCompleted(w, currentUser.uid)).length
+        );
+
         const todayWorkouts = allWorkouts.filter((w) => {
           if (w.date !== today) return false;
           return (
             w.group === "total" ||
             w.group === userGrp ||
+            w.group === "moi" && w.createdBy === currentUser.uid ||
             w.targetUserId === currentUser.uid
           );
         });
@@ -360,6 +384,10 @@ export default function Dashboard() {
           const todayWorkout = uWorkouts.find((w) => w.date === today);
 
           const acwr = calculateACWR(uWorkouts, u.id);
+          
+          // Compter les séances de l'athlète
+          const totalSessions = uWorkouts.length;
+          const completedSessions = uWorkouts.filter((w) => isWorkoutCompleted(w, u.id)).length;
 
           return {
             ...u,
@@ -371,6 +399,8 @@ export default function Dashboard() {
             todayCompleted: todayWorkout ? isWorkoutCompleted(todayWorkout, u.id) : false,
             todayWorkoutTitle: todayWorkout?.title || null,
             todayWorkoutInProgress: todayWorkout ? isWorkoutInProgress(todayWorkout, u.id) : false,
+            totalSessions: totalSessions,
+            completedSessions: completedSessions,
           };
         });
 
@@ -477,6 +507,16 @@ export default function Dashboard() {
   };
 
   const filtered = athletes.filter((a) => {
+    // Filtre par recherche
+    if (athleteSearchQuery.trim()) {
+      const searchLower = athleteSearchQuery.toLowerCase();
+      const athleteName = `${a.firstName || ""} ${a.lastName || ""}`.toLowerCase();
+      if (!athleteName.includes(searchLower)) {
+        return false;
+      }
+    }
+    
+    // Filtre par wellness
     if (wellnessFilter === "total") return true;
     if (wellnessFilter === "risque")
       return a.wellnessScore !== null && a.wellnessScore < 5;
@@ -647,6 +687,82 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {/* Widget compteur de séances */}
+        <div
+          style={{
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            padding: 20,
+            borderRadius: 12,
+            border: "2px solid #27ae60",
+            marginBottom: 20,
+          }}
+        >
+          <h3 style={{ margin: "0 0 15px 0", fontSize: 18 }}>
+            📊 Progression des séances
+          </h3>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                padding: 12,
+                borderRadius: 8,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                Complétées
+              </div>
+              <div
+                style={{ fontSize: 28, fontWeight: "bold", color: "#27ae60" }}
+              >
+                {completedSessions}
+              </div>
+            </div>
+            <div
+              style={{
+                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                padding: 12,
+                borderRadius: 8,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                Total
+              </div>
+              <div
+                style={{ fontSize: 28, fontWeight: "bold", color: "#2f80ed" }}
+              >
+                {totalSessions}
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              marginTop: 15,
+              padding: 12,
+              background: "#1a3a2a",
+              borderRadius: 8,
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 13, color: "#888", marginBottom: 4 }}>
+              Taux de complétion
+            </div>
+            <div style={{ fontSize: 24, fontWeight: "bold", color: "#27ae60" }}>
+              {totalSessions > 0
+                ? Math.round((completedSessions / totalSessions) * 100)
+                : 0}
+              %
+            </div>
+          </div>
+        </div>
 
         <div
           style={{
@@ -957,12 +1073,14 @@ export default function Dashboard() {
   return (
     <div
       style={{
-        padding: 20,
+        padding: window.innerWidth <= 768 ? "5px" : "20px",
         background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
         minHeight: "100vh",
         color: "#fff",
-        maxWidth: 1200,
+        maxWidth: window.innerWidth <= 768 ? "100%" : "1200px",
         margin: "0 auto",
+        width: "100%",
+        overflowX: "hidden",
       }}
     >
       <div
@@ -998,6 +1116,26 @@ export default function Dashboard() {
             🏋️ Ma séance du jour
           </button>
         )}
+      </div>
+
+      {/* Barre de recherche */}
+      <div style={{ marginBottom: 20 }}>
+        <input
+          type="text"
+          placeholder="🔍 Rechercher un athlète..."
+          value={athleteSearchQuery}
+          onChange={(e) => setAthleteSearchQuery(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "12px 16px",
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            border: "2px solid #2f80ed",
+            borderRadius: 8,
+            color: "#fff",
+            fontSize: 16,
+            outline: "none",
+          }}
+        />
       </div>
 
       <div
@@ -1365,6 +1503,30 @@ export default function Dashboard() {
                   {showAthleteDetail.weight
                     ? `${showAthleteDetail.weight} kg`
                     : "N/A"}
+                </div>
+              </div>
+              
+              {/* Carte séances */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                  padding: 18,
+                  borderRadius: 10,
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 5 }}>
+                  SÉANCES
+                </div>
+                <div
+                  style={{ fontSize: 30, fontWeight: "bold", color: "#27ae60" }}
+                >
+                  {showAthleteDetail.completedSessions || 0} / {showAthleteDetail.totalSessions || 0}
+                </div>
+                <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+                  {showAthleteDetail.totalSessions > 0
+                    ? `${Math.round((showAthleteDetail.completedSessions / showAthleteDetail.totalSessions) * 100)}%`
+                    : "0%"}
                 </div>
               </div>
             </div>
