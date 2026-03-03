@@ -1841,6 +1841,10 @@ export default function Workout() {
                               );
                             })}
                             <option value={100}>100% RM</option>
+                            <option value={105}>105% RM</option>
+                            <option value={110}>110% RM</option>
+                            <option value={115}>115% RM</option>
+                            <option value={120}>120% RM</option>
                           </select>
                         </div>
                         <div>
@@ -3300,7 +3304,7 @@ export default function Workout() {
                       </label>
                       <input
                         type="number"
-                        step="0.5"
+                        step="0.1"
                         value={serie.actualWeight}
                         onChange={(e) => {
                           const newSeries = [...currentExerciseFeedback.series];
@@ -3379,7 +3383,7 @@ export default function Workout() {
                         type="range"
                         min="0"
                         max="10"
-                        step="0.5"
+                        step="0.1"
                         value={serie.rpe}
                         onChange={(e) => {
                           const newSeries = [...currentExerciseFeedback.series];
@@ -3563,7 +3567,7 @@ export default function Workout() {
                   type="range"
                   min="0"
                   max="10"
-                  step="0.5"
+                  step="0.1"
                   value={currentExerciseFeedback.rpe}
                   onChange={(e) =>
                     setCurrentExerciseFeedback({
