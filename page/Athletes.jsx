@@ -16,6 +16,7 @@ export default function Athletes() {
 
   useEffect(() => {
     let isMounted = true;
+    let timeout = null;
     console.log("[Athletes] useEffect - Démarrage");
 
     const fetchUsers = async () => {
@@ -23,6 +24,7 @@ export default function Athletes() {
       if (!currentUser) {
         console.log("[Athletes] Pas de currentUser - Attente");
         setLoading(false);
+        if (timeout) clearTimeout(timeout);
         return;
       }
 
@@ -36,23 +38,32 @@ export default function Athletes() {
         
         if (!isMounted) {
           console.log("[Athletes] Composant démonté - Annulation");
+          if (timeout) clearTimeout(timeout);
           return;
         }
 
         const usersData = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         
-        // Trier par nom ou email
+        // Trier par nom ou email (avec vérification stricte)
         usersData.sort((a, b) => {
-          const nameA = a.firstName || a.email;
-          const nameB = b.firstName || b.email;
-          return nameA.localeCompare(nameB);
+          // Construire les noms avec fallback
+          let nameA = a.firstName || a.lastName || a.email || a.id || "Inconnu";
+          let nameB = b.firstName || b.lastName || b.email || b.id || "Inconnu";
+          
+          // S'assurer que ce sont des strings
+          if (typeof nameA !== 'string') nameA = String(nameA);
+          if (typeof nameB !== 'string') nameB = String(nameB);
+          
+          return nameA.toLowerCase().localeCompare(nameB.toLowerCase());
         });
         
         console.log("[Athletes] Users triés:", usersData.length);
         setUsers(usersData);
         setLoading(false);
+        if (timeout) clearTimeout(timeout); // Clear le timeout si succès
       } catch (err) {
         console.error("[Athletes] Erreur fetchUsers:", err);
+        if (timeout) clearTimeout(timeout); // Clear le timeout en cas d'erreur
         if (isMounted) {
           setError(err.message);
           setLoading(false);
@@ -61,7 +72,7 @@ export default function Athletes() {
     };
 
     // Timeout de sécurité (10 secondes)
-    const timeout = setTimeout(() => {
+    timeout = setTimeout(() => {
       if (isMounted) {
         console.error("[Athletes] TIMEOUT - La requête a pris plus de 10 secondes");
         setError("La requête a pris trop de temps. Vérifiez votre connexion.");
@@ -73,7 +84,7 @@ export default function Athletes() {
 
     return () => {
       isMounted = false;
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       console.log("[Athletes] useEffect - Cleanup");
     };
   }, []); // Pas de dépendances = s'exécute UNE SEULE FOIS
