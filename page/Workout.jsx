@@ -3380,7 +3380,7 @@ export default function Workout() {
                         RPE – Échelle Foster (0–10)
                       </label>
                       <input
-                        type="number"
+                        type="range"
                         min="0"
                         max="10"
                         step="0.5"
@@ -3398,14 +3398,34 @@ export default function Workout() {
                         }}
                         style={{
                           width: "100%",
-                          padding: 12,
-                          borderRadius: 8,
-                          border: "1px solid #555",
-                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                          color: "#fff",
-                          fontSize: 16,
+                          height: 6,
+                          borderRadius: 3,
+                          outline: "none",
+                          background:
+                            "linear-gradient(to right, #27ae60, #f39c12, #e74c3c)",
+                          WebkitAppearance: "none",
+                          appearance: "none",
+                          cursor: "pointer",
                         }}
                       />
+                      <div style={{ textAlign: "center", marginTop: 6 }}>
+                        <span
+                          style={{
+                            fontSize: 32,
+                            fontWeight: "bold",
+                            color:
+                              serie.rpe <= 4
+                                ? "#27ae60"
+                                : serie.rpe <= 6
+                                ? "#2f80ed"
+                                : serie.rpe <= 8
+                                ? "#f39c12"
+                                : "#e74c3c",
+                          }}
+                        >
+                          {serie.rpe}/10
+                        </span>
+                      </div>
                       <div
                         style={{
                           textAlign: "center",
@@ -3544,7 +3564,7 @@ export default function Workout() {
                   RPE – Échelle Foster (0–10)
                 </label>
                 <input
-                  type="number"
+                  type="range"
                   min="0"
                   max="10"
                   step="0.5"
@@ -3557,20 +3577,40 @@ export default function Workout() {
                   }
                   style={{
                     width: "100%",
-                    padding: 12,
-                    borderRadius: 8,
-                    border: "1px solid #555",
-                    background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                    color: "#fff",
-                    fontSize: 16,
+                    height: 8,
+                    borderRadius: 5,
+                    outline: "none",
+                    background:
+                      "linear-gradient(to right, #27ae60, #f39c12, #e74c3c)",
+                    WebkitAppearance: "none",
+                    appearance: "none",
+                    cursor: "pointer",
                   }}
                 />
+                <div style={{ textAlign: "center", marginTop: 10 }}>
+                  <span
+                    style={{
+                      fontSize: 48,
+                      fontWeight: "bold",
+                      color:
+                        currentExerciseFeedback.rpe <= 4
+                          ? "#27ae60"
+                          : currentExerciseFeedback.rpe <= 6
+                          ? "#2f80ed"
+                          : currentExerciseFeedback.rpe <= 8
+                          ? "#f39c12"
+                          : "#e74c3c",
+                    }}
+                  >
+                    {currentExerciseFeedback.rpe}/10
+                  </span>
+                </div>
                 <div
                   style={{
                     textAlign: "center",
                     fontSize: 15,
                     color: "#888",
-                    marginTop: 8,
+                    marginTop: 4,
                     fontWeight: "bold",
                   }}
                 >
