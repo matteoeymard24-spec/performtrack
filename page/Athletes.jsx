@@ -11,6 +11,7 @@ export default function Athletes() {
   const [error, setError] = useState(null);
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
 
   console.log("[Athletes] Render - userRole:", userRole, "isSuperAdmin:", isSuperAdmin);
 
@@ -119,7 +120,7 @@ export default function Athletes() {
     setEditForm({
       weight: user.weight || "",
       height: user.height || "",
-      group: user.group || "total",
+      group: user.group || "avant",
     });
   };
 
@@ -294,13 +295,45 @@ export default function Athletes() {
         👥 Gestion des Athlètes
       </h2>
 
-      {users.length === 0 ? (
+      {/* Barre de recherche */}
+      <div style={{ marginBottom: 20 }}>
+        <input
+          type="text"
+          placeholder="🔍 Rechercher un athlète par nom ou email..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            width: "100%",
+            padding: "12px 16px",
+            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            border: "2px solid #2f80ed",
+            borderRadius: 8,
+            color: "#fff",
+            fontSize: 16,
+            outline: "none",
+          }}
+        />
+      </div>
+
+      {users.filter((u) => {
+        if (!searchQuery.trim()) return true;
+        const search = searchQuery.toLowerCase();
+        const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        return name.includes(search) || email.includes(search);
+      }).length === 0 ? (
         <div style={{ textAlign: "center", padding: 40, color: "#888" }}>
           Aucun utilisateur trouvé
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
-          {users.map((user) => (
+          {users.filter((u) => {
+            if (!searchQuery.trim()) return true;
+            const search = searchQuery.toLowerCase();
+            const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
+            const email = (u.email || '').toLowerCase();
+            return name.includes(search) || email.includes(search);
+          }).map((user) => (
             <div
               key={user.id}
               style={{
@@ -393,9 +426,9 @@ export default function Athletes() {
                       color: "white",
                     }}
                   >
-                    <option value="total">Groupe Total</option>
-                    <option value="1">Groupe 1</option>
-                    <option value="2">Groupe 2</option>
+                    <option value="avant">Avant</option>
+                    <option value="trois quart">Trois Quart</option>
+                    <option value="arrière">Arrière</option>
                   </select>
 
                   <div style={{ display: "flex", gap: 10 }}>
@@ -463,13 +496,13 @@ export default function Athletes() {
                         Groupe
                       </div>
                       <div style={{ fontSize: 16, fontWeight: "600" }}>
-                        {user.group === "total"
-                          ? "Total"
-                          : user.group === "1"
-                          ? "Groupe 1"
-                          : user.group === "2"
-                          ? "Groupe 2"
-                          : "—"}
+                        {user.group === "avant"
+                          ? "Avant"
+                          : user.group === "trois quart"
+                          ? "Trois Quart"
+                          : user.group === "arrière"
+                          ? "Arrière"
+                          : user.group || "—"}
                       </div>
                     </div>
                   </div>

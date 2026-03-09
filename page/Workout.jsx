@@ -112,24 +112,23 @@ export default function Workout() {
       
       if (userRole === "admin") {
         // Admin : charge tout
-        const q = query(collection(db, "workout"), orderBy("date", "asc"));
+        const q = query(collection(db, "workout"));
         const snap = await getDocs(q);
         allWorkouts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       } else {
-        // Athlète : charge seulement ce qu'il a le droit de voir
+        // Athlète : 4 queries séparées (sans orderBy pour éviter les problèmes d'index)
+        
         // 1. Workouts groupe "total"
         const qTotal = query(
           collection(db, "workout"),
-          where("group", "==", "total"),
-          orderBy("date", "asc")
+          where("group", "==", "total")
         );
         const snapTotal = await getDocs(qTotal);
         
         // 2. Workouts de son groupe
         const qGroup = query(
           collection(db, "workout"),
-          where("group", "==", userGroup),
-          orderBy("date", "asc")
+          where("group", "==", userGroup)
         );
         const snapGroup = await getDocs(qGroup);
         
@@ -137,16 +136,14 @@ export default function Workout() {
         const qMoi = query(
           collection(db, "workout"),
           where("group", "==", "moi"),
-          where("createdBy", "==", currentUser.uid),
-          orderBy("date", "asc")
+          where("createdBy", "==", currentUser.uid)
         );
         const snapMoi = await getDocs(qMoi);
         
         // 4. Workouts ciblés sur lui
         const qTarget = query(
           collection(db, "workout"),
-          where("targetUserId", "==", currentUser.uid),
-          orderBy("date", "asc")
+          where("targetUserId", "==", currentUser.uid)
         );
         const snapTarget = await getDocs(qTarget);
         
@@ -156,14 +153,14 @@ export default function Workout() {
           workoutsMap.set(d.id, { id: d.id, ...d.data() });
         });
         allWorkouts = Array.from(workoutsMap.values());
-        
-        // Trier par date
-        allWorkouts.sort((a, b) => a.date.localeCompare(b.date));
       }
       
+      // Trier par date côté client
+      allWorkouts.sort((a, b) => a.date.localeCompare(b.date));
       setEvents(allWorkouts);
     } catch (e) {
       console.error("Erreur séances:", e);
+      alert("Erreur lors du chargement des séances : " + e.message);
     }
   };
 
@@ -1544,7 +1541,8 @@ export default function Workout() {
               <option value="total">Total (tous)</option>
               <option value="moi">🌟 Moi (privé)</option>
               <option value="avant">Avant</option>
-              <option value="trois-quarts">Trois-quarts</option>
+              <option value="trois quart">Trois Quart</option>
+              <option value="arrière">Arrière</option>
               <option value="individuel">Individuel</option>
             </select>
           </div>
