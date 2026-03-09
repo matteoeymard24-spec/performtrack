@@ -300,16 +300,21 @@ export default function Workout() {
     try {
       const startTime = new Date().toISOString();
       
-      // Structure par utilisateur
+      // Modifier UNIQUEMENT userProgress[currentUser.uid] avec notation pointée
+      // Cela respecte les règles Firestore pour les athlètes
+      await updateDoc(doc(db, "workout", session.id), {
+        [`userProgress.${currentUser.uid}`]: {
+          startedAt: startTime,
+          inProgress: true,
+        }
+      });
+      
+      // Mettre à jour l'état local
       const userProgress = session.userProgress || {};
       userProgress[currentUser.uid] = {
         startedAt: startTime,
         inProgress: true,
       };
-      
-      await updateDoc(doc(db, "workout", session.id), {
-        userProgress,
-      });
       
       const updatedSession = {
         ...session,
@@ -536,9 +541,8 @@ export default function Workout() {
       console.log("[endSession] ⏱️ Durée calculée:", duration, "min");
       console.log("[endSession] 📝 Feedback à sauvegarder:", sessionFeedback);
       
-      // Structure par utilisateur
-      const userProgress = currentSessionData.userProgress || {};
-      userProgress[currentUser.uid] = {
+      // Préparer les nouvelles données pour cet utilisateur
+      const newUserProgressData = {
         ...userProgressData,
         completedAt: endTime,
         actualDuration: duration,
@@ -548,8 +552,9 @@ export default function Workout() {
       
       console.log("[endSession] 💾 Mise à jour userProgress pour", currentUser.uid);
       
+      // Modifier UNIQUEMENT userProgress[currentUser.uid] avec notation pointée
       await updateDoc(sessionRef, {
-        userProgress,
+        [`userProgress.${currentUser.uid}`]: newUserProgressData
       });
       
       console.log("[endSession] ✅ Séance mise à jour avec succès dans Firestore");
@@ -1542,7 +1547,6 @@ export default function Workout() {
               <option value="moi">🌟 Moi (privé)</option>
               <option value="avant">Avant</option>
               <option value="trois quart">Trois Quart</option>
-              <option value="arrière">Arrière</option>
               <option value="individuel">Individuel</option>
             </select>
           </div>
