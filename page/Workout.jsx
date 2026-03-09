@@ -108,18 +108,60 @@ export default function Workout() {
   const fetchSessions = async () => {
     if (!currentUser) return;
     try {
-      const q = query(collection(db, "workout"), orderBy("date", "asc"));
-      const snap = await getDocs(q);
-      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const filtered = data.filter((s) => {
-        if (userRole === "admin") return true;
-        if (s.group === "total") return true;
-        if (s.group === "moi" && s.createdBy === currentUser.uid) return true; // Séances privées
-        if (s.group === userGroup) return true;
-        if (s.targetUserId === currentUser.uid) return true;
-        return false;
-      });
-      setEvents(filtered);
+      let allWorkouts = [];
+      
+      if (userRole === "admin") {
+        // Admin : charge tout
+        const q = query(collection(db, "workout"), orderBy("date", "asc"));
+        const snap = await getDocs(q);
+        allWorkouts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      } else {
+        // Athlète : charge seulement ce qu'il a le droit de voir
+        // 1. Workouts groupe "total"
+        const qTotal = query(
+          collection(db, "workout"),
+          where("group", "==", "total"),
+          orderBy("date", "asc")
+        );
+        const snapTotal = await getDocs(qTotal);
+        
+        // 2. Workouts de son groupe
+        const qGroup = query(
+          collection(db, "workout"),
+          where("group", "==", userGroup),
+          orderBy("date", "asc")
+        );
+        const snapGroup = await getDocs(qGroup);
+        
+        // 3. Workouts privés créés par lui (group "moi")
+        const qMoi = query(
+          collection(db, "workout"),
+          where("group", "==", "moi"),
+          where("createdBy", "==", currentUser.uid),
+          orderBy("date", "asc")
+        );
+        const snapMoi = await getDocs(qMoi);
+        
+        // 4. Workouts ciblés sur lui
+        const qTarget = query(
+          collection(db, "workout"),
+          where("targetUserId", "==", currentUser.uid),
+          orderBy("date", "asc")
+        );
+        const snapTarget = await getDocs(qTarget);
+        
+        // Combiner tous les résultats (sans doublons)
+        const workoutsMap = new Map();
+        [...snapTotal.docs, ...snapGroup.docs, ...snapMoi.docs, ...snapTarget.docs].forEach((d) => {
+          workoutsMap.set(d.id, { id: d.id, ...d.data() });
+        });
+        allWorkouts = Array.from(workoutsMap.values());
+        
+        // Trier par date
+        allWorkouts.sort((a, b) => a.date.localeCompare(b.date));
+      }
+      
+      setEvents(allWorkouts);
     } catch (e) {
       console.error("Erreur séances:", e);
     }
