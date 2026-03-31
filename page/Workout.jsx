@@ -24,6 +24,18 @@ const getLocalDateStr = (date) => {
   return `${y}-${m}-${dd}`;
 };
 
+// Fonction de normalisation pour les noms d'exercices
+// Permet de matcher les exercices peu importe l'orthographe
+const normalizeExerciseName = (name) => {
+  if (!name) return "";
+  return name
+    .toLowerCase()                           // minuscules
+    .normalize("NFD")                        // décompose les caractères accentués
+    .replace(/[\u0300-\u036f]/g, "")        // supprime les accents
+    .trim()                                  // supprime espaces début/fin
+    .replace(/\s+/g, " ");                  // normalise espaces multiples en un seul
+};
+
 export default function Workout() {
   const { currentUser, userRole, userGroup } = useAuth();
 
@@ -91,7 +103,9 @@ export default function Workout() {
           if (d.id === "VMA" || data.exerciseName === "VMA") {
             vmaEntry = data;
           } else {
-            rmData[d.id] = data.kg;
+            // Normaliser le nom de l'exercice pour la clé
+            const normalizedName = normalizeExerciseName(d.id);
+            rmData[normalizedName] = data.kg;
           }
         });
 
@@ -108,56 +122,34 @@ export default function Workout() {
   const fetchSessions = async () => {
     if (!currentUser) return;
     try {
-      let allWorkouts = [];
+      // SIMPLIFICATION : Charger TOUS les workouts (les règles Firestore autorisent la lecture)
+      const q = query(collection(db, "workout"));
+      const snap = await getDocs(q);
+      const allWorkouts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      
+      let filtered;
       
       if (userRole === "admin") {
-        // Admin : charge tout
-        const q = query(collection(db, "workout"));
-        const snap = await getDocs(q);
-        allWorkouts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        // Admin voit tout
+        filtered = allWorkouts;
       } else {
-        // Athlète : 4 queries séparées (sans orderBy pour éviter les problèmes d'index)
-        
-        // 1. Workouts groupe "total"
-        const qTotal = query(
-          collection(db, "workout"),
-          where("group", "==", "total")
-        );
-        const snapTotal = await getDocs(qTotal);
-        
-        // 2. Workouts de son groupe
-        const qGroup = query(
-          collection(db, "workout"),
-          where("group", "==", userGroup)
-        );
-        const snapGroup = await getDocs(qGroup);
-        
-        // 3. Workouts privés créés par lui (group "moi")
-        const qMoi = query(
-          collection(db, "workout"),
-          where("group", "==", "moi"),
-          where("createdBy", "==", currentUser.uid)
-        );
-        const snapMoi = await getDocs(qMoi);
-        
-        // 4. Workouts ciblés sur lui
-        const qTarget = query(
-          collection(db, "workout"),
-          where("targetUserId", "==", currentUser.uid)
-        );
-        const snapTarget = await getDocs(qTarget);
-        
-        // Combiner tous les résultats (sans doublons)
-        const workoutsMap = new Map();
-        [...snapTotal.docs, ...snapGroup.docs, ...snapMoi.docs, ...snapTarget.docs].forEach((d) => {
-          workoutsMap.set(d.id, { id: d.id, ...d.data() });
+        // Athlète voit :
+        // 1. Séances "total" (pour tous)
+        // 2. Séances de son groupe
+        // 3. Séances "moi" créées par lui
+        // 4. Séances individuelles ciblées sur lui
+        filtered = allWorkouts.filter((w) => {
+          if (w.group === "total") return true;
+          if (w.group === userGroup) return true;
+          if (w.group === "moi" && w.createdBy === currentUser.uid) return true;
+          if (w.targetUserId === currentUser.uid) return true;
+          return false;
         });
-        allWorkouts = Array.from(workoutsMap.values());
       }
       
-      // Trier par date côté client
-      allWorkouts.sort((a, b) => a.date.localeCompare(b.date));
-      setEvents(allWorkouts);
+      // Trier par date
+      filtered.sort((a, b) => a.date.localeCompare(b.date));
+      setEvents(filtered);
     } catch (e) {
       console.error("Erreur séances:", e);
       alert("Erreur lors du chargement des séances : " + e.message);
@@ -189,7 +181,9 @@ export default function Workout() {
   /* ===================== CALCULS ===================== */
   const calculateWeight = (rmName, percent) => {
     if (!rmName || !percent) return "-";
-    const rm = userRM[rmName.toLowerCase()];
+    // Normaliser le nom recherché
+    const normalizedName = normalizeExerciseName(rmName);
+    const rm = userRM[normalizedName];
     if (!rm) return "-";
     return Math.round((rm * percent) / 100);
   };
@@ -455,8 +449,9 @@ export default function Workout() {
         // Vérifier que la meilleure série a toutes les données
         if (!bestSeries.rpe || !bestSeries.actualWeight || !bestSeries.actualReps) continue;
         
-        const rmName = exercise.rmName.toLowerCase();
-        const currentRM = userRM[rmName];
+        // Normaliser le nom de l'exercice
+        const normalizedRmName = normalizeExerciseName(exercise.rmName);
+        const currentRM = userRM[normalizedRmName];
         const predicted = calculatePredictedRM(
           bestSeries.actualWeight,
           bestSeries.actualReps,
@@ -469,9 +464,10 @@ export default function Workout() {
             if (change > 10) finalRM = currentRM * 1.1;
             if (change < -10) finalRM = currentRM * 0.9;
           }
-          await setDoc(doc(db, "users", currentUser.uid, "rm", rmName), {
+          // Sauvegarder avec le nom normalisé
+          await setDoc(doc(db, "users", currentUser.uid, "rm", normalizedRmName), {
             kg: Math.round(finalRM * 10) / 10,
-            exerciseName: rmName,
+            exerciseName: normalizedRmName,
             previousRM: currentRM || 0,
             updatedAt: new Date().toISOString(),
             autoAdjusted: true,
@@ -486,7 +482,9 @@ export default function Workout() {
       );
       const rmData = {};
       snap.docs.forEach((d) => {
-        rmData[d.id] = d.data().kg;
+        // Normaliser le nom pour la clé
+        const normalizedName = normalizeExerciseName(d.id);
+        rmData[normalizedName] = d.data().kg;
       });
       setUserRM(rmData);
     } catch (e) {
@@ -1926,7 +1924,8 @@ export default function Workout() {
                       {ex.rmPercent !== "PDC" && ex.rmName &&
                         ex.rmPercent &&
                         (() => {
-                          const rm = userRM[ex.rmName.toLowerCase()];
+                          const normalizedName = normalizeExerciseName(ex.rmName);
+                          const rm = userRM[normalizedName];
                           if (rm) {
                             const targetWeight = Math.round(
                               (rm * ex.rmPercent) / 100
