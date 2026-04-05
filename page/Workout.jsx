@@ -188,6 +188,92 @@ export default function Workout() {
     return Math.round((rm * percent) / 100);
   };
 
+  /* ===================== CRÉATION AUTO DES RM ===================== */
+  const ensureRMsExist = async (session) => {
+    if (!currentUser || !session.blocks || session.type !== "muscu") return;
+    
+    try {
+      // Collecter tous les rmName uniques de la séance
+      const rmNames = new Set();
+      
+      session.blocks.forEach((block) => {
+        block.exercises?.forEach((exercise) => {
+          if (exercise.rmName && exercise.rmPercent !== "PDC") {
+            const normalized = normalizeExerciseName(exercise.rmName);
+            if (normalized) {
+              rmNames.add(normalized);
+            }
+          }
+        });
+      });
+      
+      if (rmNames.size === 0) return;
+      
+      // Récupérer les RM existants
+      const rmSnap = await getDocs(collection(db, "users", currentUser.uid, "rm"));
+      const existingRMs = new Set();
+      rmSnap.docs.forEach((d) => {
+        const normalized = normalizeExerciseName(d.id);
+        existingRMs.add(normalized);
+      });
+      
+      // Créer les RM manquants
+      const promises = [];
+      rmNames.forEach((rmName) => {
+        if (!existingRMs.has(rmName)) {
+          // RM n'existe pas, le créer avec valeur nulle
+          promises.push(
+            setDoc(doc(db, "users", currentUser.uid, "rm", rmName), {
+              kg: null, // Valeur nulle = l'athlète doit le remplir
+              exerciseName: rmName,
+              updatedAt: new Date().toISOString(),
+              autoCreated: true, // Marqueur pour savoir que c'est auto-créé
+            })
+          );
+        }
+      });
+      
+      if (promises.length > 0) {
+        await Promise.all(promises);
+        console.log(`✅ ${promises.length} RM(s) créé(s) automatiquement:`, Array.from(rmNames));
+        
+        // Recharger les RM
+        await fetchRM();
+      }
+    } catch (e) {
+      console.error("Erreur création auto RM:", e);
+      // Ne pas bloquer la séance si erreur
+    }
+  };
+  
+  // Fonction pour recharger les RM
+  const fetchRM = async () => {
+    if (!currentUser) return;
+    try {
+      const snap = await getDocs(
+        collection(db, "users", currentUser.uid, "rm")
+      );
+      const rmData = {};
+      let vmaEntry = null;
+
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        if (d.id === "VMA" || data.exerciseName === "VMA") {
+          vmaEntry = data;
+        } else {
+          // Normaliser le nom de l'exercice pour la clé
+          const normalizedName = normalizeExerciseName(d.id);
+          rmData[normalizedName] = data.kg;
+        }
+      });
+
+      setUserRM(rmData);
+      setVma(vmaEntry?.kg || null);
+    } catch (e) {
+      console.error("Erreur RM:", e);
+    }
+  };
+
   const calculateEnduranceMetrics = (exercise) => {
     if (!vma) return null;
     const vmaMs = (vma * 1000) / 3600;
@@ -459,11 +545,14 @@ export default function Workout() {
         );
         if (predicted) {
           let finalRM = predicted;
+          const isNewRM = !currentRM; // Nouveau RM si currentRM est null/undefined
+          
           if (currentRM) {
             const change = ((predicted - currentRM) / currentRM) * 100;
             if (change > 10) finalRM = currentRM * 1.1;
             if (change < -10) finalRM = currentRM * 0.9;
           }
+          
           // Sauvegarder avec le nom normalisé
           await setDoc(doc(db, "users", currentUser.uid, "rm", normalizedRmName), {
             kg: Math.round(finalRM * 10) / 10,
@@ -475,6 +564,11 @@ export default function Workout() {
             lastWeight: bestSeries.actualWeight,
             lastReps: bestSeries.actualReps,
           });
+          
+          // Log si c'est un nouveau RM créé
+          if (isNewRM) {
+            console.log(`✅ Nouveau RM créé : "${normalizedRmName}" = ${Math.round(finalRM * 10) / 10} kg (basé sur ${bestSeries.actualWeight}kg × ${bestSeries.actualReps} reps @ RPE ${bestSeries.rpe})`);
+          }
         }
       }
       const snap = await getDocs(
