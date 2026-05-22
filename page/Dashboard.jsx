@@ -7,7 +7,11 @@ import {
   doc,
   updateDoc,
   setDoc,
+  query,
+  where,
+  onSnapshot,
 } from "firebase/firestore";
+import { useNavigate } from "react-router-dom";
 import {
   LineChart,
   Line,
@@ -32,6 +36,7 @@ const getLocalDateStr = (date) => {
 
 export default function Dashboard() {
   const { currentUser, userRole, userProfile, isSuperAdmin } = useAuth();
+  const navigate = useNavigate();
 
   const [athletes, setAthletes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -51,14 +56,13 @@ export default function Dashboard() {
   const [lastWeightDate, setLastWeightDate] = useState(null);
   const [canUpdateWeight, setCanUpdateWeight] = useState(true);
   
-  // États pour le comptage des séances
   const [totalSessions, setTotalSessions] = useState(0);
   const [completedSessions, setCompletedSessions] = useState(0);
   
-  // État pour la recherche d'athlète (admin)
   const [athleteSearchQuery, setAthleteSearchQuery] = useState("");
+  
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
-  /* ===================== HELPERS MULTI-UTILISATEURS ===================== */
   const getUserProgress = (workout, userId = currentUser?.uid) => {
     if (!workout || !userId) {
       return null;
@@ -210,7 +214,38 @@ export default function Dashboard() {
     return "Athlète";
   };
 
-  /* ==================== VUE ATHLÈTE ==================== */
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let q;
+    if (userRole === "admin" || isSuperAdmin) {
+      q = query(
+        collection(db, "conversations"),
+        where("coachId", "==", currentUser.uid)
+      );
+    } else {
+      q = query(
+        collection(db, "conversations"),
+        where("athleteId", "==", currentUser.uid)
+      );
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      let totalUnread = 0;
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        if (userRole === "admin" || isSuperAdmin) {
+          totalUnread += data.unreadCountCoach || 0;
+        } else {
+          totalUnread += data.unreadCountAthlete || 0;
+        }
+      });
+      setUnreadMessages(totalUnread);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, userRole, isSuperAdmin]);
+
   useEffect(() => {
     if (userRole !== "athlete" || !currentUser || !userProfile) return;
 
@@ -269,7 +304,6 @@ export default function Dashboard() {
         );
         const userGrp = userProfile?.group || "total";
 
-        // Filtrer toutes les séances de l'athlète (pas seulement aujourd'hui)
         const userWorkouts = allWorkouts.filter((w) => {
           return (
             w.group === "total" ||
@@ -279,7 +313,6 @@ export default function Dashboard() {
           );
         });
         
-        // Compter le total et les complétées
         setTotalSessions(userWorkouts.length);
         setCompletedSessions(
           userWorkouts.filter((w) => isWorkoutCompleted(w, currentUser.uid)).length
@@ -338,7 +371,6 @@ export default function Dashboard() {
     }
   };
 
-  /* ==================== VUE ADMIN ==================== */
   useEffect(() => {
     if (userRole !== "admin") {
       setLoading(false);
@@ -385,7 +417,6 @@ export default function Dashboard() {
 
           const acwr = calculateACWR(uWorkouts, u.id);
           
-          // Compter les séances de l'athlète
           const totalSessions = uWorkouts.length;
           const completedSessions = uWorkouts.filter((w) => isWorkoutCompleted(w, u.id)).length;
 
@@ -507,7 +538,6 @@ export default function Dashboard() {
   };
 
   const filtered = athletes.filter((a) => {
-    // Filtre par recherche
     if (athleteSearchQuery.trim()) {
       const searchLower = athleteSearchQuery.toLowerCase();
       const athleteName = `${a.firstName || ""} ${a.lastName || ""}`.toLowerCase();
@@ -516,7 +546,6 @@ export default function Dashboard() {
       }
     }
     
-    // Filtre par wellness
     if (wellnessFilter === "total") return true;
     if (wellnessFilter === "risque")
       return a.wellnessScore !== null && a.wellnessScore < 5;
@@ -547,7 +576,6 @@ export default function Dashboard() {
     );
   }
 
-  // VUE ATHLÈTE
   if (userRole !== "admin") {
     const todayScore = todayWellness
       ? calculateWellnessScore(todayWellness)
@@ -688,7 +716,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Widget compteur de séances */}
         <div
           style={{
             background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
@@ -761,6 +788,60 @@ export default function Dashboard() {
                 : 0}
               %
             </div>
+          </div>
+        </div>
+
+        <div
+          onClick={() => navigate("/messages")}
+          style={{
+            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 20,
+            cursor: "pointer",
+            position: "relative",
+            transition: "transform 0.2s",
+            boxShadow: "0 4px 15px rgba(102, 126, 234, 0.3)",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 24, marginBottom: 5 }}>💬</div>
+              <div style={{ fontSize: 18, fontWeight: "600", color: "#fff" }}>
+                Messages
+              </div>
+              <div style={{ fontSize: 14, color: "rgba(255,255,255,0.8)" }}>
+                Communiquez avec votre coach
+              </div>
+            </div>
+
+            {unreadMessages > 0 && (
+              <div
+                style={{
+                  background: "#e74c3c",
+                  color: "#fff",
+                  borderRadius: "50%",
+                  minWidth: 35,
+                  height: 35,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 16,
+                  fontWeight: "bold",
+                  boxShadow: "0 4px 10px rgba(231, 76, 60, 0.4)",
+                }}
+              >
+                {unreadMessages > 9 ? "9+" : unreadMessages}
+              </div>
+            )}
           </div>
         </div>
 
@@ -1069,7 +1150,6 @@ export default function Dashboard() {
     );
   }
 
-  // VUE ADMIN
   return (
     <div
       style={{
@@ -1089,6 +1169,8 @@ export default function Dashboard() {
           justifyContent: "space-between",
           alignItems: "center",
           marginBottom: 20,
+          flexWrap: "wrap",
+          gap: 10,
         }}
       >
         <div>
@@ -1099,26 +1181,65 @@ export default function Dashboard() {
             Suivi wellness et performance
           </p>
         </div>
-        {todayWorkout && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <button
-            onClick={() => (window.location.href = "/workout")}
+            onClick={() => navigate("/messages")}
             style={{
               padding: "12px 20px",
-              background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
               color: "white",
               border: "none",
               borderRadius: 8,
               cursor: "pointer",
               fontWeight: "bold",
               fontSize: 14,
+              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
             }}
           >
-            🏋️ Ma séance du jour
+            💬 Messages
+            {unreadMessages > 0 && (
+              <div
+                style={{
+                  background: "#e74c3c",
+                  color: "#fff",
+                  borderRadius: "50%",
+                  minWidth: 22,
+                  height: 22,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 12,
+                  fontWeight: "bold",
+                }}
+              >
+                {unreadMessages > 9 ? "9+" : unreadMessages}
+              </div>
+            )}
           </button>
-        )}
+          
+          {todayWorkout && (
+            <button
+              onClick={() => (window.location.href = "/workout")}
+              style={{
+                padding: "12px 20px",
+                background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: 14,
+              }}
+            >
+              🏋️ Ma séance du jour
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Barre de recherche */}
       <div style={{ marginBottom: 20 }}>
         <input
           type="text"
@@ -1331,7 +1452,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* MODAL DÉTAILS ATHLÈTE */}
       {showAthleteDetail && athleteDetails && (
         <div
           style={{
@@ -1390,7 +1510,6 @@ export default function Dashboard() {
               </button>
             </div>
 
-            {/* KPI Cards */}
             <div
               style={{
                 display: "grid",
@@ -1506,7 +1625,6 @@ export default function Dashboard() {
                 </div>
               </div>
               
-              {/* Carte séances */}
               <div
                 style={{
                   background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
@@ -1531,7 +1649,6 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Séance */}
             <div
               style={{
                 background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
@@ -1602,7 +1719,6 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* DOULEURS DÉTAILLÉES AVEC BODYSCAN VISUEL */}
             {showAthleteDetail.lastWellness &&
               showAthleteDetail.lastWellness.douleur > 0 && (
                 <div
@@ -1624,7 +1740,6 @@ export default function Dashboard() {
                     ⚠️ Douleurs signalées
                   </h4>
 
-                  {/* Intensité totale */}
                   <div
                     style={{
                       marginBottom: 15,
@@ -1653,7 +1768,6 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {/* Bodyscan visuel */}
                   {showAthleteDetail.lastWellness.painMap &&
                     Object.keys(showAthleteDetail.lastWellness.painMap)
                       .length > 0 && (
@@ -1670,14 +1784,13 @@ export default function Dashboard() {
                         </div>
                         <BodyScan
                           painMap={showAthleteDetail.lastWellness.painMap}
-                          setPainMap={() => {}} // Mode lecture seule pour admin
+                          setPainMap={() => {}}
                         />
                       </div>
                     )}
                 </div>
               )}
 
-            {/* ACWR History */}
             {acwrHistory.length > 0 ? (
               <div
                 style={{
@@ -1752,7 +1865,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Wellness détaillé */}
             {athleteDetails.wellness.length > 0 && (
               <div
                 style={{
@@ -1845,7 +1957,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* Poids */}
             {athleteDetails.weightHistory.length > 0 && (
               <div
                 style={{
@@ -1925,7 +2036,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {/* COURBES RM PAR EXERCICE */}
             {Object.keys(detailedAthleteRMHistory).length > 0 && (
               <div
                 style={{ background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)", padding: 20, borderRadius: 10 }}
