@@ -1,0 +1,34 @@
+{
+  "name": "performtrack",
+  "version": "1.0.0",
+  "description": "Application de suivi performance sportive",
+  "keywords": ["react", "firebase", "sport", "tracking"],
+  "main": "index.jsx",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "7.12.0",
+    "firebase": "12.8.0",
+    "recharts": "3.6.0",
+    "react-is": "19.2.3",
+    "react-chartjs-2": "5.3.1",
+    "chart.js": "4.5.1",
+    "react-calendar": "6.0.0",
+    "react-big-calendar": "1.19.4"
+  },
+  "devDependencies": {
+    "vite": "^5.4.21",
+    "@vitejs/plugin-react": "^4.4.1"
+  },
+  "browserslist": [
+    ">0.2%",
+    "not dead",
+    "not ie <= 11",
+    "not op_mini all"
+  ]
+}
