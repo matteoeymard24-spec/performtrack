@@ -7,11 +7,7 @@ import {
   doc,
   updateDoc,
   setDoc,
-  query,
-  where,
-  onSnapshot,
 } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
 import {
   LineChart,
   Line,
@@ -36,7 +32,6 @@ const getLocalDateStr = (date) => {
 
 export default function Dashboard() {
   const { currentUser, userRole, userProfile, isSuperAdmin } = useAuth();
-  const navigate = useNavigate();
 
   const [athletes, setAthletes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +50,11 @@ export default function Dashboard() {
   const [weightHistory, setWeightHistory] = useState([]);
   const [lastWeightDate, setLastWeightDate] = useState(null);
   const [canUpdateWeight, setCanUpdateWeight] = useState(true);
-  
+
   const [totalSessions, setTotalSessions] = useState(0);
   const [completedSessions, setCompletedSessions] = useState(0);
-  
+
   const [athleteSearchQuery, setAthleteSearchQuery] = useState("");
-  
-  const [unreadMessages, setUnreadMessages] = useState(0);
 
   const getUserProgress = (workout, userId = currentUser?.uid) => {
     if (!workout || !userId) {
@@ -215,38 +208,6 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    if (!currentUser) return;
-
-    let q;
-    if (userRole === "admin" || isSuperAdmin) {
-      q = query(
-        collection(db, "conversations"),
-        where("coachId", "==", currentUser.uid)
-      );
-    } else {
-      q = query(
-        collection(db, "conversations"),
-        where("athleteId", "==", currentUser.uid)
-      );
-    }
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      let totalUnread = 0;
-      snapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        if (userRole === "admin" || isSuperAdmin) {
-          totalUnread += data.unreadCountCoach || 0;
-        } else {
-          totalUnread += data.unreadCountAthlete || 0;
-        }
-      });
-      setUnreadMessages(totalUnread);
-    });
-
-    return () => unsubscribe();
-  }, [currentUser, userRole, isSuperAdmin]);
-
-  useEffect(() => {
     if (userRole !== "athlete" || !currentUser || !userProfile) return;
 
     const load = async () => {
@@ -308,11 +269,11 @@ export default function Dashboard() {
           return (
             w.group === "total" ||
             w.group === userGrp ||
-            w.group === "moi" && w.createdBy === currentUser.uid ||
+            (w.group === "moi" && w.createdBy === currentUser.uid) ||
             w.targetUserId === currentUser.uid
           );
         });
-        
+
         setTotalSessions(userWorkouts.length);
         setCompletedSessions(
           userWorkouts.filter((w) => isWorkoutCompleted(w, currentUser.uid)).length
@@ -323,7 +284,7 @@ export default function Dashboard() {
           return (
             w.group === "total" ||
             w.group === userGrp ||
-            w.group === "moi" && w.createdBy === currentUser.uid ||
+            (w.group === "moi" && w.createdBy === currentUser.uid) ||
             w.targetUserId === currentUser.uid
           );
         });
@@ -416,7 +377,7 @@ export default function Dashboard() {
           const todayWorkout = uWorkouts.find((w) => w.date === today);
 
           const acwr = calculateACWR(uWorkouts, u.id);
-          
+
           const totalSessions = uWorkouts.length;
           const completedSessions = uWorkouts.filter((w) => isWorkoutCompleted(w, u.id)).length;
 
@@ -545,7 +506,7 @@ export default function Dashboard() {
         return false;
       }
     }
-    
+
     if (wellnessFilter === "total") return true;
     if (wellnessFilter === "risque")
       return a.wellnessScore !== null && a.wellnessScore < 5;
@@ -788,60 +749,6 @@ export default function Dashboard() {
                 : 0}
               %
             </div>
-          </div>
-        </div>
-
-        <div
-          onClick={() => navigate("/messages")}
-          style={{
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            borderRadius: 20,
-            padding: 20,
-            marginBottom: 20,
-            cursor: "pointer",
-            position: "relative",
-            transition: "transform 0.2s",
-            boxShadow: "0 4px 15px rgba(102, 126, 234, 0.3)",
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.02)")}
-          onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 24, marginBottom: 5 }}>💬</div>
-              <div style={{ fontSize: 18, fontWeight: "600", color: "#fff" }}>
-                Messages
-              </div>
-              <div style={{ fontSize: 14, color: "rgba(255,255,255,0.8)" }}>
-                Communiquez avec votre coach
-              </div>
-            </div>
-
-            {unreadMessages > 0 && (
-              <div
-                style={{
-                  background: "#e74c3c",
-                  color: "#fff",
-                  borderRadius: "50%",
-                  minWidth: 35,
-                  height: 35,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 16,
-                  fontWeight: "bold",
-                  boxShadow: "0 4px 10px rgba(231, 76, 60, 0.4)",
-                }}
-              >
-                {unreadMessages > 9 ? "9+" : unreadMessages}
-              </div>
-            )}
           </div>
         </div>
 
@@ -1182,44 +1089,6 @@ export default function Dashboard() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button
-            onClick={() => navigate("/messages")}
-            style={{
-              padding: "12px 20px",
-              background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              cursor: "pointer",
-              fontWeight: "bold",
-              fontSize: 14,
-              position: "relative",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            💬 Messages
-            {unreadMessages > 0 && (
-              <div
-                style={{
-                  background: "#e74c3c",
-                  color: "#fff",
-                  borderRadius: "50%",
-                  minWidth: 22,
-                  height: 22,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 12,
-                  fontWeight: "bold",
-                }}
-              >
-                {unreadMessages > 9 ? "9+" : unreadMessages}
-              </div>
-            )}
-          </button>
-          
           {todayWorkout && (
             <button
               onClick={() => (window.location.href = "/workout")}
@@ -1624,7 +1493,7 @@ export default function Dashboard() {
                     : "N/A"}
                 </div>
               </div>
-              
+
               <div
                 style={{
                   background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",

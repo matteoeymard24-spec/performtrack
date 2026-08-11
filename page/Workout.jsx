@@ -86,6 +86,7 @@ export default function Workout() {
   const [showDuplicateSessionModal, setShowDuplicateSessionModal] = useState(false);
   const [sessionToDuplicate, setSessionToDuplicate] = useState(null);
   const [duplicateTargetDate, setDuplicateTargetDate] = useState(null);
+  const [uploadingMedia, setUploadingMedia] = useState({});
 
   /* ===================== RM + VMA ===================== */
   useEffect(() => {
@@ -748,6 +749,16 @@ export default function Workout() {
       alert("Titre + au moins 1 bloc requis");
       return;
     }
+
+    // Vérifier qu'on ne dépasse pas la limite Firestore (~1 Mo par document)
+    const blocksSize = new Blob([JSON.stringify(blocks)]).size;
+    if (blocksSize > 900000) {
+      alert(
+        "⚠️ Les photos ajoutées sont trop volumineuses au total (limite ~1 Mo par séance). Retire une ou plusieurs photos, ou utilise des images plus simples."
+      );
+      return;
+    }
+
     const dur = blocks.reduce(
       (t, b) =>
         t +
@@ -946,6 +957,76 @@ export default function Workout() {
   const updateExercise = (bIdx, eIdx, field, val) => {
     const nb = [...blocks];
     nb[bIdx].exercises[eIdx][field] = val;
+    setBlocks(nb);
+  };
+
+  /* ===================== MEDIA EXERCICE (PHOTO — stockée en base64 dans Firestore, 100% gratuit) ===================== */
+  const handleMediaUpload = (bIdx, eIdx, file) => {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      alert("Merci de choisir une image (les vidéos ne sont pas supportées pour rester gratuit)");
+      return;
+    }
+
+    const maxOriginalSize = 15 * 1024 * 1024; // 15 Mo avant compression
+    if (file.size > maxOriginalSize) {
+      alert("Image trop volumineuse (max 15 Mo avant compression)");
+      return;
+    }
+
+    const key = `${bIdx}-${eIdx}`;
+    setUploadingMedia((prev) => ({ ...prev, [key]: true }));
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 800;
+        let { width, height } = img;
+        if (width > height && width > maxDim) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else if (height >= width && height > maxDim) {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let dataUrl = canvas.toDataURL("image/jpeg", 0.65);
+        // Si encore trop lourd (limite Firestore = 1 Mo par document), on recompresse plus fort
+        if (dataUrl.length * 0.75 > 500 * 1024) {
+          dataUrl = canvas.toDataURL("image/jpeg", 0.4);
+        }
+
+        const nb = [...blocks];
+        nb[bIdx].exercises[eIdx].mediaUrl = dataUrl;
+        nb[bIdx].exercises[eIdx].mediaType = "image";
+        setBlocks(nb);
+        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
+      };
+      img.onerror = () => {
+        alert("❌ Erreur lors du chargement de l'image");
+        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
+      };
+      img.src = event.target.result;
+    };
+    reader.onerror = () => {
+      alert("❌ Erreur lors de la lecture du fichier");
+      setUploadingMedia((prev) => ({ ...prev, [key]: false }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeMedia = (bIdx, eIdx) => {
+    const nb = [...blocks];
+    nb[bIdx].exercises[eIdx].mediaUrl = "";
+    nb[bIdx].exercises[eIdx].mediaType = "";
     setBlocks(nb);
   };
 
@@ -1812,6 +1893,70 @@ export default function Workout() {
                         resize: "vertical",
                       }}
                     />
+                  </div>
+
+                  {/* Champ photo de démonstration */}
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={{ fontSize: 12, color: "#888", marginBottom: 4, display: "block" }}>
+                      📸 Photo de démonstration
+                    </label>
+                    {ex.mediaUrl ? (
+                      <div style={{ position: "relative", marginBottom: 8 }}>
+                        <img
+                          src={ex.mediaUrl}
+                          alt="Démo exercice"
+                          style={{
+                            width: "100%",
+                            maxHeight: 200,
+                            objectFit: "cover",
+                            borderRadius: 8,
+                          }}
+                        />
+                        <button
+                          onClick={() => removeMedia(bIdx, eIdx)}
+                          style={{
+                            position: "absolute",
+                            top: 8,
+                            right: 8,
+                            background: "#e74c3c",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "50%",
+                            width: 30,
+                            height: 30,
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) =>
+                            handleMediaUpload(bIdx, eIdx, e.target.files[0])
+                          }
+                          disabled={uploadingMedia[`${bIdx}-${eIdx}`]}
+                          style={{
+                            width: "100%",
+                            padding: 8,
+                            borderRadius: 6,
+                            border: "1px dashed #555",
+                            background: "#0a0a0a",
+                            color: "#fff",
+                            fontSize: 13,
+                          }}
+                        />
+                        {uploadingMedia[`${bIdx}-${eIdx}`] && (
+                          <div style={{ fontSize: 12, color: "#f39c12", marginTop: 4 }}>
+                            ⏳ Compression en cours...
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* FORMULAIRE MUSCU */}
@@ -2936,6 +3081,22 @@ export default function Workout() {
                         }}
                       >
                         📝 {ex.description}
+                      </div>
+                    )}
+
+                    {/* Photo de démonstration si présente */}
+                    {ex.mediaUrl && (
+                      <div style={{ marginBottom: 10 }}>
+                        <img
+                          src={ex.mediaUrl}
+                          alt={ex.name}
+                          style={{
+                            width: "100%",
+                            maxHeight: 250,
+                            objectFit: "cover",
+                            borderRadius: 8,
+                          }}
+                        />
                       </div>
                     )}
 
