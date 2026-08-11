@@ -7,6 +7,7 @@ import {
   doc,
   updateDoc,
   setDoc,
+  writeBatch,
 } from "firebase/firestore";
 import {
   LineChart,
@@ -121,7 +122,16 @@ export default function Dashboard() {
       let total = 0,
         count = 0;
       Object.values(feedback).forEach((fb) => {
-        if (fb.rpe) {
+        if (fb.series && Array.isArray(fb.series)) {
+          // Format musculation : RPE stocké par série
+          fb.series.forEach((serie) => {
+            if (serie.rpe !== undefined && serie.rpe !== null) {
+              total += Number(serie.rpe);
+              count++;
+            }
+          });
+        } else if (fb.rpe !== undefined && fb.rpe !== null) {
+          // Format sprint/endurance : RPE unique
           total += Number(fb.rpe);
           count++;
         }
@@ -156,7 +166,16 @@ export default function Dashboard() {
       let total = 0,
         count = 0;
       Object.values(feedback).forEach((fb) => {
-        if (fb.rpe) {
+        if (fb.series && Array.isArray(fb.series)) {
+          // Format musculation : RPE stocké par série
+          fb.series.forEach((serie) => {
+            if (serie.rpe !== undefined && serie.rpe !== null) {
+              total += Number(serie.rpe);
+              count++;
+            }
+          });
+        } else if (fb.rpe !== undefined && fb.rpe !== null) {
+          // Format sprint/endurance : RPE unique
           total += Number(fb.rpe);
           count++;
         }
@@ -206,6 +225,65 @@ export default function Dashboard() {
     if (a.email) return a.email.split("@")[0];
     return "Athlète";
   };
+
+  /* ==================== NETTOYAGE AUTOMATIQUE (>5 semaines) ==================== */
+  // Supprime les séances et wellness plus vieux que 35 jours (5 semaines)
+  // pour économiser du stockage Firestore. 35 jours > 28 jours nécessaires
+  // au calcul ACWR, donc l'ACWR continue de fonctionner normalement.
+  const CLEANUP_RETENTION_DAYS = 35;
+
+  const cleanupOldData = async () => {
+    try {
+      const todayStr = getLocalDateStr(new Date());
+      const lastCleanup = localStorage.getItem("performtrack_lastCleanup");
+      if (lastCleanup === todayStr) return; // déjà fait aujourd'hui
+
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - CLEANUP_RETENTION_DAYS);
+      const cutoffStr = getLocalDateStr(cutoff);
+
+      const [workoutSnap, wellnessSnap] = await Promise.all([
+        getDocs(collection(db, "workout")),
+        getDocs(collection(db, "wellness")),
+      ]);
+
+      const oldWorkoutDocs = workoutSnap.docs.filter(
+        (d) => d.data().date && d.data().date < cutoffStr
+      );
+      const oldWellnessDocs = wellnessSnap.docs.filter(
+        (d) => d.data().date && d.data().date < cutoffStr
+      );
+
+      const allOldDocs = [...oldWorkoutDocs, ...oldWellnessDocs];
+
+      if (allOldDocs.length === 0) {
+        localStorage.setItem("performtrack_lastCleanup", todayStr);
+        return;
+      }
+
+      // Firestore limite les batchs à 500 opérations, on découpe par sécurité
+      const chunkSize = 450;
+      for (let i = 0; i < allOldDocs.length; i += chunkSize) {
+        const chunk = allOldDocs.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+      }
+
+      console.log(
+        `🧹 Nettoyage auto : ${allOldDocs.length} document(s) supprimé(s) (> ${CLEANUP_RETENTION_DAYS} jours)`
+      );
+      localStorage.setItem("performtrack_lastCleanup", todayStr);
+    } catch (e) {
+      console.error("Erreur nettoyage automatique:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (userRole === "admin" && currentUser) {
+      cleanupOldData();
+    }
+  }, [userRole, currentUser]);
 
   useEffect(() => {
     if (userRole !== "athlete" || !currentUser || !userProfile) return;
