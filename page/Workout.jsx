@@ -36,13 +36,11 @@ const normalizeExerciseName = (name) => {
     .replace(/\s+/g, " ");                  // normalise espaces multiples en un seul
 };
 
-// Tailles d'affichage disponibles pour les photos/gifs de démonstration
-const MEDIA_DISPLAY_SIZES = {
-  small: { label: "S", maxHeight: 120 },
-  medium: { label: "M", maxHeight: 220 },
-  large: { label: "L", maxHeight: 380 },
-};
-const DEFAULT_MEDIA_SIZE = "medium";
+// Cadre fixe d'affichage des photos/gifs de démonstration + zoom réglable
+const MEDIA_FRAME_HEIGHT = 220;
+const DEFAULT_MEDIA_ZOOM = 100; // en %
+const MIN_MEDIA_ZOOM = 40;
+const MAX_MEDIA_ZOOM = 250;
 
 export default function Workout() {
   const { currentUser, userRole, userGroup } = useAuth();
@@ -1090,8 +1088,8 @@ export default function Workout() {
         const nb = [...blocks];
         nb[bIdx].exercises[eIdx].mediaUrl = event.target.result;
         nb[bIdx].exercises[eIdx].mediaType = "gif";
-        if (!nb[bIdx].exercises[eIdx].mediaSize) {
-          nb[bIdx].exercises[eIdx].mediaSize = DEFAULT_MEDIA_SIZE;
+        if (!nb[bIdx].exercises[eIdx].mediaZoom) {
+          nb[bIdx].exercises[eIdx].mediaZoom = DEFAULT_MEDIA_ZOOM;
         }
         setBlocks(nb);
         setUploadingMedia((prev) => ({ ...prev, [key]: false }));
@@ -1141,8 +1139,8 @@ export default function Workout() {
         const nb = [...blocks];
         nb[bIdx].exercises[eIdx].mediaUrl = dataUrl;
         nb[bIdx].exercises[eIdx].mediaType = "image";
-        if (!nb[bIdx].exercises[eIdx].mediaSize) {
-          nb[bIdx].exercises[eIdx].mediaSize = DEFAULT_MEDIA_SIZE;
+        if (!nb[bIdx].exercises[eIdx].mediaZoom) {
+          nb[bIdx].exercises[eIdx].mediaZoom = DEFAULT_MEDIA_ZOOM;
         }
         setBlocks(nb);
         setUploadingMedia((prev) => ({ ...prev, [key]: false }));
@@ -1164,13 +1162,13 @@ export default function Workout() {
     const nb = [...blocks];
     nb[bIdx].exercises[eIdx].mediaUrl = "";
     nb[bIdx].exercises[eIdx].mediaType = "";
-    nb[bIdx].exercises[eIdx].mediaSize = "";
+    nb[bIdx].exercises[eIdx].mediaZoom = "";
     setBlocks(nb);
   };
 
-  const setMediaSize = (bIdx, eIdx, size) => {
+  const setMediaZoom = (bIdx, eIdx, zoom) => {
     const nb = [...blocks];
-    nb[bIdx].exercises[eIdx].mediaSize = size;
+    nb[bIdx].exercises[eIdx].mediaZoom = zoom;
     setBlocks(nb);
   };
 
@@ -2305,18 +2303,32 @@ export default function Workout() {
                     </label>
                     {ex.mediaUrl ? (
                       <div style={{ position: "relative", marginBottom: 8 }}>
-                        <img
-                          src={ex.mediaUrl}
-                          alt="Démo exercice"
+                        <div
                           style={{
                             width: "100%",
-                            maxHeight:
-                              MEDIA_DISPLAY_SIZES[ex.mediaSize || DEFAULT_MEDIA_SIZE]
-                                .maxHeight,
-                            objectFit: "cover",
+                            height: MEDIA_FRAME_HEIGHT,
+                            overflow: "hidden",
                             borderRadius: 8,
+                            background: "#000",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
-                        />
+                        >
+                          <img
+                            src={ex.mediaUrl}
+                            alt="Démo exercice"
+                            style={{
+                              maxWidth: "100%",
+                              maxHeight: "100%",
+                              objectFit: "contain",
+                              transform: `scale(${
+                                (ex.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
+                              })`,
+                              transition: "transform 0.1s ease-out",
+                            }}
+                          />
+                        </div>
                         <button
                           onClick={() => removeMedia(bIdx, eIdx)}
                           style={{
@@ -2355,36 +2367,34 @@ export default function Workout() {
                         <div
                           style={{
                             display: "flex",
-                            gap: 6,
-                            marginTop: 6,
+                            gap: 8,
+                            marginTop: 8,
                             alignItems: "center",
                           }}
                         >
-                          <span style={{ fontSize: 11, color: "#888" }}>Taille :</span>
-                          {Object.entries(MEDIA_DISPLAY_SIZES).map(([key, cfg]) => (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => setMediaSize(bIdx, eIdx, key)}
-                              style={{
-                                padding: "3px 10px",
-                                borderRadius: 5,
-                                border:
-                                  (ex.mediaSize || DEFAULT_MEDIA_SIZE) === key
-                                    ? "1px solid #2f80ed"
-                                    : "1px solid #555",
-                                background:
-                                  (ex.mediaSize || DEFAULT_MEDIA_SIZE) === key
-                                    ? "#2f80ed"
-                                    : "#0a0a0a",
-                                color: "#fff",
-                                fontSize: 11,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {cfg.label}
-                            </button>
-                          ))}
+                          <span style={{ fontSize: 14 }}>🔍−</span>
+                          <input
+                            type="range"
+                            min={MIN_MEDIA_ZOOM}
+                            max={MAX_MEDIA_ZOOM}
+                            step={5}
+                            value={ex.mediaZoom || DEFAULT_MEDIA_ZOOM}
+                            onChange={(e) =>
+                              setMediaZoom(bIdx, eIdx, Number(e.target.value))
+                            }
+                            style={{ flex: 1, accentColor: "#2f80ed" }}
+                          />
+                          <span style={{ fontSize: 14 }}>🔍+</span>
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "#888",
+                              minWidth: 40,
+                              textAlign: "right",
+                            }}
+                          >
+                            {ex.mediaZoom || DEFAULT_MEDIA_ZOOM}%
+                          </span>
                         </div>
                       </div>
                     ) : (
@@ -3546,18 +3556,31 @@ export default function Workout() {
                     {/* Photo/gif de démonstration si présente */}
                     {ex.mediaUrl && (
                       <div style={{ marginBottom: 10, position: "relative" }}>
-                        <img
-                          src={ex.mediaUrl}
-                          alt={ex.name}
+                        <div
                           style={{
                             width: "100%",
-                            maxHeight:
-                              MEDIA_DISPLAY_SIZES[ex.mediaSize || DEFAULT_MEDIA_SIZE]
-                                .maxHeight,
-                            objectFit: "cover",
+                            height: MEDIA_FRAME_HEIGHT,
+                            overflow: "hidden",
                             borderRadius: 8,
+                            background: "#000",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
                           }}
-                        />
+                        >
+                          <img
+                            src={ex.mediaUrl}
+                            alt={ex.name}
+                            style={{
+                              maxWidth: "100%",
+                              maxHeight: "100%",
+                              objectFit: "contain",
+                              transform: `scale(${
+                                (ex.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
+                              })`,
+                            }}
+                          />
+                        </div>
                         {ex.mediaType === "gif" && (
                           <span
                             style={{
