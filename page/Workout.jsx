@@ -36,6 +36,14 @@ const normalizeExerciseName = (name) => {
     .replace(/\s+/g, " ");                  // normalise espaces multiples en un seul
 };
 
+// Tailles d'affichage disponibles pour les photos/gifs de démonstration
+const MEDIA_DISPLAY_SIZES = {
+  small: { label: "S", maxHeight: 120 },
+  medium: { label: "M", maxHeight: 220 },
+  large: { label: "L", maxHeight: 380 },
+};
+const DEFAULT_MEDIA_SIZE = "medium";
+
 export default function Workout() {
   const { currentUser, userRole, userGroup } = useAuth();
 
@@ -88,6 +96,13 @@ export default function Workout() {
   const [duplicateTargetDate, setDuplicateTargetDate] = useState(null);
   const [uploadingMedia, setUploadingMedia] = useState({});
 
+  /* ===================== GROUPES PERSONNALISÉS ===================== */
+  const [customGroups, setCustomGroups] = useState([]);
+  const [showGroupsManager, setShowGroupsManager] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState(null);
+  const [groupNameInput, setGroupNameInput] = useState("");
+  const [groupAthleteIds, setGroupAthleteIds] = useState([]);
+
   /* ===================== RM + VMA ===================== */
   useEffect(() => {
     if (!currentUser) return;
@@ -139,15 +154,20 @@ export default function Workout() {
         // 2. Séances de son groupe
         // 3. Séances "moi" créées par lui
         // 4. Séances individuelles ciblées sur lui
+        // 5. Séances ciblées sur un groupe personnalisé dont il fait partie
+        const myGroupIds = customGroups
+          .filter((g) => (g.athleteIds || []).includes(currentUser.uid))
+          .map((g) => g.id);
         filtered = allWorkouts.filter((w) => {
           if (w.group === "total") return true;
           if (w.group === userGroup) return true;
           if (w.group === "moi" && w.createdBy === currentUser.uid) return true;
           if (w.targetUserId === currentUser.uid) return true;
+          if (myGroupIds.includes(w.group)) return true;
           return false;
         });
       }
-      
+
       // Trier par date
       filtered.sort((a, b) => a.date.localeCompare(b.date));
       setEvents(filtered);
@@ -159,7 +179,85 @@ export default function Workout() {
 
   useEffect(() => {
     fetchSessions();
-  }, [currentUser, userRole, userGroup]);
+  }, [currentUser, userRole, userGroup, customGroups]);
+
+  /* ===================== GROUPES PERSONNALISÉS : chargement ===================== */
+  const fetchGroupsList = async () => {
+    try {
+      const snap = await getDocs(collection(db, "groups"));
+      setCustomGroups(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      console.error("Erreur chargement groupes:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (!currentUser) return;
+    fetchGroupsList();
+  }, [currentUser]);
+
+  const resetGroupForm = () => {
+    setEditingGroupId(null);
+    setGroupNameInput("");
+    setGroupAthleteIds([]);
+  };
+
+  const startEditGroup = (g) => {
+    setEditingGroupId(g.id);
+    setGroupNameInput(g.name || "");
+    setGroupAthleteIds(g.athleteIds || []);
+  };
+
+  const toggleNewGroupAthlete = (athleteId) => {
+    setGroupAthleteIds((prev) =>
+      prev.includes(athleteId)
+        ? prev.filter((id) => id !== athleteId)
+        : [...prev, athleteId]
+    );
+  };
+
+  const saveGroup = async () => {
+    if (!groupNameInput.trim()) {
+      alert("Merci de donner un nom au groupe");
+      return;
+    }
+    if (groupAthleteIds.length === 0) {
+      alert("Merci de sélectionner au moins un athlète");
+      return;
+    }
+    try {
+      if (editingGroupId) {
+        await updateDoc(doc(db, "groups", editingGroupId), {
+          name: groupNameInput.trim(),
+          athleteIds: groupAthleteIds,
+        });
+      } else {
+        await addDoc(collection(db, "groups"), {
+          name: groupNameInput.trim(),
+          athleteIds: groupAthleteIds,
+          createdBy: currentUser.uid,
+          createdAt: serverTimestamp(),
+        });
+      }
+      resetGroupForm();
+      await fetchGroupsList();
+    } catch (e) {
+      console.error("Erreur enregistrement groupe:", e);
+      alert("❌ Erreur lors de l'enregistrement du groupe : " + e.message);
+    }
+  };
+
+  const deleteGroup = async (groupId) => {
+    if (!window.confirm("Supprimer ce groupe ? Les séances déjà créées pour ce groupe resteront mais ne seront plus visibles par personne.")) return;
+    try {
+      await deleteDoc(doc(db, "groups", groupId));
+      if (editingGroupId === groupId) resetGroupForm();
+      await fetchGroupsList();
+    } catch (e) {
+      console.error("Erreur suppression groupe:", e);
+      alert("❌ Erreur lors de la suppression du groupe : " + e.message);
+    }
+  };
 
   /* ===================== ATHLÈTES (ADMIN) ===================== */
   useEffect(() => {
@@ -960,12 +1058,49 @@ export default function Workout() {
     setBlocks(nb);
   };
 
-  /* ===================== MEDIA EXERCICE (PHOTO — stockée en base64 dans Firestore, 100% gratuit) ===================== */
+  /* ===================== MEDIA EXERCICE (PHOTO/GIF — stockée en base64 dans Firestore, 100% gratuit) ===================== */
   const handleMediaUpload = (bIdx, eIdx, file) => {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      alert("Merci de choisir une image (les vidéos ne sont pas supportées pour rester gratuit)");
+      alert("Merci de choisir une image ou un GIF (les vidéos ne sont pas supportées pour rester gratuit)");
+      return;
+    }
+
+    const key = `${bIdx}-${eIdx}`;
+    const isGif = file.type === "image/gif";
+
+    if (isGif) {
+      // Les GIF ne peuvent PAS passer par un <canvas> : ça ne garderait qu'une seule
+      // image fixe et l'animation serait perdue. On stocke donc le GIF tel quel en
+      // base64, avec une limite de taille plus stricte (pas de compression possible).
+      const maxGifSize = 800 * 1024; // 800 Ko max pour un GIF brut
+      if (file.size > maxGifSize) {
+        alert(
+          "⚠️ Ce GIF est trop volumineux (" +
+            Math.round(file.size / 1024) +
+            " Ko, max 800 Ko) pour être stocké gratuitement animé. Essaie un GIF plus court/léger, ou utilise une image fixe (JPEG/PNG)."
+        );
+        return;
+      }
+
+      setUploadingMedia((prev) => ({ ...prev, [key]: true }));
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const nb = [...blocks];
+        nb[bIdx].exercises[eIdx].mediaUrl = event.target.result;
+        nb[bIdx].exercises[eIdx].mediaType = "gif";
+        if (!nb[bIdx].exercises[eIdx].mediaSize) {
+          nb[bIdx].exercises[eIdx].mediaSize = DEFAULT_MEDIA_SIZE;
+        }
+        setBlocks(nb);
+        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
+      };
+      reader.onerror = () => {
+        alert("❌ Erreur lors de la lecture du GIF");
+        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
+      };
+      reader.readAsDataURL(file);
       return;
     }
 
@@ -975,7 +1110,6 @@ export default function Workout() {
       return;
     }
 
-    const key = `${bIdx}-${eIdx}`;
     setUploadingMedia((prev) => ({ ...prev, [key]: true }));
 
     const reader = new FileReader();
@@ -1007,6 +1141,9 @@ export default function Workout() {
         const nb = [...blocks];
         nb[bIdx].exercises[eIdx].mediaUrl = dataUrl;
         nb[bIdx].exercises[eIdx].mediaType = "image";
+        if (!nb[bIdx].exercises[eIdx].mediaSize) {
+          nb[bIdx].exercises[eIdx].mediaSize = DEFAULT_MEDIA_SIZE;
+        }
         setBlocks(nb);
         setUploadingMedia((prev) => ({ ...prev, [key]: false }));
       };
@@ -1027,6 +1164,13 @@ export default function Workout() {
     const nb = [...blocks];
     nb[bIdx].exercises[eIdx].mediaUrl = "";
     nb[bIdx].exercises[eIdx].mediaType = "";
+    nb[bIdx].exercises[eIdx].mediaSize = "";
+    setBlocks(nb);
+  };
+
+  const setMediaSize = (bIdx, eIdx, size) => {
+    const nb = [...blocks];
+    nb[bIdx].exercises[eIdx].mediaSize = size;
     setBlocks(nb);
   };
 
@@ -1226,6 +1370,256 @@ export default function Workout() {
           >
             📋 Dupliquer semaine
           </button>
+          <button
+            onClick={() => {
+              resetGroupForm();
+              setShowGroupsManager(true);
+            }}
+            style={{
+              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
+              background: "linear-gradient(135deg, #a86bde 0%, #7b2ff7 100%)",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              fontSize: window.innerWidth <= 768 ? 13 : 15,
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            👥 Gérer les groupes
+          </button>
+        </div>
+      )}
+
+      {/* Modal Gestion des groupes personnalisés */}
+      {showGroupsManager && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.75)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => setShowGroupsManager(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              borderRadius: 12,
+              padding: 24,
+              width: "100%",
+              maxWidth: 560,
+              maxHeight: "85vh",
+              overflowY: "auto",
+              border: "1px solid rgba(123,47,247,0.4)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 16,
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: 18 }}>👥 Groupes personnalisés</h3>
+              <button
+                onClick={() => setShowGroupsManager(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: 22,
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: 12, color: "#888", marginBottom: 16 }}>
+              Crée des groupes libres avec les athlètes de ton choix (un athlète peut
+              appartenir à plusieurs groupes en même temps). Une fois créé, le groupe
+              apparaît dans la liste "Groupe cible" lors de la création d'une séance.
+            </p>
+
+            {/* Liste des groupes existants */}
+            {customGroups.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                {customGroups.map((g) => (
+                  <div
+                    key={g.id}
+                    style={{
+                      background: "#0a0a0a",
+                      borderRadius: 8,
+                      padding: 12,
+                      marginBottom: 8,
+                      border:
+                        editingGroupId === g.id
+                          ? "1px solid #7b2ff7"
+                          : "1px solid #333",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: "bold", fontSize: 14 }}>
+                          {g.name}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#888" }}>
+                          {(g.athleteIds || [])
+                            .map((id) => {
+                              const a = athletes.find((ath) => ath.id === id);
+                              return a ? a.name || a.email : "?";
+                            })
+                            .join(", ")}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          onClick={() => startEditGroup(g)}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #4facfe",
+                            background: "transparent",
+                            color: "#4facfe",
+                            fontSize: 12,
+                            cursor: "pointer",
+                          }}
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => deleteGroup(g.id)}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #e74c3c",
+                            background: "transparent",
+                            color: "#e74c3c",
+                            fontSize: 12,
+                            cursor: "pointer",
+                          }}
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Formulaire création / édition */}
+            <div
+              style={{
+                borderTop: "1px solid #333",
+                paddingTop: 16,
+              }}
+            >
+              <h4 style={{ fontSize: 14, marginBottom: 8 }}>
+                {editingGroupId ? "✏️ Modifier le groupe" : "➕ Nouveau groupe"}
+              </h4>
+              <input
+                type="text"
+                placeholder="Nom du groupe (ex: Groupe 1)"
+                value={groupNameInput}
+                onChange={(e) => setGroupNameInput(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  borderRadius: 6,
+                  border: "1px solid #555",
+                  background: "#0a0a0a",
+                  color: "#fff",
+                  fontSize: 14,
+                  marginBottom: 10,
+                }}
+              />
+              <div
+                style={{
+                  maxHeight: 200,
+                  overflowY: "auto",
+                  border: "1px solid #333",
+                  borderRadius: 6,
+                  padding: 8,
+                  marginBottom: 10,
+                }}
+              >
+                {athletes.map((a) => (
+                  <label
+                    key={a.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "4px 2px",
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={groupAthleteIds.includes(a.id)}
+                      onChange={() => toggleNewGroupAthlete(a.id)}
+                    />
+                    {a.name || a.email}
+                  </label>
+                ))}
+                {athletes.length === 0 && (
+                  <div style={{ fontSize: 12, color: "#888" }}>
+                    Aucun athlète trouvé.
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  onClick={saveGroup}
+                  style={{
+                    flex: 1,
+                    padding: 10,
+                    borderRadius: 6,
+                    border: "none",
+                    background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                    color: "white",
+                    fontWeight: "bold",
+                    cursor: "pointer",
+                  }}
+                >
+                  {editingGroupId ? "Enregistrer" : "Créer le groupe"}
+                </button>
+                {editingGroupId && (
+                  <button
+                    onClick={resetGroupForm}
+                    style={{
+                      padding: 10,
+                      borderRadius: 6,
+                      border: "1px solid #555",
+                      background: "transparent",
+                      color: "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Annuler
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1721,6 +2115,15 @@ export default function Workout() {
               <option value="avant">Avant</option>
               <option value="trois quart">Trois Quart</option>
               <option value="individuel">Individuel</option>
+              {customGroups.length > 0 && (
+                <optgroup label="Groupes personnalisés">
+                  {customGroups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      👥 {g.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
 
@@ -1895,10 +2298,10 @@ export default function Workout() {
                     />
                   </div>
 
-                  {/* Champ photo de démonstration */}
+                  {/* Champ photo/gif de démonstration */}
                   <div style={{ marginBottom: 10 }}>
                     <label style={{ fontSize: 12, color: "#888", marginBottom: 4, display: "block" }}>
-                      📸 Photo de démonstration
+                      📸 Photo / GIF de démonstration
                     </label>
                     {ex.mediaUrl ? (
                       <div style={{ position: "relative", marginBottom: 8 }}>
@@ -1907,7 +2310,9 @@ export default function Workout() {
                           alt="Démo exercice"
                           style={{
                             width: "100%",
-                            maxHeight: 200,
+                            maxHeight:
+                              MEDIA_DISPLAY_SIZES[ex.mediaSize || DEFAULT_MEDIA_SIZE]
+                                .maxHeight,
                             objectFit: "cover",
                             borderRadius: 8,
                           }}
@@ -1930,6 +2335,57 @@ export default function Workout() {
                         >
                           ✕
                         </button>
+                        {ex.mediaType === "gif" && (
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 8,
+                              left: 8,
+                              background: "rgba(0,0,0,0.7)",
+                              color: "#fff",
+                              fontSize: 11,
+                              fontWeight: "bold",
+                              padding: "2px 8px",
+                              borderRadius: 4,
+                            }}
+                          >
+                            GIF animé
+                          </span>
+                        )}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 6,
+                            marginTop: 6,
+                            alignItems: "center",
+                          }}
+                        >
+                          <span style={{ fontSize: 11, color: "#888" }}>Taille :</span>
+                          {Object.entries(MEDIA_DISPLAY_SIZES).map(([key, cfg]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => setMediaSize(bIdx, eIdx, key)}
+                              style={{
+                                padding: "3px 10px",
+                                borderRadius: 5,
+                                border:
+                                  (ex.mediaSize || DEFAULT_MEDIA_SIZE) === key
+                                    ? "1px solid #2f80ed"
+                                    : "1px solid #555",
+                                background:
+                                  (ex.mediaSize || DEFAULT_MEDIA_SIZE) === key
+                                    ? "#2f80ed"
+                                    : "#0a0a0a",
+                                color: "#fff",
+                                fontSize: 11,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {cfg.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     ) : (
                       <div>
@@ -1950,9 +2406,12 @@ export default function Workout() {
                             fontSize: 13,
                           }}
                         />
+                        <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>
+                          Les GIF sont acceptés et resteront animés (max 800 Ko).
+                        </div>
                         {uploadingMedia[`${bIdx}-${eIdx}`] && (
                           <div style={{ fontSize: 12, color: "#f39c12", marginTop: 4 }}>
-                            ⏳ Compression en cours...
+                            ⏳ Traitement en cours...
                           </div>
                         )}
                       </div>
@@ -3084,19 +3543,38 @@ export default function Workout() {
                       </div>
                     )}
 
-                    {/* Photo de démonstration si présente */}
+                    {/* Photo/gif de démonstration si présente */}
                     {ex.mediaUrl && (
-                      <div style={{ marginBottom: 10 }}>
+                      <div style={{ marginBottom: 10, position: "relative" }}>
                         <img
                           src={ex.mediaUrl}
                           alt={ex.name}
                           style={{
                             width: "100%",
-                            maxHeight: 250,
+                            maxHeight:
+                              MEDIA_DISPLAY_SIZES[ex.mediaSize || DEFAULT_MEDIA_SIZE]
+                                .maxHeight,
                             objectFit: "cover",
                             borderRadius: 8,
                           }}
                         />
+                        {ex.mediaType === "gif" && (
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 8,
+                              left: 8,
+                              background: "rgba(0,0,0,0.7)",
+                              color: "#fff",
+                              fontSize: 11,
+                              fontWeight: "bold",
+                              padding: "2px 8px",
+                              borderRadius: 4,
+                            }}
+                          >
+                            GIF animé
+                          </span>
+                        )}
                       </div>
                     )}
 

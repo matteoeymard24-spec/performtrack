@@ -31,11 +31,18 @@ const getLocalDateStr = (date) => {
   return `${y}-${m}-${dd}`;
 };
 
+// Retourne les ids des groupes personnalisés (collection "groups") dont fait partie un athlète
+const getAthleteGroupIds = (athleteId, customGroups) =>
+  (customGroups || [])
+    .filter((g) => (g.athleteIds || []).includes(athleteId))
+    .map((g) => g.id);
+
 export default function Dashboard() {
   const { currentUser, userRole, userProfile, isSuperAdmin } = useAuth();
 
   const [athletes, setAthletes] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [customGroups, setCustomGroups] = useState([]);
   const [wellnessFilter, setWellnessFilter] = useState("total");
   const [showAthleteDetail, setShowAthleteDetail] = useState(null);
   const [athleteDetails, setAthleteDetails] = useState(null);
@@ -56,6 +63,20 @@ export default function Dashboard() {
   const [completedSessions, setCompletedSessions] = useState(0);
 
   const [athleteSearchQuery, setAthleteSearchQuery] = useState("");
+
+  /* ===================== GROUPES PERSONNALISÉS ===================== */
+  useEffect(() => {
+    if (!currentUser) return;
+    const fetchGroups = async () => {
+      try {
+        const snap = await getDocs(collection(db, "groups"));
+        setCustomGroups(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        console.error("Erreur chargement groupes:", e);
+      }
+    };
+    fetchGroups();
+  }, [currentUser]);
 
   const getUserProgress = (workout, userId = currentUser?.uid) => {
     if (!workout || !userId) {
@@ -342,13 +363,15 @@ export default function Dashboard() {
           (d) => ({ id: d.id, ...d.data() })
         );
         const userGrp = userProfile?.group || "total";
+        const myGroupIds = getAthleteGroupIds(currentUser.uid, customGroups);
 
         const userWorkouts = allWorkouts.filter((w) => {
           return (
             w.group === "total" ||
             w.group === userGrp ||
             (w.group === "moi" && w.createdBy === currentUser.uid) ||
-            w.targetUserId === currentUser.uid
+            w.targetUserId === currentUser.uid ||
+            myGroupIds.includes(w.group)
           );
         });
 
@@ -363,7 +386,8 @@ export default function Dashboard() {
             w.group === "total" ||
             w.group === userGrp ||
             (w.group === "moi" && w.createdBy === currentUser.uid) ||
-            w.targetUserId === currentUser.uid
+            w.targetUserId === currentUser.uid ||
+            myGroupIds.includes(w.group)
           );
         });
 
@@ -373,7 +397,7 @@ export default function Dashboard() {
       }
     };
     load();
-  }, [userRole, currentUser, userProfile]);
+  }, [userRole, currentUser, userProfile, customGroups]);
 
   useEffect(() => {
     if (userRole === "athlete" && userProfile)
@@ -448,9 +472,13 @@ export default function Dashboard() {
           const wScore = todayW ? calculateWellnessScore(todayW) : null;
 
           const uGrp = u.group || "total";
+          const uGroupIds = getAthleteGroupIds(u.id, customGroups);
           const uWorkouts = allWorkouts.filter(
             (w) =>
-              w.group === "total" || w.group === uGrp || w.targetUserId === u.id
+              w.group === "total" ||
+              w.group === uGrp ||
+              w.targetUserId === u.id ||
+              uGroupIds.includes(w.group)
           );
           const todayWorkout = uWorkouts.find((w) => w.date === today);
 
@@ -483,7 +511,7 @@ export default function Dashboard() {
       }
     };
     load();
-  }, [userRole, currentUser]);
+  }, [userRole, currentUser, customGroups]);
 
   const loadAthleteDetail = async (athlete) => {
     try {
@@ -550,11 +578,13 @@ export default function Dashboard() {
         ...d.data(),
       }));
       const uGrp = athlete.group || "total";
+      const uGroupIds = getAthleteGroupIds(athlete.id, customGroups);
       const uWorkouts = allW.filter(
         (w) =>
           w.group === "total" ||
           w.group === uGrp ||
-          w.targetUserId === athlete.id
+          w.targetUserId === athlete.id ||
+          uGroupIds.includes(w.group)
       );
       const todayW = uWorkouts.find((w) => w.date === today) || null;
 

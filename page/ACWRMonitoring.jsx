@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { collection, query, where, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import { Navigate } from "react-router-dom";
 import {
   LineChart,
@@ -15,12 +15,22 @@ import {
   Legend,
 } from "recharts";
 
+const getLocalDateStr = (date) => {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+};
+
 export default function ACWRMonitoring() {
   const { userRole } = useAuth();
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState(null);
   const [acwrData, setAcwrData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingAthlete, setLoadingAthlete] = useState(false);
+  const [customGroups, setCustomGroups] = useState([]);
 
   // 🔒 Sécurité : Admin uniquement
   if (userRole !== "admin") {
@@ -31,19 +41,14 @@ export default function ACWRMonitoring() {
   useEffect(() => {
     const fetchAthletes = async () => {
       try {
-        const usersQuery = query(
-          collection(db, "users"),
-          where("role", "==", "athlete")
-        );
-        const usersSnap = await getDocs(usersQuery);
-        const athletesData = usersSnap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        }));
+        const usersSnap = await getDocs(collection(db, "users"));
+        const athletesData = usersSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((u) => u.superAdmin !== true && u.role !== "admin");
 
         athletesData.sort((a, b) => {
-          const nameA = a.firstName || a.email;
-          const nameB = b.firstName || b.email;
+          const nameA = a.firstName || a.email || "";
+          const nameB = b.firstName || b.email || "";
           return nameA.localeCompare(nameB);
         });
 
@@ -58,53 +63,96 @@ export default function ACWRMonitoring() {
     fetchAthletes();
   }, []);
 
-  // Calculer l'ACWR pour chaque jour
-  const calculateACWRTimeline = (workouts) => {
-    if (workouts.length === 0) return [];
+  // Charger les groupes personnalisés (pour que l'ACWR compte aussi les séances
+  // ciblées sur un groupe personnalisé dont fait partie l'athlète)
+  useEffect(() => {
+    const fetchGroups = async () => {
+      try {
+        const snap = await getDocs(collection(db, "groups"));
+        setCustomGroups(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (error) {
+        console.error("Erreur chargement groupes:", error);
+      }
+    };
+    fetchGroups();
+  }, []);
+
+  /* ===================== HELPERS ===================== */
+  const getUserProgress = (workout, userId) => {
+    if (!workout || !userId) return null;
+    return workout.userProgress?.[userId] || null;
+  };
+
+  // Calcule la charge d'une séance pour un athlète donné
+  // Gère les deux formats de feedback :
+  // - muscu : { series: [{ rpe, ... }, ...], notes }
+  // - sprint/endurance : { rpe, actualDistance, notes }
+  const calculateLoad = (workout, userId) => {
+    const progress = getUserProgress(workout, userId);
+    const feedback = progress?.feedback;
+    if (!feedback) return 0;
+
+    let totalRPE = 0;
+    let count = 0;
+
+    Object.values(feedback).forEach((fb) => {
+      if (fb.series && Array.isArray(fb.series)) {
+        fb.series.forEach((serie) => {
+          if (serie.rpe !== undefined && serie.rpe !== null) {
+            totalRPE += Number(serie.rpe);
+            count++;
+          }
+        });
+      } else if (fb.rpe !== undefined && fb.rpe !== null) {
+        totalRPE += Number(fb.rpe);
+        count++;
+      }
+    });
+
+    const avgRPE = count > 0 ? totalRPE / count : 0;
+    const duration = workout.estimatedDuration || 60;
+    return avgRPE * duration;
+  };
+
+  // Calculer l'ACWR pour chaque jour sur les 60 derniers jours
+  const calculateACWRTimeline = (workouts, userId) => {
+    if (!workouts || workouts.length === 0) return [];
+
+    // Ne garder que les séances effectivement complétées par cet athlète
+    const completedWorkouts = workouts.filter(
+      (w) => getUserProgress(w, userId)?.completedAt
+    );
+
+    if (completedWorkouts.length === 0) return [];
 
     const timeline = [];
     const today = new Date();
 
-    // Remonter sur 60 jours
     for (let i = 60; i >= 0; i--) {
       const date = new Date(today);
       date.setDate(date.getDate() - i);
-      const dateStr = date.toISOString().slice(0, 10);
+      const dateStr = getLocalDateStr(date);
 
-      // Calculer la charge pour cette journée
       const last7Days = [];
       const last28Days = [];
 
-      workouts.forEach((w) => {
-        const workoutDate = new Date(w.date);
+      completedWorkouts.forEach((w) => {
+        const workoutDate = new Date(w.date + "T12:00:00");
         const diff = (date - workoutDate) / (1000 * 60 * 60 * 24);
 
-        if (diff >= 0 && diff < 7 && w.completedAt) {
-          last7Days.push(w);
-        }
-        if (diff >= 0 && diff < 28 && w.completedAt) {
-          last28Days.push(w);
-        }
+        if (diff >= 0 && diff < 7) last7Days.push(w);
+        if (diff >= 0 && diff < 28) last28Days.push(w);
       });
 
-      const calculateLoad = (workout) => {
-        if (!workout.feedback) return 0;
-        let totalRPE = 0;
-        let count = 0;
-        Object.values(workout.feedback).forEach((fb) => {
-          if (fb.rpe) {
-            totalRPE += Number(fb.rpe);
-            count++;
-          }
-        });
-        const avgRPE = count > 0 ? totalRPE / count : 0;
-        const duration = workout.estimatedDuration || 60;
-        return avgRPE * duration;
-      };
+      // Seuil minimum de fiabilité : au moins 10 séances complétées sur 28 jours
+      if (last28Days.length < 10) continue;
 
-      const acuteLoad = last7Days.reduce((sum, w) => sum + calculateLoad(w), 0);
+      const acuteLoad = last7Days.reduce(
+        (sum, w) => sum + calculateLoad(w, userId),
+        0
+      );
       const chronicLoad =
-        last28Days.reduce((sum, w) => sum + calculateLoad(w), 0) / 4;
+        last28Days.reduce((sum, w) => sum + calculateLoad(w, userId), 0) / 4;
 
       const acwr = chronicLoad > 0 ? acuteLoad / chronicLoad : null;
 
@@ -125,28 +173,40 @@ export default function ACWRMonitoring() {
   const loadAthleteACWR = async (athlete) => {
     setSelectedAthlete(athlete);
     setAcwrData([]);
+    setLoadingAthlete(true);
 
     try {
-      // Charger toutes les séances complétées
-      const workoutsQuery = query(
-        collection(db, "workout"),
-        where("completedBy", "==", athlete.id),
-        orderBy("date", "asc")
-      );
-      const workoutsSnap = await getDocs(workoutsQuery);
-      const workouts = workoutsSnap.docs.map((d) => ({
+      // Charger TOUTES les séances (les règles Firestore autorisent la lecture),
+      // puis filtrer celles concernant cet athlète (total / son groupe / individuelle ciblée)
+      const workoutsSnap = await getDocs(collection(db, "workout"));
+      const allWorkouts = workoutsSnap.docs.map((d) => ({
         id: d.id,
         ...d.data(),
       }));
 
-      const timeline = calculateACWRTimeline(workouts);
+      const athleteGroup = athlete.group || "total";
+      const myGroupIds = customGroups
+        .filter((g) => (g.athleteIds || []).includes(athlete.id))
+        .map((g) => g.id);
+      const relevantWorkouts = allWorkouts.filter(
+        (w) =>
+          w.group === "total" ||
+          w.group === athleteGroup ||
+          w.targetUserId === athlete.id ||
+          myGroupIds.includes(w.group)
+      );
+
+      const timeline = calculateACWRTimeline(relevantWorkouts, athlete.id);
       setAcwrData(timeline);
     } catch (error) {
       console.error("Erreur chargement ACWR:", error);
+    } finally {
+      setLoadingAthlete(false);
     }
   };
 
   const getACWRColor = (value) => {
+    if (value === null || value === undefined) return "#888";
     if (value < 0.8) return "#3498db"; // Sous-chargé
     if (value <= 1.3) return "#27ae60"; // Optimal
     if (value <= 1.5) return "#f39c12"; // Attention
@@ -218,8 +278,14 @@ export default function ACWRMonitoring() {
         </select>
       </div>
 
+      {loadingAthlete && (
+        <div style={{ textAlign: "center", padding: 20, color: "#888" }}>
+          ⏳ Chargement des données...
+        </div>
+      )}
+
       {/* Affichage ACWR */}
-      {selectedAthlete && (
+      {selectedAthlete && !loadingAthlete && (
         <div>
           <div
             style={{
@@ -342,7 +408,11 @@ export default function ACWRMonitoring() {
                   <ResponsiveContainer width="100%" height={400}>
                     <LineChart data={acwrData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-                      <XAxis dataKey="date" stroke="#888" />
+                      <XAxis
+                        dataKey="date"
+                        stroke="#888"
+                        tickFormatter={(d) => d.slice(5)}
+                      />
                       <YAxis domain={[0, 2]} stroke="#888" />
                       <Tooltip
                         contentStyle={{
@@ -484,7 +554,8 @@ export default function ACWRMonitoring() {
                   Pas assez de données pour calculer l'ACWR.
                 </p>
                 <p style={{ fontSize: 14, margin: "10px 0 0 0" }}>
-                  L'athlète doit compléter au moins 7 séances avec feedback RPE.
+                  Il faut au moins 10 séances complétées avec feedback RPE sur
+                  les 28 derniers jours.
                 </p>
               </div>
             )}

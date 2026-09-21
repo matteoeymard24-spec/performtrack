@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ========== USERS ==========
+    match /users/{userId} {
+      // Lecture : Soi-même OU admins/superadmins
+      allow read: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+
+      // Écriture : Soi-même OU admins
+      allow write: if request.auth != null && (
+        request.auth.uid == userId ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+
+      // Sous-collections (rm, weight_history)
+      match /{subcollection}/{docId} {
+        allow read, write: if request.auth != null && (
+          request.auth.uid == userId ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+        );
+      }
+    }
+
+    // ========== WORKOUT ==========
+    match /workout/{workoutId} {
+      // Lecture : Tous les utilisateurs authentifiés
+      allow read: if request.auth != null;
+
+      // Création : Admins uniquement
+      allow create: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+
+      // Mise à jour : Admins OU athlètes qui modifient UNIQUEMENT leur userProgress
+      allow update: if request.auth != null && (
+        // Admins peuvent tout modifier
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true ||
+        // OU athlètes modifient seulement leur propre userProgress
+        (
+          // Vérifier que SEUL userProgress est modifié
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userProgress']) &&
+          // Vérifier que SEUL son propre userId est modifié dans userProgress
+          request.resource.data.userProgress.diff(resource.data.userProgress).affectedKeys().hasOnly([request.auth.uid])
+        )
+      );
+
+      // Suppression : Admins uniquement
+      allow delete: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+    }
+
+    // ========== WELLNESS ==========
+    match /wellness/{wellnessId} {
+      // Lecture : Admins OU le propriétaire
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+
+      // Création : Le propriétaire uniquement (userId doit correspondre)
+      allow create: if request.auth != null &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Mise à jour : Le propriétaire OU admins
+      allow update: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+
+      // Suppression : Le propriétaire OU admins
+      allow delete: if request.auth != null && (
+        resource.data.userId == request.auth.uid ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+    }
+
+    // ========== GROUPS (groupes personnalisés d'athlètes) ==========
+    match /groups/{groupId} {
+      // Lecture : tout utilisateur authentifié (nécessaire pour que chaque athlète
+      // puisse savoir de quels groupes il fait partie et voir les séances ciblées dessus)
+      allow read: if request.auth != null;
+
+      // Écriture (création / modification / suppression) : Admins uniquement
+      allow write: if request.auth != null && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+    }
+  }
+}
