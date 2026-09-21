@@ -2217,9 +2217,46 @@ export default function Workout() {
                   }}
                 />
                 <button
-                  onClick={() => removeBlock(bIdx)}
+                  onClick={() => moveBlock(bIdx, -1)}
+                  disabled={bIdx === 0}
+                  title="Monter ce bloc"
                   style={{
                     marginLeft: 10,
+                    padding: "6px 10px",
+                    background: bIdx === 0 ? "#333" : "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: bIdx === 0 ? "not-allowed" : "pointer",
+                    opacity: bIdx === 0 ? 0.4 : 1,
+                  }}
+                >
+                  ▲
+                </button>
+                <button
+                  onClick={() => moveBlock(bIdx, 1)}
+                  disabled={bIdx === blocks.length - 1}
+                  title="Descendre ce bloc"
+                  style={{
+                    marginLeft: 6,
+                    padding: "6px 10px",
+                    background:
+                      bIdx === blocks.length - 1
+                        ? "#333"
+                        : "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: bIdx === blocks.length - 1 ? "not-allowed" : "pointer",
+                    opacity: bIdx === blocks.length - 1 ? 0.4 : 1,
+                  }}
+                >
+                  ▼
+                </button>
+                <button
+                  onClick={() => removeBlock(bIdx)}
+                  style={{
+                    marginLeft: 6,
                     padding: "6px 12px",
                     background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
                     color: "white",
