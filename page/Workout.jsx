@@ -997,6 +997,15 @@ export default function Workout() {
 
   const removeBlock = (i) => setBlocks(blocks.filter((_, idx) => idx !== i));
 
+  // Déplace un bloc vers le haut (-1) ou vers le bas (+1) dans la liste
+  const moveBlock = (i, direction) => {
+    const target = i + direction;
+    if (target < 0 || target >= blocks.length) return;
+    const nb = [...blocks];
+    [nb[i], nb[target]] = [nb[target], nb[i]];
+    setBlocks(nb);
+  };
+
   const addExercise = (bIdx) => {
     const nb = [...blocks];
     let newExercise;
