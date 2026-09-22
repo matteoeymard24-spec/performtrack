@@ -1490,7 +1490,10 @@ export default function Workout() {
                           {(g.athleteIds || [])
                             .map((id) => {
                               const a = athletes.find((ath) => ath.id === id);
-                              return a ? a.name || a.email : "?";
+                              if (!a) return "?";
+                              return a.firstName && a.lastName
+                                ? `${a.firstName} ${a.lastName}`
+                                : a.displayName || a.email || "?";
                             })
                             .join(", ")}
                         </div>
@@ -1584,7 +1587,9 @@ export default function Workout() {
                       checked={groupAthleteIds.includes(a.id)}
                       onChange={() => toggleNewGroupAthlete(a.id)}
                     />
-                    {a.name || a.email}
+                    {a.firstName && a.lastName
+                      ? `${a.firstName} ${a.lastName}`
+                      : a.displayName || a.email || "Athlète sans nom"}
                   </label>
                 ))}
                 {athletes.length === 0 && (
