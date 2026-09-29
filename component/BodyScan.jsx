@@ -155,36 +155,70 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
           viewBox="0 0 280 460"
           style={{ maxWidth: "100%", height: "auto" }}
         >
-          {/* Silhouette de fond pour donner une vraie forme de corps */}
-          <g fill={SURFACE_2} stroke={BORDER_STRONG} strokeWidth={1}>
-            <ellipse cx={140} cy={43} rx={32} ry={34} />
-            <rect x={126} y={64} width={28} height={34} rx={10} />
+          {/* Silhouette de fond, segmentée pour un rendu plus anatomique */}
+          <defs>
+            <linearGradient id="bodyShade" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={SURFACE_3} />
+              <stop offset="100%" stopColor={SURFACE_2} />
+            </linearGradient>
+          </defs>
+          <g fill="url(#bodyShade)" stroke={BORDER_STRONG} strokeWidth={1}>
+            {/* Tête */}
+            <ellipse cx={140} cy={42} rx={27} ry={31} />
+            {/* Cou */}
+            <rect x={124} y={64} width={32} height={24} rx={9} />
+            {/* Trapèzes / épaules */}
+            <rect x={68} y={84} width={144} height={28} rx={14} />
+            {/* Buste (plus large) */}
             <path
-              d="M 92 92
-                 Q 140 78 188 92
-                 L 196 100
-                 Q 210 108 216 122
-                 L 234 208
-                 Q 236 218 224 220
-                 L 208 216
-                 L 214 296
-                 Q 216 306 206 308
-                 L 196 306
-                 Q 188 304 188 294
-                 L 184 232
-                 Q 168 244 140 244
-                 Q 112 244 96 232
-                 L 92 294
-                 Q 92 304 84 306
-                 L 74 308
-                 Q 64 306 66 296
-                 L 72 216
-                 L 56 220
-                 Q 44 218 46 208
-                 L 64 122
-                 Q 70 108 84 100
+              d="M 92 100
+                 Q 90 98 92 96
+                 L 188 96
+                 Q 190 98 188 100
+                 L 188 150
+                 Q 188 154 184 156
+                 L 96 156
+                 Q 92 154 92 150
                  Z"
             />
+            {/* Taille (resserrée) */}
+            <path
+              d="M 99 152
+                 L 181 152
+                 L 178 198
+                 L 102 198
+                 Z"
+            />
+            {/* Hanches */}
+            <rect x={94} y={196} width={92} height={50} rx={24} />
+
+            {/* Bras gauche : haut du bras */}
+            <rect x={42} y={112} width={34} height={96} rx={17} />
+            {/* Bras gauche : avant-bras */}
+            <rect x={44} y={204} width={28} height={82} rx={14} />
+            {/* Bras gauche : main */}
+            <ellipse cx={58} cy={300} rx={15} ry={18} />
+
+            {/* Bras droit : haut du bras */}
+            <rect x={204} y={112} width={34} height={96} rx={17} />
+            {/* Bras droit : avant-bras */}
+            <rect x={208} y={204} width={28} height={82} rx={14} />
+            {/* Bras droit : main */}
+            <ellipse cx={222} cy={300} rx={15} ry={18} />
+
+            {/* Jambe gauche : cuisse */}
+            <rect x={102} y={240} width={38} height={96} rx={19} />
+            {/* Jambe gauche : mollet */}
+            <rect x={106} y={332} width={30} height={86} rx={15} />
+            {/* Jambe gauche : pied */}
+            <rect x={94} y={414} width={48} height={24} rx={12} />
+
+            {/* Jambe droite : cuisse */}
+            <rect x={140} y={240} width={38} height={96} rx={19} />
+            {/* Jambe droite : mollet */}
+            <rect x={144} y={332} width={30} height={86} rx={15} />
+            {/* Jambe droite : pied */}
+            <rect x={138} y={414} width={48} height={24} rx={12} />
           </g>
 
           {currentZones.map((zone) => {
