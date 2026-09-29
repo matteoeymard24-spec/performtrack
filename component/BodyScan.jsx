@@ -60,49 +60,54 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
     setSelectedZone(null);
   }
 
+  // Coordonnées calées sur le contour de la silhouette (voir le path plus bas)
+  // pour que chaque zone cliquable épouse réellement le membre correspondant.
   const zones = [
     /* ===== FACE AVANT ===== */
-    { id: "tete", label: "Tête", view: "front", x: 115, y: 18, w: 50, h: 50, rx: 25 },
-    { id: "cou", label: "Cou", view: "front", x: 132, y: 68, w: 16, h: 26, rx: 8 },
-    { id: "tronc", label: "Tronc", view: "front", x: 100, y: 94, w: 80, h: 138, rx: 24 },
-    { id: "epa_g", label: "Épaule G", view: "front", x: 64, y: 94, w: 36, h: 30, rx: 15 },
-    { id: "epa_d", label: "Épaule D", view: "front", x: 180, y: 94, w: 36, h: 30, rx: 15 },
-    { id: "bras_g", label: "Bras G", view: "front", x: 46, y: 124, w: 28, h: 88, rx: 14 },
-    { id: "bras_d", label: "Bras D", view: "front", x: 206, y: 124, w: 28, h: 88, rx: 14 },
-    { id: "avantbras_g", label: "Avant-bras G", view: "front", x: 46, y: 212, w: 28, h: 78, rx: 14 },
-    { id: "avantbras_d", label: "Avant-bras D", view: "front", x: 206, y: 212, w: 28, h: 78, rx: 14 },
-    { id: "main_g", label: "Main G", view: "front", x: 52, y: 290, w: 18, h: 26, rx: 9 },
-    { id: "main_d", label: "Main D", view: "front", x: 210, y: 290, w: 18, h: 26, rx: 9 },
-    { id: "hanche_g", label: "Hanche G", view: "front", x: 110, y: 232, w: 30, h: 30, rx: 15 },
-    { id: "hanche_d", label: "Hanche D", view: "front", x: 140, y: 232, w: 30, h: 30, rx: 15 },
-    { id: "quadri_g", label: "Quadri G", view: "front", x: 110, y: 262, w: 30, h: 88, rx: 15 },
-    { id: "quadri_d", label: "Quadri D", view: "front", x: 140, y: 262, w: 30, h: 88, rx: 15 },
-    { id: "molet_g", label: "Mollet G", view: "front", x: 110, y: 350, w: 30, h: 78, rx: 15 },
-    { id: "molet_d", label: "Mollet D", view: "front", x: 140, y: 350, w: 30, h: 78, rx: 15 },
-    { id: "pied_g", label: "Pied G", view: "front", x: 106, y: 428, w: 34, h: 20, rx: 10 },
-    { id: "pied_d", label: "Pied D", view: "front", x: 140, y: 428, w: 34, h: 20, rx: 10 },
+    { id: "tete", label: "Tête", view: "front", x: 110, y: 14, w: 60, h: 58, rx: 28 },
+    { id: "cou", label: "Cou", view: "front", x: 126, y: 74, w: 28, h: 18, rx: 8 },
+    { id: "epa_g", label: "Épaule G", view: "front", x: 64, y: 88, w: 40, h: 34, rx: 16 },
+    { id: "epa_d", label: "Épaule D", view: "front", x: 176, y: 88, w: 40, h: 34, rx: 16 },
+    { id: "tronc", label: "Tronc", view: "front", x: 94, y: 98, w: 92, h: 104, rx: 22 },
+    { id: "bras_g", label: "Bras G", view: "front", x: 58, y: 122, w: 30, h: 78, rx: 14 },
+    { id: "bras_d", label: "Bras D", view: "front", x: 192, y: 122, w: 30, h: 78, rx: 14 },
+    { id: "avantbras_g", label: "Avant-bras G", view: "front", x: 58, y: 200, w: 26, h: 70, rx: 13 },
+    { id: "avantbras_d", label: "Avant-bras D", view: "front", x: 196, y: 200, w: 26, h: 70, rx: 13 },
+    { id: "main_g", label: "Main G", view: "front", x: 50, y: 298, w: 34, h: 30, rx: 15 },
+    { id: "main_d", label: "Main D", view: "front", x: 196, y: 298, w: 34, h: 30, rx: 15 },
+    { id: "hanche_g", label: "Hanche G", view: "front", x: 94, y: 204, w: 44, h: 40, rx: 18 },
+    { id: "hanche_d", label: "Hanche D", view: "front", x: 142, y: 204, w: 44, h: 40, rx: 18 },
+    { id: "quadri_g", label: "Quadri G", view: "front", x: 104, y: 250, w: 36, h: 82, rx: 18 },
+    { id: "quadri_d", label: "Quadri D", view: "front", x: 140, y: 250, w: 36, h: 82, rx: 18 },
+    { id: "molet_g", label: "Mollet G", view: "front", x: 108, y: 332, w: 28, h: 76, rx: 14 },
+    { id: "molet_d", label: "Mollet D", view: "front", x: 144, y: 332, w: 28, h: 76, rx: 14 },
+    { id: "pied_g", label: "Pied G", view: "front", x: 96, y: 410, w: 48, h: 26, rx: 13 },
+    { id: "pied_d", label: "Pied D", view: "front", x: 136, y: 410, w: 48, h: 26, rx: 13 },
 
-    /* ===== FACE ARRIÈRE ===== */
-    { id: "tete_back", label: "Tête", view: "back", x: 115, y: 18, w: 50, h: 50, rx: 25 },
-    { id: "cou_back", label: "Cou", view: "back", x: 132, y: 68, w: 16, h: 26, rx: 8 },
-    { id: "dos", label: "Dos", view: "back", x: 100, y: 94, w: 80, h: 138, rx: 24 },
-    { id: "epa_g_back", label: "Épaule G", view: "back", x: 64, y: 94, w: 36, h: 30, rx: 15 },
-    { id: "epa_d_back", label: "Épaule D", view: "back", x: 180, y: 94, w: 36, h: 30, rx: 15 },
-    { id: "bras_g_back", label: "Bras G", view: "back", x: 46, y: 124, w: 28, h: 88, rx: 14 },
-    { id: "bras_d_back", label: "Bras D", view: "back", x: 206, y: 124, w: 28, h: 88, rx: 14 },
-    { id: "avantbras_g_back", label: "Avant-bras G", view: "back", x: 46, y: 212, w: 28, h: 78, rx: 14 },
-    { id: "avantbras_d_back", label: "Avant-bras D", view: "back", x: 206, y: 212, w: 28, h: 78, rx: 14 },
-    { id: "main_g_back", label: "Main G", view: "back", x: 52, y: 290, w: 18, h: 26, rx: 9 },
-    { id: "main_d_back", label: "Main D", view: "back", x: 210, y: 290, w: 18, h: 26, rx: 9 },
-    { id: "fessier_g", label: "Fessier G", view: "back", x: 110, y: 232, w: 30, h: 35, rx: 15 },
-    { id: "fessier_d", label: "Fessier D", view: "back", x: 140, y: 232, w: 30, h: 35, rx: 15 },
-    { id: "ischio_g", label: "Ischio G", view: "back", x: 110, y: 268, w: 30, h: 88, rx: 15 },
-    { id: "ischio_d", label: "Ischio D", view: "back", x: 140, y: 268, w: 30, h: 88, rx: 15 },
-    { id: "mollet_g_back", label: "Mollet G", view: "back", x: 110, y: 357, w: 30, h: 78, rx: 15 },
-    { id: "mollet_d_back", label: "Mollet D", view: "back", x: 140, y: 357, w: 30, h: 78, rx: 15 },
-    { id: "pied_g_back", label: "Pied G", view: "back", x: 106, y: 436, w: 34, h: 20, rx: 10 },
-    { id: "pied_d_back", label: "Pied D", view: "back", x: 140, y: 436, w: 34, h: 20, rx: 10 },
+    /* ===== FACE ARRIÈRE (même silhouette, zones dorsales) ===== */
+    { id: "tete_back", label: "Tête", view: "back", x: 110, y: 14, w: 60, h: 58, rx: 28 },
+    { id: "cou_back", label: "Cou", view: "back", x: 126, y: 74, w: 28, h: 18, rx: 8 },
+    { id: "epa_g_back", label: "Épaule G", view: "back", x: 64, y: 88, w: 40, h: 34, rx: 16 },
+    { id: "epa_d_back", label: "Épaule D", view: "back", x: 176, y: 88, w: 40, h: 34, rx: 16 },
+    { id: "dos", label: "Dos", view: "back", x: 94, y: 98, w: 92, h: 104, rx: 22 },
+    { id: "bras_g_back", label: "Bras G", view: "back", x: 58, y: 122, w: 30, h: 78, rx: 14 },
+    { id: "bras_d_back", label: "Bras D", view: "back", x: 192, y: 122, w: 30, h: 78, rx: 14 },
+    { id: "avantbras_g_back", label: "Avant-bras G", view: "back", x: 58, y: 200, w: 26, h: 70, rx: 13 },
+    { id: "avantbras_d_back", label: "Avant-bras D", view: "back", x: 196, y: 200, w: 26, h: 70, rx: 13 },
+    { id: "main_g_back", label: "Main G", view: "back", x: 50, y: 298, w: 34, h: 30, rx: 15 },
+    { id: "main_d_back", label: "Main D", view: "back", x: 196, y: 298, w: 34, h: 30, rx: 15 },
+    { id: "fessier_g", label: "Fessier G", view: "back", x: 94, y: 204, w: 44, h: 40, rx: 18 },
+    { id: "fessier_d", label: "Fessier D", view: "back", x: 142, y: 204, w: 44, h: 40, rx: 18 },
+    { id: "ischio_g", label: "Ischio G", view: "back", x: 104, y: 250, w: 36, h: 82, rx: 18 },
+    { id: "ischio_d", label: "Ischio D", view: "back", x: 140, y: 250, w: 36, h: 82, rx: 18 },
+    { id: "mollet_g_back", label: "Mollet G", view: "back", x: 108, y: 332, w: 28, h: 76, rx: 14 },
+    { id: "mollet_d_back", label: "Mollet D", view: "back", x: 144, y: 332, w: 28, h: 76, rx: 14 },
+    { id: "pied_g_back", label: "Pied G", view: "back", x: 96, y: 410, w: 48, h: 26, rx: 13 },
+    { id: "pied_d_back", label: "Pied D", view: "back", x: 136, y: 410, w: 48, h: 26, rx: 13 },
   ];
+
+  const SILHOUETTE_PATH =
+    "M 140 12 Q 172 12 172 45 Q 172 68 156 72 L 150 80 L 150 90 Q 170 86 196 96 L 218 122 L 222 200 L 216 270 Q 226 280 228 300 Q 228 320 210 322 Q 196 320 198 300 L 204 268 L 200 200 L 192 124 Q 188 108 176 100 L 182 130 L 170 168 Q 176 188 184 204 L 176 250 L 172 332 L 166 408 Q 166 418 188 420 Q 196 424 188 434 L 158 436 L 152 410 L 148 332 L 144 250 L 140 246 L 136 250 L 132 332 L 128 410 L 122 436 L 92 434 Q 84 424 92 420 Q 114 418 114 408 L 108 332 L 104 250 L 96 204 Q 104 188 110 168 L 98 130 L 104 100 Q 92 108 88 124 L 80 200 L 76 268 L 82 300 Q 84 320 70 322 Q 52 320 52 300 Q 54 280 64 270 L 58 200 L 62 122 L 84 96 Q 110 86 130 90 L 130 80 L 124 72 Q 108 68 108 45 Q 108 12 140 12 Z";
 
   const currentZones = zones.filter((z) => z.view === view);
   const selectedZoneData = zones.find((z) => z.id === selectedZone);
@@ -161,35 +166,51 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
               <stop offset="0%" stopColor={SURFACE_3} />
               <stop offset="100%" stopColor={SURFACE_2} />
             </linearGradient>
+            {/* Les zones cliquables sont découpées par ce même contour :
+                aucune couleur ne peut déborder de la silhouette. */}
+            <clipPath id="bodyClip">
+              <path d={SILHOUETTE_PATH} />
+            </clipPath>
           </defs>
           <path
             fill="url(#bodyShade)"
             stroke={BORDER_STRONG}
             strokeWidth={1.5}
             strokeLinejoin="round"
-            d="M 140 12 Q 172 12 172 45 Q 172 68 156 72 L 150 80 L 150 90 Q 170 86 196 96 L 218 122 L 222 200 L 216 270 Q 226 280 228 300 Q 228 320 210 322 Q 196 320 198 300 L 204 268 L 200 200 L 192 124 Q 188 108 176 100 L 182 130 L 170 168 Q 176 188 184 204 L 176 250 L 172 332 L 166 408 Q 166 418 188 420 Q 196 424 188 434 L 158 436 L 152 410 L 148 332 L 144 250 L 140 246 L 136 250 L 132 332 L 128 410 L 122 436 L 92 434 Q 84 424 92 420 Q 114 418 114 408 L 108 332 L 104 250 L 96 204 Q 104 188 110 168 L 98 130 L 104 100 Q 92 108 88 124 L 80 200 L 76 268 L 82 300 Q 84 320 70 322 Q 52 320 52 300 Q 54 280 64 270 L 58 200 L 62 122 L 84 96 Q 110 86 130 90 L 130 80 L 124 72 Q 108 68 108 45 Q 108 12 140 12 Z"
+            d={SILHOUETTE_PATH}
           />
 
-          {currentZones.map((zone) => {
-            const value = painMap[zone.id] ?? 0;
-            const isSelected = selectedZone === zone.id;
-            return (
-              <rect
-                key={zone.id}
-                x={zone.x}
-                y={zone.y}
-                width={zone.w}
-                height={zone.h}
-                rx={zone.rx}
-                fill={value > 0 ? painColor(value) : EMPTY_ZONE}
-                fillOpacity={value > 0 ? 0.85 : 1}
-                stroke={isSelected ? ACCENT : BORDER_STRONG}
-                strokeWidth={isSelected ? 3 : 1}
-                onClick={() => setSelectedZone(zone.id)}
-                style={{ cursor: "pointer", transition: "stroke 0.15s ease" }}
-              />
-            );
-          })}
+          <g clipPath="url(#bodyClip)">
+            {currentZones.map((zone) => {
+              const value = painMap[zone.id] ?? 0;
+              const isSelected = selectedZone === zone.id;
+              return (
+                <rect
+                  key={zone.id}
+                  x={zone.x}
+                  y={zone.y}
+                  width={zone.w}
+                  height={zone.h}
+                  rx={zone.rx}
+                  fill={value > 0 ? painColor(value) : EMPTY_ZONE}
+                  fillOpacity={value > 0 ? 0.85 : 1}
+                  stroke={isSelected ? ACCENT : BORDER_STRONG}
+                  strokeWidth={isSelected ? 3 : 1}
+                  onClick={() => setSelectedZone(zone.id)}
+                  style={{ cursor: "pointer", transition: "stroke 0.15s ease" }}
+                />
+              );
+            })}
+          </g>
+
+          {/* Contour redessiné par-dessus pour que le trait du corps reste net */}
+          <path
+            fill="none"
+            stroke={BORDER_STRONG}
+            strokeWidth={1.5}
+            strokeLinejoin="round"
+            d={SILHOUETTE_PATH}
+          />
         </svg>
       </div>
 
