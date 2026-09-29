@@ -1,117 +1,144 @@
 /* ================================================
-   RESET CSS COMPLET - SUPPRESSION TOTALE DES MARGES
+   PERFORMTRACK — DESIGN SYSTEM
+   Palette neutre chaude + un seul accent (ambre).
    ================================================ */
 
-/* Reset universel - Force tout à 0 SAUF padding pour éviter les problèmes */
+:root {
+  /* Surfaces */
+  --bg: #0d0c0a;
+  --bg-elevated: #151310;
+  --surface: #1a1815;
+  --surface-hover: #221f1a;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Texte */
+  --text: #f3f0ea;
+  --text-muted: #a8a199;
+  --text-faint: #6f685f;
+
+  /* Accent unique */
+  --accent: #e0a13d;
+  --accent-hover: #edb454;
+  --accent-soft: rgba(224, 161, 61, 0.14);
+  --accent-text: #1a1306;
+
+  /* États */
+  --success: #4fae7d;
+  --success-soft: rgba(79, 174, 125, 0.14);
+  --danger: #d9695a;
+  --danger-soft: rgba(217, 105, 90, 0.14);
+  --warning: #d9a441;
+
+  /* Forme */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 10px 30px rgba(0, 0, 0, 0.45);
+
+  --font-sans: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+/* ================================================
+   RESET
+   ================================================ */
+
 *, *::before, *::after {
   margin: 0;
-  box-sizing: border-box !important;
+  padding: 0;
+  box-sizing: border-box;
 }
 
-/* HTML - Fullscreen */
 html {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 100vh !important;
-  overflow-x: hidden !important;
-  background: #000000 !important;
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  background: var(--bg);
   -webkit-text-size-adjust: 100%;
-  -ms-text-size-adjust: 100%;
 }
 
-/* BODY - Fullscreen */
 body {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 100vh !important;
-  overflow-x: hidden !important;
-  background: #000000 !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--bg);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  color: #ffffff !important;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  text-wrap: pretty;
 }
 
-/* ROOT - Fullscreen */
 #root {
-  margin: 0 !important;
-  padding: 0 !important;
-  width: 100% !important;
-  min-height: 100vh !important;
-  overflow-x: hidden !important;
-  background: #000000 !important;
+  width: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background: var(--bg);
   display: flex;
   flex-direction: column;
 }
 
-/* Supprime marges par défaut de tous les éléments */
-div, p, h1, h2, h3, h4, h5, h6, 
-ul, ol, li, dl, dt, dd,
-form, fieldset, legend,
-input, button, select, textarea,
-blockquote, pre, code,
-table, thead, tbody, tfoot, tr, th, td,
-article, aside, details, figcaption, figure,
-footer, header, hgroup, menu, nav, section {
-  margin: 0;
-  padding: 0;
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
-/* Liste sans puces */
 ul, ol {
   list-style: none;
 }
 
-/* Liens sans soulignement */
 a {
   text-decoration: none;
   color: inherit;
 }
 
-/* Images responsive */
 img {
   max-width: 100%;
   height: auto;
   display: block;
 }
 
-/* Supprime les contours sur focus */
-button:focus,
-input:focus,
-select:focus,
-textarea:focus,
-a:focus {
-  outline: none;
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
 }
 
-/* Boutons sans style par défaut */
 button {
   border: none;
   background: none;
   cursor: pointer;
-  font-family: inherit;
 }
 
-/* Inputs sans style par défaut */
 input, select, textarea {
-  font-family: inherit;
-  font-size: inherit;
   border: none;
   background: none;
 }
 
+/* Focus visible — accessibilité, jamais supprimé */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
 /* ================================================
-   SCROLLBAR PERSONNALISÉE
+   SCROLLBAR
    ================================================ */
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(102, 126, 234, 0.5) rgba(0, 0, 0, 0.2);
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -120,40 +147,74 @@ input, select, textarea {
 }
 
 *::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 10px;
+  background: transparent;
 }
 
 *::-webkit-scrollbar-thumb {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--border-strong);
   border-radius: 10px;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  background: var(--text-faint);
 }
 
 /* ================================================
-   RESPONSIVE MOBILE
+   RESPONSIVE / SAFE AREA
    ================================================ */
 
 @media (max-width: 767px) {
-  body {
-    overflow-x: hidden !important;
-  }
-  
-  #root {
-    overflow-x: hidden !important;
+  body, #root {
+    overflow-x: hidden;
   }
 }
 
-/* ================================================
-   SAFE AREA (iPhone notch, etc.)
-   ================================================ */
-
-@supports(padding: max(0px)) {
+@supports (padding: max(0px)) {
   body {
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
   }
+}
+
+/* ================================================
+   UTILITAIRES PARTAGÉS (à réutiliser page par page)
+   ================================================ */
+
+.pt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  white-space: nowrap;
+}
+.pt-btn:active {
+  transform: scale(0.97);
+}
+.pt-btn-primary {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+.pt-btn-primary:hover {
+  background: var(--accent-hover);
+}
+.pt-btn-ghost {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.pt-btn-ghost:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+.pt-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
 }
