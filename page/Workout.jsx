@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import {
@@ -93,6 +93,14 @@ export default function Workout() {
   const [sessionToDuplicate, setSessionToDuplicate] = useState(null);
   const [duplicateTargetDate, setDuplicateTargetDate] = useState(null);
   const [uploadingMedia, setUploadingMedia] = useState({});
+  // Verrous anti-double-soumission (clic multiple / double-tap mobile) pour
+  // les duplications — un état seul ne suffit pas car deux clics rapides
+  // peuvent partir avant le premier re-render, d'où l'usage d'une ref
+  // (synchrone, contrairement à setState).
+  const [isDuplicatingWeek, setIsDuplicatingWeek] = useState(false);
+  const [isDuplicatingSession, setIsDuplicatingSession] = useState(false);
+  const duplicatingWeekLock = useRef(false);
+  const duplicatingSessionLock = useRef(false);
 
   /* ===================== GROUPES PERSONNALISÉS ===================== */
   const [customGroups, setCustomGroups] = useState([]);
@@ -622,34 +630,49 @@ export default function Workout() {
         // Ignorer CMJ (pas de calcul RM pour le CMJ)
         if (isCMJ(exercise.name)) continue;
         
-        // Trouver la meilleure série (charge maximale)
-        const bestSeries = normalized.series.reduce((best, current) => {
-          const currentWeight = Number(current.actualWeight) || 0;
-          const bestWeight = Number(best.actualWeight) || 0;
-          return currentWeight > bestWeight ? current : best;
-        }, normalized.series[0]);
-        
-        // Vérifier que la meilleure série a toutes les données
-        if (!bestSeries.rpe || !bestSeries.actualWeight || !bestSeries.actualReps) continue;
-        
+        // Régression e1RM multi-séries : au lieu de ne garder que la série
+        // la plus lourde (une seule mesure = sensible au bruit d'une série
+        // mal exécutée ou mal déclarée), on calcule la RM prédite à partir
+        // de TOUTES les séries valides (reps≤6, RPE≥8) de la séance pour cet
+        // exercice, puis on prend la MÉDIANE de ces prédictions — plus
+        // robuste qu'une moyenne face à une valeur aberrante isolée.
+        const validPredictions = [];
+        normalized.series.forEach((s) => {
+          const w = Number(s.actualWeight);
+          const r = Number(s.actualReps);
+          const rpeVal = Number(s.rpe);
+          if (!w || !r || !rpeVal) return;
+          const p = calculatePredictedRM(w, r, rpeVal);
+          if (p) validPredictions.push({ predicted: p, weight: w, reps: r, rpe: rpeVal });
+        });
+        if (validPredictions.length === 0) continue;
+
+        const sortedPreds = [...validPredictions].sort((a, b) => a.predicted - b.predicted);
+        const mid = Math.floor(sortedPreds.length / 2);
+        const medianPredicted =
+          sortedPreds.length % 2 !== 0
+            ? sortedPreds[mid].predicted
+            : (sortedPreds[mid - 1].predicted + sortedPreds[mid].predicted) / 2;
+        // Série de référence (la plus proche de la médiane) pour la
+        // traçabilité (lastRPE/lastWeight/lastReps affichés dans MyRM).
+        const refSeries = sortedPreds.reduce((best, cur) =>
+          Math.abs(cur.predicted - medianPredicted) < Math.abs(best.predicted - medianPredicted) ? cur : best
+        );
+
         // Normaliser le nom de l'exercice
         const normalizedRmName = normalizeExerciseName(exercise.rmName);
         const currentRM = userRM[normalizedRmName];
-        const predicted = calculatePredictedRM(
-          bestSeries.actualWeight,
-          bestSeries.actualReps,
-          bestSeries.rpe
-        );
+        const predicted = medianPredicted;
         if (predicted) {
           let finalRM = predicted;
           const isNewRM = !currentRM; // Nouveau RM si currentRM est null/undefined
-          
+
           if (currentRM) {
             const change = ((predicted - currentRM) / currentRM) * 100;
             if (change > 10) finalRM = currentRM * 1.1;
             if (change < -10) finalRM = currentRM * 0.9;
           }
-          
+
           // Sauvegarder avec le nom normalisé
           await setDoc(doc(db, "users", currentUser.uid, "rm", normalizedRmName), {
             kg: Math.round(finalRM * 10) / 10,
@@ -657,14 +680,15 @@ export default function Workout() {
             previousRM: currentRM || 0,
             updatedAt: new Date().toISOString(),
             autoAdjusted: true,
-            lastRPE: bestSeries.rpe,
-            lastWeight: bestSeries.actualWeight,
-            lastReps: bestSeries.actualReps,
+            lastRPE: refSeries.rpe,
+            lastWeight: refSeries.weight,
+            lastReps: refSeries.reps,
+            seriesUsedForRM: validPredictions.length,
           });
-          
+
           // Log si c'est un nouveau RM créé
           if (isNewRM) {
-            console.log(`✅ Nouveau RM créé : "${normalizedRmName}" = ${Math.round(finalRM * 10) / 10} kg (basé sur ${bestSeries.actualWeight}kg × ${bestSeries.actualReps} reps @ RPE ${bestSeries.rpe})`);
+            console.log(`✅ Nouveau RM créé : "${normalizedRmName}" = ${Math.round(finalRM * 10) / 10} kg (médiane de ${validPredictions.length} série(s) valide(s))`);
           }
         }
       }
@@ -764,28 +788,74 @@ export default function Workout() {
 
   /* ===================== DUPLICATION SEMAINE ===================== */
   const duplicateWeek = async () => {
+    // Verrou anti-double-soumission : un double-clic (ou double-tap mobile,
+    // très fréquent avec la latence réseau) relançait deux fois toute la
+    // boucle ci-dessous, créant donc deux copies de chaque séance de la
+    // semaine sur les jours dupliqués. Le ref est vérifié en synchrone donc
+    // le 2e appel est bloqué avant même de commencer, contrairement à un
+    // simple useState qui peut ne pas être encore à jour entre deux clics
+    // rapprochés.
+    if (duplicatingWeekLock.current) return;
     if (!duplicateWeekStart) {
       alert("Choisissez un lundi");
       return;
     }
+    duplicatingWeekLock.current = true;
+    setIsDuplicatingWeek(true);
     try {
       const start = new Date(duplicateWeekStart + "T12:00:00");
       const end = new Date(start);
       end.setDate(end.getDate() + 6);
+      // dédoublonnage défensif par id, au cas où le state "events" contienne
+      // déjà une entrée en double (ex. données historiques corrompues par
+      // une précédente double-soumission).
+      const seenIds = new Set();
       const weekSessions = events.filter((s) => {
         const d = new Date(s.date + "T12:00:00");
-        return d >= start && d <= end;
+        if (d < start || d > end) return false;
+        if (seenIds.has(s.id)) return false;
+        seenIds.add(s.id);
+        return true;
       });
       if (weekSessions.length === 0) {
         alert("Aucune séance cette semaine");
         return;
       }
+
+      // Séances déjà présentes sur la semaine cible (+7j) : on relit
+      // Firestore à cet instant (pas le state local, potentiellement
+      // périmé) pour éviter de recréer un doublon si la même semaine a déjà
+      // été dupliquée précédemment.
+      const targetDates = new Set(
+        weekSessions.map((s) => {
+          const d = new Date(s.date + "T12:00:00");
+          d.setDate(d.getDate() + 7);
+          return getLocalDateStr(d);
+        })
+      );
+      const existingSnap = await getDocs(collection(db, "workout"));
+      const existingKeys = new Set(
+        existingSnap.docs
+          .map((d) => d.data())
+          .filter((w) => targetDates.has(w.date))
+          .map((w) => `${w.date}|${w.title}|${w.group}|${w.targetUserId || ""}`)
+      );
+
+      let created = 0;
+      let skipped = 0;
       for (const s of weekSessions) {
         const origDate = new Date(s.date + "T12:00:00");
         origDate.setDate(origDate.getDate() + 7);
+        const newDate = getLocalDateStr(origDate);
+        const key = `${newDate}|${s.title}|${s.group}|${s.targetUserId || ""}`;
+        if (existingKeys.has(key)) {
+          skipped++;
+          continue;
+        }
+        existingKeys.add(key); // évite aussi un doublon interne à cette même boucle
         await addDoc(collection(db, "workout"), {
           title: s.title,
-          date: getLocalDateStr(origDate),
+          date: newDate,
           group: s.group,
           targetUserId: s.targetUserId || null,
           blocks: s.blocks,
@@ -794,25 +864,36 @@ export default function Workout() {
           createdBy: currentUser.uid,
           createdAt: serverTimestamp(),
           duplicatedFrom: s.id,
+          userProgress: {},
         });
+        created++;
       }
-      alert(`${weekSessions.length} séance(s) dupliquée(s) !`);
+      alert(
+        `${created} séance(s) dupliquée(s)` +
+          (skipped > 0 ? ` (${skipped} déjà existante(s) ignorée(s))` : "") +
+          " !"
+      );
       setShowDuplicateModal(false);
       setDuplicateWeekStart(null);
       await fetchSessions();
     } catch (e) {
       console.error(e);
       alert("Erreur duplication");
+    } finally {
+      duplicatingWeekLock.current = false;
+      setIsDuplicatingWeek(false);
     }
   };
 
   /* ===================== DUPLICATION SÉANCE UNIQUE ===================== */
   const duplicateSession = async () => {
+    if (duplicatingSessionLock.current) return;
     if (!sessionToDuplicate || !duplicateTargetDate) {
       alert("⚠️ Veuillez sélectionner une date");
       return;
     }
-    
+    duplicatingSessionLock.current = true;
+    setIsDuplicatingSession(true);
     try {
       // Créer la nouvelle séance dupliquée
       await addDoc(collection(db, "workout"), {
@@ -826,8 +907,9 @@ export default function Workout() {
         createdBy: currentUser.uid,
         createdAt: serverTimestamp(),
         duplicatedFrom: sessionToDuplicate.id,
+        userProgress: {},
       });
-      
+
       alert("✅ Séance dupliquée avec succès !");
       setShowDuplicateSessionModal(false);
       setSessionToDuplicate(null);
@@ -836,6 +918,9 @@ export default function Workout() {
     } catch (e) {
       console.error("[duplicateSession] Erreur:", e);
       alert(`❌ Erreur duplication: ${e.message}`);
+    } finally {
+      duplicatingSessionLock.current = false;
+      setIsDuplicatingSession(false);
     }
   };
 
@@ -884,7 +969,13 @@ export default function Workout() {
         await updateDoc(doc(db, "workout", editId), payload);
         alert("Séance modifiée !");
       } else {
-        await addDoc(collection(db, "workout"), payload);
+        // userProgress: {} est indispensable dès la création — sans ce
+        // champ initial, la première tentative d'un athlète pour démarrer
+        // la séance (updateDoc sur userProgress.<uid>) peut être rejetée
+        // par les règles Firestore qui comparent resource.data.userProgress
+        // à l'ancienne valeur : si le champ n'existe pas du tout, cette
+        // comparaison échoue et l'écriture est refusée.
+        await addDoc(collection(db, "workout"), { ...payload, userProgress: {} });
         alert("Séance créée !");
       }
       resetForm();
@@ -1740,19 +1831,20 @@ export default function Workout() {
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 onClick={duplicateWeek}
+                disabled={isDuplicatingWeek}
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "#4fae7d",
+                  background: isDuplicatingWeek ? "#a8a199" : "#4fae7d",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
                   fontSize: 16,
                   fontWeight: "bold",
-                  cursor: "pointer",
+                  cursor: isDuplicatingWeek ? "not-allowed" : "pointer",
                 }}
               >
-                ✅ Dupliquer
+                {isDuplicatingWeek ? "Duplication..." : "✅ Dupliquer"}
               </button>
               <button
                 onClick={() => {
@@ -1872,19 +1964,20 @@ export default function Workout() {
             <div style={{ display: "flex", gap: 10 }}>
               <button
                 onClick={duplicateSession}
+                disabled={isDuplicatingSession}
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "#4fae7d",
+                  background: isDuplicatingSession ? "#a8a199" : "#4fae7d",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
                   fontSize: 16,
                   fontWeight: "bold",
-                  cursor: "pointer",
+                  cursor: isDuplicatingSession ? "not-allowed" : "pointer",
                 }}
               >
-                ✅ Dupliquer
+                {isDuplicatingSession ? "Duplication..." : "✅ Dupliquer"}
               </button>
               <button
                 onClick={() => {

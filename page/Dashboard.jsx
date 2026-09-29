@@ -22,6 +22,20 @@ import {
   Area,
 } from "recharts";
 import BodyScan from "../component/BodyScan";
+import {
+  rediRatio,
+  rediRatioHistory,
+  getREDIStatus,
+  zScore,
+  loadZScoreHistory,
+  wellnessZScoreHistory,
+  getWellnessZScoreStatus,
+  crossRiskStatus,
+  crossRiskStatusFull,
+  rpeVariability,
+  getRPEReliabilityStatus,
+  cmjStatus,
+} from "../component/loadMetrics";
 
 const getLocalDateStr = (date) => {
   const d = date instanceof Date ? date : new Date(date);
@@ -55,6 +69,13 @@ export default function Dashboard() {
   const [todayWellness, setTodayWellness] = useState(null);
   const [wellnessHistory, setWellnessHistory] = useState([]);
   const [todayWorkout, setTodayWorkout] = useState(null);
+  const [selfCrossStatus, setSelfCrossStatus] = useState(null);
+  const [selfRediRatio, setSelfRediRatio] = useState(null);
+  const [selfWellnessZ, setSelfWellnessZ] = useState(null);
+  const [selfCmjStatus, setSelfCmjStatus] = useState(null);
+  const [selfRpeReliability, setSelfRpeReliability] = useState(null);
+  const [selfInjuries, setSelfInjuries] = useState([]);
+  const [selfPainZone, setSelfPainZone] = useState(null);
   const [weightHistory, setWeightHistory] = useState([]);
   const [lastWeightDate, setLastWeightDate] = useState(null);
   const [canUpdateWeight, setCanUpdateWeight] = useState(true);
@@ -134,110 +155,143 @@ export default function Dashboard() {
     return { label: "Surcharge", color: "#d9695a" };
   };
 
-  const calculateACWR = (workouts, userId = currentUser?.uid) => {
-    if (!workouts || workouts.length === 0 || !userId) return null;
+  // Charge d'une séance (sRPE = RPE moyen × durée) — gère les deux formats
+  // de feedback (musculation par série / sprint-endurance).
+  const calcSessionLoad = (w, userId) => {
+    const feedback = getUserFeedback(w, userId);
+    if (!feedback || Object.keys(feedback).length === 0) return 0;
+    let total = 0,
+      count = 0;
+    Object.values(feedback).forEach((fb) => {
+      if (fb.series && Array.isArray(fb.series)) {
+        fb.series.forEach((serie) => {
+          if (serie.rpe !== undefined && serie.rpe !== null) {
+            total += Number(serie.rpe);
+            count++;
+          }
+        });
+      } else if (fb.rpe !== undefined && fb.rpe !== null) {
+        total += Number(fb.rpe);
+        count++;
+      }
+    });
+    return count > 0 ? (total / count) * (w.estimatedDuration || 60) : 0;
+  };
 
-    const calcLoad = (w) => {
-      const feedback = getUserFeedback(w, userId);
-      if (!feedback || Object.keys(feedback).length === 0) return 0;
-      let total = 0,
-        count = 0;
-      Object.values(feedback).forEach((fb) => {
-        if (fb.series && Array.isArray(fb.series)) {
-          // Format musculation : RPE stocké par série
-          fb.series.forEach((serie) => {
-            if (serie.rpe !== undefined && serie.rpe !== null) {
-              total += Number(serie.rpe);
-              count++;
-            }
-          });
-        } else if (fb.rpe !== undefined && fb.rpe !== null) {
-          // Format sprint/endurance : RPE unique
-          total += Number(fb.rpe);
-          count++;
-        }
+  // Série {date, load} (une entrée par jour, sommée si plusieurs séances) —
+  // c'est ce que REDI pondère par décroissance exponentielle. Les jours
+  // sans séance sont simplement absents, ce que REDI gère nativement
+  // (contrairement à une moyenne brute sur 7/28 jours).
+  const buildDailyLoads = (workouts, userId = currentUser?.uid) => {
+    if (!workouts || !userId) return [];
+    const map = {};
+    workouts.forEach((w) => {
+      if (!isWorkoutCompleted(w, userId)) return;
+      const load = calcSessionLoad(w, userId);
+      if (load <= 0) return;
+      map[w.date] = (map[w.date] || 0) + load;
+    });
+    return Object.entries(map).map(([date, load]) => ({ date, load }));
+  };
+
+  // RPE moyenne d'une séance (sans la durée) — sert à juger la fiabilité de
+  // la déclaration (variance anormalement faible = signal à vérifier),
+  // indépendamment de la charge (sRPE) déjà utilisée pour REDI.
+  const calcSessionAvgRPE = (w, userId) => {
+    const feedback = getUserFeedback(w, userId);
+    if (!feedback || Object.keys(feedback).length === 0) return null;
+    let total = 0,
+      count = 0;
+    Object.values(feedback).forEach((fb) => {
+      if (fb.series && Array.isArray(fb.series)) {
+        fb.series.forEach((serie) => {
+          if (serie.rpe !== undefined && serie.rpe !== null) {
+            total += Number(serie.rpe);
+            count++;
+          }
+        });
+      } else if (fb.rpe !== undefined && fb.rpe !== null) {
+        total += Number(fb.rpe);
+        count++;
+      }
+    });
+    return count > 0 ? total / count : null;
+  };
+
+  // Une RPE moyenne par jour (moyenne des séances si plusieurs le même
+  // jour), sur les N dernières séances complétées — alimente
+  // rpeVariability() de loadMetrics.js.
+  const buildDailyRPE = (workouts, userId = currentUser?.uid, limit = 20) => {
+    if (!workouts || !userId) return [];
+    const map = {};
+    workouts
+      .filter((w) => isWorkoutCompleted(w, userId))
+      .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+      .forEach((w) => {
+        const rpe = calcSessionAvgRPE(w, userId);
+        if (rpe === null) return;
+        if (!map[w.date]) map[w.date] = [];
+        map[w.date].push(rpe);
       });
-      return count > 0 ? (total / count) * (w.estimatedDuration || 60) : 0;
-    };
+    const entries = Object.entries(map)
+      .map(([date, rpes]) => ({ date, rpe: rpes.reduce((s, v) => s + v, 0) / rpes.length }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    return entries.slice(-limit);
+  };
 
-    const today = new Date();
-    const last7 = workouts.filter((w) => {
-      const diff = (today - new Date(w.date + "T12:00:00")) / 86400000;
-      return diff >= 0 && diff < 7 && isWorkoutCompleted(w, userId);
+  // Le champ "actualWeight" des séries est réutilisé pour stocker la
+  // hauteur de saut (cm) quand l'exercice est un test CMJ (cf. isCMJ() dans
+  // Workout.jsx). On extrait ici la meilleure hauteur du jour (le saut le
+  // plus haut du test, pratique standard en monitoring CMJ).
+  const isCMJName = (exerciseName) => {
+    if (!exerciseName) return false;
+    const name = exerciseName.toLowerCase().trim();
+    return name === "cmj" || name.includes("counter movement jump");
+  };
+
+  const extractCMJEntries = (workouts, userId = currentUser?.uid) => {
+    if (!workouts || !userId) return [];
+    const map = {};
+    workouts.forEach((w) => {
+      if (!isWorkoutCompleted(w, userId) || !w.blocks) return;
+      const feedback = getUserFeedback(w, userId);
+      w.blocks.forEach((block, bIdx) => {
+        (block.exercises || []).forEach((ex, eIdx) => {
+          if (!isCMJName(ex.name)) return;
+          const fb = feedback[`${bIdx}-${eIdx}`];
+          if (!fb || !fb.series) return;
+          const heights = fb.series
+            .map((s) => Number(s.actualWeight))
+            .filter((h) => !Number.isNaN(h) && h > 0);
+          if (heights.length === 0) return;
+          const best = Math.max(...heights);
+          map[w.date] = map[w.date] ? Math.max(map[w.date], best) : best;
+        });
+      });
     });
-    const last28 = workouts.filter((w) => {
-      const diff = (today - new Date(w.date + "T12:00:00")) / 86400000;
-      return diff >= 0 && diff < 28 && isWorkoutCompleted(w, userId);
-    });
+    return Object.entries(map).map(([date, heightCm]) => ({ date, heightCm }));
+  };
 
-    if (last28.length < 10) return null;
-
-    const acute = last7.reduce((s, w) => s + calcLoad(w), 0);
-    const chronic = last28.reduce((s, w) => s + calcLoad(w), 0) / 4;
-
-    return chronic === 0 ? null : (acute / chronic).toFixed(2);
+  // ACWR historique → remplacé par le ratio REDI (Robust Exponential
+  // Decreasing Index), robuste aux séances/feedbacks manquants. On garde
+  // le même nom de fonction et la même forme de retour ("acwr" en interne)
+  // pour ne pas casser les composants qui les consomment déjà ; seul
+  // l'affichage a été renommé en "REDI".
+  const calculateACWR = (workouts, userId = currentUser?.uid) => {
+    const dailyLoads = buildDailyLoads(workouts, userId);
+    if (dailyLoads.length === 0) return null;
+    const todayStr = getLocalDateStr(new Date());
+    const ratio = rediRatio(dailyLoads, todayStr);
+    return ratio === null ? null : ratio.toFixed(2);
   };
 
   const calculateACWRHistory = (workouts, userId = currentUser?.uid) => {
-    if (!workouts || workouts.length === 0 || !userId) return [];
-
-    const calcLoad = (w) => {
-      const feedback = getUserFeedback(w, userId);
-      if (!feedback || Object.keys(feedback).length === 0) return 0;
-      let total = 0,
-        count = 0;
-      Object.values(feedback).forEach((fb) => {
-        if (fb.series && Array.isArray(fb.series)) {
-          // Format musculation : RPE stocké par série
-          fb.series.forEach((serie) => {
-            if (serie.rpe !== undefined && serie.rpe !== null) {
-              total += Number(serie.rpe);
-              count++;
-            }
-          });
-        } else if (fb.rpe !== undefined && fb.rpe !== null) {
-          // Format sprint/endurance : RPE unique
-          total += Number(fb.rpe);
-          count++;
-        }
-      });
-      return count > 0 ? (total / count) * (w.estimatedDuration || 60) : 0;
-    };
-
-    const completedWorkouts = workouts
-      .filter((w) => isWorkoutCompleted(w, userId))
-      .sort((a, b) => a.date.localeCompare(b.date));
-    if (completedWorkouts.length < 10) return [];
-
-    const history = [];
-    const today = new Date();
-
-    for (let i = 0; i < 90; i++) {
-      const currentDate = new Date(today);
-      currentDate.setDate(currentDate.getDate() - (89 - i));
-      const dateStr = getLocalDateStr(currentDate);
-
-      const last7 = completedWorkouts.filter((w) => {
-        const wDate = new Date(w.date + "T12:00:00");
-        const diff = (currentDate - wDate) / 86400000;
-        return diff >= 0 && diff < 7;
-      });
-
-      const last28 = completedWorkouts.filter((w) => {
-        const wDate = new Date(w.date + "T12:00:00");
-        const diff = (currentDate - wDate) / 86400000;
-        return diff >= 0 && diff < 28;
-      });
-
-      if (last28.length >= 10) {
-        const acute = last7.reduce((s, w) => s + calcLoad(w), 0);
-        const chronic = last28.reduce((s, w) => s + calcLoad(w), 0) / 4;
-        const acwr =
-          chronic === 0 ? null : Number((acute / chronic).toFixed(2));
-        if (acwr !== null) history.push({ date: dateStr, acwr });
-      }
-    }
-    return history;
+    const dailyLoads = buildDailyLoads(workouts, userId);
+    if (dailyLoads.length === 0) return [];
+    return rediRatioHistory(dailyLoads, 90).map((e) => ({
+      date: e.date,
+      acwr: e.redi,
+    }));
   };
 
   const getAthleteName = (a) => {
@@ -250,7 +304,8 @@ export default function Dashboard() {
   /* ==================== NETTOYAGE AUTOMATIQUE (>5 semaines) ==================== */
   // Supprime les séances et wellness plus vieux que 35 jours (5 semaines)
   // pour économiser du stockage Firestore. 35 jours > 28 jours nécessaires
-  // au calcul ACWR, donc l'ACWR continue de fonctionner normalement.
+  // au calcul REDI (fenêtre chronique 28j), donc REDI continue de
+  // fonctionner normalement.
   const CLEANUP_RETENTION_DAYS = 35;
 
   const cleanupOldData = async () => {
@@ -392,6 +447,51 @@ export default function Dashboard() {
         });
 
         if (todayWorkouts.length > 0) setTodayWorkout(todayWorkouts[0]);
+
+        // REDI × wellness (z-score), recalculé à chaque chargement du
+        // dashboard donc renouvelé chaque jour.
+        const myDailyLoads = buildDailyLoads(userWorkouts, currentUser.uid);
+        const ratio = rediRatio(myDailyLoads, today);
+        setSelfRediRatio(ratio);
+
+        const todayScoreForZ = todayW ? calculateWellnessScore(todayW) : null;
+        const myWellnessHistoryForZ = wellnessZScoreHistory(myWellness, today);
+        const wZ = todayScoreForZ !== null ? zScore(todayScoreForZ, myWellnessHistoryForZ) : null;
+        setSelfWellnessZ(wZ);
+
+        // Fiabilité RPE (variance sur les dernières séances) + CMJ du jour
+        // vs baseline propre — croisés avec REDI × wellness, chacun ignoré
+        // s'il est indisponible (aucune donnée bloquante).
+        const myDailyRPE = buildDailyRPE(userWorkouts, currentUser.uid);
+        const myRpeReliability = rpeVariability(myDailyRPE.map((e) => e.rpe));
+        setSelfRpeReliability(myRpeReliability);
+
+        const myCmjEntries = extractCMJEntries(userWorkouts, currentUser.uid);
+        const todayCmjEntry = myCmjEntries.find((e) => e.date === today);
+        const myCmjStatus = cmjStatus(todayCmjEntry ? todayCmjEntry.heightCm : null, myCmjEntries, today);
+        setSelfCmjStatus(myCmjStatus);
+
+        setSelfCrossStatus(
+          crossRiskStatusFull({
+            rediRatioValue: ratio,
+            wellnessZ: wZ,
+            cmjPctChange: myCmjStatus.pctChange,
+            rpeReliability: myRpeReliability,
+          })
+        );
+
+        // Journal de blessures — dernières déclarations personnelles.
+        try {
+          const injSnap = await getDocs(collection(db, "injuries"));
+          const myInjuries = injSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((inj) => inj.userId === currentUser.uid)
+            .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+            .slice(0, 5);
+          setSelfInjuries(myInjuries);
+        } catch (e) {
+          console.error("Erreur chargement blessures:", e);
+        }
       } catch (e) {
         console.error("Erreur athlète:", e);
       }
@@ -463,6 +563,15 @@ export default function Dashboard() {
         );
         const today = getLocalDateStr(new Date());
 
+        let allInjuries = [];
+        try {
+          allInjuries = (await getDocs(collection(db, "injuries"))).docs.map(
+            (d) => ({ id: d.id, ...d.data() })
+          );
+        } catch (e) {
+          console.error("Erreur chargement blessures:", e);
+        }
+
         const result = athleteUsers.map((u) => {
           const userWellness = allWellness
             .filter((w) => w.userId === u.id)
@@ -483,15 +592,49 @@ export default function Dashboard() {
           const todayWorkout = uWorkouts.find((w) => w.date === today);
 
           const acwr = calculateACWR(uWorkouts, u.id);
+          const acwrNum = acwr !== null ? Number(acwr) : null;
+
+          // Z-score wellness individualisé (vs propre historique, hors
+          // aujourd'hui) + croisement REDI × wellness × CMJ × fiabilité RPE,
+          // recalculés à chaque chargement du dashboard donc renouvelés
+          // chaque jour. Chaque signal manquant (pas de test CMJ, pas assez
+          // de séances pour juger la RPE...) est simplement ignoré.
+          const wellnessHistoryForZ = wellnessZScoreHistory(userWellness, today);
+          const wellnessZ = wScore !== null ? zScore(wScore, wellnessHistoryForZ) : null;
+
+          const uDailyRPE = buildDailyRPE(uWorkouts, u.id);
+          const uRpeReliability = rpeVariability(uDailyRPE.map((e) => e.rpe));
+
+          const uCmjEntries = extractCMJEntries(uWorkouts, u.id);
+          const todayCmjEntry = uCmjEntries.find((e) => e.date === today);
+          const uCmjStatus = cmjStatus(todayCmjEntry ? todayCmjEntry.heightCm : null, uCmjEntries, today);
+
+          const cross = crossRiskStatusFull({
+            rediRatioValue: acwrNum,
+            wellnessZ,
+            cmjPctChange: uCmjStatus.pctChange,
+            rpeReliability: uRpeReliability,
+          });
 
           const totalSessions = uWorkouts.length;
           const completedSessions = uWorkouts.filter((w) => isWorkoutCompleted(w, u.id)).length;
+
+          const uInjuries = allInjuries
+            .filter((inj) => inj.userId === u.id)
+            .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
           return {
             ...u,
             lastWellness: todayW || null,
             wellnessScore: wScore,
             status: wScore !== null ? getWellnessStatus(wScore) : null,
+            wellnessZ,
+            wellnessZStatus: getWellnessZScoreStatus(wellnessZ),
+            crossStatus: cross,
+            cmjStatus: uCmjStatus,
+            rpeReliability: uRpeReliability,
+            rpeReliabilityStatus: getRPEReliabilityStatus(uRpeReliability),
+            injuries: uInjuries.slice(0, 5),
             acwr: acwr,
             acwrStatus: getACWRStatus(acwr),
             todayCompleted: todayWorkout ? isWorkoutCompleted(todayWorkout, u.id) : false,
@@ -784,6 +927,106 @@ export default function Dashboard() {
             )}
           </div>
         )}
+
+        {selfCrossStatus && (
+          <div
+            style={{
+              background: "#151310",
+              padding: 20,
+              borderRadius: 12,
+              border: `2px solid ${selfCrossStatus.color}`,
+              marginBottom: 20,
+            }}
+          >
+            <h3
+              style={{
+                margin: "0 0 8px 0",
+                fontSize: 16,
+                color: selfCrossStatus.color,
+              }}
+            >
+              🔀 {selfCrossStatus.label}
+            </h3>
+            <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#a8a199", lineHeight: 1.5 }}>
+              {selfCrossStatus.detail}
+            </p>
+            <div style={{ display: "flex", gap: 20, fontSize: 12, color: "#a8a199" }}>
+              {selfRediRatio !== null && (
+                <span>
+                  Ratio REDI : <strong style={{ color: "#f3f0ea" }}>{selfRediRatio.toFixed(2)}</strong>
+                </span>
+              )}
+              {selfWellnessZ !== null && (
+                <span>
+                  Z-score wellness : <strong style={{ color: "#f3f0ea" }}>{selfWellnessZ.toFixed(1)}</strong>
+                </span>
+              )}
+              {selfCmjStatus?.pctChange !== null && selfCmjStatus?.pctChange !== undefined && (
+                <span>
+                  CMJ vs baseline :{" "}
+                  <strong style={{ color: selfCmjStatus.color }}>
+                    {selfCmjStatus.pctChange > 0 ? "+" : ""}
+                    {selfCmjStatus.pctChange}%
+                  </strong>
+                </span>
+              )}
+              {selfRpeReliability?.sd !== null && selfRpeReliability?.sd !== undefined && (
+                <span>
+                  Écart-type RPE :{" "}
+                  <strong style={{ color: selfRpeReliability.flag ? "#d9a441" : "#f3f0ea" }}>
+                    {selfRpeReliability.sd}
+                  </strong>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {selfInjuries.length > 0 && (
+          <div
+            style={{
+              background: "#151310",
+              padding: 20,
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.16)",
+              marginBottom: 20,
+            }}
+          >
+            <h3 style={{ margin: "0 0 12px 0", fontSize: 16, color: "#d9695a" }}>
+              🚑 Blessures déclarées récemment
+            </h3>
+            {selfInjuries.map((inj) => (
+              <div key={inj.id} style={{ fontSize: 13, color: "#a8a199", marginBottom: 6 }}>
+                <strong style={{ color: "#f3f0ea" }}>{inj.date}</strong>
+                {inj.zone ? ` — ${inj.zone}` : ""}
+                {inj.daysLost !== null && inj.daysLost !== undefined ? ` (${inj.daysLost}j d'arrêt)` : ""}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {todayWellness?.painMap &&
+          Object.keys(todayWellness.painMap).length > 0 && (
+            <div
+              style={{
+                background: "#151310",
+                padding: 20,
+                borderRadius: 12,
+                border: "2px solid #d9695a",
+                marginBottom: 20,
+              }}
+            >
+              <h3 style={{ margin: "0 0 15px 0", fontSize: 18, color: "#d9695a" }}>
+                🩹 Localisation de la douleur (aujourd'hui)
+              </h3>
+              <BodyScan
+                painMap={todayWellness.painMap}
+                setPainMap={() => {}}
+                selectedZone={selfPainZone}
+                setSelectedZone={setSelfPainZone}
+              />
+            </div>
+          )}
 
         <div
           style={{
@@ -1342,6 +1585,24 @@ export default function Dashboard() {
                   >
                     {getAthleteName(athlete)}
                   </h4>
+                  {athlete.crossStatus && (
+                    <span
+                      title={athlete.crossStatus.detail}
+                      style={{
+                        display: "inline-block",
+                        fontSize: 11,
+                        fontWeight: "bold",
+                        color: athlete.crossStatus.color,
+                        background: "rgba(255,255,255,0.06)",
+                        border: `1px solid ${athlete.crossStatus.color}`,
+                        borderRadius: 6,
+                        padding: "2px 8px",
+                        marginBottom: 6,
+                      }}
+                    >
+                      {athlete.crossStatus.label}
+                    </span>
+                  )}
                   <div style={{ fontSize: 13, color: "#a8a199" }}>
                     Groupe : {athlete.group || "total"}
                     {athlete.todayWorkoutTitle && (
@@ -1401,7 +1662,7 @@ export default function Dashboard() {
                       <div
                         style={{ fontSize: 10, color: "#a8a199", marginBottom: 3 }}
                       >
-                        ACWR
+                        REDI
                       </div>
                       <div
                         style={{
@@ -1419,6 +1680,32 @@ export default function Dashboard() {
                         }}
                       >
                         {athlete.acwrStatus.label}
+                      </div>
+                    </div>
+                  )}
+                  {athlete.wellnessZ !== null && (
+                    <div style={{ textAlign: "center", minWidth: 75 }}>
+                      <div
+                        style={{ fontSize: 10, color: "#a8a199", marginBottom: 3 }}
+                      >
+                        Z-SCORE
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 22,
+                          fontWeight: "bold",
+                          color: athlete.wellnessZStatus.color,
+                        }}
+                      >
+                        {athlete.wellnessZ.toFixed(1)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: athlete.wellnessZStatus.color,
+                        }}
+                      >
+                        {athlete.wellnessZStatus.label}
                       </div>
                     </div>
                   )}
@@ -1561,7 +1848,7 @@ export default function Dashboard() {
                   }}
                 >
                   <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
-                    ACWR
+                    REDI
                   </div>
                   <div
                     style={{
@@ -1579,6 +1866,100 @@ export default function Dashboard() {
                     }}
                   >
                     {showAthleteDetail.acwrStatus.label}
+                  </div>
+                </div>
+              )}
+              {showAthleteDetail.wellnessZ !== null && (
+                <div
+                  style={{
+                    background: "#151310",
+                    padding: 18,
+                    borderRadius: 10,
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                    Z-SCORE WELLNESS
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 30,
+                      fontWeight: "bold",
+                      color: showAthleteDetail.wellnessZStatus.color,
+                    }}
+                  >
+                    {showAthleteDetail.wellnessZ.toFixed(1)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: showAthleteDetail.wellnessZStatus.color,
+                    }}
+                  >
+                    {showAthleteDetail.wellnessZStatus.label}
+                  </div>
+                </div>
+              )}
+              {showAthleteDetail.cmjStatus?.pctChange !== null && showAthleteDetail.cmjStatus?.pctChange !== undefined && (
+                <div
+                  style={{
+                    background: "#151310",
+                    padding: 18,
+                    borderRadius: 10,
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                    CMJ (vs baseline)
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 30,
+                      fontWeight: "bold",
+                      color: showAthleteDetail.cmjStatus.color,
+                    }}
+                  >
+                    {showAthleteDetail.cmjStatus.pctChange > 0 ? "+" : ""}
+                    {showAthleteDetail.cmjStatus.pctChange}%
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: showAthleteDetail.cmjStatus.color,
+                    }}
+                  >
+                    {showAthleteDetail.cmjStatus.label}
+                  </div>
+                </div>
+              )}
+              {showAthleteDetail.rpeReliability?.sd !== null && showAthleteDetail.rpeReliability?.sd !== undefined && (
+                <div
+                  style={{
+                    background: "#151310",
+                    padding: 18,
+                    borderRadius: 10,
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                    FIABILITÉ RPE
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 30,
+                      fontWeight: "bold",
+                      color: showAthleteDetail.rpeReliabilityStatus.color,
+                    }}
+                  >
+                    σ {showAthleteDetail.rpeReliability.sd}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: showAthleteDetail.rpeReliabilityStatus.color,
+                    }}
+                  >
+                    {showAthleteDetail.rpeReliabilityStatus.label}
                   </div>
                 </div>
               )}
@@ -1625,6 +2006,56 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
+
+            {showAthleteDetail.crossStatus && (
+              <div
+                style={{
+                  background: "#151310",
+                  padding: 18,
+                  borderRadius: 10,
+                  border: `2px solid ${showAthleteDetail.crossStatus.color}`,
+                  marginBottom: 25,
+                }}
+              >
+                <h3
+                  style={{
+                    margin: "0 0 8px 0",
+                    fontSize: 16,
+                    color: showAthleteDetail.crossStatus.color,
+                  }}
+                >
+                  🔀 Statut croisé REDI × Wellness : {showAthleteDetail.crossStatus.label}
+                </h3>
+                <p style={{ margin: 0, fontSize: 13, color: "#a8a199", lineHeight: 1.5 }}>
+                  {showAthleteDetail.crossStatus.detail}
+                </p>
+              </div>
+            )}
+
+            {showAthleteDetail.injuries && showAthleteDetail.injuries.length > 0 && (
+              <div
+                style={{
+                  background: "#151310",
+                  padding: 18,
+                  borderRadius: 10,
+                  marginBottom: 25,
+                  border: "1px solid rgba(217,105,90,0.4)",
+                }}
+              >
+                <h3 style={{ margin: "0 0 12px 0", fontSize: 16, color: "#d9695a" }}>
+                  🚑 Blessures déclarées récemment
+                </h3>
+                {showAthleteDetail.injuries.map((inj) => (
+                  <div key={inj.id} style={{ fontSize: 13, color: "#a8a199", marginBottom: 6 }}>
+                    <strong style={{ color: "#f3f0ea" }}>{inj.date}</strong>
+                    {inj.zone ? ` — ${inj.zone}` : ""}
+                    {" "}
+                    {inj.tissueType && `(${inj.tissueType}${inj.mechanism ? `, ${inj.mechanism}` : ""})`}
+                    {inj.daysLost !== null && inj.daysLost !== undefined ? ` — ${inj.daysLost}j d'arrêt` : ""}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div
               style={{
@@ -1778,7 +2209,7 @@ export default function Dashboard() {
                 }}
               >
                 <h3 style={{ margin: "0 0 15px 0", fontSize: 17 }}>
-                  📊 Évolution ACWR
+                  📊 Évolution REDI
                 </h3>
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={acwrHistory}>
@@ -1801,7 +2232,7 @@ export default function Dashboard() {
                     <Line
                       type="monotone"
                       dataKey="acwr"
-                      name="ACWR"
+                      name="REDI"
                       stroke="#e0a13d"
                       strokeWidth={2}
                       dot={{ r: 3 }}
@@ -1833,11 +2264,11 @@ export default function Dashboard() {
                 <h3
                   style={{ margin: "0 0 10px 0", fontSize: 17, color: "#a8a199" }}
                 >
-                  📊 ACWR
+                  📊 REDI
                 </h3>
                 <p style={{ color: "#a8a199", fontSize: 14 }}>
-                  Données insuffisantes (minimum 10 workouts complétés sur 28
-                  jours)
+                  Données insuffisantes (aucune séance complétée avec RPE
+                  renseigné récemment)
                 </p>
               </div>
             )}

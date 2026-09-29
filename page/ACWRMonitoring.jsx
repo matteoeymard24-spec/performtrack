@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { Navigate } from "react-router-dom";
 import {
   LineChart,
@@ -14,20 +14,31 @@ import {
   ReferenceLine,
   Legend,
 } from "recharts";
-
-const getLocalDateStr = (date) => {
-  const d = date instanceof Date ? date : new Date(date);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-};
+import {
+  rediRatioHistory,
+  rediAcute,
+  rediChronic,
+  rediRatio,
+  getREDIStatus,
+  dataCompleteness,
+  loadZScoreHistory,
+  zScore,
+  getZScoreStatus,
+  getLocalDateStr,
+  monotonyStrain,
+  getMonotonyStatus,
+  monotonyStrainHistory,
+  getStrainStatus,
+  rediRatioZScoreHistory,
+  getIndividualREDIStatus,
+} from "../component/loadMetrics";
 
 export default function ACWRMonitoring() {
   const { userRole } = useAuth();
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState(null);
-  const [acwrData, setAcwrData] = useState([]);
+  const [rediData, setRediData] = useState([]);
+  const [currentStats, setCurrentStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadingAthlete, setLoadingAthlete] = useState(false);
   const [customGroups, setCustomGroups] = useState([]);
@@ -37,7 +48,6 @@ export default function ACWRMonitoring() {
     return <Navigate to="/" replace />;
   }
 
-  // Charger la liste des athlètes
   useEffect(() => {
     const fetchAthletes = async () => {
       try {
@@ -63,8 +73,6 @@ export default function ACWRMonitoring() {
     fetchAthletes();
   }, []);
 
-  // Charger les groupes personnalisés (pour que l'ACWR compte aussi les séances
-  // ciblées sur un groupe personnalisé dont fait partie l'athlète)
   useEffect(() => {
     const fetchGroups = async () => {
       try {
@@ -83,10 +91,9 @@ export default function ACWRMonitoring() {
     return workout.userProgress?.[userId] || null;
   };
 
-  // Calcule la charge d'une séance pour un athlète donné
-  // Gère les deux formats de feedback :
-  // - muscu : { series: [{ rpe, ... }, ...], notes }
-  // - sprint/endurance : { rpe, actualDistance, notes }
+  // Charge d'une séance (sRPE = RPE moyen × durée), même logique que
+  // l'ancien ACWR : gère les deux formats de feedback (musculation /
+  // sprint-endurance).
   const calculateLoad = (workout, userId) => {
     const progress = getUserProgress(workout, userId);
     const feedback = progress?.feedback;
@@ -114,70 +121,29 @@ export default function ACWRMonitoring() {
     return avgRPE * duration;
   };
 
-  // Calculer l'ACWR pour chaque jour sur les 60 derniers jours
-  const calculateACWRTimeline = (workouts, userId) => {
-    if (!workouts || workouts.length === 0) return [];
-
-    // Ne garder que les séances effectivement complétées par cet athlète
-    const completedWorkouts = workouts.filter(
-      (w) => getUserProgress(w, userId)?.completedAt
-    );
-
-    if (completedWorkouts.length === 0) return [];
-
-    const timeline = [];
-    const today = new Date();
-
-    for (let i = 60; i >= 0; i--) {
-      const date = new Date(today);
-      date.setDate(date.getDate() - i);
-      const dateStr = getLocalDateStr(date);
-
-      const last7Days = [];
-      const last28Days = [];
-
-      completedWorkouts.forEach((w) => {
-        const workoutDate = new Date(w.date + "T12:00:00");
-        const diff = (date - workoutDate) / (1000 * 60 * 60 * 24);
-
-        if (diff >= 0 && diff < 7) last7Days.push(w);
-        if (diff >= 0 && diff < 28) last28Days.push(w);
-      });
-
-      // Seuil minimum de fiabilité : au moins 10 séances complétées sur 28 jours
-      if (last28Days.length < 10) continue;
-
-      const acuteLoad = last7Days.reduce(
-        (sum, w) => sum + calculateLoad(w, userId),
-        0
-      );
-      const chronicLoad =
-        last28Days.reduce((sum, w) => sum + calculateLoad(w, userId), 0) / 4;
-
-      const acwr = chronicLoad > 0 ? acuteLoad / chronicLoad : null;
-
-      if (acwr !== null) {
-        timeline.push({
-          date: dateStr,
-          acwr: Number(acwr.toFixed(2)),
-          acuteLoad: Math.round(acuteLoad),
-          chronicLoad: Math.round(chronicLoad),
-        });
-      }
-    }
-
-    return timeline;
+  // Une entrée de charge par jour (somme si plusieurs séances le même jour).
+  // C'est cette série {date, load} que REDI pondère par décroissance
+  // exponentielle — les jours sans séance sont simplement absents du
+  // tableau, ce qui est justement ce que REDI sait gérer nativement.
+  const buildDailyLoads = (workouts, userId) => {
+    const map = {};
+    workouts.forEach((w) => {
+      const progress = getUserProgress(w, userId);
+      if (!progress?.completedAt) return;
+      const load = calculateLoad(w, userId);
+      if (load <= 0) return;
+      map[w.date] = (map[w.date] || 0) + load;
+    });
+    return Object.entries(map).map(([date, load]) => ({ date, load }));
   };
 
-  // Charger les données ACWR de l'athlète sélectionné
-  const loadAthleteACWR = async (athlete) => {
+  const loadAthleteREDI = async (athlete) => {
     setSelectedAthlete(athlete);
-    setAcwrData([]);
+    setRediData([]);
+    setCurrentStats(null);
     setLoadingAthlete(true);
 
     try {
-      // Charger TOUTES les séances (les règles Firestore autorisent la lecture),
-      // puis filtrer celles concernant cet athlète (total / son groupe / individuelle ciblée)
       const workoutsSnap = await getDocs(collection(db, "workout"));
       const allWorkouts = workoutsSnap.docs.map((d) => ({
         id: d.id,
@@ -196,25 +162,49 @@ export default function ACWRMonitoring() {
           myGroupIds.includes(w.group)
       );
 
-      const timeline = calculateACWRTimeline(relevantWorkouts, athlete.id);
-      setAcwrData(timeline);
+      const dailyLoads = buildDailyLoads(relevantWorkouts, athlete.id);
+      const todayStr = getLocalDateStr(new Date());
+
+      const timeline = rediRatioHistory(dailyLoads, 60);
+      const acute = rediAcute(dailyLoads, todayStr);
+      const chronic = rediChronic(dailyLoads, todayStr);
+      const ratio = rediRatio(dailyLoads, todayStr);
+      const completeness = dataCompleteness(dailyLoads, todayStr);
+      const zHistory = loadZScoreHistory(dailyLoads, todayStr);
+      const z = zScore(acute, zHistory);
+
+      // Monotonie & Strain (Foster, 1998) sur la semaine glissante.
+      const { monotony, strain, weeklyLoad } = monotonyStrain(dailyLoads, todayStr);
+      const strainHistory = monotonyStrainHistory(dailyLoads, 60)
+        .filter((e) => e.date < todayStr && e.strain !== null)
+        .map((e) => e.strain);
+      const strainZ = strain !== null ? zScore(strain, strainHistory) : null;
+
+      // Seuil REDI individualisé : le ratio du jour comparé à l'historique
+      // PROPRE de l'athlète, en complément des zones littérature fixes.
+      const ratioZHistory = rediRatioZScoreHistory(dailyLoads, todayStr);
+      const ratioZ = ratio !== null ? zScore(ratio, ratioZHistory) : null;
+
+      setRediData(timeline);
+      setCurrentStats({
+        acute,
+        chronic,
+        ratio,
+        completeness,
+        z,
+        dailyCount: dailyLoads.length,
+        monotony,
+        strain,
+        weeklyLoad,
+        strainZ,
+        ratioZ,
+      });
     } catch (error) {
-      console.error("Erreur chargement ACWR:", error);
+      console.error("Erreur chargement REDI:", error);
     } finally {
       setLoadingAthlete(false);
     }
   };
-
-  const getACWRColor = (value) => {
-    if (value === null || value === undefined) return "#a8a199";
-    if (value < 0.8) return "#3498db"; // Sous-chargé
-    if (value <= 1.3) return "#4fae7d"; // Optimal
-    if (value <= 1.5) return "#d9a441"; // Attention
-    return "#d9695a"; // Surcharge
-  };
-
-  const currentACWR =
-    acwrData.length > 0 ? acwrData[acwrData.length - 1].acwr : null;
 
   if (loading) {
     return (
@@ -223,6 +213,14 @@ export default function ACWRMonitoring() {
       </div>
     );
   }
+
+  const rediStatus = currentStats ? getREDIStatus(currentStats.ratio) : null;
+  const zStatus = currentStats ? getZScoreStatus(currentStats.z) : null;
+  const individualRediStatus = currentStats
+    ? getIndividualREDIStatus(currentStats.ratio, currentStats.ratioZ)
+    : null;
+  const monotonyStatus = currentStats ? getMonotonyStatus(currentStats.monotony) : null;
+  const strainStatus = currentStats ? getStrainStatus(currentStats.strainZ) : null;
 
   return (
     <div
@@ -233,9 +231,20 @@ export default function ACWRMonitoring() {
         color: "#f3f0ea",
       }}
     >
-      <h2 style={{ color: "#f3f0ea", marginBottom: 10 }}>Monitoring ACWR</h2>
-      <p style={{ color: "#a8a199", marginBottom: 30 }}>
-        Suivez la charge d'entraînement de vos athlètes
+      <h2 style={{ color: "#f3f0ea", marginBottom: 10 }}>Monitoring REDI</h2>
+      <p style={{ color: "#a8a199", marginBottom: 8, maxWidth: 720 }}>
+        Charge d'entraînement (sRPE) pondérée par décroissance exponentielle
+        (Robust Exponential Decreasing Index — Moussa et al., 2020), plus
+        fiable que l'ACWR classique quand des séances ou des feedbacks
+        manquent : les jours sans donnée sont ignorés au lieu d'être comptés
+        comme nuls.
+      </p>
+      <p style={{ color: "#a8a199", marginBottom: 30, maxWidth: 720, fontSize: 13 }}>
+        Le ratio REDI (aigu / chronique) est complété par un{" "}
+        <strong style={{ color: "#e0a13d" }}>z-score individualisé</strong> :
+        il compare la charge du jour à la moyenne et l'écart-type propres à
+        cet athlète (pas à une norme générale), ce qui repère une charge
+        inhabituelle même quand le ratio reste en "zone optimale".
       </p>
 
       {/* Sélection athlète */}
@@ -255,7 +264,7 @@ export default function ACWRMonitoring() {
           value={selectedAthlete?.id || ""}
           onChange={(e) => {
             const athlete = athletes.find((a) => a.id === e.target.value);
-            if (athlete) loadAthleteACWR(athlete);
+            if (athlete) loadAthleteREDI(athlete);
           }}
           style={{
             padding: 12,
@@ -280,11 +289,11 @@ export default function ACWRMonitoring() {
 
       {loadingAthlete && (
         <div style={{ textAlign: "center", padding: 20, color: "#a8a199" }}>
-          ⏳ Chargement des données...
+          Chargement des données...
         </div>
       )}
 
-      {/* Affichage ACWR */}
+      {/* Affichage REDI */}
       {selectedAthlete && !loadingAthlete && (
         <div>
           <div
@@ -302,15 +311,14 @@ export default function ACWRMonitoring() {
                 : selectedAthlete.displayName || selectedAthlete.email}
             </h3>
 
-            {acwrData.length > 0 ? (
+            {currentStats && currentStats.ratio !== null ? (
               <>
-                {/* ACWR actuel */}
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
                     gap: 15,
-                    marginBottom: 30,
+                    marginBottom: 20,
                   }}
                 >
                   <div
@@ -318,39 +326,23 @@ export default function ACWRMonitoring() {
                       background: "#151310",
                       padding: 20,
                       borderRadius: 8,
-                      border: `2px solid ${getACWRColor(currentACWR)}`,
+                      border: `2px solid ${rediStatus.color}`,
                     }}
                   >
-                    <div
-                      style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}
-                    >
-                      ACWR ACTUEL
+                    <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
+                      RATIO REDI
                     </div>
-                    <div
-                      style={{
-                        fontSize: 40,
-                        fontWeight: "bold",
-                        color: getACWRColor(currentACWR),
-                      }}
-                    >
-                      {currentACWR}
+                    <div style={{ fontSize: 36, fontWeight: "bold", color: rediStatus.color }}>
+                      {currentStats.ratio.toFixed(2)}
                     </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        color: getACWRColor(currentACWR),
-                        marginTop: 5,
-                      }}
-                    >
-                      {currentACWR < 0.8 && "Sous-chargé"}
-                      {currentACWR >= 0.8 &&
-                        currentACWR <= 1.3 &&
-                        "Zone optimale ✅"}
-                      {currentACWR > 1.3 &&
-                        currentACWR <= 1.5 &&
-                        "Attention ⚠️"}
-                      {currentACWR > 1.5 && "Surcharge 🔴"}
+                    <div style={{ fontSize: 13, color: rediStatus.color, marginTop: 5 }}>
+                      {rediStatus.label}
                     </div>
+                    {individualRediStatus?.individualized && (
+                      <div style={{ fontSize: 11, color: "#706a61", marginTop: 4 }}>
+                        {individualRediStatus.detail}
+                      </div>
+                    )}
                   </div>
 
                   <div
@@ -358,55 +350,106 @@ export default function ACWRMonitoring() {
                       background: "#151310",
                       padding: 20,
                       borderRadius: 8,
+                      border: `2px solid ${zStatus.color}`,
                     }}
                   >
-                    <div
-                      style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}
-                    >
-                      CHARGE AIGÜE (7j)
+                    <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
+                      Z-SCORE CHARGE (vs propre historique)
                     </div>
-                    <div
-                      style={{
-                        fontSize: 32,
-                        fontWeight: "bold",
-                        color: "#e0a13d",
-                      }}
-                    >
-                      {acwrData[acwrData.length - 1].acuteLoad}
+                    <div style={{ fontSize: 36, fontWeight: "bold", color: zStatus.color }}>
+                      {currentStats.z !== null ? currentStats.z.toFixed(2) : "—"}
+                    </div>
+                    <div style={{ fontSize: 13, color: zStatus.color, marginTop: 5 }}>
+                      {zStatus.label}
                     </div>
                   </div>
 
-                  <div
-                    style={{
-                      background: "#151310",
-                      padding: 20,
-                      borderRadius: 8,
-                    }}
-                  >
-                    <div
-                      style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}
-                    >
-                      CHARGE CHRONIQUE (28j)
+                  <div style={{ background: "#151310", padding: 20, borderRadius: 8 }}>
+                    <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
+                      CHARGE AIGÜE REDI (~7j)
                     </div>
-                    <div
-                      style={{
-                        fontSize: 32,
-                        fontWeight: "bold",
-                        color: "#4fae7d",
-                      }}
-                    >
-                      {acwrData[acwrData.length - 1].chronicLoad}
+                    <div style={{ fontSize: 28, fontWeight: "bold", color: "#e0a13d" }}>
+                      {Math.round(currentStats.acute)}
                     </div>
                   </div>
+
+                  <div style={{ background: "#151310", padding: 20, borderRadius: 8 }}>
+                    <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
+                      CHARGE CHRONIQUE REDI (~28j)
+                    </div>
+                    <div style={{ fontSize: 28, fontWeight: "bold", color: "#4fae7d" }}>
+                      {Math.round(currentStats.chronic)}
+                    </div>
+                  </div>
+
+                  {currentStats.monotony !== null && (
+                    <div
+                      style={{
+                        background: "#151310",
+                        padding: 20,
+                        borderRadius: 8,
+                        border: `2px solid ${monotonyStatus.color}`,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
+                        MONOTONIE (7j — Foster 1998)
+                      </div>
+                      <div style={{ fontSize: 28, fontWeight: "bold", color: monotonyStatus.color }}>
+                        {currentStats.monotony.toFixed(2)}
+                      </div>
+                      <div style={{ fontSize: 13, color: monotonyStatus.color, marginTop: 5 }}>
+                        {monotonyStatus.label}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentStats.strain !== null && (
+                    <div
+                      style={{
+                        background: "#151310",
+                        padding: 20,
+                        borderRadius: 8,
+                        border: `2px solid ${strainStatus.color}`,
+                      }}
+                    >
+                      <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
+                        STRAIN (charge × monotonie)
+                      </div>
+                      <div style={{ fontSize: 28, fontWeight: "bold", color: strainStatus.color }}>
+                        {currentStats.strain}
+                      </div>
+                      <div style={{ fontSize: 13, color: strainStatus.color, marginTop: 5 }}>
+                        {strainStatus.label}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
-                {/* Graphique ACWR */}
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#a8a199",
+                    marginBottom: 30,
+                    padding: "8px 12px",
+                    background: "#151310",
+                    borderRadius: 8,
+                    display: "inline-block",
+                  }}
+                >
+                  Complétude des données sur 28j :{" "}
+                  <strong style={{ color: "#f3f0ea" }}>
+                    {Math.round(currentStats.completeness * 100)}%
+                  </strong>{" "}
+                  ({currentStats.dailyCount} jours avec séance renseignée)
+                </div>
+
+                {/* Graphique REDI */}
                 <div>
                   <h4 style={{ color: "#f3f0ea", marginBottom: 15 }}>
-                    📈 Évolution ACWR (60 derniers jours)
+                    Évolution du ratio REDI (60 derniers jours)
                   </h4>
                   <ResponsiveContainer width="100%" height={400}>
-                    <LineChart data={acwrData}>
+                    <LineChart data={rediData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                       <XAxis
                         dataKey="date"
@@ -424,39 +467,23 @@ export default function ACWRMonitoring() {
                       />
                       <Legend />
 
-                      {/* Zones de référence */}
-                      <ReferenceLine
-                        y={0.8}
-                        stroke="#3498db"
-                        strokeDasharray="3 3"
-                        label="Sous-charge"
-                      />
-                      <ReferenceLine
-                        y={1.3}
-                        stroke="#4fae7d"
-                        strokeDasharray="3 3"
-                        label="Optimal"
-                      />
-                      <ReferenceLine
-                        y={1.5}
-                        stroke="#d9a441"
-                        strokeDasharray="3 3"
-                        label="Attention"
-                      />
+                      <ReferenceLine y={0.8} stroke="#3498db" strokeDasharray="3 3" label="Sous-charge" />
+                      <ReferenceLine y={1.3} stroke="#4fae7d" strokeDasharray="3 3" label="Optimal" />
+                      <ReferenceLine y={1.5} stroke="#d9a441" strokeDasharray="3 3" label="Attention" />
 
                       <Line
                         type="monotone"
-                        dataKey="acwr"
+                        dataKey="redi"
                         stroke="#e0a13d"
                         strokeWidth={3}
-                        name="ACWR"
-                        dot={{ fill: "#e0a13d", r: 4 }}
+                        name="Ratio REDI"
+                        dot={{ fill: "#e0a13d", r: 3 }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
 
-                {/* Légende des zones */}
+                {/* Légende */}
                 <div
                   style={{
                     marginTop: 30,
@@ -466,78 +493,71 @@ export default function ACWRMonitoring() {
                   }}
                 >
                   <h4 style={{ margin: "0 0 15px 0", color: "#f3f0ea" }}>
-                    📊 Interprétation ACWR
+                    Interprétation
                   </h4>
                   <div
                     style={{
                       display: "grid",
                       gridTemplateColumns: "1fr 1fr",
                       gap: 15,
+                      marginBottom: 20,
                     }}
                   >
                     <div>
-                      <div
-                        style={{
-                          color: "#3498db",
-                          fontWeight: "bold",
-                          marginBottom: 5,
-                        }}
-                      >
-                        🔵 Sous-chargé (&lt; 0.8)
+                      <div style={{ color: "#3498db", fontWeight: "bold", marginBottom: 5 }}>
+                        Sous-chargé (&lt; 0.8)
                       </div>
                       <p style={{ margin: 0, fontSize: 13, color: "#a8a199" }}>
                         L'athlète peut supporter plus de charge. Possibilité
                         d'augmenter le volume.
                       </p>
                     </div>
-
                     <div>
-                      <div
-                        style={{
-                          color: "#4fae7d",
-                          fontWeight: "bold",
-                          marginBottom: 5,
-                        }}
-                      >
-                        🟢 Zone optimale (0.8 - 1.3)
+                      <div style={{ color: "#4fae7d", fontWeight: "bold", marginBottom: 5 }}>
+                        Zone optimale (0.8 - 1.3)
                       </div>
                       <p style={{ margin: 0, fontSize: 13, color: "#a8a199" }}>
-                        Charge idéale pour la progression. Maintenir ce niveau.
+                        Charge cohérente avec l'historique récent de l'athlète.
                       </p>
                     </div>
-
                     <div>
-                      <div
-                        style={{
-                          color: "#d9a441",
-                          fontWeight: "bold",
-                          marginBottom: 5,
-                        }}
-                      >
-                        🟠 Attention (1.3 - 1.5)
+                      <div style={{ color: "#d9a441", fontWeight: "bold", marginBottom: 5 }}>
+                        Attention (1.3 - 1.5)
                       </div>
                       <p style={{ margin: 0, fontSize: 13, color: "#a8a199" }}>
-                        Charge élevée. Surveiller la récupération et le
-                        wellness.
+                        Charge élevée. Surveiller la récupération, le
+                        wellness et le z-score de charge.
                       </p>
                     </div>
-
                     <div>
-                      <div
-                        style={{
-                          color: "#d9695a",
-                          fontWeight: "bold",
-                          marginBottom: 5,
-                        }}
-                      >
-                        🔴 Surcharge (&gt; 1.5)
+                      <div style={{ color: "#d9695a", fontWeight: "bold", marginBottom: 5 }}>
+                        Surcharge (&gt; 1.5)
                       </div>
                       <p style={{ margin: 0, fontSize: 13, color: "#a8a199" }}>
-                        Risque de blessure élevé. Réduire le volume
-                        immédiatement.
+                        Écart important par rapport à la charge chronique.
+                        Réduire le volume si le wellness confirme la fatigue.
                       </p>
                     </div>
                   </div>
+                  <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#706a61", lineHeight: 1.5 }}>
+                    À noter : la littérature (sur des pentathlètes) a montré
+                    que la majorité des blessures étudiées survenaient malgré
+                    un ratio dans la "zone optimale" — un ratio correct ne
+                    suffit pas à écarter le risque. C'est pourquoi le
+                    z-score de charge et le wellness (croisés sur le
+                    Dashboard) sont à lire en complément du ratio, jamais
+                    seuls.
+                  </p>
+                  <p style={{ margin: 0, fontSize: 12, color: "#706a61", lineHeight: 1.5 }}>
+                    Monotonie et strain (Foster, 1998) : une monotonie
+                    élevée signifie que la charge varie peu d'un jour à
+                    l'autre sur la semaine — même à charge totale
+                    raisonnable, cela est associé à un risque accru de
+                    surentraînement et de maladie. Le strain (charge
+                    hebdomadaire × monotonie) est ensuite comparé à
+                    l'historique propre de l'athlète, car son niveau
+                    "normal" dépend entièrement du profil individuel.
+                  </p>
                 </div>
               </>
             ) : (
@@ -551,11 +571,11 @@ export default function ACWRMonitoring() {
                 }}
               >
                 <p style={{ fontSize: 16, margin: 0 }}>
-                  Pas assez de données pour calculer l'ACWR.
+                  Pas assez de données pour calculer le REDI.
                 </p>
                 <p style={{ fontSize: 14, margin: "10px 0 0 0" }}>
-                  Il faut au moins 10 séances complétées avec feedback RPE sur
-                  les 28 derniers jours.
+                  Il faut au moins quelques séances complétées avec feedback
+                  RPE sur les 28 derniers jours.
                 </p>
               </div>
             )}
@@ -574,7 +594,7 @@ export default function ACWRMonitoring() {
           }}
         >
           <p style={{ fontSize: 18, margin: 0 }}>
-            Sélectionnez un athlète pour voir son ACWR
+            Sélectionnez un athlète pour voir son REDI
           </p>
         </div>
       )}

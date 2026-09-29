@@ -2,103 +2,134 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      );
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     // ========== USERS ==========
     match /users/{userId} {
-      // Lecture : Soi-même OU admins/superadmins
-      allow read: if request.auth != null && (
-        request.auth.uid == userId ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      allow read: if isOwner(userId) || isAdmin();
+
+      // FAILLE CORRIGÉE ICI : avant, "allow write" laissait n'importe quel
+      // athlète authentifié écrire N'IMPORTE QUOI dans son propre document
+      // users/{sonUid} — y compris role: "admin" ou isSuperAdmin: true. Un
+      // athlète pouvait donc s'auto-promouvoir admin en un seul appel
+      // Firestore SDK depuis la console du navigateur, sans jamais passer
+      // par l'interface. Un athlète peut toujours modifier son propre
+      // profil (poids, prénom, etc.), mais ne peut plus jamais changer son
+      // rôle, son statut superAdmin, ni son groupe (assigné par le coach) —
+      // seul un admin (vérifié côté serveur, pas côté client) peut toucher
+      // ces trois champs.
+      allow create: if isAdmin() || (
+        isOwner(userId) &&
+        (!('role' in request.resource.data) || request.resource.data.role == 'athlete') &&
+        (!('isSuperAdmin' in request.resource.data) || request.resource.data.isSuperAdmin == false)
       );
 
-      // Écriture : Soi-même OU admins
-      allow write: if request.auth != null && (
-        request.auth.uid == userId ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
+        (!('isSuperAdmin' in request.resource.data) ||
+          request.resource.data.isSuperAdmin == (resource.data.isSuperAdmin == true)) &&
+        (!('group' in request.resource.data) || request.resource.data.group == resource.data.group)
       );
+
+      allow delete: if isAdmin();
 
       // Sous-collections (rm, weight_history)
       match /{subcollection}/{docId} {
-        allow read, write: if request.auth != null && (
-          request.auth.uid == userId ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
-        );
+        allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
     // ========== WORKOUT ==========
     match /workout/{workoutId} {
-      // Lecture : Tous les utilisateurs authentifiés
-      allow read: if request.auth != null;
+      // Lecture : tous les utilisateurs authentifiés
+      allow read: if isSignedIn();
 
-      // Création : Admins uniquement
-      allow create: if request.auth != null && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
-      );
+      // Création : admins uniquement
+      allow create: if isAdmin();
 
-      // Mise à jour : Admins OU athlètes qui modifient UNIQUEMENT leur userProgress
-      allow update: if request.auth != null && (
-        // Admins peuvent tout modifier
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true ||
-        // OU athlètes modifient seulement leur propre userProgress
+      // Mise à jour : admins OU athlètes qui modifient UNIQUEMENT leur
+      // propre entrée dans userProgress.
+      // BUG CORRIGÉ ICI : la condition précédente faisait
+      // request.resource.data.userProgress.diff(resource.data.userProgress)
+      // sans jamais vérifier que resource.data.userProgress existait déjà.
+      // Or aucune séance n'était créée avec un champ userProgress initial
+      // (voir Workout.jsx) — donc pour TOUTE séance, le tout premier
+      // athlète qui essayait de démarrer se heurtait à un .diff() sur un
+      // champ inexistant, provoquant une erreur d'évaluation de la règle et
+      // donc un refus d'écriture systématique. Le garde-fou
+      // "!('userProgress' in resource.data)" corrige ça pour les séances
+      // déjà existantes en base ; côté app, Workout.jsx initialise
+      // maintenant userProgress: {} dès la création pour que ça ne se
+      // reproduise plus.
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userProgress']) &&
         (
-          // Vérifier que SEUL userProgress est modifié
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userProgress']) &&
-          // Vérifier que SEUL son propre userId est modifié dans userProgress
+          !('userProgress' in resource.data) ||
           request.resource.data.userProgress.diff(resource.data.userProgress).affectedKeys().hasOnly([request.auth.uid])
         )
       );
 
-      // Suppression : Admins uniquement
-      allow delete: if request.auth != null && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
-      );
+      // Suppression : admins uniquement
+      allow delete: if isAdmin();
     }
 
     // ========== WELLNESS ==========
     match /wellness/{wellnessId} {
-      // Lecture : Admins OU le propriétaire
-      allow read: if request.auth != null && (
-        resource.data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+
+      // Un athlète peut modifier son propre wellness, mais ne peut pas en
+      // changer le userId (empêche de "reléguer" son propre document à un
+      // autre athlète ou de perturber les requêtes admin).
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId
       );
 
-      // Création : Le propriétaire uniquement (userId doit correspondre)
-      allow create: if request.auth != null &&
-        request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
 
-      // Mise à jour : Le propriétaire OU admins
-      allow update: if request.auth != null && (
-        resource.data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+    // ========== INJURIES (journal de blessures — nouvelle collection) ==========
+    match /injuries/{injuryId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.userId == request.auth.uid &&
+        request.resource.data.userId == resource.data.userId
       );
 
-      // Suppression : Le propriétaire OU admins
-      allow delete: if request.auth != null && (
-        resource.data.userId == request.auth.uid ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
-      );
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     // ========== GROUPS (groupes personnalisés d'athlètes) ==========
     match /groups/{groupId} {
-      // Lecture : tout utilisateur authentifié (nécessaire pour que chaque athlète
-      // puisse savoir de quels groupes il fait partie et voir les séances ciblées dessus)
-      allow read: if request.auth != null;
+      // Lecture : tout utilisateur authentifié (nécessaire pour que chaque
+      // athlète sache de quels groupes il fait partie et voie les séances
+      // ciblées dessus).
+      allow read: if isSignedIn();
 
-      // Écriture (création / modification / suppression) : Admins uniquement
-      allow write: if request.auth != null && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
-      );
+      // Écriture (création / modification / suppression) : admins uniquement
+      allow write: if isAdmin();
     }
   }
 }
