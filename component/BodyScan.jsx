@@ -119,31 +119,61 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
   // Traits de définition musculaire dessinés par-dessus les zones
   // cliquables (clavicules/abdos/obliques devant, trapèze/omoplates/
   // colonne/ischios derrière) pour éviter l'effet "silhouette plate".
+  // Traits marqués (contours de groupes musculaires) vs traits fins
+  // (relief secondaire) pour lire les muscles sans surcharger le dessin.
   const FRONT_DETAIL_LINES = [
-    "M 150 89 Q 140 96 130 89",
-    "M 140 100 L 140 200",
-    "M 126 160 L 154 160",
-    "M 128 178 L 152 178",
-    "M 130 196 L 150 196",
-    "M 152 135 L 172 190",
-    "M 128 135 L 108 190",
-    "M 215 150 Q 210 175 205 195",
-    "M 65 150 Q 70 175 75 195",
+    "M 152 90 Q 140 97 128 90",
+    "M 178 98 Q 196 103 206 118",
+    "M 102 98 Q 84 103 74 118",
+    "M 140 104 Q 158 108 170 126",
+    "M 140 104 Q 122 108 110 126",
+    "M 140 100 L 140 222",
+    "M 154 132 Q 168 158 172 192",
+    "M 126 132 Q 112 158 108 192",
+    "M 216 145 Q 225 165 216 188",
+    "M 64 145 Q 55 165 64 188",
+    "M 176 258 Q 180 292 173 330",
+    "M 148 260 Q 144 292 148 330",
+    "M 104 258 Q 100 292 107 330",
+    "M 132 260 Q 136 292 132 330",
     "M 165 365 L 162 400",
     "M 115 365 L 118 400",
   ];
 
+  const FRONT_DETAIL_LINES_SOFT = [
+    "M 125 148 L 155 148",
+    "M 126 163 L 154 163",
+    "M 127 178 L 153 178",
+    "M 129 194 L 151 194",
+    "M 131 209 L 149 209",
+    "M 210 205 Q 216 222 210 245",
+    "M 70 205 Q 64 222 70 245",
+  ];
+
   const BACK_DETAIL_LINES = [
-    "M 140 90 L 152 130 L 140 172 L 128 130 Z",
-    "M 140 100 L 140 230",
-    "M 178 120 Q 168 160 160 190",
-    "M 102 120 Q 112 160 120 190",
-    "M 128 150 L 124 225",
-    "M 152 150 L 156 225",
-    "M 163 300 L 160 335",
-    "M 117 300 L 120 335",
-    "M 165 365 Q 168 380 163 398",
-    "M 115 365 Q 112 380 117 398",
+    "M 140 90 L 154 132 L 140 174 L 126 132 Z",
+    "M 178 98 Q 198 106 202 124",
+    "M 102 98 Q 82 106 78 124",
+    "M 140 100 L 140 236",
+    "M 180 118 Q 170 158 160 192",
+    "M 100 118 Q 110 158 120 192",
+    "M 168 244 Q 182 262 172 286",
+    "M 112 244 Q 98 262 108 286",
+    "M 163 300 Q 166 320 160 338",
+    "M 117 300 Q 114 320 120 338",
+    "M 168 363 Q 172 380 165 399",
+    "M 112 363 Q 108 380 115 399",
+  ];
+
+  const BACK_DETAIL_LINES_SOFT = [
+    "M 130 150 Q 126 190 124 228",
+    "M 150 150 Q 154 190 156 228",
+    "M 166 128 Q 159 158 154 188",
+    "M 114 128 Q 121 158 126 188",
+    "M 152 300 Q 150 320 152 340",
+    "M 128 300 Q 130 320 128 340",
+    "M 157 363 Q 153 380 160 399",
+    "M 123 363 Q 127 380 120 399",
   ];
 
   // Petits reliefs (genoux devant, omoplates derrière) en ellipses.
@@ -159,6 +189,7 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
 
   const currentSilhouettePath = view === "front" ? FRONT_SILHOUETTE_PATH : BACK_SILHOUETTE_PATH;
   const currentDetailLines = view === "front" ? FRONT_DETAIL_LINES : BACK_DETAIL_LINES;
+  const currentDetailLinesSoft = view === "front" ? FRONT_DETAIL_LINES_SOFT : BACK_DETAIL_LINES_SOFT;
   const currentDetailEllipses = view === "front" ? FRONT_DETAIL_ELLIPSES : BACK_DETAIL_ELLIPSES;
 
   const currentZones = zones.filter((z) => z.view === view);
@@ -259,8 +290,8 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
           <g
             clipPath="url(#bodyClip)"
             fill="none"
-            stroke="rgba(255,255,255,0.16)"
-            strokeWidth={1.2}
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth={1.1}
             strokeLinecap="round"
             style={{ pointerEvents: "none" }}
           >
@@ -276,6 +307,18 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
                 ry={e.ry}
                 transform={e.rotate ? `rotate(${e.rotate} ${e.cx} ${e.cy})` : undefined}
               />
+            ))}
+          </g>
+          <g
+            clipPath="url(#bodyClip)"
+            fill="none"
+            stroke="rgba(255,255,255,0.13)"
+            strokeWidth={1}
+            strokeLinecap="round"
+            style={{ pointerEvents: "none" }}
+          >
+            {currentDetailLinesSoft.map((d, i) => (
+              <path key={i} d={d} />
             ))}
           </g>
 
