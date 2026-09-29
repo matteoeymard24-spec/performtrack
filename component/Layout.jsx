@@ -22,11 +22,11 @@ export default function Layout() {
 
   const menuItems = [
     { path: "/dashboard", label: "Dashboard", icon: "📊", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/workout", label: "Workout", icon: "🏋", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/wellness", label: "Wellness", icon: "◈", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/myrm", label: "My RM", icon: "◆", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/acwr", label: "ACWR", icon: "▲", roles: ["superadmin", "admin"] },
-    { path: "/athletes", label: "Athlètes", icon: "●", roles: ["superadmin", "admin"] },
+    { path: "/workout", label: "Workout", icon: "🏋️", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/wellness", label: "Wellness", icon: "🧘", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/myrm", label: "My RM", icon: "🏋️‍♂️", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/acwr", label: "ACWR", icon: "📈", roles: ["superadmin", "admin"] },
+    { path: "/athletes", label: "Athlètes", icon: "👥", roles: ["superadmin", "admin"] },
   ];
 
   const visibleMenuItems = menuItems.filter((item) => {
