@@ -119,19 +119,19 @@ export default function Dashboard() {
 
   const getWellnessStatus = (score) => {
     if (score < 5)
-      return { label: "Risque de blessure", color: "#e74c3c", emoji: "⚠️" };
+      return { label: "Risque de blessure", color: "#d9695a", emoji: "⚠️" };
     if (score < 7.5)
-      return { label: "Fatigue fonctionnelle", color: "#f39c12", emoji: "😌" };
-    return { label: "En forme", color: "#27ae60", emoji: "💪" };
+      return { label: "Fatigue fonctionnelle", color: "#d9a441", emoji: "😌" };
+    return { label: "En forme", color: "#4fae7d", emoji: "💪" };
   };
 
   const getACWRStatus = (acwr) => {
     if (!acwr) return { label: "Données insuffisantes", color: "#95a5a6" };
     const v = Number(acwr);
     if (v < 0.8) return { label: "Sous-chargé", color: "#3498db" };
-    if (v <= 1.3) return { label: "Optimal", color: "#27ae60" };
-    if (v <= 1.5) return { label: "Attention", color: "#f39c12" };
-    return { label: "Surcharge", color: "#e74c3c" };
+    if (v <= 1.3) return { label: "Optimal", color: "#4fae7d" };
+    if (v <= 1.5) return { label: "Attention", color: "#d9a441" };
+    return { label: "Surcharge", color: "#d9695a" };
   };
 
   const calculateACWR = (workouts, userId = currentUser?.uid) => {
@@ -635,8 +635,8 @@ export default function Dashboard() {
         style={{
           padding: 40,
           textAlign: "center",
-          color: "#fff",
-          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+          color: "#f3f0ea",
+          background: "#0d0c0a",
           minHeight: "100vh",
         }}
       >
@@ -661,9 +661,9 @@ export default function Dashboard() {
       <div
         style={{
           padding: 20,
-          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+          background: "#0d0c0a",
           minHeight: "100vh",
-          color: "#fff",
+          color: "#f3f0ea",
           maxWidth: 600,
           margin: "0 auto",
         }}
@@ -671,7 +671,7 @@ export default function Dashboard() {
         <h2 style={{ fontSize: 24, marginBottom: 5 }}>
           Bonjour {userProfile?.firstName || "Athlète"} ! 👋
         </h2>
-        <p style={{ color: "#888", marginBottom: 30, fontSize: 14 }}>
+        <p style={{ color: "#a8a199", marginBottom: 30, fontSize: 14 }}>
           {new Date().toLocaleDateString("fr-FR", {
             weekday: "long",
             day: "numeric",
@@ -682,19 +682,19 @@ export default function Dashboard() {
         {!todayWellness && (
           <div
             style={{
-              background: "#3a2f1f",
+              background: "rgba(217,164,65,0.14)",
               padding: 20,
               borderRadius: 12,
-              border: "2px solid #f39c12",
+              border: "2px solid #d9a441",
               marginBottom: 20,
             }}
           >
             <h3
-              style={{ margin: "0 0 10px 0", fontSize: 18, color: "#f39c12" }}
+              style={{ margin: "0 0 10px 0", fontSize: 18, color: "#d9a441" }}
             >
               ⚠️ Wellness non rempli
             </h3>
-            <p style={{ margin: 0, fontSize: 14, color: "#f8d7a0" }}>
+            <p style={{ margin: 0, fontSize: 14, color: "#f0c98a" }}>
               N'oublie pas de remplir ton questionnaire wellness d'aujourd'hui !
             </p>
           </div>
@@ -703,10 +703,10 @@ export default function Dashboard() {
         {todayScore !== null && (
           <div
             style={{
-              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              background: "#151310",
               padding: 20,
               borderRadius: 12,
-              border: "2px solid #2f80ed",
+              border: "2px solid #e0a13d",
               marginBottom: 20,
             }}
           >
@@ -721,34 +721,34 @@ export default function Dashboard() {
             >
               <div
                 style={{
-                  background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                  background: "#0d0c0a",
                   padding: 12,
                   borderRadius: 8,
                   textAlign: "center",
                 }}
               >
-                <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
                   Score du jour
                 </div>
                 <div
-                  style={{ fontSize: 28, fontWeight: "bold", color: "#2f80ed" }}
+                  style={{ fontSize: 28, fontWeight: "bold", color: "#e0a13d" }}
                 >
                   {todayScore.toFixed(1)}/10
                 </div>
               </div>
               <div
                 style={{
-                  background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                  background: "#0d0c0a",
                   padding: 12,
                   borderRadius: 8,
                   textAlign: "center",
                 }}
               >
-                <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
                   Moy. Hebdo
                 </div>
                 <div
-                  style={{ fontSize: 28, fontWeight: "bold", color: "#27ae60" }}
+                  style={{ fontSize: 28, fontWeight: "bold", color: "#4fae7d" }}
                 >
                   {weeklyAvg || "–"}
                 </div>
@@ -757,17 +757,17 @@ export default function Dashboard() {
             {wellnessHistory.length > 1 && (
               <ResponsiveContainer width="100%" height={150}>
                 <LineChart data={wellnessHistory}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                   <XAxis
                     dataKey="date"
-                    stroke="#888"
+                    stroke="#a8a199"
                     fontSize={10}
                     tickFormatter={(d) => d.slice(5)}
                   />
-                  <YAxis domain={[0, 10]} stroke="#888" fontSize={10} />
+                  <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={10} />
                   <Tooltip
                     contentStyle={{
-                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                      background: "#0d0c0a",
                       border: "1px solid rgba(255, 255, 255, 0.05)",
                       fontSize: 12,
                     }}
@@ -775,7 +775,7 @@ export default function Dashboard() {
                   <Line
                     type="monotone"
                     dataKey="normalizedScore"
-                    stroke="#2f80ed"
+                    stroke="#e0a13d"
                     strokeWidth={2}
                     dot={{ r: 3 }}
                   />
@@ -787,10 +787,10 @@ export default function Dashboard() {
 
         <div
           style={{
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            background: "#151310",
             padding: 20,
             borderRadius: 12,
-            border: "2px solid #27ae60",
+            border: "2px solid #4fae7d",
             marginBottom: 20,
           }}
         >
@@ -806,34 +806,34 @@ export default function Dashboard() {
           >
             <div
               style={{
-                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                background: "#0d0c0a",
                 padding: 12,
                 borderRadius: 8,
                 textAlign: "center",
               }}
             >
-              <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
                 Complétées
               </div>
               <div
-                style={{ fontSize: 28, fontWeight: "bold", color: "#27ae60" }}
+                style={{ fontSize: 28, fontWeight: "bold", color: "#4fae7d" }}
               >
                 {completedSessions}
               </div>
             </div>
             <div
               style={{
-                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                background: "#0d0c0a",
                 padding: 12,
                 borderRadius: 8,
                 textAlign: "center",
               }}
             >
-              <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>
+              <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
                 Total
               </div>
               <div
-                style={{ fontSize: 28, fontWeight: "bold", color: "#2f80ed" }}
+                style={{ fontSize: 28, fontWeight: "bold", color: "#e0a13d" }}
               >
                 {totalSessions}
               </div>
@@ -843,15 +843,15 @@ export default function Dashboard() {
             style={{
               marginTop: 15,
               padding: 12,
-              background: "#1a3a2a",
+              background: "rgba(79,174,125,0.14)",
               borderRadius: 8,
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: 13, color: "#888", marginBottom: 4 }}>
+            <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 4 }}>
               Taux de complétion
             </div>
-            <div style={{ fontSize: 24, fontWeight: "bold", color: "#27ae60" }}>
+            <div style={{ fontSize: 24, fontWeight: "bold", color: "#4fae7d" }}>
               {totalSessions > 0
                 ? Math.round((completedSessions / totalSessions) * 100)
                 : 0}
@@ -862,10 +862,10 @@ export default function Dashboard() {
 
         <div
           style={{
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            background: "#151310",
             padding: 20,
             borderRadius: 12,
-            border: "2px solid #2f80ed",
+            border: "2px solid #e0a13d",
             marginBottom: 20,
           }}
         >
@@ -879,16 +879,16 @@ export default function Dashboard() {
               >
                 {todayWorkout.title}
               </div>
-              <div style={{ fontSize: 14, color: "#888", marginBottom: 10 }}>
+              <div style={{ fontSize: 14, color: "#a8a199", marginBottom: 10 }}>
                 Durée estimée : {todayWorkout.estimatedDuration || "N/A"} min
               </div>
               {isWorkoutCompleted(todayWorkout) ? (
                 <div
                   style={{
                     padding: 12,
-                    background: "#1a3a2a",
+                    background: "rgba(79,174,125,0.14)",
                     borderRadius: 8,
-                    color: "#27ae60",
+                    color: "#4fae7d",
                     textAlign: "center",
                     fontWeight: "bold",
                   }}
@@ -899,9 +899,9 @@ export default function Dashboard() {
                 <div
                   style={{
                     padding: 12,
-                    background: "#3a2f1f",
+                    background: "rgba(217,164,65,0.14)",
                     borderRadius: 8,
-                    color: "#f39c12",
+                    color: "#d9a441",
                     textAlign: "center",
                     fontWeight: "bold",
                   }}
@@ -913,9 +913,9 @@ export default function Dashboard() {
                   <div
                     style={{
                       padding: 12,
-                      background: "#2a1a1a",
+                      background: "rgba(217,105,90,0.14)",
                       borderRadius: 8,
-                      color: "#e74c3c",
+                      color: "#d9695a",
                       textAlign: "center",
                       marginBottom: 10,
                     }}
@@ -927,8 +927,8 @@ export default function Dashboard() {
                     style={{
                       width: "100%",
                       padding: 12,
-                      background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-                      color: "white",
+                      background: "#e0a13d",
+                      color: "#1a1306",
                       border: "none",
                       borderRadius: 8,
                       cursor: "pointer",
@@ -941,7 +941,7 @@ export default function Dashboard() {
               )}
             </div>
           ) : (
-            <div style={{ textAlign: "center", padding: 20, color: "#888" }}>
+            <div style={{ textAlign: "center", padding: 20, color: "#a8a199" }}>
               Pas de séance programmée aujourd'hui
             </div>
           )}
@@ -949,14 +949,14 @@ export default function Dashboard() {
 
         <div
           style={{
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            background: "#151310",
             padding: 20,
             borderRadius: 12,
-            border: "2px solid #9b59b6",
+            border: "2px solid #e0a13d",
             marginBottom: 20,
           }}
         >
-          <h3 style={{ margin: "0 0 15px 0", color: "#9b59b6", fontSize: 18 }}>
+          <h3 style={{ margin: "0 0 15px 0", color: "#e0a13d", fontSize: 18 }}>
             ⚖️ Mon Poids
           </h3>
           {!editingWeight ? (
@@ -976,8 +976,8 @@ export default function Dashboard() {
                 disabled={!canUpdateWeight}
                 style={{
                   padding: "10px 18px",
-                  background: canUpdateWeight ? "#9b59b6" : "#555",
-                  color: "white",
+                  background: canUpdateWeight ? "#e0a13d" : "#2a2620",
+                  color: canUpdateWeight ? "#1a1306" : "#a8a199",
                   border: "none",
                   borderRadius: 8,
                   cursor: canUpdateWeight ? "pointer" : "not-allowed",
@@ -998,9 +998,9 @@ export default function Dashboard() {
                   width: "100%",
                   padding: 12,
                   borderRadius: 8,
-                  border: "1px solid #555",
-                  background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                  color: "#fff",
+                  border: "1px solid #2a2620",
+                  background: "#0d0c0a",
+                  color: "#f3f0ea",
                   fontSize: 16,
                   marginBottom: 10,
                 }}
@@ -1011,7 +1011,7 @@ export default function Dashboard() {
                   style={{
                     flex: 1,
                     padding: 12,
-                    background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                    background: "#4fae7d",
                     color: "white",
                     border: "none",
                     borderRadius: 8,
@@ -1028,7 +1028,7 @@ export default function Dashboard() {
                   style={{
                     flex: 1,
                     padding: 12,
-                    background: "#e74c3c",
+                    background: "#d9695a",
                     color: "white",
                     border: "none",
                     borderRadius: 8,
@@ -1041,7 +1041,7 @@ export default function Dashboard() {
             </div>
           )}
           {!canUpdateWeight && lastWeightDate && (
-            <div style={{ fontSize: 12, color: "#f39c12", marginBottom: 10 }}>
+            <div style={{ fontSize: 12, color: "#d9a441", marginBottom: 10 }}>
               ⏳ Prochaine modification dans{" "}
               {Math.max(
                 0,
@@ -1053,32 +1053,32 @@ export default function Dashboard() {
 
           {weightHistory.length > 1 && (
             <div style={{ marginTop: 15 }}>
-              <div style={{ fontSize: 13, color: "#888", marginBottom: 10 }}>
+              <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 10 }}>
                 📈 Évolution du poids
               </div>
               <ResponsiveContainer width="100%" height={180}>
                 <AreaChart data={weightHistory}>
                   <defs>
                     <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#9b59b6" stopOpacity={0.6} />
-                      <stop offset="95%" stopColor="#9b59b6" stopOpacity={0} />
+                      <stop offset="5%" stopColor="#e0a13d" stopOpacity={0.6} />
+                      <stop offset="95%" stopColor="#e0a13d" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                   <XAxis
                     dataKey="date"
-                    stroke="#888"
+                    stroke="#a8a199"
                     fontSize={10}
                     tickFormatter={(d) => d.slice(5)}
                   />
                   <YAxis
-                    stroke="#888"
+                    stroke="#a8a199"
                     fontSize={10}
                     domain={["auto", "auto"]}
                   />
                   <Tooltip
                     contentStyle={{
-                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                      background: "#0d0c0a",
                       border: "1px solid rgba(255, 255, 255, 0.05)",
                       fontSize: 12,
                     }}
@@ -1087,7 +1087,7 @@ export default function Dashboard() {
                     type="monotone"
                     dataKey="weight"
                     name="Poids (kg)"
-                    stroke="#9b59b6"
+                    stroke="#e0a13d"
                     strokeWidth={2}
                     fill="url(#wGrad)"
                   />
@@ -1100,7 +1100,7 @@ export default function Dashboard() {
         {athleteRMHistory.length > 0 && (
           <div
             style={{
-              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              background: "#151310",
               padding: 20,
               borderRadius: 12,
               border: "1px solid rgba(255, 255, 255, 0.05)",
@@ -1116,7 +1116,7 @@ export default function Dashboard() {
                   <div
                     key={i}
                     style={{
-                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                      background: "#0d0c0a",
                       padding: 15,
                       borderRadius: 8,
                       display: "flex",
@@ -1126,12 +1126,12 @@ export default function Dashboard() {
                   >
                     <div>
                       <div
-                        style={{ fontSize: 14, color: "#888", marginBottom: 4 }}
+                        style={{ fontSize: 14, color: "#a8a199", marginBottom: 4 }}
                       >
                         {rm.exercise}
                       </div>
                       {rm.date && (
-                        <div style={{ fontSize: 11, color: "#666" }}>
+                        <div style={{ fontSize: 11, color: "#a8a199" }}>
                           {new Date(rm.date).toLocaleDateString("fr-FR")}
                         </div>
                       )}
@@ -1140,7 +1140,7 @@ export default function Dashboard() {
                       style={{
                         fontSize: 24,
                         fontWeight: "bold",
-                        color: "#2f80ed",
+                        color: "#e0a13d",
                       }}
                     >
                       {rm.kg} <span style={{ fontSize: 14 }}>kg</span>
@@ -1149,7 +1149,7 @@ export default function Dashboard() {
                           style={{
                             fontSize: 14,
                             marginLeft: 6,
-                            color: "#f39c12",
+                            color: "#d9a441",
                           }}
                         >
                           ⚡
@@ -1169,9 +1169,9 @@ export default function Dashboard() {
     <div
       style={{
         padding: window.innerWidth <= 768 ? "5px" : "20px",
-        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+        background: "#0d0c0a",
         minHeight: "100vh",
-        color: "#fff",
+        color: "#f3f0ea",
         maxWidth: window.innerWidth <= 768 ? "100%" : "1200px",
         margin: "0 auto",
         width: "100%",
@@ -1192,7 +1192,7 @@ export default function Dashboard() {
           <h2 style={{ fontSize: 24, margin: "0 0 5px 0" }}>
             📊 Dashboard Admin
           </h2>
-          <p style={{ color: "#888", margin: 0, fontSize: 14 }}>
+          <p style={{ color: "#a8a199", margin: 0, fontSize: 14 }}>
             Suivi wellness et performance
           </p>
         </div>
@@ -1202,8 +1202,8 @@ export default function Dashboard() {
               onClick={() => (window.location.href = "/workout")}
               style={{
                 padding: "12px 20px",
-                background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-                color: "white",
+                background: "#e0a13d",
+                color: "#1a1306",
                 border: "none",
                 borderRadius: 8,
                 cursor: "pointer",
@@ -1226,10 +1226,10 @@ export default function Dashboard() {
           style={{
             width: "100%",
             padding: "12px 16px",
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-            border: "2px solid #2f80ed",
+            background: "#151310",
+            border: "2px solid #e0a13d",
             borderRadius: 8,
-            color: "#fff",
+            color: "#f3f0ea",
             fontSize: 16,
             outline: "none",
           }}
@@ -1243,7 +1243,7 @@ export default function Dashboard() {
           {
             key: "total",
             label: `📋 Total (${athletes.length})`,
-            color: "#2f80ed",
+            color: "#e0a13d",
           },
           {
             key: "risque",
@@ -1252,7 +1252,7 @@ export default function Dashboard() {
                 (a) => a.wellnessScore !== null && a.wellnessScore < 5
               ).length
             })`,
-            color: "#e74c3c",
+            color: "#d9695a",
           },
           {
             key: "fatigue",
@@ -1264,7 +1264,7 @@ export default function Dashboard() {
                   a.wellnessScore < 7.5
               ).length
             })`,
-            color: "#f39c12",
+            color: "#d9a441",
           },
           {
             key: "forme",
@@ -1273,7 +1273,7 @@ export default function Dashboard() {
                 (a) => a.wellnessScore !== null && a.wellnessScore >= 7.5
               ).length
             })`,
-            color: "#27ae60",
+            color: "#4fae7d",
           },
         ].map((f) => (
           <button
@@ -1284,7 +1284,7 @@ export default function Dashboard() {
               background: wellnessFilter === f.key ? f.color : "#2a2a2a",
               color: "white",
               border: `2px solid ${
-                wellnessFilter === f.key ? f.color : "#444"
+                wellnessFilter === f.key ? f.color : "rgba(255,255,255,0.16)"
               }`,
               borderRadius: 8,
               cursor: "pointer",
@@ -1300,14 +1300,14 @@ export default function Dashboard() {
       {athletes.length === 0 ? (
         <div
           style={{
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            background: "#151310",
             padding: 40,
             borderRadius: 12,
             textAlign: "center",
-            border: "2px solid #e74c3c",
+            border: "2px solid #d9695a",
           }}
         >
-          <h3 style={{ color: "#e74c3c" }}>⚠️ Aucun athlète trouvé</h3>
+          <h3 style={{ color: "#d9695a" }}>⚠️ Aucun athlète trouvé</h3>
         </div>
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
@@ -1316,10 +1316,10 @@ export default function Dashboard() {
               key={athlete.id}
               onClick={() => loadAthleteDetail(athlete)}
               style={{
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                background: "#151310",
                 padding: 18,
                 borderRadius: 10,
-                border: `2px solid ${athlete.status?.color || "#444"}`,
+                border: `2px solid ${athlete.status?.color || "rgba(255,255,255,0.16)"}`,
                 cursor: "pointer",
               }}
             >
@@ -1342,31 +1342,31 @@ export default function Dashboard() {
                   >
                     {getAthleteName(athlete)}
                   </h4>
-                  <div style={{ fontSize: 13, color: "#888" }}>
+                  <div style={{ fontSize: 13, color: "#a8a199" }}>
                     Groupe : {athlete.group || "total"}
                     {athlete.todayWorkoutTitle && (
                       <span style={{ marginLeft: 12 }}>
                         {athlete.todayCompleted ? (
                           <span
-                            style={{ color: "#27ae60", fontWeight: "bold" }}
+                            style={{ color: "#4fae7d", fontWeight: "bold" }}
                           >
                             ✅ {athlete.todayWorkoutTitle}
                           </span>
                         ) : athlete.todayWorkoutInProgress ? (
                           <span
-                            style={{ color: "#f39c12", fontWeight: "bold" }}
+                            style={{ color: "#d9a441", fontWeight: "bold" }}
                           >
                             ⏳ {athlete.todayWorkoutTitle}
                           </span>
                         ) : (
-                          <span style={{ color: "#e74c3c" }}>
+                          <span style={{ color: "#d9695a" }}>
                             ❌ {athlete.todayWorkoutTitle}
                           </span>
                         )}
                       </span>
                     )}
                     {!athlete.todayWorkoutTitle && (
-                      <span style={{ marginLeft: 12, color: "#666" }}>
+                      <span style={{ marginLeft: 12, color: "#a8a199" }}>
                         Pas de séance aujourd'hui
                       </span>
                     )}
@@ -1376,7 +1376,7 @@ export default function Dashboard() {
                   {athlete.wellnessScore !== null && (
                     <div style={{ textAlign: "center", minWidth: 75 }}>
                       <div
-                        style={{ fontSize: 10, color: "#888", marginBottom: 3 }}
+                        style={{ fontSize: 10, color: "#a8a199", marginBottom: 3 }}
                       >
                         WELLNESS
                       </div>
@@ -1399,7 +1399,7 @@ export default function Dashboard() {
                   {athlete.acwr !== null && (
                     <div style={{ textAlign: "center", minWidth: 75 }}>
                       <div
-                        style={{ fontSize: 10, color: "#888", marginBottom: 3 }}
+                        style={{ fontSize: 10, color: "#a8a199", marginBottom: 3 }}
                       >
                         ACWR
                       </div>
@@ -1447,7 +1447,7 @@ export default function Dashboard() {
             style={{
               maxWidth: 1100,
               margin: "0 auto",
-              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+              background: "#0d0c0a",
               borderRadius: 12,
               padding: 30,
             }}
@@ -1458,7 +1458,7 @@ export default function Dashboard() {
                 justifyContent: "space-between",
                 alignItems: "center",
                 marginBottom: 25,
-                borderBottom: "2px solid #2f80ed",
+                borderBottom: "2px solid #e0a13d",
                 paddingBottom: 15,
               }}
             >
@@ -1474,7 +1474,7 @@ export default function Dashboard() {
                 }}
                 style={{
                   padding: "10px 20px",
-                  background: "#e74c3c",
+                  background: "#d9695a",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -1498,13 +1498,13 @@ export default function Dashboard() {
               {showAthleteDetail.wellnessScore !== null && (
                 <div
                   style={{
-                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                    background: "#151310",
                     padding: 18,
                     borderRadius: 10,
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#888", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
                     WELLNESS
                   </div>
                   <div
@@ -1531,20 +1531,20 @@ export default function Dashboard() {
               {athleteDetails.weeklyAvg && (
                 <div
                   style={{
-                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                    background: "#151310",
                     padding: 18,
                     borderRadius: 10,
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#888", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
                     MOY. HEBDOMADAIRE
                   </div>
                   <div
                     style={{
                       fontSize: 30,
                       fontWeight: "bold",
-                      color: "#27ae60",
+                      color: "#4fae7d",
                     }}
                   >
                     {athleteDetails.weeklyAvg}/10
@@ -1554,13 +1554,13 @@ export default function Dashboard() {
               {showAthleteDetail.acwr !== null && (
                 <div
                   style={{
-                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                    background: "#151310",
                     padding: 18,
                     borderRadius: 10,
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#888", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
                     ACWR
                   </div>
                   <div
@@ -1584,17 +1584,17 @@ export default function Dashboard() {
               )}
               <div
                 style={{
-                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                  background: "#151310",
                   padding: 18,
                   borderRadius: 10,
                   textAlign: "center",
                 }}
               >
-                <div style={{ fontSize: 11, color: "#888", marginBottom: 5 }}>
+                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
                   POIDS
                 </div>
                 <div
-                  style={{ fontSize: 30, fontWeight: "bold", color: "#9b59b6" }}
+                  style={{ fontSize: 30, fontWeight: "bold", color: "#e0a13d" }}
                 >
                   {showAthleteDetail.weight
                     ? `${showAthleteDetail.weight} kg`
@@ -1604,21 +1604,21 @@ export default function Dashboard() {
 
               <div
                 style={{
-                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                  background: "#151310",
                   padding: 18,
                   borderRadius: 10,
                   textAlign: "center",
                 }}
               >
-                <div style={{ fontSize: 11, color: "#888", marginBottom: 5 }}>
+                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
                   SÉANCES
                 </div>
                 <div
-                  style={{ fontSize: 30, fontWeight: "bold", color: "#27ae60" }}
+                  style={{ fontSize: 30, fontWeight: "bold", color: "#4fae7d" }}
                 >
                   {showAthleteDetail.completedSessions || 0} / {showAthleteDetail.totalSessions || 0}
                 </div>
-                <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: "#a8a199", marginTop: 4 }}>
                   {showAthleteDetail.totalSessions > 0
                     ? `${Math.round((showAthleteDetail.completedSessions / showAthleteDetail.totalSessions) * 100)}%`
                     : "0%"}
@@ -1628,7 +1628,7 @@ export default function Dashboard() {
 
             <div
               style={{
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                background: "#151310",
                 padding: 18,
                 borderRadius: 10,
                 marginBottom: 25,
@@ -1652,9 +1652,9 @@ export default function Dashboard() {
                     <div
                       style={{
                         padding: 12,
-                        background: "#1a3a2a",
+                        background: "rgba(79,174,125,0.14)",
                         borderRadius: 8,
-                        color: "#27ae60",
+                        color: "#4fae7d",
                         fontWeight: "bold",
                       }}
                     >
@@ -1667,9 +1667,9 @@ export default function Dashboard() {
                     <div
                       style={{
                         padding: 12,
-                        background: "#3a2f1f",
+                        background: "rgba(217,164,65,0.14)",
                         borderRadius: 8,
-                        color: "#f39c12",
+                        color: "#d9a441",
                         fontWeight: "bold",
                       }}
                     >
@@ -1679,9 +1679,9 @@ export default function Dashboard() {
                     <div
                       style={{
                         padding: 12,
-                        background: "#2a1a1a",
+                        background: "rgba(217,105,90,0.14)",
                         borderRadius: 8,
-                        color: "#e74c3c",
+                        color: "#d9695a",
                         fontWeight: "bold",
                       }}
                     >
@@ -1690,7 +1690,7 @@ export default function Dashboard() {
                   )}
                 </div>
               ) : (
-                <div style={{ color: "#888", fontSize: 14 }}>
+                <div style={{ color: "#a8a199", fontSize: 14 }}>
                   Pas de séance programmée
                 </div>
               )}
@@ -1700,17 +1700,17 @@ export default function Dashboard() {
               showAthleteDetail.lastWellness.douleur > 0 && (
                 <div
                   style={{
-                    background: "#3a1f1f",
+                    background: "rgba(217,105,90,0.14)",
                     padding: 18,
                     borderRadius: 10,
-                    border: "2px solid #e74c3c",
+                    border: "2px solid #d9695a",
                     marginBottom: 25,
                   }}
                 >
                   <h4
                     style={{
                       margin: "0 0 12px 0",
-                      color: "#e74c3c",
+                      color: "#d9695a",
                       fontSize: 16,
                     }}
                   >
@@ -1721,14 +1721,14 @@ export default function Dashboard() {
                     style={{
                       marginBottom: 15,
                       padding: 12,
-                      background: "#2a1a1a",
+                      background: "rgba(217,105,90,0.14)",
                       borderRadius: 8,
                     }}
                   >
                     <div
                       style={{
                         fontSize: 12,
-                        color: "#f8b4b4",
+                        color: "#e8998c",
                         marginBottom: 4,
                       }}
                     >
@@ -1738,7 +1738,7 @@ export default function Dashboard() {
                       style={{
                         fontSize: 28,
                         fontWeight: "bold",
-                        color: "#e74c3c",
+                        color: "#d9695a",
                       }}
                     >
                       {showAthleteDetail.lastWellness.douleur}/10
@@ -1752,7 +1752,7 @@ export default function Dashboard() {
                         <div
                           style={{
                             fontSize: 13,
-                            color: "#f8b4b4",
+                            color: "#e8998c",
                             marginBottom: 15,
                             fontWeight: "bold",
                           }}
@@ -1771,7 +1771,7 @@ export default function Dashboard() {
             {acwrHistory.length > 0 ? (
               <div
                 style={{
-                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                  background: "#151310",
                   padding: 20,
                   borderRadius: 10,
                   marginBottom: 25,
@@ -1782,17 +1782,17 @@ export default function Dashboard() {
                 </h3>
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={acwrHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                     <XAxis
                       dataKey="date"
-                      stroke="#888"
+                      stroke="#a8a199"
                       fontSize={11}
                       tickFormatter={(d) => d.slice(5)}
                     />
-                    <YAxis stroke="#888" fontSize={11} domain={[0, 2]} />
+                    <YAxis stroke="#a8a199" fontSize={11} domain={[0, 2]} />
                     <Tooltip
                       contentStyle={{
-                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                        background: "#0d0c0a",
                         border: "1px solid rgba(255, 255, 255, 0.05)",
                         borderRadius: 8,
                         fontSize: 12,
@@ -1802,7 +1802,7 @@ export default function Dashboard() {
                       type="monotone"
                       dataKey="acwr"
                       name="ACWR"
-                      stroke="#2f80ed"
+                      stroke="#e0a13d"
                       strokeWidth={2}
                       dot={{ r: 3 }}
                     />
@@ -1811,7 +1811,7 @@ export default function Dashboard() {
                 <div
                   style={{
                     fontSize: 12,
-                    color: "#888",
+                    color: "#a8a199",
                     marginTop: 10,
                     textAlign: "center",
                   }}
@@ -1823,7 +1823,7 @@ export default function Dashboard() {
             ) : (
               <div
                 style={{
-                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                  background: "#151310",
                   padding: 20,
                   borderRadius: 10,
                   marginBottom: 25,
@@ -1831,11 +1831,11 @@ export default function Dashboard() {
                 }}
               >
                 <h3
-                  style={{ margin: "0 0 10px 0", fontSize: 17, color: "#888" }}
+                  style={{ margin: "0 0 10px 0", fontSize: 17, color: "#a8a199" }}
                 >
                   📊 ACWR
                 </h3>
-                <p style={{ color: "#666", fontSize: 14 }}>
+                <p style={{ color: "#a8a199", fontSize: 14 }}>
                   Données insuffisantes (minimum 10 workouts complétés sur 28
                   jours)
                 </p>
@@ -1845,7 +1845,7 @@ export default function Dashboard() {
             {athleteDetails.wellness.length > 0 && (
               <div
                 style={{
-                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                  background: "#151310",
                   padding: 20,
                   borderRadius: 10,
                   marginBottom: 25,
@@ -1856,17 +1856,17 @@ export default function Dashboard() {
                 </h3>
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={athleteDetails.wellness}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                     <XAxis
                       dataKey="date"
-                      stroke="#888"
+                      stroke="#a8a199"
                       fontSize={11}
                       tickFormatter={(d) => d.slice(5)}
                     />
-                    <YAxis domain={[0, 10]} stroke="#888" fontSize={11} />
+                    <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={11} />
                     <Tooltip
                       contentStyle={{
-                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                        background: "#0d0c0a",
                         border: "1px solid rgba(255, 255, 255, 0.05)",
                         borderRadius: 8,
                         fontSize: 12,
@@ -1885,7 +1885,7 @@ export default function Dashboard() {
                       type="monotone"
                       dataKey="fatigue"
                       name="Fatigue"
-                      stroke="#e74c3c"
+                      stroke="#d9695a"
                       strokeWidth={2}
                       dot={{ r: 2 }}
                     />
@@ -1893,7 +1893,7 @@ export default function Dashboard() {
                       type="monotone"
                       dataKey="stress"
                       name="Stress"
-                      stroke="#f39c12"
+                      stroke="#d9a441"
                       strokeWidth={2}
                       dot={{ r: 2 }}
                     />
@@ -1909,7 +1909,7 @@ export default function Dashboard() {
                       type="monotone"
                       dataKey="motivation"
                       name="Motivation"
-                      stroke="#9b59b6"
+                      stroke="#e0a13d"
                       strokeWidth={2}
                       dot={{ r: 2 }}
                     />
@@ -1937,7 +1937,7 @@ export default function Dashboard() {
             {athleteDetails.weightHistory.length > 0 && (
               <div
                 style={{
-                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                  background: "#151310",
                   padding: 20,
                   borderRadius: 10,
                   marginBottom: 25,
@@ -1952,31 +1952,31 @@ export default function Dashboard() {
                       <linearGradient id="pGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop
                           offset="5%"
-                          stopColor="#9b59b6"
+                          stopColor="#e0a13d"
                           stopOpacity={0.7}
                         />
                         <stop
                           offset="95%"
-                          stopColor="#9b59b6"
+                          stopColor="#e0a13d"
                           stopOpacity={0}
                         />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                     <XAxis
                       dataKey="date"
-                      stroke="#888"
+                      stroke="#a8a199"
                       fontSize={11}
                       tickFormatter={(d) => d.slice(5)}
                     />
                     <YAxis
-                      stroke="#888"
+                      stroke="#a8a199"
                       fontSize={11}
                       domain={["auto", "auto"]}
                     />
                     <Tooltip
                       contentStyle={{
-                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                        background: "#0d0c0a",
                         border: "1px solid rgba(255, 255, 255, 0.05)",
                         borderRadius: 8,
                         fontSize: 12,
@@ -1986,7 +1986,7 @@ export default function Dashboard() {
                       type="monotone"
                       dataKey="weight"
                       name="Poids (kg)"
-                      stroke="#9b59b6"
+                      stroke="#e0a13d"
                       strokeWidth={2}
                       fill="url(#pGrad)"
                     />
@@ -1997,11 +1997,11 @@ export default function Dashboard() {
                     textAlign: "center",
                     marginTop: 10,
                     fontSize: 13,
-                    color: "#888",
+                    color: "#a8a199",
                   }}
                 >
                   Poids actuel:{" "}
-                  <strong style={{ color: "#9b59b6" }}>
+                  <strong style={{ color: "#e0a13d" }}>
                     {
                       athleteDetails.weightHistory[
                         athleteDetails.weightHistory.length - 1
@@ -2015,7 +2015,7 @@ export default function Dashboard() {
 
             {Object.keys(detailedAthleteRMHistory).length > 0 && (
               <div
-                style={{ background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)", padding: 20, borderRadius: 10 }}
+                style={{ background: "#151310", padding: 20, borderRadius: 10 }}
               >
                 <h3 style={{ margin: "0 0 15px 0", fontSize: 17 }}>
                   💪 Évolution des RM
@@ -2032,7 +2032,7 @@ export default function Dashboard() {
                       <div
                         key={exercise}
                         style={{
-                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                          background: "#0d0c0a",
                           padding: 15,
                           borderRadius: 8,
                         }}
@@ -2042,7 +2042,7 @@ export default function Dashboard() {
                             margin: "0 0 12px 0",
                             fontSize: 15,
                             textTransform: "capitalize",
-                            color: "#2f80ed",
+                            color: "#e0a13d",
                           }}
                         >
                           {exercise}
@@ -2066,10 +2066,10 @@ export default function Dashboard() {
                               />
                               <XAxis
                                 dataKey="dateShort"
-                                stroke="#888"
+                                stroke="#a8a199"
                                 fontSize={10}
                               />
-                              <YAxis stroke="#888" fontSize={10} />
+                              <YAxis stroke="#a8a199" fontSize={10} />
                               <Tooltip
                                 contentStyle={{
                                   background: "#000",
@@ -2080,9 +2080,9 @@ export default function Dashboard() {
                               <Line
                                 type="monotone"
                                 dataKey="kg"
-                                stroke="#2f80ed"
+                                stroke="#e0a13d"
                                 strokeWidth={2}
-                                dot={{ fill: "#2f80ed", r: 4 }}
+                                dot={{ fill: "#e0a13d", r: 4 }}
                               />
                             </LineChart>
                           </ResponsiveContainer>
@@ -2091,7 +2091,7 @@ export default function Dashboard() {
                             style={{
                               textAlign: "center",
                               padding: 20,
-                              color: "#888",
+                              color: "#a8a199",
                               fontSize: 14,
                             }}
                           >
@@ -2102,16 +2102,16 @@ export default function Dashboard() {
                           style={{
                             marginTop: 8,
                             fontSize: 13,
-                            color: "#888",
+                            color: "#a8a199",
                             textAlign: "center",
                           }}
                         >
                           RM actuel :{" "}
-                          <strong style={{ color: "#2f80ed" }}>
+                          <strong style={{ color: "#e0a13d" }}>
                             {history[history.length - 1].kg} kg
                           </strong>
                           {history[history.length - 1].autoAdjusted && (
-                            <span style={{ marginLeft: 8, color: "#f39c12" }}>
+                            <span style={{ marginLeft: 8, color: "#d9a441" }}>
                               ⚡
                             </span>
                           )}

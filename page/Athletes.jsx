@@ -93,7 +93,7 @@ export default function Athletes() {
   // 🔒 Sécurité FRONT : Attendre que userRole soit chargé
   if (userRole === undefined || userRole === null) {
     return (
-      <div style={{ padding: 20, textAlign: "center", color: "#ffffff" }}>
+      <div style={{ padding: 20, textAlign: "center", color: "#f3f0ea" }}>
         Chargement de vos permissions...
       </div>
     );
@@ -236,12 +236,12 @@ export default function Athletes() {
       <div style={{ 
         padding: 20, 
         textAlign: "center", 
-        color: "#ffffff",
-        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+        color: "#f3f0ea",
+        background: "#0d0c0a",
         minHeight: "100vh"
       }}>
         <div style={{ fontSize: 18, marginBottom: 10 }}>⏳ Chargement des athlètes...</div>
-        <div style={{ fontSize: 14, color: "#888" }}>
+        <div style={{ fontSize: 14, color: "#a8a199" }}>
           Si le chargement dure plus de 10 secondes, vérifiez votre connexion.
         </div>
       </div>
@@ -253,22 +253,22 @@ export default function Athletes() {
       <div style={{ 
         padding: 20, 
         textAlign: "center", 
-        color: "#ffffff",
-        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+        color: "#f3f0ea",
+        background: "#0d0c0a",
         minHeight: "100vh"
       }}>
-        <div style={{ fontSize: 18, marginBottom: 10, color: "#e74c3c" }}>
+        <div style={{ fontSize: 18, marginBottom: 10, color: "#d9695a" }}>
           ❌ Erreur de chargement
         </div>
-        <div style={{ fontSize: 14, color: "#888", marginBottom: 20 }}>
+        <div style={{ fontSize: 14, color: "#a8a199", marginBottom: 20 }}>
           {error}
         </div>
         <button
           onClick={() => window.location.reload()}
           style={{
             padding: "12px 24px",
-            background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-            color: "white",
+            background: "#e0a13d",
+            color: "#1a1306",
             border: "none",
             borderRadius: 10,
             cursor: "pointer",
@@ -286,9 +286,9 @@ export default function Athletes() {
     <div
       style={{
         padding: 20,
-        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+        background: "#0d0c0a",
         minHeight: "100vh",
-        color: "#ffffff",
+        color: "#f3f0ea",
       }}
     >
       <h2 style={{ marginBottom: 20, fontSize: 24, fontWeight: "bold" }}>
@@ -305,10 +305,10 @@ export default function Athletes() {
           style={{
             width: "100%",
             padding: "12px 16px",
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-            border: "2px solid #2f80ed",
+            background: "#151310",
+            border: "2px solid #e0a13d",
             borderRadius: 8,
-            color: "#fff",
+            color: "#f3f0ea",
             fontSize: 16,
             outline: "none",
           }}
@@ -322,7 +322,7 @@ export default function Athletes() {
         const email = (u.email || '').toLowerCase();
         return name.includes(search) || email.includes(search);
       }).length === 0 ? (
-        <div style={{ textAlign: "center", padding: 40, color: "#888" }}>
+        <div style={{ textAlign: "center", padding: 40, color: "#a8a199" }}>
           Aucun utilisateur trouvé
         </div>
       ) : (
@@ -337,7 +337,7 @@ export default function Athletes() {
             <div
               key={user.id}
               style={{
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                background: "#151310",
                 padding: 20,
                 borderRadius: 12,
                 border: "1px solid rgba(255, 255, 255, 0.05)",
@@ -356,7 +356,7 @@ export default function Athletes() {
                   <div style={{ fontSize: 18, fontWeight: "bold", marginBottom: 5 }}>
                     {user.firstName || "Sans nom"} {user.lastName || ""}
                   </div>
-                  <div style={{ color: "#888", fontSize: 14 }}>{user.email}</div>
+                  <div style={{ color: "#a8a199", fontSize: 14 }}>{user.email}</div>
                 </div>
                 <div
                   style={{
@@ -367,8 +367,9 @@ export default function Athletes() {
                     textTransform: "uppercase",
                     background:
                       user.role === "admin"
-                        ? "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
-                        : "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+                        ? "#2a2620"
+                        : "#e0a13d",
+                    color: user.role === "admin" ? "#f3f0ea" : "#1a1306",
                     boxShadow: "0 4px 15px rgba(0, 0, 0, 0.3)",
                   }}
                 >
@@ -391,7 +392,7 @@ export default function Athletes() {
                         padding: 10,
                         borderRadius: 8,
                         border: "1px solid rgba(255, 255, 255, 0.1)",
-                        background: "#0d0d0d",
+                        background: "#151310",
                         color: "white",
                       }}
                     />
@@ -407,7 +408,7 @@ export default function Athletes() {
                         padding: 10,
                         borderRadius: 8,
                         border: "1px solid rgba(255, 255, 255, 0.1)",
-                        background: "#0d0d0d",
+                        background: "#151310",
                         color: "white",
                       }}
                     />
@@ -422,7 +423,7 @@ export default function Athletes() {
                       padding: 10,
                       borderRadius: 8,
                       border: "1px solid rgba(255, 255, 255, 0.1)",
-                      background: "#0d0d0d",
+                      background: "#151310",
                       color: "white",
                     }}
                   >
@@ -437,13 +438,13 @@ export default function Athletes() {
                       style={{
                         flex: 1,
                         padding: 12,
-                        background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                        background: "#4fae7d",
                         color: "white",
                         border: "none",
                         borderRadius: 10,
                         cursor: "pointer",
                         fontWeight: "600",
-                        boxShadow: "0 4px 15px rgba(17, 153, 142, 0.4)",
+                        boxShadow: "0 4px 15px rgba(79, 174, 125, 0.4)",
                       }}
                     >
                       ✅ Enregistrer
@@ -476,7 +477,7 @@ export default function Athletes() {
                     }}
                   >
                     <div>
-                      <div style={{ color: "#888", fontSize: 12, marginBottom: 3 }}>
+                      <div style={{ color: "#a8a199", fontSize: 12, marginBottom: 3 }}>
                         Poids
                       </div>
                       <div style={{ fontSize: 16, fontWeight: "600" }}>
@@ -484,7 +485,7 @@ export default function Athletes() {
                       </div>
                     </div>
                     <div>
-                      <div style={{ color: "#888", fontSize: 12, marginBottom: 3 }}>
+                      <div style={{ color: "#a8a199", fontSize: 12, marginBottom: 3 }}>
                         Taille
                       </div>
                       <div style={{ fontSize: 16, fontWeight: "600" }}>
@@ -492,7 +493,7 @@ export default function Athletes() {
                       </div>
                     </div>
                     <div>
-                      <div style={{ color: "#888", fontSize: 12, marginBottom: 3 }}>
+                      <div style={{ color: "#a8a199", fontSize: 12, marginBottom: 3 }}>
                         Groupe
                       </div>
                       <div style={{ fontSize: 16, fontWeight: "600" }}>
@@ -513,22 +514,22 @@ export default function Athletes() {
                       style={{
                         flex: "1 1 120px",
                         padding: 12,
-                        background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-                        color: "white",
+                        background: "#e0a13d",
+                        color: "#1a1306",
                         border: "none",
                         borderRadius: 10,
                         cursor: "pointer",
                         fontWeight: "600",
-                        boxShadow: "0 4px 15px rgba(79, 172, 254, 0.4)",
+                        boxShadow: "0 4px 15px rgba(224, 161, 61, 0.4)",
                         transition: "all 0.3s ease",
                       }}
                       onMouseEnter={(e) => {
                         e.target.style.transform = "translateY(-2px)";
-                        e.target.style.boxShadow = "0 6px 20px rgba(79, 172, 254, 0.6)";
+                        e.target.style.boxShadow = "0 6px 20px rgba(224, 161, 61, 0.6)";
                       }}
                       onMouseLeave={(e) => {
                         e.target.style.transform = "translateY(0)";
-                        e.target.style.boxShadow = "0 4px 15px rgba(79, 172, 254, 0.4)";
+                        e.target.style.boxShadow = "0 4px 15px rgba(224, 161, 61, 0.4)";
                       }}
                     >
                       ✏️ Modifier
@@ -541,22 +542,22 @@ export default function Athletes() {
                       style={{
                         flex: "1 1 120px",
                         padding: 12,
-                        background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
+                        background: "#2a2620",
                         color: "white",
                         border: "none",
                         borderRadius: 10,
                         cursor: "pointer",
                         fontWeight: "600",
-                        boxShadow: "0 4px 15px rgba(245, 87, 108, 0.4)",
+                        boxShadow: "0 4px 15px rgba(0, 0, 0, 0.35)",
                         transition: "all 0.3s ease",
                       }}
                       onMouseEnter={(e) => {
                         e.target.style.transform = "translateY(-2px)";
-                        e.target.style.boxShadow = "0 6px 20px rgba(245, 87, 108, 0.6)";
+                        e.target.style.boxShadow = "0 6px 20px rgba(0, 0, 0, 0.45)";
                       }}
                       onMouseLeave={(e) => {
                         e.target.style.transform = "translateY(0)";
-                        e.target.style.boxShadow = "0 4px 15px rgba(245, 87, 108, 0.4)";
+                        e.target.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.35)";
                       }}
                     >
                       {user.role === "admin" ? "👤 → Athlete" : "🛡️ → Admin"}
@@ -568,22 +569,22 @@ export default function Athletes() {
                         style={{
                           flex: "1 1 120px",
                           padding: 12,
-                          background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
+                          background: "#d9695a",
                           color: "white",
                           border: "none",
                           borderRadius: 10,
                           cursor: "pointer",
                           fontWeight: "600",
-                          boxShadow: "0 4px 15px rgba(255, 8, 68, 0.4)",
+                          boxShadow: "0 4px 15px rgba(217, 105, 90, 0.4)",
                           transition: "all 0.3s ease",
                         }}
                         onMouseEnter={(e) => {
                           e.target.style.transform = "translateY(-2px)";
-                          e.target.style.boxShadow = "0 6px 20px rgba(255, 8, 68, 0.6)";
+                          e.target.style.boxShadow = "0 6px 20px rgba(217, 105, 90, 0.6)";
                         }}
                         onMouseLeave={(e) => {
                           e.target.style.transform = "translateY(0)";
-                          e.target.style.boxShadow = "0 4px 15px rgba(255, 8, 68, 0.4)";
+                          e.target.style.boxShadow = "0 4px 15px rgba(217, 105, 90, 0.4)";
                         }}
                       >
                         🗑️ Supprimer

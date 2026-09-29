@@ -113,9 +113,9 @@ export default function WellnessForm() {
   return (
     <div
       style={{
-        background: "#1a1a1a",
+        background: "#151310",
         minHeight: "100vh",
-        color: "#ffffff",
+        color: "#f3f0ea",
         padding: "20px",
         maxWidth: "600px",
         margin: "0 auto",
@@ -128,7 +128,7 @@ export default function WellnessForm() {
           style={{
             background: "transparent",
             border: "none",
-            color: "#2f80ed",
+            color: "#e0a13d",
             fontSize: 16,
             cursor: "pointer",
             padding: "8px 0",
@@ -137,10 +137,10 @@ export default function WellnessForm() {
         >
           ← Retour au Wellness
         </button>
-        <h2 style={{ margin: "0 0 5px 0", color: "#ffffff" }}>
+        <h2 style={{ margin: "0 0 5px 0", color: "#f3f0ea" }}>
           Questionnaire Wellness
         </h2>
-        <p style={{ margin: 0, color: "#888", fontSize: 14 }}>
+        <p style={{ margin: 0, color: "#a8a199", fontSize: 14 }}>
           {new Date(today).toLocaleDateString("fr-FR", {
             weekday: "long",
             year: "numeric",
@@ -216,13 +216,13 @@ export default function WellnessForm() {
           style={{
             marginTop: 30,
             marginBottom: 30,
-            background: "#2a2a2a",
+            background: "#1a1815",
             padding: 20,
             borderRadius: 12,
-            border: "1px solid #444",
+            border: "1px solid rgba(255,255,255,0.16)",
           }}
         >
-          <h3 style={{ marginTop: 0, color: "#e74c3c" }}>
+          <h3 style={{ marginTop: 0, color: "#d9695a" }}>
             🩹 Localisation des douleurs
           </h3>
           <BodyScan
@@ -242,7 +242,7 @@ export default function WellnessForm() {
           style={{
             width: "100%",
             padding: 16,
-            background: loading ? "#95a5a6" : "#27ae60",
+            background: loading ? "#a8a199" : "#4fae7d",
             color: "white",
             border: "none",
             borderRadius: 12,
@@ -259,7 +259,7 @@ export default function WellnessForm() {
           <div
             style={{
               padding: 12,
-              background: message.includes("✅") ? "#27ae60" : "#e74c3c",
+              background: message.includes("✅") ? "#4fae7d" : "#d9695a",
               color: "white",
               borderRadius: 8,
               textAlign: "center",

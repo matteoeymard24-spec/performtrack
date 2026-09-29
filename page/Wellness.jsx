@@ -91,19 +91,19 @@ export default function Wellness() {
 
   const renderGraph = (key, label, color) => (
     <div style={{ marginBottom: 30 }}>
-      <h4 style={{ color: "#ffffff", marginBottom: 15 }}>{label}</h4>
+      <h4 style={{ color: "#f3f0ea", marginBottom: 15 }}>{label}</h4>
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={entries}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-          <XAxis dataKey="date" stroke="#888" />
-          <YAxis domain={[0, 10]} stroke="#888" />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
+          <XAxis dataKey="date" stroke="#a8a199" />
+          <YAxis domain={[0, 10]} stroke="#a8a199" />
           <Tooltip
             contentStyle={{
-              background: "#1a1a1a",
-              border: "1px solid #444",
+              background: "#151310",
+              border: "1px solid rgba(255,255,255,0.16)",
               borderRadius: 8,
             }}
-            labelStyle={{ color: "#ffffff" }}
+            labelStyle={{ color: "#f3f0ea" }}
           />
           <Line type="monotone" dataKey={key} stroke={color} strokeWidth={2} />
         </LineChart>
@@ -115,15 +115,15 @@ export default function Wellness() {
     <div
       style={{
         padding: 20,
-        background: "#1a1a1a",
+        background: "#151310",
         minHeight: "100vh",
-        color: "#ffffff",
+        color: "#f3f0ea",
       }}
     >
-      <h2 style={{ color: "#ffffff", marginBottom: 10 }}>
+      <h2 style={{ color: "#f3f0ea", marginBottom: 10 }}>
         Wellness – Suivi détaillé
       </h2>
-      <p style={{ color: "#b0b0b0", marginBottom: 30 }}>
+      <p style={{ color: "#a8a199", marginBottom: 30 }}>
         Suivez votre état de forme quotidien et votre récupération
       </p>
 
@@ -131,7 +131,7 @@ export default function Wellness() {
         onClick={() => navigate("/wellness-form")}
         style={{
           padding: "12px 24px",
-          background: "#27ae60",
+          background: "#4fae7d",
           color: "white",
           border: "none",
           borderRadius: 8,
@@ -155,22 +155,22 @@ export default function Wellness() {
       >
         <div
           style={{
-            background: "#2a2a2a",
+            background: "#1a1815",
             padding: 25,
             borderRadius: 12,
-            border: "2px solid #2f80ed",
+            border: "2px solid #e0a13d",
           }}
         >
-          <div style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8 }}>
             SCORE D'AUJOURD'HUI
           </div>
           {dailyScore !== null ? (
-            <div style={{ fontSize: 48, fontWeight: "bold", color: "#2f80ed" }}>
+            <div style={{ fontSize: 48, fontWeight: "bold", color: "#e0a13d" }}>
               {dailyScore}
               <span style={{ fontSize: 24, marginLeft: 5 }}>/10</span>
             </div>
           ) : (
-            <div style={{ fontSize: 16, color: "#888", padding: "20px 0" }}>
+            <div style={{ fontSize: 16, color: "#a8a199", padding: "20px 0" }}>
               Pas encore rempli aujourd'hui
             </div>
           )}
@@ -178,22 +178,22 @@ export default function Wellness() {
 
         <div
           style={{
-            background: "#2a2a2a",
+            background: "#1a1815",
             padding: 25,
             borderRadius: 12,
-            border: "2px solid #27ae60",
+            border: "2px solid #4fae7d",
           }}
         >
-          <div style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8 }}>
             MOYENNE CETTE SEMAINE
           </div>
           {weeklyAverage !== null ? (
-            <div style={{ fontSize: 48, fontWeight: "bold", color: "#27ae60" }}>
+            <div style={{ fontSize: 48, fontWeight: "bold", color: "#4fae7d" }}>
               {weeklyAverage}
               <span style={{ fontSize: 24, marginLeft: 5 }}>/10</span>
             </div>
           ) : (
-            <div style={{ fontSize: 16, color: "#888", padding: "20px 0" }}>
+            <div style={{ fontSize: 16, color: "#a8a199", padding: "20px 0" }}>
               Aucune donnée cette semaine
             </div>
           )}
@@ -203,15 +203,15 @@ export default function Wellness() {
       {/* Graphiques */}
       <div
         style={{
-          background: "#2a2a2a",
+          background: "#1a1815",
           padding: 25,
           borderRadius: 12,
-          border: "1px solid #444",
+          border: "1px solid rgba(255,255,255,0.16)",
         }}
       >
         {entries.length > 0 ? (
           <>
-            {renderGraph("normalizedScore", "Score global", "#2f80ed")}
+            {renderGraph("normalizedScore", "Score global", "#e0a13d")}
             {renderGraph("fatigue", "Fatigue", "#f44336")}
             {renderGraph("stress", "Stress", "#ff9800")}
             {renderGraph("douleur", "Douleur", "#9c27b0")}
@@ -225,7 +225,7 @@ export default function Wellness() {
             style={{
               textAlign: "center",
               padding: 60,
-              color: "#b0b0b0",
+              color: "#a8a199",
             }}
           >
             <p style={{ fontSize: 18, margin: 0 }}>

@@ -98,8 +98,8 @@ export default function MyProfile() {
         style={{
           padding: 20,
           textAlign: "center",
-          color: "#ffffff",
-          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+          color: "#f3f0ea",
+          background: "#0d0c0a",
           minHeight: "100vh",
         }}
       >
@@ -112,19 +112,20 @@ export default function MyProfile() {
     <div
       style={{
         padding: 20,
-        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+        background: "#0d0c0a",
         minHeight: "100vh",
-        color: "#ffffff",
+        color: "#f3f0ea",
       }}
     >
       {/* Header */}
       <div
         style={{
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+          background: "#e0a13d",
+          color: "#1a1306",
           padding: "24px 20px",
           borderRadius: 12,
           marginBottom: 25,
-          boxShadow: "0 4px 20px rgba(102, 126, 234, 0.4)",
+          boxShadow: "0 4px 20px rgba(224, 161, 61, 0.4)",
           textAlign: "center",
         }}
       >
@@ -140,7 +141,7 @@ export default function MyProfile() {
       {/* Carte principale */}
       <div
         style={{
-          background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+          background: "#151310",
           padding: 25,
           borderRadius: 12,
           border: "1px solid rgba(255, 255, 255, 0.05)",
@@ -156,7 +157,7 @@ export default function MyProfile() {
               display: "block",
               fontSize: 13,
               fontWeight: "600",
-              color: "#888",
+              color: "#a8a199",
               marginBottom: 8,
               textTransform: "uppercase",
               letterSpacing: "0.5px",
@@ -167,10 +168,10 @@ export default function MyProfile() {
           <div
             style={{
               padding: 14,
-              background: "#0d0d0d",
+              background: "#151310",
               borderRadius: 10,
               border: "1px solid rgba(255, 255, 255, 0.1)",
-              color: "#666",
+              color: "#a8a199",
               fontSize: 15,
             }}
           >
@@ -185,7 +186,7 @@ export default function MyProfile() {
               display: "block",
               fontSize: 13,
               fontWeight: "600",
-              color: "#888",
+              color: "#a8a199",
               marginBottom: 8,
               textTransform: "uppercase",
               letterSpacing: "0.5px",
@@ -206,7 +207,7 @@ export default function MyProfile() {
               border: editing
                 ? "2px solid rgba(102, 126, 234, 0.5)"
                 : "1px solid rgba(255, 255, 255, 0.1)",
-              background: editing ? "#1a1a1a" : "#0d0d0d",
+              background: editing ? "#151310" : "#151310",
               color: "white",
               transition: "all 0.3s ease",
               outline: "none",
@@ -222,7 +223,7 @@ export default function MyProfile() {
               display: "block",
               fontSize: 13,
               fontWeight: "600",
-              color: "#888",
+              color: "#a8a199",
               marginBottom: 8,
               textTransform: "uppercase",
               letterSpacing: "0.5px",
@@ -243,7 +244,7 @@ export default function MyProfile() {
               border: editing
                 ? "2px solid rgba(102, 126, 234, 0.5)"
                 : "1px solid rgba(255, 255, 255, 0.1)",
-              background: editing ? "#1a1a1a" : "#0d0d0d",
+              background: editing ? "#151310" : "#151310",
               color: "white",
               transition: "all 0.3s ease",
               outline: "none",
@@ -268,7 +269,7 @@ export default function MyProfile() {
                 display: "block",
                 fontSize: 13,
                 fontWeight: "600",
-                color: "#888",
+                color: "#a8a199",
                 marginBottom: 8,
                 textTransform: "uppercase",
                 letterSpacing: "0.5px",
@@ -289,7 +290,7 @@ export default function MyProfile() {
                 border: editing
                   ? "2px solid rgba(102, 126, 234, 0.5)"
                   : "1px solid rgba(255, 255, 255, 0.1)",
-                background: editing ? "#1a1a1a" : "#0d0d0d",
+                background: editing ? "#151310" : "#151310",
                 color: "white",
                 transition: "all 0.3s ease",
                 outline: "none",
@@ -305,7 +306,7 @@ export default function MyProfile() {
                 display: "block",
                 fontSize: 13,
                 fontWeight: "600",
-                color: "#888",
+                color: "#a8a199",
                 marginBottom: 8,
                 textTransform: "uppercase",
                 letterSpacing: "0.5px",
@@ -326,7 +327,7 @@ export default function MyProfile() {
                 border: editing
                   ? "2px solid rgba(102, 126, 234, 0.5)"
                   : "1px solid rgba(255, 255, 255, 0.1)",
-                background: editing ? "#1a1a1a" : "#0d0d0d",
+                background: editing ? "#151310" : "#151310",
                 color: "white",
                 transition: "all 0.3s ease",
                 outline: "none",
@@ -344,7 +345,7 @@ export default function MyProfile() {
                 display: "block",
                 fontSize: 13,
                 fontWeight: "600",
-                color: "#888",
+                color: "#a8a199",
                 marginBottom: 8,
                 textTransform: "uppercase",
                 letterSpacing: "0.5px",
@@ -365,7 +366,7 @@ export default function MyProfile() {
                 border: editing
                   ? "2px solid rgba(102, 126, 234, 0.5)"
                   : "1px solid rgba(255, 255, 255, 0.1)",
-                background: editing ? "#1a1a1a" : "#0d0d0d",
+                background: editing ? "#151310" : "#151310",
                 color: "white",
                 transition: "all 0.3s ease",
                 outline: "none",
@@ -393,7 +394,7 @@ export default function MyProfile() {
                 display: "block",
                 fontSize: 13,
                 fontWeight: "600",
-                color: "#888",
+                color: "#a8a199",
                 marginBottom: 8,
                 textTransform: "uppercase",
                 letterSpacing: "0.5px",
@@ -404,10 +405,10 @@ export default function MyProfile() {
             <div
               style={{
                 padding: 14,
-                background: "#0d0d0d",
+                background: "#151310",
                 borderRadius: 10,
                 border: "1px solid rgba(255, 255, 255, 0.1)",
-                color: "#888",
+                color: "#a8a199",
                 fontSize: 15,
               }}
             >
@@ -423,7 +424,7 @@ export default function MyProfile() {
               style={{
                 marginTop: 6,
                 fontSize: 12,
-                color: "#888",
+                color: "#a8a199",
                 fontStyle: "italic",
               }}
             >
@@ -440,23 +441,23 @@ export default function MyProfile() {
               style={{
                 flex: 1,
                 padding: 16,
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                color: "white",
+                background: "#e0a13d",
+                color: "#1a1306",
                 border: "none",
                 borderRadius: 12,
                 fontSize: 16,
                 fontWeight: "700",
                 cursor: "pointer",
-                boxShadow: "0 4px 15px rgba(102, 126, 234, 0.4)",
+                boxShadow: "0 4px 15px rgba(224, 161, 61, 0.4)",
                 transition: "all 0.3s ease",
               }}
               onMouseEnter={(e) => {
                 e.target.style.transform = "translateY(-2px)";
-                e.target.style.boxShadow = "0 6px 20px rgba(102, 126, 234, 0.6)";
+                e.target.style.boxShadow = "0 6px 20px rgba(224, 161, 61, 0.6)";
               }}
               onMouseLeave={(e) => {
                 e.target.style.transform = "translateY(0)";
-                e.target.style.boxShadow = "0 4px 15px rgba(102, 126, 234, 0.4)";
+                e.target.style.boxShadow = "0 4px 15px rgba(224, 161, 61, 0.4)";
               }}
             >
               ✏️ Modifier
@@ -468,23 +469,23 @@ export default function MyProfile() {
                 style={{
                   flex: 1,
                   padding: 16,
-                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                  background: "#4fae7d",
                   color: "white",
                   border: "none",
                   borderRadius: 12,
                   fontSize: 16,
                   fontWeight: "700",
                   cursor: "pointer",
-                  boxShadow: "0 4px 15px rgba(17, 153, 142, 0.4)",
+                  boxShadow: "0 4px 15px rgba(79, 174, 125, 0.4)",
                   transition: "all 0.3s ease",
                 }}
                 onMouseEnter={(e) => {
                   e.target.style.transform = "translateY(-2px)";
-                  e.target.style.boxShadow = "0 6px 20px rgba(17, 153, 142, 0.6)";
+                  e.target.style.boxShadow = "0 6px 20px rgba(79, 174, 125, 0.6)";
                 }}
                 onMouseLeave={(e) => {
                   e.target.style.transform = "translateY(0)";
-                  e.target.style.boxShadow = "0 4px 15px rgba(17, 153, 142, 0.4)";
+                  e.target.style.boxShadow = "0 4px 15px rgba(79, 174, 125, 0.4)";
                 }}
               >
                 ✅ Enregistrer
@@ -524,9 +525,9 @@ export default function MyProfile() {
             maxWidth: "600px",
             margin: "20px auto 0",
             padding: 16,
-            background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+            background: "#e0a13d",
             borderRadius: 12,
-            boxShadow: "0 4px 15px rgba(79, 172, 254, 0.3)",
+            boxShadow: "0 4px 15px rgba(224, 161, 61, 0.3)",
           }}
         >
           <div style={{ fontSize: 14, fontWeight: "600", display: "flex", alignItems: "center", gap: 8 }}>

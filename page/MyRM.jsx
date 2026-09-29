@@ -345,8 +345,8 @@ export default function MyRM() {
         style={{
           padding: 40,
           textAlign: "center",
-          color: "#fff",
-          background: "#1a1a1a",
+          color: "#f3f0ea",
+          background: "#151310",
           minHeight: "100vh",
         }}
       >
@@ -359,25 +359,25 @@ export default function MyRM() {
     <div
       style={{
         padding: 20,
-        background: "#1a1a1a",
+        background: "#151310",
         minHeight: "100vh",
-        color: "#fff",
+        color: "#f3f0ea",
         maxWidth: 800,
         margin: "0 auto",
       }}
     >
       <h2 style={{ fontSize: 24, marginBottom: 10 }}>💪 Mes RM, VMA & CMJ</h2>
-      <p style={{ color: "#b0b0b0", marginBottom: 30, fontSize: 14 }}>
+      <p style={{ color: "#a8a199", marginBottom: 30, fontSize: 14 }}>
         Gère tes charges maximales, ta VMA, ton CMJ et suis ta progression
       </p>
 
       {/* ==================== VMA CARD ==================== */}
       <div
         style={{
-          background: "#2a2a2a",
+          background: "#1a1815",
           padding: 20,
           borderRadius: 12,
-          border: "2px solid #27ae60",
+          border: "2px solid #4fae7d",
           marginBottom: 30,
         }}
       >
@@ -389,7 +389,7 @@ export default function MyRM() {
             marginBottom: 15,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 18, color: "#27ae60" }}>
+          <h3 style={{ margin: 0, fontSize: 18, color: "#4fae7d" }}>
             🏃 VMA (Vitesse Maximale Aérobie)
           </h3>
         </div>
@@ -406,12 +406,12 @@ export default function MyRM() {
             >
               <div>
                 <div
-                  style={{ fontSize: 36, fontWeight: "bold", color: "#27ae60" }}
+                  style={{ fontSize: 36, fontWeight: "bold", color: "#4fae7d" }}
                 >
                   {vma ? `${vma.kg} km/h` : "Non renseignée"}
                 </div>
                 {vma && vma.updatedAt && (
-                  <div style={{ fontSize: 12, color: "#888", marginTop: 5 }}>
+                  <div style={{ fontSize: 12, color: "#a8a199", marginTop: 5 }}>
                     Mis à jour le{" "}
                     {new Date(vma.updatedAt).toLocaleDateString("fr-FR")}
                   </div>
@@ -425,7 +425,7 @@ export default function MyRM() {
                   }}
                   style={{
                     padding: "10px 20px",
-                    background: "#27ae60",
+                    background: "#4fae7d",
                     color: "white",
                     border: "none",
                     borderRadius: 8,
@@ -441,7 +441,7 @@ export default function MyRM() {
                     onClick={deleteVMA}
                     style={{
                       padding: "10px 20px",
-                      background: "#e74c3c",
+                      background: "#d9695a",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -461,19 +461,19 @@ export default function MyRM() {
               <div
                 style={{
                   marginTop: 20,
-                  background: "#1a1a1a",
+                  background: "#151310",
                   padding: 15,
                   borderRadius: 8,
                 }}
               >
                 <h4
-                  style={{ fontSize: 14, marginBottom: 10, color: "#27ae60" }}
+                  style={{ fontSize: 14, marginBottom: 10, color: "#4fae7d" }}
                 >
                   📈 Évolution
                 </h4>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={vmaHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                     <XAxis
                       dataKey="date"
                       tickFormatter={(date) =>
@@ -482,14 +482,14 @@ export default function MyRM() {
                           month: "short",
                         })
                       }
-                      stroke="#888"
+                      stroke="#a8a199"
                       style={{ fontSize: 12 }}
                     />
-                    <YAxis stroke="#888" style={{ fontSize: 12 }} />
+                    <YAxis stroke="#a8a199" style={{ fontSize: 12 }} />
                     <Tooltip
                       contentStyle={{
-                        background: "#2a2a2a",
-                        border: "1px solid #27ae60",
+                        background: "#1a1815",
+                        border: "1px solid #4fae7d",
                         borderRadius: 8,
                       }}
                       labelFormatter={(date) =>
@@ -500,9 +500,9 @@ export default function MyRM() {
                     <Line
                       type="monotone"
                       dataKey="kg"
-                      stroke="#27ae60"
+                      stroke="#4fae7d"
                       strokeWidth={2}
-                      dot={{ fill: "#27ae60" }}
+                      dot={{ fill: "#4fae7d" }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -510,7 +510,7 @@ export default function MyRM() {
                   style={{
                     marginTop: 10,
                     fontSize: 12,
-                    color: "#888",
+                    color: "#a8a199",
                     textAlign: "center",
                   }}
                 >
@@ -539,10 +539,10 @@ export default function MyRM() {
                 width: "100%",
                 padding: 12,
                 marginBottom: 10,
-                background: "#1a1a1a",
-                border: "1px solid #555",
+                background: "#151310",
+                border: "1px solid #2a2620",
                 borderRadius: 8,
-                color: "#fff",
+                color: "#f3f0ea",
                 fontSize: 16,
               }}
             />
@@ -552,7 +552,7 @@ export default function MyRM() {
                 style={{
                   flex: 1,
                   padding: 12,
-                  background: "#27ae60",
+                  background: "#4fae7d",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -570,7 +570,7 @@ export default function MyRM() {
                 style={{
                   flex: 1,
                   padding: 12,
-                  background: "#e74c3c",
+                  background: "#d9695a",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -588,10 +588,10 @@ export default function MyRM() {
           style={{
             marginTop: 15,
             padding: 12,
-            background: "#1a3a2a",
+            background: "rgba(79,174,125,0.14)",
             borderRadius: 8,
             fontSize: 13,
-            color: "#a0d0a0",
+            color: "#9fd4b0",
           }}
         >
           💡 <strong>Info :</strong> La VMA est utilisée pour calculer
@@ -602,10 +602,10 @@ export default function MyRM() {
       {/* ==================== CMJ CARD ==================== */}
       <div
         style={{
-          background: "#2a2a2a",
+          background: "#1a1815",
           padding: 20,
           borderRadius: 12,
-          border: "2px solid #f39c12",
+          border: "2px solid #d9a441",
           marginBottom: 30,
         }}
       >
@@ -617,7 +617,7 @@ export default function MyRM() {
             marginBottom: 15,
           }}
         >
-          <h3 style={{ margin: 0, fontSize: 18, color: "#f39c12" }}>
+          <h3 style={{ margin: 0, fontSize: 18, color: "#d9a441" }}>
             🦘 CMJ (Counter Movement Jump)
           </h3>
         </div>
@@ -634,12 +634,12 @@ export default function MyRM() {
             >
               <div>
                 <div
-                  style={{ fontSize: 36, fontWeight: "bold", color: "#f39c12" }}
+                  style={{ fontSize: 36, fontWeight: "bold", color: "#d9a441" }}
                 >
                   {cmj ? `${cmj.kg} cm` : "Non renseigné"}
                 </div>
                 {cmj && cmj.updatedAt && (
-                  <div style={{ fontSize: 12, color: "#888", marginTop: 5 }}>
+                  <div style={{ fontSize: 12, color: "#a8a199", marginTop: 5 }}>
                     Mis à jour le{" "}
                     {new Date(cmj.updatedAt).toLocaleDateString("fr-FR")}
                   </div>
@@ -653,7 +653,7 @@ export default function MyRM() {
                   }}
                   style={{
                     padding: "10px 20px",
-                    background: "#f39c12",
+                    background: "#d9a441",
                     color: "white",
                     border: "none",
                     borderRadius: 8,
@@ -669,7 +669,7 @@ export default function MyRM() {
                     onClick={deleteCMJ}
                     style={{
                       padding: "10px 20px",
-                      background: "#e74c3c",
+                      background: "#d9695a",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -689,19 +689,19 @@ export default function MyRM() {
               <div
                 style={{
                   marginTop: 20,
-                  background: "#1a1a1a",
+                  background: "#151310",
                   padding: 15,
                   borderRadius: 8,
                 }}
               >
                 <h4
-                  style={{ fontSize: 14, marginBottom: 10, color: "#f39c12" }}
+                  style={{ fontSize: 14, marginBottom: 10, color: "#d9a441" }}
                 >
                   📈 Évolution
                 </h4>
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={cmjHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                     <XAxis
                       dataKey="date"
                       tickFormatter={(date) =>
@@ -710,14 +710,14 @@ export default function MyRM() {
                           month: "short",
                         })
                       }
-                      stroke="#888"
+                      stroke="#a8a199"
                       style={{ fontSize: 12 }}
                     />
-                    <YAxis stroke="#888" style={{ fontSize: 12 }} />
+                    <YAxis stroke="#a8a199" style={{ fontSize: 12 }} />
                     <Tooltip
                       contentStyle={{
-                        background: "#2a2a2a",
-                        border: "1px solid #f39c12",
+                        background: "#1a1815",
+                        border: "1px solid #d9a441",
                         borderRadius: 8,
                       }}
                       labelFormatter={(date) =>
@@ -728,9 +728,9 @@ export default function MyRM() {
                     <Line
                       type="monotone"
                       dataKey="kg"
-                      stroke="#f39c12"
+                      stroke="#d9a441"
                       strokeWidth={2}
-                      dot={{ fill: "#f39c12" }}
+                      dot={{ fill: "#d9a441" }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -738,7 +738,7 @@ export default function MyRM() {
                   style={{
                     marginTop: 10,
                     fontSize: 12,
-                    color: "#888",
+                    color: "#a8a199",
                     textAlign: "center",
                   }}
                 >
@@ -767,10 +767,10 @@ export default function MyRM() {
                 width: "100%",
                 padding: 12,
                 marginBottom: 10,
-                background: "#1a1a1a",
-                border: "1px solid #555",
+                background: "#151310",
+                border: "1px solid #2a2620",
                 borderRadius: 8,
-                color: "#fff",
+                color: "#f3f0ea",
                 fontSize: 16,
               }}
             />
@@ -780,7 +780,7 @@ export default function MyRM() {
                 style={{
                   flex: 1,
                   padding: 12,
-                  background: "#f39c12",
+                  background: "#d9a441",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -798,7 +798,7 @@ export default function MyRM() {
                 style={{
                   flex: 1,
                   padding: 12,
-                  background: "#e74c3c",
+                  background: "#d9695a",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -816,10 +816,10 @@ export default function MyRM() {
           style={{
             marginTop: 15,
             padding: 12,
-            background: "#3a2a1a",
+            background: "rgba(217,164,65,0.14)",
             borderRadius: 8,
             fontSize: 13,
-            color: "#e0c090",
+            color: "#f0c98a",
           }}
         >
           💡 <strong>Info :</strong> Le CMJ mesure ta détente verticale en
@@ -834,8 +834,8 @@ export default function MyRM() {
           style={{
             width: "100%",
             padding: 16,
-            background: "#2f80ed",
-            color: "white",
+            background: "#e0a13d",
+            color: "#1a1306",
             border: "none",
             borderRadius: 12,
             fontSize: 16,
@@ -852,10 +852,10 @@ export default function MyRM() {
       {showAddForm && (
         <div
           style={{
-            background: "#2a2a2a",
+            background: "#1a1815",
             padding: 25,
             borderRadius: 12,
-            border: "2px solid #2f80ed",
+            border: "2px solid #e0a13d",
             marginBottom: 30,
           }}
         >
@@ -869,7 +869,7 @@ export default function MyRM() {
                 display: "block",
                 marginBottom: 8,
                 fontSize: 14,
-                color: "#e0e0e0",
+                color: "#f3f0ea",
                 fontWeight: "bold",
               }}
             >
@@ -884,13 +884,13 @@ export default function MyRM() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #555",
-                background: "#1a1a1a",
-                color: "#ffffff",
+                border: "1px solid #2a2620",
+                background: "#151310",
+                color: "#f3f0ea",
                 fontSize: 16,
               }}
             />
-            <p style={{ fontSize: 12, color: "#888", margin: "5px 0 0 0" }}>
+            <p style={{ fontSize: 12, color: "#a8a199", margin: "5px 0 0 0" }}>
               💡{" "}
               {editingRM
                 ? "Tu peux modifier le nom de l'exercice"
@@ -904,7 +904,7 @@ export default function MyRM() {
                 display: "block",
                 marginBottom: 8,
                 fontSize: 14,
-                color: "#e0e0e0",
+                color: "#f3f0ea",
                 fontWeight: "bold",
               }}
             >
@@ -920,9 +920,9 @@ export default function MyRM() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #555",
-                background: "#1a1a1a",
-                color: "#ffffff",
+                border: "1px solid #2a2620",
+                background: "#151310",
+                color: "#f3f0ea",
                 fontSize: 16,
               }}
             />
@@ -934,7 +934,7 @@ export default function MyRM() {
                 display: "block",
                 marginBottom: 8,
                 fontSize: 14,
-                color: "#e0e0e0",
+                color: "#f3f0ea",
                 fontWeight: "bold",
               }}
             >
@@ -947,9 +947,9 @@ export default function MyRM() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #555",
-                background: "#1a1a1a",
-                color: "#ffffff",
+                border: "1px solid #2a2620",
+                background: "#151310",
+                color: "#f3f0ea",
                 fontSize: 16,
               }}
             >
@@ -965,23 +965,23 @@ export default function MyRM() {
           {calculated1RM && (
             <div
               style={{
-                background: "#1a2a3a",
+                background: "rgba(224,161,61,0.14)",
                 padding: 20,
                 borderRadius: 10,
-                border: "2px solid #2f80ed",
+                border: "2px solid #e0a13d",
                 marginBottom: 20,
                 textAlign: "center",
               }}
             >
-              <div style={{ fontSize: 14, color: "#888", marginBottom: 8 }}>
+              <div style={{ fontSize: 14, color: "#a8a199", marginBottom: 8 }}>
                 1RM THÉORIQUE ESTIMÉ
               </div>
               <div
-                style={{ fontSize: 48, fontWeight: "bold", color: "#2f80ed" }}
+                style={{ fontSize: 48, fontWeight: "bold", color: "#e0a13d" }}
               >
                 {calculated1RM} kg
               </div>
-              <div style={{ fontSize: 12, color: "#b0b0b0", marginTop: 8 }}>
+              <div style={{ fontSize: 12, color: "#a8a199", marginTop: 8 }}>
                 Basé sur {testWeight} kg × {testReps} rep
                 {testReps > 1 ? "s" : ""}
               </div>
@@ -994,8 +994,8 @@ export default function MyRM() {
               style={{
                 flex: 1,
                 padding: 14,
-                background: "#2f80ed",
-                color: "white",
+                background: "#e0a13d",
+                color: "#1a1306",
                 border: "none",
                 borderRadius: 8,
                 fontSize: 16,
@@ -1010,7 +1010,7 @@ export default function MyRM() {
               style={{
                 flex: 1,
                 padding: 14,
-                background: "#95a5a6",
+                background: "#a8a199",
                 color: "white",
                 border: "none",
                 borderRadius: 8,
@@ -1047,11 +1047,11 @@ export default function MyRM() {
                     key={exercise}
                     onClick={() => setSelectedExercise(exercise)}
                     style={{
-                      background: "#2a2a2a",
+                      background: "#1a1815",
                       padding: 15,
                       borderRadius: 10,
                       border: `2px solid ${
-                        selectedExercise === exercise ? "#2f80ed" : "#444"
+                        selectedExercise === exercise ? "#e0a13d" : "rgba(255,255,255,0.16)"
                       }`,
                       cursor: "pointer",
                       transition: "all 0.2s",
@@ -1076,7 +1076,7 @@ export default function MyRM() {
                         >
                           {exercise}
                         </h4>
-                        <div style={{ fontSize: 12, color: "#888" }}>
+                        <div style={{ fontSize: 12, color: "#a8a199" }}>
                           {history.length} enregistrement
                           {history.length > 1 ? "s" : ""}
                         </div>
@@ -1087,7 +1087,7 @@ export default function MyRM() {
                           <div
                             style={{
                               fontSize: 10,
-                              color: "#888",
+                              color: "#a8a199",
                               marginBottom: 3,
                             }}
                           >
@@ -1097,7 +1097,7 @@ export default function MyRM() {
                             style={{
                               fontSize: 20,
                               fontWeight: "bold",
-                              color: "#2f80ed",
+                              color: "#e0a13d",
                             }}
                           >
                             {latest.kg} kg
@@ -1109,7 +1109,7 @@ export default function MyRM() {
                             <div
                               style={{
                                 fontSize: 10,
-                                color: "#888",
+                                color: "#a8a199",
                                 marginBottom: 3,
                               }}
                             >
@@ -1119,7 +1119,7 @@ export default function MyRM() {
                               style={{
                                 fontSize: 20,
                                 fontWeight: "bold",
-                                color: progression >= 0 ? "#27ae60" : "#e74c3c",
+                                color: progression >= 0 ? "#4fae7d" : "#d9695a",
                               }}
                             >
                               {progression >= 0 ? "+" : ""}
@@ -1128,7 +1128,7 @@ export default function MyRM() {
                             <div
                               style={{
                                 fontSize: 11,
-                                color: progression >= 0 ? "#27ae60" : "#e74c3c",
+                                color: progression >= 0 ? "#4fae7d" : "#d9695a",
                               }}
                             >
                               {progression >= 0 ? "+" : ""}
@@ -1148,10 +1148,10 @@ export default function MyRM() {
           {selectedExercise && rmHistory[selectedExercise] && (
             <div
               style={{
-                background: "#2a2a2a",
+                background: "#1a1815",
                 padding: 20,
                 borderRadius: 12,
-                border: "2px solid #2f80ed",
+                border: "2px solid #e0a13d",
               }}
             >
               <div
@@ -1178,8 +1178,8 @@ export default function MyRM() {
                     onClick={() => handleEditRM(selectedExercise)}
                     style={{
                       padding: "8px 14px",
-                      background: "#2f80ed",
-                      color: "white",
+                      background: "#e0a13d",
+                      color: "#1a1306",
                       border: "none",
                       borderRadius: 8,
                       cursor: "pointer",
@@ -1192,7 +1192,7 @@ export default function MyRM() {
                     onClick={() => handleDeleteRM(selectedExercise)}
                     style={{
                       padding: "8px 14px",
-                      background: "#e74c3c",
+                      background: "#d9695a",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -1206,7 +1206,7 @@ export default function MyRM() {
                     onClick={() => setSelectedExercise(null)}
                     style={{
                       padding: "8px 14px",
-                      background: "#95a5a6",
+                      background: "#a8a199",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -1235,26 +1235,26 @@ export default function MyRM() {
                       ),
                     }))}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#444" />
-                    <XAxis dataKey="dateShort" stroke="#888" fontSize={11} />
-                    <YAxis stroke="#888" fontSize={11} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
+                    <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={11} />
+                    <YAxis stroke="#a8a199" fontSize={11} />
                     <Tooltip
                       contentStyle={{
-                        background: "#1a1a1a",
-                        border: "1px solid #444",
+                        background: "#151310",
+                        border: "1px solid rgba(255,255,255,0.16)",
                         borderRadius: 8,
                         fontSize: 12,
                       }}
-                      labelStyle={{ color: "#ffffff" }}
+                      labelStyle={{ color: "#f3f0ea" }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Line
                       type="monotone"
                       dataKey="kg"
                       name="1RM (kg)"
-                      stroke="#2f80ed"
+                      stroke="#e0a13d"
                       strokeWidth={3}
-                      dot={{ fill: "#2f80ed", r: 5 }}
+                      dot={{ fill: "#e0a13d", r: 5 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -1273,10 +1273,10 @@ export default function MyRM() {
                       <div
                         key={index}
                         style={{
-                          background: "#1a1a1a",
+                          background: "#151310",
                           padding: 15,
                           borderRadius: 8,
-                          border: "1px solid #555",
+                          border: "1px solid #2a2620",
                         }}
                       >
                         <div
@@ -1292,7 +1292,7 @@ export default function MyRM() {
                             <div
                               style={{
                                 fontSize: 14,
-                                color: "#888",
+                                color: "#a8a199",
                                 marginBottom: 5,
                               }}
                             >
@@ -1305,7 +1305,7 @@ export default function MyRM() {
                                 }
                               )}
                             </div>
-                            <div style={{ fontSize: 12, color: "#666" }}>
+                            <div style={{ fontSize: 12, color: "#a8a199" }}>
                               Test : {entry.originalWeight} kg ×{" "}
                               {entry.originalReps} reps
                             </div>
@@ -1313,7 +1313,7 @@ export default function MyRM() {
                               <div
                                 style={{
                                   fontSize: 11,
-                                  color: "#f39c12",
+                                  color: "#d9a441",
                                   marginTop: 3,
                                 }}
                               >
@@ -1325,7 +1325,7 @@ export default function MyRM() {
                             style={{
                               fontSize: 24,
                               fontWeight: "bold",
-                              color: "#2f80ed",
+                              color: "#e0a13d",
                             }}
                           >
                             {entry.kg} kg
@@ -1342,17 +1342,17 @@ export default function MyRM() {
         !showAddForm && (
           <div
             style={{
-              background: "#2a2a2a",
+              background: "#1a1815",
               padding: 40,
               borderRadius: 12,
               textAlign: "center",
-              border: "1px solid #444",
+              border: "1px solid rgba(255,255,255,0.16)",
             }}
           >
             <p style={{ fontSize: 16, margin: "0 0 10px 0" }}>
               Aucun RM enregistré
             </p>
-            <p style={{ fontSize: 14, color: "#888", margin: 0 }}>
+            <p style={{ fontSize: 14, color: "#a8a199", margin: 0 }}>
               Ajoute tes exercices pour commencer !
             </p>
           </div>
@@ -1364,16 +1364,16 @@ export default function MyRM() {
         style={{
           marginTop: 30,
           padding: 20,
-          background: "#3a2f1f",
+          background: "rgba(217,164,65,0.14)",
           borderRadius: 10,
-          border: "2px solid #8b6914",
+          border: "2px solid #b8862e",
         }}
       >
-        <h4 style={{ marginTop: 0, color: "#f1c40f", fontSize: 16 }}>
+        <h4 style={{ marginTop: 0, color: "#d9a441", fontSize: 16 }}>
           💡 Comment ça fonctionne ?
         </h4>
         <ul
-          style={{ color: "#f8e6a0", lineHeight: 1.8, margin: 0, fontSize: 14 }}
+          style={{ color: "#f0c98a", lineHeight: 1.8, margin: 0, fontSize: 14 }}
         >
           <li>
             Le <strong>1RM théorique</strong> est calculé avec la formule

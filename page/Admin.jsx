@@ -109,9 +109,9 @@ export default function Admin() {
             borderRadius: 6,
             fontSize: 12,
             fontWeight: "bold",
-            background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-            color: "white",
-            boxShadow: "0 2px 10px rgba(118, 75, 162, 0.5)",
+            background: "#e0a13d",
+            color: "#1a1306",
+            boxShadow: "0 2px 10px rgba(224, 161, 61, 0.5)",
           }}
         >
           👑 SUPER-ADMIN
@@ -126,8 +126,8 @@ export default function Admin() {
             borderRadius: 6,
             fontSize: 12,
             fontWeight: "bold",
-            background: "#2f80ed",
-            color: "white",
+            background: "#e0a13d",
+            color: "#1a1306",
           }}
         >
           🔑 ADMIN
@@ -141,7 +141,7 @@ export default function Admin() {
           borderRadius: 6,
           fontSize: 12,
           fontWeight: "bold",
-          background: "#27ae60",
+          background: "#4fae7d",
           color: "white",
         }}
       >
@@ -170,8 +170,8 @@ export default function Admin() {
         style={{
           padding: 40,
           textAlign: "center",
-          color: "#fff",
-          background: "#1a1a1a",
+          color: "#f3f0ea",
+          background: "#151310",
           minHeight: "100vh",
         }}
       >
@@ -184,9 +184,9 @@ export default function Admin() {
     <div
       style={{
         padding: 20,
-        background: "#1a1a1a",
+        background: "#151310",
         minHeight: "100vh",
-        color: "#fff",
+        color: "#f3f0ea",
         maxWidth: 1200,
         margin: "0 auto",
       }}
@@ -195,7 +195,7 @@ export default function Admin() {
         <h2 style={{ fontSize: 24, marginBottom: 5 }}>
           👥 Gestion des Utilisateurs
         </h2>
-        <p style={{ color: "#b0b0b0", fontSize: 14 }}>
+        <p style={{ color: "#a8a199", fontSize: 14 }}>
           Gérer les rôles et permissions
         </p>
       </div>
@@ -209,23 +209,23 @@ export default function Admin() {
           width: "100%",
           padding: 12,
           marginBottom: 20,
-          background: "#2a2a2a",
-          border: "1px solid #444",
+          background: "#1a1815",
+          border: "1px solid rgba(255,255,255,0.16)",
           borderRadius: 8,
-          color: "#fff",
+          color: "#f3f0ea",
           fontSize: 14,
         }}
       />
 
       <div
-        style={{ background: "#2a2a2a", borderRadius: 12, overflow: "hidden" }}
+        style={{ background: "#1a1815", borderRadius: 12, overflow: "hidden" }}
       >
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr
               style={{
-                background: "#1a1a1a",
-                borderBottom: "2px solid #2f80ed",
+                background: "#151310",
+                borderBottom: "2px solid #e0a13d",
               }}
             >
               <th
@@ -234,7 +234,7 @@ export default function Admin() {
                   textAlign: "left",
                   fontSize: 14,
                   fontWeight: "bold",
-                  color: "#888",
+                  color: "#a8a199",
                 }}
               >
                 UTILISATEUR
@@ -245,7 +245,7 @@ export default function Admin() {
                   textAlign: "left",
                   fontSize: 14,
                   fontWeight: "bold",
-                  color: "#888",
+                  color: "#a8a199",
                 }}
               >
                 EMAIL
@@ -256,7 +256,7 @@ export default function Admin() {
                   textAlign: "center",
                   fontSize: 14,
                   fontWeight: "bold",
-                  color: "#888",
+                  color: "#a8a199",
                 }}
               >
                 STATUT
@@ -267,7 +267,7 @@ export default function Admin() {
                   textAlign: "center",
                   fontSize: 14,
                   fontWeight: "bold",
-                  color: "#888",
+                  color: "#a8a199",
                 }}
               >
                 GROUPE
@@ -278,7 +278,7 @@ export default function Admin() {
                   textAlign: "center",
                   fontSize: 14,
                   fontWeight: "bold",
-                  color: "#888",
+                  color: "#a8a199",
                 }}
               >
                 ACTIONS
@@ -287,7 +287,7 @@ export default function Admin() {
           </thead>
           <tbody>
             {filtered.map((user) => (
-              <tr key={user.id} style={{ borderBottom: "1px solid #333" }}>
+              <tr key={user.id} style={{ borderBottom: "1px solid rgba(255,255,255,0.16)" }}>
                 <td style={{ padding: 15 }}>
                   <div
                     style={{
@@ -298,9 +298,9 @@ export default function Admin() {
                   >
                     {getUserName(user)}
                   </div>
-                  <div style={{ fontSize: 12, color: "#888" }}>{user.id}</div>
+                  <div style={{ fontSize: 12, color: "#a8a199" }}>{user.id}</div>
                 </td>
-                <td style={{ padding: 15, fontSize: 14, color: "#b0b0b0" }}>
+                <td style={{ padding: 15, fontSize: 14, color: "#a8a199" }}>
                   {user.email}
                 </td>
                 <td style={{ padding: 15, textAlign: "center" }}>
@@ -311,7 +311,7 @@ export default function Admin() {
                     padding: 15,
                     textAlign: "center",
                     fontSize: 14,
-                    color: "#888",
+                    color: "#a8a199",
                   }}
                 >
                   {user.group || "–"}
@@ -332,10 +332,10 @@ export default function Admin() {
                         padding: "8px 16px",
                         background:
                           user.superAdmin && user.id !== currentUser.uid
-                            ? "#555"
+                            ? "#2a2620"
                             : user.role === "admin"
-                            ? "#e74c3c"
-                            : "#27ae60",
+                            ? "#d9695a"
+                            : "#4fae7d",
                         color: "white",
                         border: "none",
                         borderRadius: 6,
@@ -359,7 +359,7 @@ export default function Admin() {
                           }
                           style={{
                             padding: "8px 16px",
-                            background: "#c0392b",
+                            background: "#d9695a",
                             color: "white",
                             border: "none",
                             borderRadius: 6,
@@ -383,9 +383,9 @@ export default function Admin() {
         style={{
           marginTop: 30,
           padding: 20,
-          background: "#2a2a2a",
+          background: "#1a1815",
           borderRadius: 12,
-          border: "1px solid #444",
+          border: "1px solid rgba(255,255,255,0.16)",
         }}
       >
         <h3
@@ -393,7 +393,7 @@ export default function Admin() {
             marginTop: 0,
             fontSize: 16,
             marginBottom: 15,
-            color: "#2f80ed",
+            color: "#e0a13d",
           }}
         >
           ℹ️ Informations
@@ -403,7 +403,7 @@ export default function Admin() {
             margin: 0,
             paddingLeft: 20,
             fontSize: 14,
-            color: "#b0b0b0",
+            color: "#a8a199",
             lineHeight: 1.8,
           }}
         >
@@ -419,7 +419,7 @@ export default function Admin() {
             <strong>Super-Admin :</strong> Tous les droits admin + protégé
             contre modifications + peut supprimer wellness
           </li>
-          <li style={{ color: "#f39c12" }}>
+          <li style={{ color: "#d9a441" }}>
             ⚠️ Les Super-Admins ne peuvent pas être rétrogradés par d'autres
             admins
           </li>

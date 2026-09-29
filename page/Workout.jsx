@@ -1185,13 +1185,13 @@ export default function Workout() {
   const getColor = (session) => {
     // Couleur spéciale pour le groupe "moi"
     if (session.group === "moi") {
-      return "#f39c12"; // Or/Doré pour les séances personnelles
+      return "#d9a441"; // Or/Doré pour les séances personnelles
     }
     
     // Couleurs par type pour les autres groupes
     const type = session.type || "muscu";
-    if (type === "sprint") return "#e74c3c";
-    if (type === "endurance") return "#27ae60";
+    if (type === "sprint") return "#d9695a";
+    if (type === "endurance") return "#4fae7d";
     return "#9b59b6";
   };
 
@@ -1212,7 +1212,7 @@ export default function Workout() {
           key={`e${i}`}
           style={{ 
             height: isMobile ? 70 : 90,  // height fixe au lieu de minHeight
-            background: "#111", 
+            background: "#0d0c0a", 
             borderRadius: isMobile ? 3 : 6 
           }}
         />
@@ -1231,12 +1231,12 @@ export default function Workout() {
           key={day}
           onClick={() => setSelectedDate(isSelected ? null : dateStr)}
           style={{
-            background: isToday ? "#1a3a2a" : "#1e1e1e",
+            background: isToday ? "rgba(79,174,125,0.14)" : "#1a1815",
             border: isSelected
-              ? "2px solid #27ae60"
+              ? "2px solid #4fae7d"
               : isToday
-              ? "2px solid #27ae60"
-              : "1px solid #333",
+              ? "2px solid #4fae7d"
+              : "1px solid rgba(255,255,255,0.16)",
             borderRadius: isMobile ? 3 : 6,
             padding: isMobile ? 2 : 6,
             height: isMobile ? 70 : 90,  // height fixe au lieu de minHeight
@@ -1251,7 +1251,7 @@ export default function Workout() {
             style={{
               fontSize: isMobile ? 10 : 13,
               fontWeight: isToday ? "bold" : 500,
-              color: isToday ? "#27ae60" : "#ccc",
+              color: isToday ? "#4fae7d" : "#a8a199",
               marginBottom: isMobile ? 1 : 4,
               flexShrink: 0,  // Le numéro ne rétrécit pas
             }}
@@ -1281,7 +1281,7 @@ export default function Workout() {
                   padding: isMobile ? "1px 2px" : "1px 5px",
                   fontSize: isMobile ? 7 : 10,
                   fontWeight: "bold",
-                  color: "#fff",
+                  color: "#f3f0ea",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -1296,7 +1296,7 @@ export default function Workout() {
               <div
                 style={{
                   fontSize: 7,
-                  color: "#888",
+                  color: "#a8a199",
                   textAlign: "center",
                   flexShrink: 0,
                 }}
@@ -1318,9 +1318,9 @@ export default function Workout() {
     <div
       style={{
         padding: window.innerWidth <= 768 ? "5px" : "20px",
-        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+        background: "#0d0c0a",
         minHeight: "100vh",
-        color: "#fff",
+        color: "#f3f0ea",
         maxWidth: window.innerWidth <= 768 ? "100%" : "1200px",
         margin: "0 auto",
         width: "100%",
@@ -1328,7 +1328,7 @@ export default function Workout() {
       }}
     >
       <h2 style={{ fontSize: 24, marginBottom: 10 }}>🏋️ Workout</h2>
-      <p style={{ color: "#888", marginBottom: 20, fontSize: 14 }}>
+      <p style={{ color: "#a8a199", marginBottom: 20, fontSize: 14 }}>
         Planifie et suis tes séances
       </p>
 
@@ -1351,7 +1351,7 @@ export default function Workout() {
             }}
             style={{
               padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+              background: "#4fae7d",
               color: "white",
               border: "none",
               borderRadius: 8,
@@ -1366,8 +1366,8 @@ export default function Workout() {
             onClick={() => setShowDuplicateModal(true)}
             style={{
               padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-              color: "white",
+              background: "#e0a13d",
+              color: "#1a1306",
               border: "none",
               borderRadius: 8,
               fontSize: window.innerWidth <= 768 ? 13 : 15,
@@ -1384,8 +1384,8 @@ export default function Workout() {
             }}
             style={{
               padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "linear-gradient(135deg, #a86bde 0%, #7b2ff7 100%)",
-              color: "white",
+              background: "#e0a13d",
+              color: "#1a1306",
               border: "none",
               borderRadius: 8,
               fontSize: window.innerWidth <= 768 ? 13 : 15,
@@ -1419,7 +1419,7 @@ export default function Workout() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              background: "#151310",
               borderRadius: 12,
               padding: 24,
               width: "100%",
@@ -1443,7 +1443,7 @@ export default function Workout() {
                 style={{
                   background: "none",
                   border: "none",
-                  color: "#fff",
+                  color: "#f3f0ea",
                   fontSize: 22,
                   cursor: "pointer",
                 }}
@@ -1452,7 +1452,7 @@ export default function Workout() {
               </button>
             </div>
 
-            <p style={{ fontSize: 12, color: "#888", marginBottom: 16 }}>
+            <p style={{ fontSize: 12, color: "#a8a199", marginBottom: 16 }}>
               Crée des groupes libres avec les athlètes de ton choix (un athlète peut
               appartenir à plusieurs groupes en même temps). Une fois créé, le groupe
               apparaît dans la liste "Groupe cible" lors de la création d'une séance.
@@ -1465,14 +1465,14 @@ export default function Workout() {
                   <div
                     key={g.id}
                     style={{
-                      background: "#0a0a0a",
+                      background: "#0d0c0a",
                       borderRadius: 8,
                       padding: 12,
                       marginBottom: 8,
                       border:
                         editingGroupId === g.id
-                          ? "1px solid #7b2ff7"
-                          : "1px solid #333",
+                          ? "1px solid #e0a13d"
+                          : "1px solid rgba(255,255,255,0.16)",
                     }}
                   >
                     <div
@@ -1486,7 +1486,7 @@ export default function Workout() {
                         <div style={{ fontWeight: "bold", fontSize: 14 }}>
                           {g.name}
                         </div>
-                        <div style={{ fontSize: 12, color: "#888" }}>
+                        <div style={{ fontSize: 12, color: "#a8a199" }}>
                           {(g.athleteIds || [])
                             .map((id) => {
                               const a = athletes.find((ath) => ath.id === id);
@@ -1504,9 +1504,9 @@ export default function Workout() {
                           style={{
                             padding: "5px 10px",
                             borderRadius: 6,
-                            border: "1px solid #4facfe",
+                            border: "1px solid #e0a13d",
                             background: "transparent",
-                            color: "#4facfe",
+                            color: "#e0a13d",
                             fontSize: 12,
                             cursor: "pointer",
                           }}
@@ -1518,9 +1518,9 @@ export default function Workout() {
                           style={{
                             padding: "5px 10px",
                             borderRadius: 6,
-                            border: "1px solid #e74c3c",
+                            border: "1px solid #d9695a",
                             background: "transparent",
-                            color: "#e74c3c",
+                            color: "#d9695a",
                             fontSize: 12,
                             cursor: "pointer",
                           }}
@@ -1537,7 +1537,7 @@ export default function Workout() {
             {/* Formulaire création / édition */}
             <div
               style={{
-                borderTop: "1px solid #333",
+                borderTop: "1px solid rgba(255,255,255,0.16)",
                 paddingTop: 16,
               }}
             >
@@ -1553,9 +1553,9 @@ export default function Workout() {
                   width: "100%",
                   padding: 10,
                   borderRadius: 6,
-                  border: "1px solid #555",
-                  background: "#0a0a0a",
-                  color: "#fff",
+                  border: "1px solid #2a2620",
+                  background: "#0d0c0a",
+                  color: "#f3f0ea",
                   fontSize: 14,
                   marginBottom: 10,
                 }}
@@ -1564,7 +1564,7 @@ export default function Workout() {
                 style={{
                   maxHeight: 200,
                   overflowY: "auto",
-                  border: "1px solid #333",
+                  border: "1px solid rgba(255,255,255,0.16)",
                   borderRadius: 6,
                   padding: 8,
                   marginBottom: 10,
@@ -1593,7 +1593,7 @@ export default function Workout() {
                   </label>
                 ))}
                 {athletes.length === 0 && (
-                  <div style={{ fontSize: 12, color: "#888" }}>
+                  <div style={{ fontSize: 12, color: "#a8a199" }}>
                     Aucun athlète trouvé.
                   </div>
                 )}
@@ -1606,7 +1606,7 @@ export default function Workout() {
                     padding: 10,
                     borderRadius: 6,
                     border: "none",
-                    background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                    background: "#4fae7d",
                     color: "white",
                     fontWeight: "bold",
                     cursor: "pointer",
@@ -1620,9 +1620,9 @@ export default function Workout() {
                     style={{
                       padding: 10,
                       borderRadius: 6,
-                      border: "1px solid #555",
+                      border: "1px solid #2a2620",
                       background: "transparent",
-                      color: "#fff",
+                      color: "#f3f0ea",
                       cursor: "pointer",
                     }}
                   >
@@ -1639,7 +1639,7 @@ export default function Workout() {
       {!showForm && !selectedSession && (
         <div
           style={{
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            background: "#151310",
             padding: 15,
             borderRadius: 8,
             marginBottom: 20,
@@ -1654,7 +1654,7 @@ export default function Workout() {
               style={{
                 width: 20,
                 height: 20,
-                background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+                background: "#e0a13d",
                 borderRadius: 4,
               }}
             ></div>
@@ -1665,7 +1665,7 @@ export default function Workout() {
               style={{
                 width: 20,
                 height: 20,
-                background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
+                background: "#d9695a",
                 borderRadius: 4,
               }}
             ></div>
@@ -1676,7 +1676,7 @@ export default function Workout() {
               style={{
                 width: 20,
                 height: 20,
-                background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                background: "#4fae7d",
                 borderRadius: 4,
               }}
             ></div>
@@ -1701,7 +1701,7 @@ export default function Workout() {
         >
           <div
             style={{
-              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              background: "#151310",
               padding: 30,
               borderRadius: 12,
               maxWidth: 460,
@@ -1709,7 +1709,7 @@ export default function Workout() {
             }}
           >
             <h3 style={{ margin: "0 0 10px 0" }}>📋 Dupliquer une semaine</h3>
-            <p style={{ fontSize: 14, color: "#aaa", marginBottom: 15 }}>
+            <p style={{ fontSize: 14, color: "#a8a199", marginBottom: 15 }}>
               Sélectionnez le <strong>lundi</strong> de la semaine à copier.
             </p>
             <input
@@ -1721,8 +1721,8 @@ export default function Workout() {
                 padding: 12,
                 borderRadius: 8,
                 border: "2px solid rgba(102, 126, 234, 0.3)",
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-                color: "#fff",
+                background: "#151310",
+                color: "#f3f0ea",
                 fontSize: 16,
                 marginBottom: 18,
                 cursor: "pointer",
@@ -1743,7 +1743,7 @@ export default function Workout() {
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                  background: "#4fae7d",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -1762,7 +1762,7 @@ export default function Workout() {
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "#95a5a6",
+                  background: "#a8a199",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -1793,7 +1793,7 @@ export default function Workout() {
         >
           <div
             style={{
-              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              background: "#151310",
               padding: 30,
               borderRadius: 12,
               maxWidth: 500,
@@ -1807,22 +1807,22 @@ export default function Workout() {
             <div
               style={{
                 padding: 15,
-                background: "#0a0a0a",
+                background: "#0d0c0a",
                 borderRadius: 8,
                 marginBottom: 20,
-                borderLeft: "3px solid #2f80ed",
+                borderLeft: "3px solid #e0a13d",
               }}
             >
               <div style={{ fontSize: 16, fontWeight: "bold", marginBottom: 4 }}>
                 {sessionToDuplicate.title}
               </div>
-              <div style={{ fontSize: 13, color: "#888" }}>
+              <div style={{ fontSize: 13, color: "#a8a199" }}>
                 Date originale :{" "}
                 {new Date(
                   sessionToDuplicate.date + "T12:00:00"
                 ).toLocaleDateString("fr-FR")}
               </div>
-              <div style={{ fontSize: 13, color: "#888" }}>
+              <div style={{ fontSize: 13, color: "#a8a199" }}>
                 Type :{" "}
                 {sessionToDuplicate.type === "sprint"
                   ? "⚡ Sprint"
@@ -1836,7 +1836,7 @@ export default function Workout() {
               style={{
                 display: "block",
                 fontSize: 14,
-                color: "#aaa",
+                color: "#a8a199",
                 marginBottom: 8,
                 fontWeight: "bold",
               }}
@@ -1852,8 +1852,8 @@ export default function Workout() {
                 padding: 12,
                 borderRadius: 8,
                 border: "2px solid rgba(56, 239, 125, 0.3)",
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-                color: "#fff",
+                background: "#151310",
+                color: "#f3f0ea",
                 fontSize: 16,
                 marginBottom: 20,
                 cursor: "pointer",
@@ -1875,7 +1875,7 @@ export default function Workout() {
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                  background: "#4fae7d",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -1895,7 +1895,7 @@ export default function Workout() {
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "#95a5a6",
+                  background: "#a8a199",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -1914,10 +1914,10 @@ export default function Workout() {
       {showForm && userRole === "admin" && (
         <div
           style={{
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            background: "#151310",
             padding: 25,
             borderRadius: 12,
-            border: "2px solid #27ae60",
+            border: "2px solid #4fae7d",
             marginBottom: 25,
           }}
         >
@@ -1940,8 +1940,8 @@ export default function Workout() {
             <div style={{ display: "flex", gap: 10 }}>
               {[
                 { value: "muscu", label: "💪 Musculation", color: "#9b59b6" },
-                { value: "sprint", label: "⚡ Sprint", color: "#e74c3c" },
-                { value: "endurance", label: "🏃 Endurance", color: "#27ae60" },
+                { value: "sprint", label: "⚡ Sprint", color: "#d9695a" },
+                { value: "endurance", label: "🏃 Endurance", color: "#4fae7d" },
               ].map((type) => (
                 <button
                   key={type.value}
@@ -2006,7 +2006,7 @@ export default function Workout() {
                     flex: 1,
                     padding: 12,
                     background:
-                      workoutType === type.value ? type.color : "#1a1a1a",
+                      workoutType === type.value ? type.color : "#151310",
                     color: "white",
                     border: `2px solid ${type.color}`,
                     borderRadius: 8,
@@ -2041,9 +2041,9 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #555",
-                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                color: "#fff",
+                border: "1px solid #2a2620",
+                background: "#0d0c0a",
+                color: "#f3f0ea",
                 fontSize: 16,
               }}
             />
@@ -2071,8 +2071,8 @@ export default function Workout() {
                 padding: 12,
                 borderRadius: 8,
                 border: "2px solid rgba(102, 126, 234, 0.3)",
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-                color: "#fff",
+                background: "#151310",
+                color: "#f3f0ea",
                 fontSize: 16,
                 cursor: "pointer",
                 transition: "all 0.3s ease",
@@ -2107,8 +2107,8 @@ export default function Workout() {
                 padding: 12,
                 borderRadius: 8,
                 border: "2px solid rgba(102, 126, 234, 0.3)",
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-                color: "#fff",
+                background: "#151310",
+                color: "#f3f0ea",
                 fontSize: 16,
                 cursor: "pointer",
                 transition: "all 0.3s ease",
@@ -2159,8 +2159,8 @@ export default function Workout() {
                   padding: 12,
                   borderRadius: 8,
                   border: "2px solid rgba(102, 126, 234, 0.3)",
-                  background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-                  color: "#fff",
+                  background: "#151310",
+                  color: "#f3f0ea",
                   fontSize: 16,
                   cursor: "pointer",
                   transition: "all 0.3s ease",
@@ -2191,7 +2191,7 @@ export default function Workout() {
             <div
               key={bIdx}
               style={{
-                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                background: "#0d0c0a",
                 padding: 18,
                 borderRadius: 10,
                 marginBottom: 16,
@@ -2214,9 +2214,9 @@ export default function Workout() {
                     flex: 1,
                     padding: 10,
                     borderRadius: 6,
-                    border: "1px solid #555",
-                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
-                    color: "#fff",
+                    border: "1px solid #2a2620",
+                    background: "#151310",
+                    color: "#f3f0ea",
                     fontSize: 16,
                     fontWeight: "bold",
                   }}
@@ -2228,7 +2228,7 @@ export default function Workout() {
                   style={{
                     marginLeft: 10,
                     padding: "6px 10px",
-                    background: bIdx === 0 ? "#333" : "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+                    background: bIdx === 0 ? "rgba(255,255,255,0.16)" : "#e0a13d",
                     color: "white",
                     border: "none",
                     borderRadius: 6,
@@ -2247,8 +2247,8 @@ export default function Workout() {
                     padding: "6px 10px",
                     background:
                       bIdx === blocks.length - 1
-                        ? "#333"
-                        : "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
+                        ? "rgba(255,255,255,0.16)"
+                        : "#e0a13d",
                     color: "white",
                     border: "none",
                     borderRadius: 6,
@@ -2263,7 +2263,7 @@ export default function Workout() {
                   style={{
                     marginLeft: 6,
                     padding: "6px 12px",
-                    background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
+                    background: "#d9695a",
                     color: "white",
                     border: "none",
                     borderRadius: 6,
@@ -2278,7 +2278,7 @@ export default function Workout() {
                 <div
                   key={eIdx}
                   style={{
-                    background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                    background: "#151310",
                     padding: 14,
                     borderRadius: 8,
                     marginBottom: 10,
@@ -2302,16 +2302,16 @@ export default function Workout() {
                       style={{
                         padding: 10,
                         borderRadius: 6,
-                        border: "1px solid #555",
-                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                        color: "#fff",
+                        border: "1px solid #2a2620",
+                        background: "#0d0c0a",
+                        color: "#f3f0ea",
                       }}
                     />
                     <button
                       onClick={() => removeExercise(bIdx, eIdx)}
                       style={{
                         padding: "8px 12px",
-                        background: "#95a5a6",
+                        background: "#a8a199",
                         color: "white",
                         border: "none",
                         borderRadius: 6,
@@ -2324,7 +2324,7 @@ export default function Workout() {
 
                   {/* Champ description */}
                   <div style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: 12, color: "#888", marginBottom: 4, display: "block" }}>
+                    <label style={{ fontSize: 12, color: "#a8a199", marginBottom: 4, display: "block" }}>
                       Description / Notes
                     </label>
                     <textarea
@@ -2338,9 +2338,9 @@ export default function Workout() {
                         width: "100%",
                         padding: 8,
                         borderRadius: 6,
-                        border: "1px solid #555",
-                        background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                        color: "#fff",
+                        border: "1px solid #2a2620",
+                        background: "#0d0c0a",
+                        color: "#f3f0ea",
                         fontSize: 13,
                         resize: "vertical",
                       }}
@@ -2349,7 +2349,7 @@ export default function Workout() {
 
                   {/* Champ photo/gif de démonstration */}
                   <div style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: 12, color: "#888", marginBottom: 4, display: "block" }}>
+                    <label style={{ fontSize: 12, color: "#a8a199", marginBottom: 4, display: "block" }}>
                       📸 Photo / GIF de démonstration
                     </label>
                     {ex.mediaUrl ? (
@@ -2360,7 +2360,7 @@ export default function Workout() {
                             height: MEDIA_FRAME_HEIGHT,
                             overflow: "hidden",
                             borderRadius: 8,
-                            background: "#000",
+                            background: "#0d0c0a",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -2386,7 +2386,7 @@ export default function Workout() {
                             position: "absolute",
                             top: 8,
                             right: 8,
-                            background: "#e74c3c",
+                            background: "#d9695a",
                             color: "white",
                             border: "none",
                             borderRadius: "50%",
@@ -2405,7 +2405,7 @@ export default function Workout() {
                               top: 8,
                               left: 8,
                               background: "rgba(0,0,0,0.7)",
-                              color: "#fff",
+                              color: "#f3f0ea",
                               fontSize: 11,
                               fontWeight: "bold",
                               padding: "2px 8px",
@@ -2433,13 +2433,13 @@ export default function Workout() {
                             onChange={(e) =>
                               setMediaZoom(bIdx, eIdx, Number(e.target.value))
                             }
-                            style={{ flex: 1, accentColor: "#2f80ed" }}
+                            style={{ flex: 1, accentColor: "#e0a13d" }}
                           />
                           <span style={{ fontSize: 14 }}>🔍+</span>
                           <span
                             style={{
                               fontSize: 11,
-                              color: "#888",
+                              color: "#a8a199",
                               minWidth: 40,
                               textAlign: "right",
                             }}
@@ -2461,17 +2461,17 @@ export default function Workout() {
                             width: "100%",
                             padding: 8,
                             borderRadius: 6,
-                            border: "1px dashed #555",
-                            background: "#0a0a0a",
-                            color: "#fff",
+                            border: "1px dashed #2a2620",
+                            background: "#0d0c0a",
+                            color: "#f3f0ea",
                             fontSize: 13,
                           }}
                         />
-                        <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>
+                        <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
                           Les GIF sont acceptés et resteront animés (max 800 Ko).
                         </div>
                         {uploadingMedia[`${bIdx}-${eIdx}`] && (
-                          <div style={{ fontSize: 12, color: "#f39c12", marginTop: 4 }}>
+                          <div style={{ fontSize: 12, color: "#d9a441", marginTop: 4 }}>
                             ⏳ Traitement en cours...
                           </div>
                         )}
@@ -2491,7 +2491,7 @@ export default function Workout() {
                         }}
                       >
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Séries
                           </label>
                           <input
@@ -2509,14 +2509,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Reps
                           </label>
                           <input
@@ -2534,9 +2534,9 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
@@ -2550,7 +2550,7 @@ export default function Workout() {
                         }}
                       >
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Tempo
                           </label>
                           <input
@@ -2568,14 +2568,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Repos (min)
                           </label>
                           <input
@@ -2593,9 +2593,9 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
@@ -2609,7 +2609,7 @@ export default function Workout() {
                         }}
                       >
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Intensité
                           </label>
                           <select
@@ -2627,9 +2627,9 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           >
                             <option value="PDC">PDC (Poids du corps)</option>
@@ -2649,7 +2649,7 @@ export default function Workout() {
                           </select>
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Nom RM
                           </label>
                           <input
@@ -2669,11 +2669,11 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
+                              border: "1px solid #2a2620",
                               background: ex.rmPercent === "PDC" 
-                                ? "#1a1a1a" 
-                                : "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: ex.rmPercent === "PDC" ? "#666" : "#fff",
+                                ? "#151310" 
+                                : "#0d0c0a",
+                              color: ex.rmPercent === "PDC" ? "#a8a199" : "#f3f0ea",
                               cursor: ex.rmPercent === "PDC" ? "not-allowed" : "text",
                             }}
                           />
@@ -2693,10 +2693,10 @@ export default function Workout() {
                               <div
                                 style={{
                                   padding: 12,
-                                  background: "#2a1a3a",
+                                  background: "rgba(224,161,61,0.14)",
                                   borderRadius: 8,
                                   fontSize: 13,
-                                  color: "#d4b4f8",
+                                  color: "#f0c98a",
                                 }}
                               >
                                 <div
@@ -2721,10 +2721,10 @@ export default function Workout() {
                               <div
                                 style={{
                                   padding: 12,
-                                  background: "#3a2f1f",
+                                  background: "rgba(217,164,65,0.14)",
                                   borderRadius: 8,
                                   fontSize: 13,
-                                  color: "#f8d7a0",
+                                  color: "#f0c98a",
                                 }}
                               >
                                 ⚠️ <strong>RM "{ex.rmName}" non trouvé</strong>{" "}
@@ -2737,10 +2737,10 @@ export default function Workout() {
                         <div
                           style={{
                             padding: 12,
-                            background: "#1a2a3a",
+                            background: "rgba(224,161,61,0.14)",
                             borderRadius: 8,
                             fontSize: 13,
-                            color: "#b4d4f8",
+                            color: "#f0c98a",
                           }}
                         >
                           💪 <strong>Poids du corps</strong> - Aucun poids additionnel
@@ -2761,7 +2761,7 @@ export default function Workout() {
                         }}
                       >
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Distance (m)
                           </label>
                           <input
@@ -2779,14 +2779,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Reps
                           </label>
                           <input
@@ -2804,14 +2804,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Séries
                           </label>
                           <input
@@ -2829,9 +2829,9 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
@@ -2845,7 +2845,7 @@ export default function Workout() {
                         }}
                       >
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup (min)
                           </label>
                           <input
@@ -2863,14 +2863,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup (sec)
                           </label>
                           <input
@@ -2888,16 +2888,16 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                       </div>
                       <div style={{ marginBottom: 10 }}>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Intensité
                           </label>
                           <select
@@ -2914,9 +2914,9 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           >
                             <option value="Max">Max</option>
@@ -2931,10 +2931,10 @@ export default function Workout() {
                         <div
                           style={{
                             padding: 12,
-                            background: "#2a1a1a",
+                            background: "rgba(217,105,90,0.14)",
                             borderRadius: 8,
                             fontSize: 13,
-                            color: "#f8b4b4",
+                            color: "#e8998c",
                           }}
                         >
                           <div style={{ fontWeight: "bold", marginBottom: 5 }}>
@@ -2965,7 +2965,7 @@ export default function Workout() {
                         }}
                       >
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             % VMA
                           </label>
                           <input
@@ -2983,14 +2983,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Effort (s)
                           </label>
                           <input
@@ -3008,14 +3008,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup (min)
                           </label>
                           <input
@@ -3033,14 +3033,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup (sec)
                           </label>
                           <input
@@ -3058,9 +3058,9 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
@@ -3074,7 +3074,7 @@ export default function Workout() {
                         }}
                       >
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Reps
                           </label>
                           <input
@@ -3092,14 +3092,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup blocs (min)
                           </label>
                           <input
@@ -3117,14 +3117,14 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
                         <div>
-                          <label style={{ fontSize: 12, color: "#888" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup blocs (sec)
                           </label>
                           <input
@@ -3142,9 +3142,9 @@ export default function Workout() {
                               width: "100%",
                               padding: 8,
                               borderRadius: 6,
-                              border: "1px solid #555",
-                              background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                              color: "#fff",
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
                             }}
                           />
                         </div>
@@ -3156,7 +3156,7 @@ export default function Workout() {
                             alignItems: "center",
                             gap: 8,
                             padding: "8px 12px",
-                            background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                            background: "#0d0c0a",
                             borderRadius: 6,
                             cursor: "pointer",
                             fontSize: 14,
@@ -3205,10 +3205,10 @@ export default function Workout() {
                             <div
                               style={{
                                 padding: 12,
-                                background: "#1a3a2a",
+                                background: "rgba(79,174,125,0.14)",
                                 borderRadius: 8,
                                 fontSize: 13,
-                                color: "#a0d0a0",
+                                color: "#9fd4b0",
                               }}
                             >
                               <div
@@ -3230,7 +3230,7 @@ export default function Workout() {
                                 <strong>{Math.round(totalDistance)}m</strong>
                               </div>
                               {ex.groundWork && (
-                                <div style={{ color: "#f39c12", marginTop: 5 }}>
+                                <div style={{ color: "#d9a441", marginTop: 5 }}>
                                   ⚠️ Passage au sol : -12% de distance
                                 </div>
                               )}
@@ -3241,10 +3241,10 @@ export default function Workout() {
                         <div
                           style={{
                             padding: 12,
-                            background: "#3a2f1f",
+                            background: "rgba(217,164,65,0.14)",
                             borderRadius: 8,
                             fontSize: 13,
-                            color: "#f8d7a0",
+                            color: "#f0c98a",
                           }}
                         >
                           ⚠️ <strong>Renseigne ta VMA</strong> dans "My RM" pour
@@ -3260,8 +3260,8 @@ export default function Workout() {
                 style={{
                   width: "100%",
                   padding: 10,
-                  background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-                  color: "white",
+                  background: "#e0a13d",
+                  color: "#1a1306",
                   border: "none",
                   borderRadius: 6,
                   cursor: "pointer",
@@ -3278,7 +3278,7 @@ export default function Workout() {
             style={{
               width: "100%",
               padding: 12,
-              background: "#f39c12",
+              background: "#d9a441",
               color: "white",
               border: "none",
               borderRadius: 8,
@@ -3297,7 +3297,7 @@ export default function Workout() {
               style={{
                 flex: 1,
                 padding: 14,
-                background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                background: "#4fae7d",
                 color: "white",
                 border: "none",
                 borderRadius: 8,
@@ -3313,7 +3313,7 @@ export default function Workout() {
               style={{
                 flex: 1,
                 padding: 14,
-                background: "#95a5a6",
+                background: "#a8a199",
                 color: "white",
                 border: "none",
                 borderRadius: 8,
@@ -3331,7 +3331,7 @@ export default function Workout() {
       {selectedSession && !showForm && (
         <div
           style={{
-            background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+            background: "#151310",
             padding: 25,
             borderRadius: 12,
             border: `2px solid ${getColor(selectedSession)}`,
@@ -3367,7 +3367,7 @@ export default function Workout() {
                 {selectedSession.group === "moi" && (
                   <span
                     style={{
-                      background: "linear-gradient(135deg, #f39c12 0%, #e67e22 100%)",
+                      background: "#d9a441",
                       padding: "4px 12px",
                       borderRadius: 6,
                       fontSize: 12,
@@ -3382,7 +3382,7 @@ export default function Workout() {
               <h3 style={{ margin: 0, fontSize: 20 }}>
                 {selectedSession.title}
               </h3>
-              <div style={{ fontSize: 13, color: "#888", marginTop: 4 }}>
+              <div style={{ fontSize: 13, color: "#a8a199", marginTop: 4 }}>
                 {new Date(
                   selectedSession.date + "T12:00:00"
                 ).toLocaleDateString("fr-FR")}{" "}
@@ -3396,8 +3396,8 @@ export default function Workout() {
                     onClick={() => editSession(selectedSession)}
                     style={{
                       padding: "8px 16px",
-                      background: "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)",
-                      color: "white",
+                      background: "#e0a13d",
+                      color: "#1a1306",
                       border: "none",
                       borderRadius: 8,
                       cursor: "pointer",
@@ -3414,7 +3414,7 @@ export default function Workout() {
                     }}
                     style={{
                       padding: "8px 16px",
-                      background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                      background: "#4fae7d",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -3428,7 +3428,7 @@ export default function Workout() {
                     onClick={() => deleteSession(selectedSession.id)}
                     style={{
                       padding: "8px 16px",
-                      background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
+                      background: "#d9695a",
                       color: "white",
                       border: "none",
                       borderRadius: 8,
@@ -3444,7 +3444,7 @@ export default function Workout() {
                 onClick={() => setSelectedSession(null)}
                 style={{
                   padding: "8px 16px",
-                  background: "#95a5a6",
+                  background: "#a8a199",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -3461,14 +3461,14 @@ export default function Workout() {
           {sessionType === "endurance" && !vma && (
             <div
               style={{
-                background: "#3a2f1f",
+                background: "rgba(217,164,65,0.14)",
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #f39c12",
+                border: "1px solid #d9a441",
                 marginBottom: 15,
               }}
             >
-              <div style={{ fontSize: 13, color: "#f8d7a0" }}>
+              <div style={{ fontSize: 13, color: "#f0c98a" }}>
                 ⚠️ <strong>VMA non renseignée.</strong> Rends-toi dans "My RM"
                 pour ajouter ta VMA.
               </div>
@@ -3482,10 +3482,10 @@ export default function Workout() {
                 <div
                   style={{
                     padding: 14,
-                    background: "#1a3a2a",
+                    background: "rgba(79,174,125,0.14)",
                     borderRadius: 10,
                     textAlign: "center",
-                    color: "#27ae60",
+                    color: "#4fae7d",
                     fontWeight: "bold",
                     fontSize: 16,
                   }}
@@ -3500,10 +3500,10 @@ export default function Workout() {
                   <div
                     style={{
                       padding: 12,
-                      background: "#1a3a2a",
+                      background: "rgba(79,174,125,0.14)",
                       borderRadius: 10,
                       textAlign: "center",
-                      color: "#27ae60",
+                      color: "#4fae7d",
                       fontWeight: "bold",
                       marginBottom: 10,
                     }}
@@ -3519,7 +3519,7 @@ export default function Workout() {
                     style={{
                       width: "100%",
                       padding: 16,
-                      background: "linear-gradient(135deg, #ff0844 0%, #ff4b2b 100%)",
+                      background: "#d9695a",
                       color: "white",
                       border: "none",
                       borderRadius: 12,
@@ -3537,7 +3537,7 @@ export default function Workout() {
                   style={{
                     width: "100%",
                     padding: 16,
-                    background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                    background: "#4fae7d",
                     color: "white",
                     border: "none",
                     borderRadius: 12,
@@ -3557,7 +3557,7 @@ export default function Workout() {
             <div
               key={bIdx}
               style={{
-                background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                background: "#0d0c0a",
                 padding: 18,
                 borderRadius: 10,
                 marginBottom: 16,
@@ -3576,7 +3576,7 @@ export default function Workout() {
                   <div
                     key={eIdx}
                     style={{
-                      background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                      background: "#151310",
                       padding: 15,
                       borderRadius: 8,
                       marginBottom: 12,
@@ -3591,13 +3591,13 @@ export default function Workout() {
                       <div
                         style={{
                           fontSize: 13,
-                          color: "#aaa",
+                          color: "#a8a199",
                           marginBottom: 8,
                           fontStyle: "italic",
                           padding: 8,
-                          background: "#0a0a0a",
+                          background: "#0d0c0a",
                           borderRadius: 6,
-                          borderLeft: "3px solid #2f80ed",
+                          borderLeft: "3px solid #e0a13d",
                         }}
                       >
                         📝 {ex.description}
@@ -3613,7 +3613,7 @@ export default function Workout() {
                             height: MEDIA_FRAME_HEIGHT,
                             overflow: "hidden",
                             borderRadius: 8,
-                            background: "#000",
+                            background: "#0d0c0a",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -3639,7 +3639,7 @@ export default function Workout() {
                               top: 8,
                               left: 8,
                               background: "rgba(0,0,0,0.7)",
-                              color: "#fff",
+                              color: "#f3f0ea",
                               fontSize: 11,
                               fontWeight: "bold",
                               padding: "2px 8px",
@@ -3658,13 +3658,13 @@ export default function Workout() {
                         <div
                           style={{
                             fontSize: 14,
-                            color: "#888",
+                            color: "#a8a199",
                             marginBottom: 10,
                           }}
                         >
                           {ex.series} × {ex.reps} @{" "}
                           {ex.rmPercent === "PDC" ? (
-                            <strong style={{ color: "#2f80ed" }}>PDC</strong>
+                            <strong style={{ color: "#e0a13d" }}>PDC</strong>
                           ) : (
                             <>
                               {ex.rmPercent}% ({calculateWeight(ex.rmName, ex.rmPercent)} kg)
@@ -3680,10 +3680,10 @@ export default function Workout() {
                             <div
                               style={{
                                 padding: 10,
-                                background: "#1a3a2a",
+                                background: "rgba(79,174,125,0.14)",
                                 borderRadius: 8,
                                 marginBottom: 10,
-                                border: "1px solid #27ae60",
+                                border: "1px solid #4fae7d",
                               }}
                             >
                               {normalized && normalized.series && normalized.series.map((serie, sIdx) => (
@@ -3704,7 +3704,7 @@ export default function Workout() {
                                 </div>
                               ))}
                               {normalized && normalized.notes && (
-                                <div style={{ fontSize: 12, color: "#a0d0a0", marginTop: 8, fontStyle: "italic" }}>
+                                <div style={{ fontSize: 12, color: "#9fd4b0", marginTop: 8, fontStyle: "italic" }}>
                                   📝 {normalized.notes}
                                 </div>
                               )}
@@ -3720,7 +3720,7 @@ export default function Workout() {
                         <div
                           style={{
                             fontSize: 14,
-                            color: "#888",
+                            color: "#a8a199",
                             marginBottom: 10,
                           }}
                         >
@@ -3739,10 +3739,10 @@ export default function Workout() {
                           <div
                             style={{
                               padding: 10,
-                              background: "#2a1a1a",
+                              background: "rgba(217,105,90,0.14)",
                               borderRadius: 8,
                               marginBottom: 10,
-                              border: "1px solid #e74c3c",
+                              border: "1px solid #d9695a",
                             }}
                           >
                             <div style={{ fontSize: 13 }}>
@@ -3750,7 +3750,7 @@ export default function Workout() {
                               {fb.actualDistance}m • <strong>RPE :</strong>{" "}
                               {fb.rpe}/10
                               {fb.notes && (
-                                <div style={{ marginTop: 5, color: "#f8b4b4" }}>
+                                <div style={{ marginTop: 5, color: "#e8998c" }}>
                                   {fb.notes}
                                 </div>
                               )}
@@ -3772,7 +3772,7 @@ export default function Workout() {
                                   <div
                                     style={{
                                       fontSize: 14,
-                                      color: "#888",
+                                      color: "#a8a199",
                                       marginBottom: 10,
                                     }}
                                   >
@@ -3808,7 +3808,7 @@ export default function Workout() {
                                     {" "}• Distance totale:{" "}
                                     <strong>{metrics.totalDistance}m</strong>
                                     {ex.groundWork && (
-                                      <span style={{ color: "#f39c12" }}>
+                                      <span style={{ color: "#d9a441" }}>
                                         {" "}
                                         • Passage sol
                                       </span>
@@ -3818,10 +3818,10 @@ export default function Workout() {
                                     <div
                                       style={{
                                         padding: 10,
-                                        background: "#1a3a2a",
+                                        background: "rgba(79,174,125,0.14)",
                                         borderRadius: 8,
                                         marginBottom: 10,
-                                        border: "1px solid #27ae60",
+                                        border: "1px solid #4fae7d",
                                       }}
                                     >
                                       <div style={{ fontSize: 13 }}>
@@ -3832,7 +3832,7 @@ export default function Workout() {
                                           <div
                                             style={{
                                               marginTop: 5,
-                                              color: "#a0d0a0",
+                                              color: "#9fd4b0",
                                             }}
                                           >
                                             {fb.notes}
@@ -3849,10 +3849,10 @@ export default function Workout() {
                           <div
                             style={{
                               padding: 10,
-                              background: "#3a2f1f",
+                              background: "rgba(217,164,65,0.14)",
                               borderRadius: 8,
                               fontSize: 13,
-                              color: "#f8d7a0",
+                              color: "#f0c98a",
                             }}
                           >
                             ⚠️ VMA non renseignée
@@ -3873,7 +3873,7 @@ export default function Workout() {
                         style={{
                           width: "100%",
                           padding: "10px 16px",
-                          background: fb ? "linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)" : "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                          background: fb ? "#e0a13d" : "#4fae7d",
                           color: "white",
                           border: "none",
                           borderRadius: 8,
@@ -3908,7 +3908,7 @@ export default function Workout() {
               justifyContent: "space-between",
               alignItems: "center",
               marginBottom: 12,
-              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              background: "#151310",
               padding: window.innerWidth <= 768 ? "8px 12px" : "10px 18px",
               borderRadius: 8,
             }}
@@ -3921,7 +3921,7 @@ export default function Workout() {
               }}
               style={{
                 padding: window.innerWidth <= 768 ? "4px 10px" : "6px 16px",
-                background: "#444",
+                background: "rgba(255,255,255,0.16)",
                 color: "white",
                 border: "none",
                 borderRadius: 6,
@@ -3951,7 +3951,7 @@ export default function Workout() {
               }}
               style={{
                 padding: window.innerWidth <= 768 ? "4px 10px" : "6px 16px",
-                background: "#444",
+                background: "rgba(255,255,255,0.16)",
                 color: "white",
                 border: "none",
                 borderRadius: 6,
@@ -3977,7 +3977,7 @@ export default function Workout() {
                 style={{
                   textAlign: "center",
                   fontSize: window.innerWidth <= 768 ? 9 : 12,
-                  color: "#888",
+                  color: "#a8a199",
                   fontWeight: "bold",
                   paddingBottom: 4,
                 }}
@@ -4003,7 +4003,7 @@ export default function Workout() {
           {selectedDate && (
             <div
               style={{
-                background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+                background: "#151310",
                 padding: 20,
                 borderRadius: 12,
                 marginBottom: 20,
@@ -4017,7 +4017,7 @@ export default function Workout() {
                 )}
               </h3>
               {events.filter((e) => e.date === selectedDate).length === 0 ? (
-                <div style={{ color: "#888", fontSize: 14 }}>
+                <div style={{ color: "#a8a199", fontSize: 14 }}>
                   Aucune séance ce jour
                 </div>
               ) : (
@@ -4029,7 +4029,7 @@ export default function Workout() {
                         key={session.id}
                         onClick={() => setSelectedSession(session)}
                         style={{
-                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
+                          background: "#0d0c0a",
                           padding: 18,
                           borderRadius: 10,
                           border: `2px solid ${getColor(session)}`,
@@ -4039,7 +4039,7 @@ export default function Workout() {
                         <h4 style={{ margin: "0 0 6px 0", fontSize: 16 }}>
                           {session.title}
                         </h4>
-                        <div style={{ fontSize: 13, color: "#888" }}>
+                        <div style={{ fontSize: 13, color: "#a8a199" }}>
                           <span
                             style={{
                               color: getColor(session),
@@ -4058,7 +4058,7 @@ export default function Workout() {
                             <span
                               style={{
                                 marginLeft: 10,
-                                color: "#27ae60",
+                                color: "#4fae7d",
                                 fontWeight: "bold",
                               }}
                             >
@@ -4069,7 +4069,7 @@ export default function Workout() {
                             <span
                               style={{
                                 marginLeft: 10,
-                                color: "#f39c12",
+                                color: "#d9a441",
                                 fontWeight: "bold",
                               }}
                             >
@@ -4102,14 +4102,14 @@ export default function Workout() {
         >
           <div
             style={{
-              background: "linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%)",
+              background: "#151310",
               padding: 28,
               borderRadius: 12,
               maxWidth: 480,
               width: "100%",
               maxHeight: "90vh",
               overflowY: "auto",
-              border: "2px solid #27ae60",
+              border: "2px solid #4fae7d",
             }}
           >
             <h3 style={{ margin: "0 0 18px 0", fontSize: 18 }}>
@@ -4125,15 +4125,15 @@ export default function Workout() {
                     style={{
                       marginBottom: 24,
                       padding: 16,
-                      background: "#1a1a1a",
+                      background: "#151310",
                       borderRadius: 8,
-                      border: "1px solid #333"
+                      border: "1px solid rgba(255,255,255,0.16)"
                     }}
                   >
                     <h4 style={{ 
                       margin: "0 0 14px 0", 
                       fontSize: 16,
-                      color: "#27ae60"
+                      color: "#4fae7d"
                     }}>
                       Série {idx + 1}
                     </h4>
@@ -4171,9 +4171,9 @@ export default function Workout() {
                           width: "100%",
                           padding: 12,
                           borderRadius: 8,
-                          border: "1px solid #555",
-                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                          color: "#fff",
+                          border: "1px solid #2a2620",
+                          background: "#0d0c0a",
+                          color: "#f3f0ea",
                           fontSize: 16,
                         }}
                       />
@@ -4209,9 +4209,9 @@ export default function Workout() {
                           width: "100%",
                           padding: 12,
                           borderRadius: 8,
-                          border: "1px solid #555",
-                          background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                          color: "#fff",
+                          border: "1px solid #2a2620",
+                          background: "#0d0c0a",
+                          color: "#f3f0ea",
                           fontSize: 16,
                         }}
                       />
@@ -4252,7 +4252,7 @@ export default function Workout() {
                           borderRadius: 3,
                           outline: "none",
                           background:
-                            "linear-gradient(to right, #27ae60, #f39c12, #e74c3c)",
+                            "linear-gradient(to right, #4fae7d, #d9a441, #d9695a)",
                           WebkitAppearance: "none",
                           appearance: "none",
                           cursor: "pointer",
@@ -4265,12 +4265,12 @@ export default function Workout() {
                             fontWeight: "bold",
                             color:
                               serie.rpe <= 4
-                                ? "#27ae60"
+                                ? "#4fae7d"
                                 : serie.rpe <= 6
-                                ? "#2f80ed"
+                                ? "#e0a13d"
                                 : serie.rpe <= 8
-                                ? "#f39c12"
-                                : "#e74c3c",
+                                ? "#d9a441"
+                                : "#d9695a",
                           }}
                         >
                           {serie.rpe}/10
@@ -4280,7 +4280,7 @@ export default function Workout() {
                         style={{
                           textAlign: "center",
                           fontSize: 13,
-                          color: "#888",
+                          color: "#a8a199",
                           marginTop: 2,
                         }}
                       >
@@ -4315,9 +4315,9 @@ export default function Workout() {
                       width: "100%",
                       padding: 12,
                       borderRadius: 8,
-                      border: "1px solid #555",
-                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                      color: "#fff",
+                      border: "1px solid #2a2620",
+                      background: "#0d0c0a",
+                      color: "#f3f0ea",
                       fontSize: 14,
                       resize: "vertical",
                       minHeight: 80,
@@ -4355,9 +4355,9 @@ export default function Workout() {
                       width: "100%",
                       padding: 12,
                       borderRadius: 8,
-                      border: "1px solid #555",
-                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                      color: "#fff",
+                      border: "1px solid #2a2620",
+                      background: "#0d0c0a",
+                      color: "#f3f0ea",
                       fontSize: 16,
                     }}
                   />
@@ -4388,9 +4388,9 @@ export default function Workout() {
                       width: "100%",
                       padding: 12,
                       borderRadius: 8,
-                      border: "1px solid #555",
-                      background: "linear-gradient(180deg, #000000 0%, #0a0a0a 100%)",
-                      color: "#fff",
+                      border: "1px solid #2a2620",
+                      background: "#0d0c0a",
+                      color: "#f3f0ea",
                       fontSize: 14,
                       resize: "vertical",
                     }}
@@ -4431,7 +4431,7 @@ export default function Workout() {
                     borderRadius: 5,
                     outline: "none",
                     background:
-                      "linear-gradient(to right, #27ae60, #f39c12, #e74c3c)",
+                      "linear-gradient(to right, #4fae7d, #d9a441, #d9695a)",
                     WebkitAppearance: "none",
                     appearance: "none",
                     cursor: "pointer",
@@ -4444,12 +4444,12 @@ export default function Workout() {
                       fontWeight: "bold",
                       color:
                         currentExerciseFeedback.rpe <= 4
-                          ? "#27ae60"
+                          ? "#4fae7d"
                           : currentExerciseFeedback.rpe <= 6
-                          ? "#2f80ed"
+                          ? "#e0a13d"
                           : currentExerciseFeedback.rpe <= 8
-                          ? "#f39c12"
-                          : "#e74c3c",
+                          ? "#d9a441"
+                          : "#d9695a",
                     }}
                   >
                     {currentExerciseFeedback.rpe}/10
@@ -4459,7 +4459,7 @@ export default function Workout() {
                   style={{
                     textAlign: "center",
                     fontSize: 15,
-                    color: "#888",
+                    color: "#a8a199",
                     marginTop: 4,
                     fontWeight: "bold",
                   }}
@@ -4475,7 +4475,7 @@ export default function Workout() {
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "linear-gradient(135deg, #11998e 0%, #38ef7d 100%)",
+                  background: "#4fae7d",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -4494,7 +4494,7 @@ export default function Workout() {
                 style={{
                   flex: 1,
                   padding: 14,
-                  background: "#95a5a6",
+                  background: "#a8a199",
                   color: "white",
                   border: "none",
                   borderRadius: 8,
@@ -4523,30 +4523,30 @@ export default function Workout() {
         
         /* Force le style des selects et options */
         select {
-          color: #ffffff !important;
-          background: linear-gradient(180deg, #1a1a1a 0%, #0d0d0d 100%) !important;
+          color: #f3f0ea !important;
+          background: #151310 !important;
         }
         
         select option {
-          background: #1a1a1a !important;
-          color: #ffffff !important;
+          background: #151310 !important;
+          color: #f3f0ea !important;
           padding: 8px !important;
         }
         
         select option:hover {
-          background: #2a2a2a !important;
+          background: #1a1815 !important;
         }
         
         /* Style pour inputs text et number */
         input[type="text"],
         input[type="number"] {
-          color: #ffffff !important;
-          background: #1a1a1a !important;
+          color: #f3f0ea !important;
+          background: #151310 !important;
         }
         
         input[type="text"]::placeholder,
         input[type="number"]::placeholder {
-          color: #666 !important;
+          color: #a8a199 !important;
         }
       `}</style>
     </div>
