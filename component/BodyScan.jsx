@@ -96,20 +96,27 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
     { id: "avantbras_d_back", label: "Avant-bras D", view: "back", x: 200, y: 202, w: 30, h: 72, rx: 14 },
     { id: "main_g_back", label: "Main G", view: "back", x: 46, y: 296, w: 36, h: 32, rx: 16 },
     { id: "main_d_back", label: "Main D", view: "back", x: 198, y: 296, w: 36, h: 32, rx: 16 },
-    { id: "fessier_g", label: "Fessier G", view: "back", x: 100, y: 206, w: 38, h: 38, rx: 18 },
-    { id: "fessier_d", label: "Fessier D", view: "back", x: 142, y: 206, w: 38, h: 38, rx: 18 },
-    { id: "ischio_g", label: "Ischio G", view: "back", x: 98, y: 248, w: 40, h: 84, rx: 19 },
-    { id: "ischio_d", label: "Ischio D", view: "back", x: 142, y: 248, w: 40, h: 84, rx: 19 },
-    { id: "mollet_g_back", label: "Mollet G", view: "back", x: 104, y: 332, w: 32, h: 76, rx: 15 },
-    { id: "mollet_d_back", label: "Mollet D", view: "back", x: 144, y: 332, w: 32, h: 76, rx: 15 },
+    { id: "fessier_g", label: "Fessier G", view: "back", x: 84, y: 206, w: 54, h: 42, rx: 21 },
+    { id: "fessier_d", label: "Fessier D", view: "back", x: 142, y: 206, w: 54, h: 42, rx: 21 },
+    { id: "ischio_g", label: "Ischio G", view: "back", x: 96, y: 248, w: 44, h: 86, rx: 20 },
+    { id: "ischio_d", label: "Ischio D", view: "back", x: 140, y: 248, w: 44, h: 86, rx: 20 },
+    { id: "mollet_g_back", label: "Mollet G", view: "back", x: 102, y: 330, w: 38, h: 80, rx: 18 },
+    { id: "mollet_d_back", label: "Mollet D", view: "back", x: 140, y: 330, w: 38, h: 80, rx: 18 },
     { id: "pied_g_back", label: "Pied G", view: "back", x: 92, y: 408, w: 52, h: 28, rx: 14 },
     { id: "pied_d_back", label: "Pied D", view: "back", x: 136, y: 408, w: 52, h: 28, rx: 14 },
   ];
 
   // Silhouette plus large d'épaules, bras/cuisses plus marqués, hanches
   // plus étroites que les épaules : gabarit masculin et costaud.
-  const SILHOUETTE_PATH =
+  // Face avant / arrière anatomiquement différenciées au niveau
+  // des hanches et des fessiers (bassin plat devant, galbe arrière).
+  const FRONT_SILHOUETTE_PATH =
     "M 140 10 Q 176 10 176 44 Q 176 66 160 74 L 154 82 L 154 92 Q 178 86 206 98 L 228 126 Q 234 155 228 185 L 222 205 L 218 272 Q 228 282 230 302 Q 230 322 212 324 Q 198 322 200 302 L 206 270 L 204 206 L 198 128 Q 194 110 182 102 L 188 132 L 172 168 Q 176 186 180 204 L 178 250 L 174 332 L 168 408 Q 168 418 190 420 Q 198 424 190 434 L 160 436 L 154 410 L 150 332 L 146 250 L 140 246 L 134 250 L 130 332 L 126 410 L 120 436 L 90 434 Q 82 424 90 420 Q 112 418 112 408 L 106 332 L 102 250 L 100 204 Q 104 186 108 168 L 92 132 L 98 102 Q 86 110 82 128 L 76 206 L 74 270 L 80 302 Q 82 322 68 324 Q 50 322 50 302 Q 52 282 62 272 L 58 205 L 52 185 Q 46 155 52 126 L 74 98 Q 102 86 126 92 L 126 82 L 120 74 Q 104 66 104 44 Q 104 10 140 10 Z";
+
+  const BACK_SILHOUETTE_PATH =
+    "M 140 10 Q 176 10 176 44 Q 176 66 160 74 L 154 82 L 154 92 Q 178 86 206 98 L 228 126 Q 234 155 228 185 L 222 205 L 218 272 Q 228 282 230 302 Q 230 322 212 324 Q 198 322 200 302 L 206 270 L 204 206 L 198 128 Q 194 110 182 102 L 188 132 L 172 168 Q 184 188 196 212 Q 198 230 188 244 L 180 250 Q 186 290 176 332 Q 182 350 174 378 L 166 408 Q 166 418 190 420 Q 198 424 190 434 L 160 436 L 154 410 Q 158 378 152 350 L 148 332 L 146 250 L 140 246 L 134 250 L 132 332 L 128 350 Q 122 378 126 410 L 120 436 L 90 434 Q 82 424 90 420 Q 114 418 114 408 L 106 378 Q 98 350 104 332 Q 94 290 100 250 L 92 244 Q 82 230 84 212 Q 96 188 108 168 L 92 132 L 98 102 Q 86 110 82 128 L 76 206 L 74 270 L 80 302 Q 82 322 68 324 Q 50 322 50 302 Q 52 282 62 272 L 58 205 L 52 185 Q 46 155 52 126 L 74 98 Q 102 86 126 92 L 126 82 L 120 74 Q 104 66 104 44 Q 104 10 140 10 Z";
+
+  const currentSilhouettePath = view === "front" ? FRONT_SILHOUETTE_PATH : BACK_SILHOUETTE_PATH;
 
   const currentZones = zones.filter((z) => z.view === view);
   const selectedZoneData = zones.find((z) => z.id === selectedZone);
@@ -171,7 +178,7 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
             {/* Les zones cliquables sont découpées par ce même contour :
                 aucune couleur ne peut déborder de la silhouette. */}
             <clipPath id="bodyClip">
-              <path d={SILHOUETTE_PATH} />
+              <path d={currentSilhouettePath} />
             </clipPath>
           </defs>
           <path
@@ -179,7 +186,7 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
             stroke={BORDER_STRONG}
             strokeWidth={1.5}
             strokeLinejoin="round"
-            d={SILHOUETTE_PATH}
+            d={currentSilhouettePath}
           />
 
           <g clipPath="url(#bodyClip)">
@@ -211,7 +218,7 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
             stroke={BORDER_STRONG}
             strokeWidth={1.5}
             strokeLinejoin="round"
-            d={SILHOUETTE_PATH}
+            d={currentSilhouettePath}
           />
         </svg>
       </div>
