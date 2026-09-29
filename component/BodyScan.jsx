@@ -106,17 +106,60 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
     { id: "pied_d_back", label: "Pied D", view: "back", x: 136, y: 408, w: 52, h: 28, rx: 14 },
   ];
 
-  // Silhouette plus large d'épaules, bras/cuisses plus marqués, hanches
-  // plus étroites que les épaules : gabarit masculin et costaud.
-  // Face avant / arrière anatomiquement différenciées au niveau
-  // des hanches et des fessiers (bassin plat devant, galbe arrière).
+  // Silhouette anatomique construite en courbes continues (deltoïdes,
+  // biceps/triceps, pecs/obliques, quadriceps, mollets). Face avant et
+  // arrière ont des tracés distincts : bassin plat + hanches devant,
+  // galbe fessier + ischios marqués derrière.
   const FRONT_SILHOUETTE_PATH =
-    "M 140 10 Q 176 10 176 44 Q 176 66 160 74 L 154 82 L 154 92 Q 178 86 206 98 L 228 126 Q 234 155 228 185 L 222 205 L 218 272 Q 228 282 230 302 Q 230 322 212 324 Q 198 322 200 302 L 206 270 L 204 206 L 198 128 Q 194 110 182 102 L 188 132 L 172 168 Q 176 186 180 204 L 178 250 L 174 332 L 168 408 Q 168 418 190 420 Q 198 424 190 434 L 160 436 L 154 410 L 150 332 L 146 250 L 140 246 L 134 250 L 130 332 L 126 410 L 120 436 L 90 434 Q 82 424 90 420 Q 112 418 112 408 L 106 332 L 102 250 L 100 204 Q 104 186 108 168 L 92 132 L 98 102 Q 86 110 82 128 L 76 206 L 74 270 L 80 302 Q 82 322 68 324 Q 50 322 50 302 Q 52 282 62 272 L 58 205 L 52 185 Q 46 155 52 126 L 74 98 Q 102 86 126 92 L 126 82 L 120 74 Q 104 66 104 44 Q 104 10 140 10 Z";
+    "M 140 6 C 158 6 173 17 173 44 C 173 56 168 65 160 71 L 154 77 C 152 81 150 85 150 89 C 156 87 172 84 187 89 C 206 95 220 106 224 121 C 228 140 223 160 217 178 L 213 194 C 219 206 221 220 217 238 L 211 264 L 207 278 C 205 286 213 292 213 304 C 213 316 201 322 193 318 L 197 301 L 201 265 C 203 245 199 227 195 209 L 199 191 C 203 173 199 153 189 139 C 183 129 179 121 177 113 C 183 125 187 141 183 159 C 179 173 173 183 173 195 C 173 205 177 213 181 223 L 183 237 C 189 251 189 271 185 289 C 181 307 179 321 177 333 L 175 347 C 181 359 183 375 179 393 L 173 411 C 171 419 171 425 173 431 C 181 433 197 433 201 425 C 204 419 200 415 193 414 L 167 411 C 165 395 163 379 167 361 L 169 347 C 167 327 165 307 163 289 C 161 271 157 257 149 249 L 140 247 L 131 249 C 123 257 119 271 117 289 C 115 307 113 327 111 347 L 113 361 C 117 379 115 395 113 411 L 87 414 C 80 415 76 419 79 425 C 83 433 99 433 107 431 C 109 425 109 419 107 411 L 101 393 C 97 375 99 359 105 347 L 103 333 C 101 321 99 307 95 289 C 91 271 91 251 97 237 L 99 223 C 103 213 107 205 107 195 C 107 183 101 173 97 159 C 93 141 97 125 103 113 C 101 121 97 129 91 139 C 81 153 77 173 81 191 L 85 209 C 81 227 77 245 79 265 L 83 301 L 87 318 C 79 322 67 316 67 304 C 67 292 75 286 73 278 L 69 264 L 63 238 C 59 220 61 206 67 194 L 63 178 C 57 160 52 140 56 121 C 60 106 74 95 93 89 C 108 84 124 87 130 89 C 130 85 128 81 126 77 L 120 71 C 112 65 107 56 107 44 C 107 17 122 6 140 6 Z";
 
   const BACK_SILHOUETTE_PATH =
-    "M 140 10 Q 176 10 176 44 Q 176 66 160 74 L 154 82 L 154 92 Q 178 86 206 98 L 228 126 Q 234 155 228 185 L 222 205 L 218 272 Q 228 282 230 302 Q 230 322 212 324 Q 198 322 200 302 L 206 270 L 204 206 L 198 128 Q 194 110 182 102 L 188 132 L 172 168 Q 184 188 196 212 Q 198 230 188 244 L 180 250 Q 186 290 176 332 Q 182 350 174 378 L 166 408 Q 166 418 190 420 Q 198 424 190 434 L 160 436 L 154 410 Q 158 378 152 350 L 148 332 L 146 250 L 140 246 L 134 250 L 132 332 L 128 350 Q 122 378 126 410 L 120 436 L 90 434 Q 82 424 90 420 Q 114 418 114 408 L 106 378 Q 98 350 104 332 Q 94 290 100 250 L 92 244 Q 82 230 84 212 Q 96 188 108 168 L 92 132 L 98 102 Q 86 110 82 128 L 76 206 L 74 270 L 80 302 Q 82 322 68 324 Q 50 322 50 302 Q 52 282 62 272 L 58 205 L 52 185 Q 46 155 52 126 L 74 98 Q 102 86 126 92 L 126 82 L 120 74 Q 104 66 104 44 Q 104 10 140 10 Z";
+    "M 140 6 C 158 6 173 17 173 44 C 173 56 168 65 160 71 L 154 77 C 152 81 150 85 150 89 C 156 87 172 84 187 89 C 206 95 220 106 224 121 C 228 140 223 160 217 178 L 213 194 C 219 206 221 220 217 238 L 211 264 L 207 278 C 205 286 213 292 213 304 C 213 316 201 322 193 318 L 197 301 L 201 265 C 203 245 199 227 195 209 L 199 191 C 203 173 199 153 189 139 C 183 129 179 121 177 113 C 183 125 187 141 183 159 C 179 173 173 183 173 195 C 173 205 178 213 183 222 L 185 236 C 199 245 205 257 201 273 C 197 285 191 291 185 293 C 191 303 193 319 189 335 L 183 349 C 191 363 193 381 187 399 L 179 415 C 177 421 177 427 179 433 C 187 435 201 433 203 425 C 206 419 202 415 195 414 L 169 415 C 165 399 163 381 169 363 L 171 349 C 167 331 163 313 159 297 C 153 287 145 270 140 252 C 135 270 127 287 121 297 C 117 313 113 331 109 349 L 111 363 C 117 381 115 399 111 415 L 85 414 C 78 415 74 419 77 425 C 79 433 93 435 101 433 C 103 427 103 421 101 415 L 93 399 C 87 381 89 363 97 349 L 91 335 C 87 319 89 303 95 293 C 89 291 83 285 79 273 C 75 257 81 245 95 236 L 97 222 C 102 213 107 205 107 195 C 107 183 101 173 97 159 C 93 141 97 125 103 113 C 101 121 97 129 91 139 C 81 153 77 173 81 191 L 85 209 C 81 227 77 245 79 265 L 83 301 L 87 318 C 79 322 67 316 67 304 C 67 292 75 286 73 278 L 69 264 L 63 238 C 59 220 61 206 67 194 L 63 178 C 57 160 52 140 56 121 C 60 106 74 95 93 89 C 108 84 124 87 130 89 C 130 85 128 81 126 77 L 120 71 C 112 65 107 56 107 44 C 107 17 122 6 140 6 Z";
+
+  // Traits de définition musculaire dessinés par-dessus les zones
+  // cliquables (clavicules/abdos/obliques devant, trapèze/omoplates/
+  // colonne/ischios derrière) pour éviter l'effet "silhouette plate".
+  const FRONT_DETAIL_LINES = [
+    "M 150 89 Q 140 96 130 89",
+    "M 140 100 L 140 200",
+    "M 126 160 L 154 160",
+    "M 128 178 L 152 178",
+    "M 130 196 L 150 196",
+    "M 152 135 L 172 190",
+    "M 128 135 L 108 190",
+    "M 215 150 Q 210 175 205 195",
+    "M 65 150 Q 70 175 75 195",
+    "M 165 365 L 162 400",
+    "M 115 365 L 118 400",
+  ];
+
+  const BACK_DETAIL_LINES = [
+    "M 140 90 L 152 130 L 140 172 L 128 130 Z",
+    "M 140 100 L 140 230",
+    "M 178 120 Q 168 160 160 190",
+    "M 102 120 Q 112 160 120 190",
+    "M 128 150 L 124 225",
+    "M 152 150 L 156 225",
+    "M 163 300 L 160 335",
+    "M 117 300 L 120 335",
+    "M 165 365 Q 168 380 163 398",
+    "M 115 365 Q 112 380 117 398",
+  ];
+
+  // Petits reliefs (genoux devant, omoplates derrière) en ellipses.
+  const FRONT_DETAIL_ELLIPSES = [
+    { cx: 163, cy: 345, rx: 7, ry: 9 },
+    { cx: 117, cy: 345, rx: 7, ry: 9 },
+  ];
+
+  const BACK_DETAIL_ELLIPSES = [
+    { cx: 122, cy: 135, rx: 10, ry: 15, rotate: -15 },
+    { cx: 158, cy: 135, rx: 10, ry: 15, rotate: 15 },
+  ];
 
   const currentSilhouettePath = view === "front" ? FRONT_SILHOUETTE_PATH : BACK_SILHOUETTE_PATH;
+  const currentDetailLines = view === "front" ? FRONT_DETAIL_LINES : BACK_DETAIL_LINES;
+  const currentDetailEllipses = view === "front" ? FRONT_DETAIL_ELLIPSES : BACK_DETAIL_ELLIPSES;
 
   const currentZones = zones.filter((z) => z.view === view);
   const selectedZoneData = zones.find((z) => z.id === selectedZone);
@@ -210,6 +253,30 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
                 />
               );
             })}
+          </g>
+
+          {/* Traits de définition musculaire (non cliquables) */}
+          <g
+            clipPath="url(#bodyClip)"
+            fill="none"
+            stroke="rgba(255,255,255,0.16)"
+            strokeWidth={1.2}
+            strokeLinecap="round"
+            style={{ pointerEvents: "none" }}
+          >
+            {currentDetailLines.map((d, i) => (
+              <path key={i} d={d} />
+            ))}
+            {currentDetailEllipses.map((e, i) => (
+              <ellipse
+                key={i}
+                cx={e.cx}
+                cy={e.cy}
+                rx={e.rx}
+                ry={e.ry}
+                transform={e.rotate ? `rotate(${e.rotate} ${e.cx} ${e.cy})` : undefined}
+              />
+            ))}
           </g>
 
           {/* Contour redessiné par-dessus pour que le trait du corps reste net */}
