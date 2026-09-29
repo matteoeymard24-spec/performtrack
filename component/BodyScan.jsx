@@ -155,71 +155,20 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
           viewBox="0 0 280 460"
           style={{ maxWidth: "100%", height: "auto" }}
         >
-          {/* Silhouette de fond, segmentée pour un rendu plus anatomique */}
+          {/* Silhouette de fond : un contour unique et continu, pas de blocs empilés */}
           <defs>
             <linearGradient id="bodyShade" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={SURFACE_3} />
               <stop offset="100%" stopColor={SURFACE_2} />
             </linearGradient>
           </defs>
-          <g fill="url(#bodyShade)" stroke={BORDER_STRONG} strokeWidth={1}>
-            {/* Tête */}
-            <ellipse cx={140} cy={42} rx={27} ry={31} />
-            {/* Cou */}
-            <rect x={124} y={64} width={32} height={24} rx={9} />
-            {/* Trapèzes / épaules */}
-            <rect x={68} y={84} width={144} height={28} rx={14} />
-            {/* Buste (plus large) */}
-            <path
-              d="M 92 100
-                 Q 90 98 92 96
-                 L 188 96
-                 Q 190 98 188 100
-                 L 188 150
-                 Q 188 154 184 156
-                 L 96 156
-                 Q 92 154 92 150
-                 Z"
-            />
-            {/* Taille (resserrée) */}
-            <path
-              d="M 99 152
-                 L 181 152
-                 L 178 198
-                 L 102 198
-                 Z"
-            />
-            {/* Hanches */}
-            <rect x={94} y={196} width={92} height={50} rx={24} />
-
-            {/* Bras gauche : haut du bras */}
-            <rect x={42} y={112} width={34} height={96} rx={17} />
-            {/* Bras gauche : avant-bras */}
-            <rect x={44} y={204} width={28} height={82} rx={14} />
-            {/* Bras gauche : main */}
-            <ellipse cx={58} cy={300} rx={15} ry={18} />
-
-            {/* Bras droit : haut du bras */}
-            <rect x={204} y={112} width={34} height={96} rx={17} />
-            {/* Bras droit : avant-bras */}
-            <rect x={208} y={204} width={28} height={82} rx={14} />
-            {/* Bras droit : main */}
-            <ellipse cx={222} cy={300} rx={15} ry={18} />
-
-            {/* Jambe gauche : cuisse */}
-            <rect x={102} y={240} width={38} height={96} rx={19} />
-            {/* Jambe gauche : mollet */}
-            <rect x={106} y={332} width={30} height={86} rx={15} />
-            {/* Jambe gauche : pied */}
-            <rect x={94} y={414} width={48} height={24} rx={12} />
-
-            {/* Jambe droite : cuisse */}
-            <rect x={140} y={240} width={38} height={96} rx={19} />
-            {/* Jambe droite : mollet */}
-            <rect x={144} y={332} width={30} height={86} rx={15} />
-            {/* Jambe droite : pied */}
-            <rect x={138} y={414} width={48} height={24} rx={12} />
-          </g>
+          <path
+            fill="url(#bodyShade)"
+            stroke={BORDER_STRONG}
+            strokeWidth={1.5}
+            strokeLinejoin="round"
+            d="M 140 12 Q 172 12 172 45 Q 172 68 156 72 L 150 80 L 150 90 Q 170 86 196 96 L 218 122 L 222 200 L 216 270 Q 226 280 228 300 Q 228 320 210 322 Q 196 320 198 300 L 204 268 L 200 200 L 192 124 Q 188 108 176 100 L 182 130 L 170 168 Q 176 188 184 204 L 176 250 L 172 332 L 166 408 Q 166 418 188 420 Q 196 424 188 434 L 158 436 L 152 410 L 148 332 L 144 250 L 140 246 L 136 250 L 132 332 L 128 410 L 122 436 L 92 434 Q 84 424 92 420 Q 114 418 114 408 L 108 332 L 104 250 L 96 204 Q 104 188 110 168 L 98 130 L 104 100 Q 92 108 88 124 L 80 200 L 76 268 L 82 300 Q 84 320 70 322 Q 52 320 52 300 Q 54 280 64 270 L 58 200 L 62 122 L 84 96 Q 110 86 130 90 L 130 80 L 124 72 Q 108 68 108 45 Q 108 12 140 12 Z"
+          />
 
           {currentZones.map((zone) => {
             const value = painMap[zone.id] ?? 0;
