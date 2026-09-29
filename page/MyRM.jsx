@@ -33,6 +33,11 @@ export default function MyRM() {
   const [editingCMJ, setEditingCMJ] = useState(false);
   const [cmjValue, setCmjValue] = useState("");
   const [cmjHistory, setCmjHistory] = useState([]);
+  // CMJ détecté automatiquement quand un test CMJ est fait dans une séance
+  // (même convention que Dashboard.jsx : hauteur stockée dans
+  // series[].actualWeight quand l'exercice s'appelle "CMJ" / "Counter
+  // Movement Jump"). Pas besoin de le ressaisir à la main.
+  const [sessionCmjEntries, setSessionCmjEntries] = useState([]);
 
   // États RM
   const [rmHistory, setRmHistory] = useState({});
@@ -126,6 +131,65 @@ export default function MyRM() {
   useEffect(() => {
     loadRM();
   }, [currentUser]);
+
+  const isCMJName = (exerciseName) => {
+    if (!exerciseName) return false;
+    const name = exerciseName.toLowerCase().trim();
+    return name === "cmj" || name.includes("counter movement jump");
+  };
+
+  const loadSessionCmj = async () => {
+    if (!currentUser) return;
+    try {
+      const snap = await getDocs(collection(db, "workout"));
+      const map = {};
+      snap.docs.forEach((docSnap) => {
+        const w = docSnap.data();
+        const progress = w.userProgress?.[currentUser.uid];
+        if (!progress?.completedAt || !w.blocks) return;
+        const feedback = progress.feedback || {};
+        w.blocks.forEach((block, bIdx) => {
+          (block.exercises || []).forEach((ex, eIdx) => {
+            if (!isCMJName(ex.name)) return;
+            const fb = feedback[`${bIdx}-${eIdx}`];
+            if (!fb || !fb.series) return;
+            const heights = fb.series
+              .map((s) => Number(s.actualWeight))
+              .filter((h) => !Number.isNaN(h) && h > 0);
+            if (heights.length === 0) return;
+            const best = Math.max(...heights);
+            map[w.date] = map[w.date] ? Math.max(map[w.date], best) : best;
+          });
+        });
+      });
+      const entries = Object.entries(map)
+        .map(([date, heightCm]) => ({ date, heightCm }))
+        .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      setSessionCmjEntries(entries);
+    } catch (e) {
+      console.error("Erreur chargement CMJ séances:", e);
+    }
+  };
+
+  useEffect(() => {
+    loadSessionCmj();
+  }, [currentUser]);
+
+  // Fusion CMJ manuel (saisi ici) + CMJ automatique (détecté dans les
+  // séances) en une seule série chronologique, pour que l'athlète voie son
+  // évolution complète sans avoir à ressaisir ce qui a déjà été mesuré en
+  // séance. À date égale, la valeur de séance prime (mesure réelle).
+  const mergedCmjSeries = (() => {
+    const map = {};
+    cmjHistory.forEach((h) => {
+      const d = (h.date || "").slice(0, 10);
+      if (d) map[d] = { date: d, heightCm: h.kg, source: "manuel" };
+    });
+    sessionCmjEntries.forEach((e) => {
+      map[e.date] = { date: e.date, heightCm: e.heightCm, source: "séance" };
+    });
+    return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
+  })();
 
   /* ===================== VMA ===================== */
   const saveVMA = async () => {
@@ -485,13 +549,18 @@ export default function MyRM() {
                       stroke="#a8a199"
                       style={{ fontSize: 12 }}
                     />
-                    <YAxis stroke="#a8a199" style={{ fontSize: 12 }} />
+                    <YAxis
+                      stroke="#a8a199"
+                      style={{ fontSize: 12 }}
+                      domain={["dataMin - 0.5", "dataMax + 0.5"]}
+                    />
                     <Tooltip
                       contentStyle={{
                         background: "#1a1815",
-                        border: "1px solid #4fae7d",
+                        border: "1px solid rgba(255,255,255,0.16)",
                         borderRadius: 8,
                       }}
+                      labelStyle={{ color: "#f3f0ea" }}
                       labelFormatter={(date) =>
                         new Date(date).toLocaleDateString("fr-FR")
                       }
@@ -500,9 +569,11 @@ export default function MyRM() {
                     <Line
                       type="monotone"
                       dataKey="kg"
+                      name="VMA (km/h)"
                       stroke="#4fae7d"
-                      strokeWidth={2}
-                      dot={{ fill: "#4fae7d" }}
+                      strokeWidth={2.5}
+                      dot={{ fill: "#4fae7d", r: 4 }}
+                      activeDot={{ r: 6 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -636,14 +707,25 @@ export default function MyRM() {
                 <div
                   style={{ fontSize: 36, fontWeight: "bold", color: "#d9a441" }}
                 >
-                  {cmj ? `${cmj.kg} cm` : "Non renseigné"}
+                  {cmj
+                    ? `${cmj.kg} cm`
+                    : mergedCmjSeries.length > 0
+                    ? `${mergedCmjSeries[mergedCmjSeries.length - 1].heightCm} cm`
+                    : "Non renseigné"}
                 </div>
-                {cmj && cmj.updatedAt && (
+                {cmj && cmj.updatedAt ? (
                   <div style={{ fontSize: 12, color: "#a8a199", marginTop: 5 }}>
                     Mis à jour le{" "}
                     {new Date(cmj.updatedAt).toLocaleDateString("fr-FR")}
                   </div>
-                )}
+                ) : mergedCmjSeries.length > 0 ? (
+                  <div style={{ fontSize: 12, color: "#a8a199", marginTop: 5 }}>
+                    Dernier test en séance le{" "}
+                    {new Date(
+                      mergedCmjSeries[mergedCmjSeries.length - 1].date
+                    ).toLocaleDateString("fr-FR")}
+                  </div>
+                ) : null}
               </div>
               <div style={{ display: "flex", gap: 10 }}>
                 <button
@@ -684,8 +766,10 @@ export default function MyRM() {
               </div>
             </div>
 
-            {/* Courbe évolution CMJ */}
-            {cmjHistory.length > 1 && (
+            {/* Courbe évolution CMJ — fusionne les saisies manuelles ET les
+                tests CMJ détectés automatiquement dans les séances, pour
+                une évolution complète sans ressaisie. */}
+            {mergedCmjSeries.length > 1 && (
               <div
                 style={{
                   marginTop: 20,
@@ -695,42 +779,55 @@ export default function MyRM() {
                 }}
               >
                 <h4
-                  style={{ fontSize: 14, marginBottom: 10, color: "#d9a441" }}
+                  style={{ fontSize: 14, marginBottom: 4, color: "#d9a441" }}
                 >
-                  📈 Évolution
+                  📈 Évolution (séances + saisies manuelles)
                 </h4>
-                <ResponsiveContainer width="100%" height={200}>
-                  <LineChart data={cmjHistory}>
+                <p style={{ fontSize: 11, color: "#a8a199", margin: "0 0 10px 0" }}>
+                  Les tests CMJ faits pendant une séance apparaissent
+                  automatiquement ici.
+                </p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart
+                    data={mergedCmjSeries.map((e) => ({
+                      ...e,
+                      shortDate: new Date(e.date).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "short",
+                      }),
+                    }))}
+                  >
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                     <XAxis
-                      dataKey="date"
-                      tickFormatter={(date) =>
-                        new Date(date).toLocaleDateString("fr-FR", {
-                          day: "2-digit",
-                          month: "short",
-                        })
-                      }
+                      dataKey="shortDate"
                       stroke="#a8a199"
                       style={{ fontSize: 12 }}
                     />
-                    <YAxis stroke="#a8a199" style={{ fontSize: 12 }} />
+                    <YAxis
+                      stroke="#a8a199"
+                      style={{ fontSize: 12 }}
+                      domain={["dataMin - 2", "dataMax + 2"]}
+                    />
                     <Tooltip
                       contentStyle={{
                         background: "#1a1815",
-                        border: "1px solid #d9a441",
+                        border: "1px solid rgba(255,255,255,0.16)",
                         borderRadius: 8,
                       }}
-                      labelFormatter={(date) =>
-                        new Date(date).toLocaleDateString("fr-FR")
-                      }
-                      formatter={(value) => [`${value} cm`, "CMJ"]}
+                      labelStyle={{ color: "#f3f0ea" }}
+                      formatter={(value, name, props) => [
+                        `${value} cm`,
+                        props.payload.source === "séance" ? "CMJ (séance)" : "CMJ (manuel)",
+                      ]}
                     />
                     <Line
                       type="monotone"
-                      dataKey="kg"
+                      dataKey="heightCm"
+                      name="CMJ (cm)"
                       stroke="#d9a441"
-                      strokeWidth={2}
-                      dot={{ fill: "#d9a441" }}
+                      strokeWidth={2.5}
+                      dot={{ fill: "#d9a441", r: 4 }}
+                      activeDot={{ r: 6 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -742,15 +839,14 @@ export default function MyRM() {
                     textAlign: "center",
                   }}
                 >
-                  {cmjHistory.length} entrée(s) • Progression:{" "}
-                  {cmjHistory.length > 1
-                    ? `${(
-                        ((cmjHistory[cmjHistory.length - 1].kg -
-                          cmjHistory[0].kg) /
-                          cmjHistory[0].kg) *
-                        100
-                      ).toFixed(1)}%`
-                    : "N/A"}
+                  {mergedCmjSeries.length} entrée(s) • Progression:{" "}
+                  {(
+                    ((mergedCmjSeries[mergedCmjSeries.length - 1].heightCm -
+                      mergedCmjSeries[0].heightCm) /
+                      mergedCmjSeries[0].heightCm) *
+                    100
+                  ).toFixed(1)}
+                  %
                 </div>
               </div>
             )}
@@ -1237,7 +1333,11 @@ export default function MyRM() {
                   >
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                     <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={11} />
-                    <YAxis stroke="#a8a199" fontSize={11} />
+                    <YAxis
+                      stroke="#a8a199"
+                      fontSize={11}
+                      domain={["dataMin - 5", "dataMax + 5"]}
+                    />
                     <Tooltip
                       contentStyle={{
                         background: "#151310",
@@ -1246,6 +1346,7 @@ export default function MyRM() {
                         fontSize: 12,
                       }}
                       labelStyle={{ color: "#f3f0ea" }}
+                      formatter={(value) => [`${value} kg`, "1RM"]}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Line
@@ -1255,6 +1356,7 @@ export default function MyRM() {
                       stroke="#e0a13d"
                       strokeWidth={3}
                       dot={{ fill: "#e0a13d", r: 5 }}
+                      activeDot={{ r: 7 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>

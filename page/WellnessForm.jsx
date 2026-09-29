@@ -33,21 +33,6 @@ export default function WellnessForm() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // ─── Journal de blessures structuré ───────────────────────────────────
-  // Distinct du slider "douleur" (qui capte une gêne quotidienne) : ici on
-  // structure un événement de blessure (tissu, mécanisme, jours d'arrêt
-  // estimés) pour permettre plus tard un calcul d'incidence (blessures /
-  // 1000h d'exposition) et un croisement rétrospectif avec REDI/wellness.
-  const [showInjuryForm, setShowInjuryForm] = useState(false);
-  const [injuryZone, setInjuryZone] = useState("");
-  const [injuryTissue, setInjuryTissue] = useState("muscle");
-  const [injuryMechanism, setInjuryMechanism] = useState("surcharge");
-  const [injuryDaysLost, setInjuryDaysLost] = useState("");
-  const [injuryNotes, setInjuryNotes] = useState("");
-  const [injurySaving, setInjurySaving] = useState(false);
-  const [injuryMessage, setInjuryMessage] = useState("");
-  const [recentInjuries, setRecentInjuries] = useState([]);
-
   const today = new Date().toISOString().slice(0, 10);
 
   useEffect(() => {
@@ -74,73 +59,6 @@ export default function WellnessForm() {
     };
     loadToday();
   }, [currentUser, today]);
-
-  useEffect(() => {
-    if (!currentUser) return;
-    const loadInjuries = async () => {
-      try {
-        const q = query(
-          collection(db, "injuries"),
-          where("userId", "==", currentUser.uid)
-        );
-        const snap = await getDocs(q);
-        const list = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
-          .slice(0, 5);
-        setRecentInjuries(list);
-      } catch (e) {
-        console.error("Erreur chargement blessures:", e);
-      }
-    };
-    loadInjuries();
-  }, [currentUser]);
-
-  const TISSUE_LABELS = {
-    muscle: "Muscle",
-    tendon: "Tendon",
-    ligament: "Ligament",
-    os: "Os / articulation",
-    autre: "Autre",
-  };
-  const MECHANISM_LABELS = {
-    contact: "Contact / traumatique",
-    non_contact: "Non-contact (sans contact)",
-    surcharge: "Surcharge / usure",
-    autre: "Autre",
-  };
-
-  const saveInjury = async () => {
-    if (!currentUser) return;
-    setInjurySaving(true);
-    setInjuryMessage("");
-    try {
-      const injuryId = `${currentUser.uid}_${Date.now()}`;
-      await setDoc(doc(db, "injuries", injuryId), {
-        userId: currentUser.uid,
-        date: today,
-        zone: injuryZone || (selectedZone ?? "") || "",
-        tissueType: injuryTissue,
-        mechanism: injuryMechanism,
-        daysLost: injuryDaysLost ? Number(injuryDaysLost) : null,
-        notes: injuryNotes || "",
-        createdAt: Timestamp.now(),
-      });
-      setInjuryMessage("✅ Blessure enregistrée.");
-      setRecentInjuries((prev) => [
-        { id: injuryId, date: today, zone: injuryZone, tissueType: injuryTissue, mechanism: injuryMechanism, daysLost: injuryDaysLost ? Number(injuryDaysLost) : null, notes: injuryNotes },
-        ...prev,
-      ].slice(0, 5));
-      setInjuryZone("");
-      setInjuryDaysLost("");
-      setInjuryNotes("");
-      setTimeout(() => setShowInjuryForm(false), 1200);
-    } catch (e) {
-      setInjuryMessage("❌ Erreur : " + e.message);
-    } finally {
-      setInjurySaving(false);
-    }
-  };
 
   const saveWellness = async () => {
     if (!currentUser) {
@@ -316,182 +234,32 @@ export default function WellnessForm() {
         </div>
       )}
 
-      {/* Journal de blessures structuré */}
-      <div
-        style={{
-          marginBottom: 30,
-          background: "#1a1815",
-          padding: 20,
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.16)",
-        }}
-      >
-        <button
-          onClick={() => setShowInjuryForm(!showInjuryForm)}
+      {/* Le journal de blessures (déclaration + historique modifiable) vit
+          maintenant dans l'interface Wellness, pas dans ce questionnaire
+          quotidien — voir page/Wellness.jsx. */}
+      {douleur >= 6 && (
+        <div
           style={{
-            width: "100%",
-            padding: 12,
-            background: "transparent",
-            color: "#d9695a",
-            border: "1px solid #d9695a",
-            borderRadius: 8,
-            fontSize: 15,
-            fontWeight: "bold",
-            cursor: "pointer",
+            marginBottom: 30,
+            padding: 14,
+            background: "#1a1815",
+            borderRadius: 12,
+            border: "1px solid rgba(217,105,90,0.4)",
+            fontSize: 13,
+            color: "#a8a199",
           }}
         >
-          🚑 {showInjuryForm ? "Annuler la déclaration" : "Déclarer une blessure"}
-        </button>
-
-        {showInjuryForm && (
-          <div style={{ marginTop: 16 }}>
-            <label style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: "bold" }}>
-              Zone touchée
-            </label>
-            <input
-              type="text"
-              value={injuryZone}
-              onChange={(e) => setInjuryZone(e.target.value)}
-              placeholder={selectedZone || "ex: ischio-jambiers droit"}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #2a2620",
-                background: "#0d0c0a",
-                color: "#f3f0ea",
-                fontSize: 14,
-                marginBottom: 14,
-              }}
-            />
-
-            <label style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: "bold" }}>
-              Type de tissu
-            </label>
-            <select
-              value={injuryTissue}
-              onChange={(e) => setInjuryTissue(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #2a2620",
-                background: "#0d0c0a",
-                color: "#f3f0ea",
-                fontSize: 14,
-                marginBottom: 14,
-              }}
-            >
-              {Object.entries(TISSUE_LABELS).map(([k, label]) => (
-                <option key={k} value={k}>{label}</option>
-              ))}
-            </select>
-
-            <label style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: "bold" }}>
-              Mécanisme
-            </label>
-            <select
-              value={injuryMechanism}
-              onChange={(e) => setInjuryMechanism(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #2a2620",
-                background: "#0d0c0a",
-                color: "#f3f0ea",
-                fontSize: 14,
-                marginBottom: 14,
-              }}
-            >
-              {Object.entries(MECHANISM_LABELS).map(([k, label]) => (
-                <option key={k} value={k}>{label}</option>
-              ))}
-            </select>
-
-            <label style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: "bold" }}>
-              Jours d'arrêt estimés
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={injuryDaysLost}
-              onChange={(e) => setInjuryDaysLost(e.target.value)}
-              placeholder="ex: 7"
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #2a2620",
-                background: "#0d0c0a",
-                color: "#f3f0ea",
-                fontSize: 14,
-                marginBottom: 14,
-              }}
-            />
-
-            <label style={{ display: "block", marginBottom: 6, fontSize: 13, fontWeight: "bold" }}>
-              Notes (contexte, circonstances)
-            </label>
-            <textarea
-              value={injuryNotes}
-              onChange={(e) => setInjuryNotes(e.target.value)}
-              rows={3}
-              style={{
-                width: "100%",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #2a2620",
-                background: "#0d0c0a",
-                color: "#f3f0ea",
-                fontSize: 14,
-                marginBottom: 14,
-                resize: "vertical",
-              }}
-            />
-
-            <button
-              onClick={saveInjury}
-              disabled={injurySaving}
-              style={{
-                width: "100%",
-                padding: 12,
-                background: injurySaving ? "#a8a199" : "#d9695a",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 15,
-                fontWeight: "bold",
-                cursor: injurySaving ? "not-allowed" : "pointer",
-              }}
-            >
-              {injurySaving ? "Enregistrement..." : "Enregistrer la blessure"}
-            </button>
-
-            {injuryMessage && (
-              <div style={{ marginTop: 10, fontSize: 13, color: injuryMessage.includes("✅") ? "#4fae7d" : "#d9695a" }}>
-                {injuryMessage}
-              </div>
-            )}
-          </div>
-        )}
-
-        {recentInjuries.length > 0 && (
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-            <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8 }}>
-              Dernières blessures déclarées
-            </div>
-            {recentInjuries.map((inj) => (
-              <div key={inj.id} style={{ fontSize: 13, color: "#f3f0ea", marginBottom: 6 }}>
-                <strong style={{ color: "#d9695a" }}>{inj.date}</strong>
-                {inj.zone ? ` — ${inj.zone}` : ""}
-                {" "}({TISSUE_LABELS[inj.tissueType] || inj.tissueType}, {MECHANISM_LABELS[inj.mechanism] || inj.mechanism})
-                {inj.daysLost !== null && inj.daysLost !== undefined ? `, ${inj.daysLost}j d'arrêt` : ""}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+          🚑 Douleur élevée aujourd'hui — si c'est une vraie blessure, tu peux
+          la déclarer depuis{" "}
+          <button
+            onClick={() => navigate("/wellness")}
+            style={{ background: "none", border: "none", color: "#d9695a", fontWeight: "bold", cursor: "pointer", padding: 0, fontSize: 13, textDecoration: "underline" }}
+          >
+            l'interface Wellness
+          </button>
+          .
+        </div>
+      )}
 
       {/* Boutons */}
       <div style={{ position: "sticky", bottom: 20 }}>

@@ -1156,6 +1156,55 @@ export default function Workout() {
     setBlocks(nb);
   };
 
+  /* ===================== BIBLIOTHÈQUE D'EXERCICES (autocomplete + image) =====================
+     Reconstruite à partir de toutes les séances déjà créées (déjà chargées dans `events`,
+     aucune lecture Firestore supplémentaire) : pour chaque nom d'exercice déjà utilisé, on
+     retient sa dernière photo/gif associée. Quand le coach retape un nom déjà connu, une liste
+     déroulante lui permet de cliquer dessus pour ré-utiliser automatiquement l'image. */
+  const [exerciseLibrary, setExerciseLibrary] = useState({});
+  const [openSuggestFor, setOpenSuggestFor] = useState(null);
+
+  useEffect(() => {
+    const lib = {};
+    events.forEach((w) => {
+      (w.blocks || []).forEach((block) => {
+        (block.exercises || []).forEach((ex) => {
+          if (!ex.name) return;
+          const key = normalizeExerciseName(ex.name);
+          if (!key) return;
+          const prev = lib[key];
+          lib[key] = {
+            name: ex.name,
+            mediaUrl: ex.mediaUrl || prev?.mediaUrl || null,
+            mediaType: ex.mediaType || prev?.mediaType || null,
+            mediaZoom: ex.mediaZoom || prev?.mediaZoom || null,
+          };
+        });
+      });
+    });
+    setExerciseLibrary(lib);
+  }, [events]);
+
+  const getExerciseSuggestions = (typed) => {
+    const q = normalizeExerciseName(typed);
+    if (!q) return [];
+    return Object.values(exerciseLibrary)
+      .filter((entry) => normalizeExerciseName(entry.name).includes(q))
+      .slice(0, 6);
+  };
+
+  const selectExerciseFromLibrary = (bIdx, eIdx, entry) => {
+    const nb = [...blocks];
+    nb[bIdx].exercises[eIdx].name = entry.name;
+    if (entry.mediaUrl) {
+      nb[bIdx].exercises[eIdx].mediaUrl = entry.mediaUrl;
+      nb[bIdx].exercises[eIdx].mediaType = entry.mediaType || "image";
+      nb[bIdx].exercises[eIdx].mediaZoom = entry.mediaZoom || DEFAULT_MEDIA_ZOOM;
+    }
+    setBlocks(nb);
+    setOpenSuggestFor(null);
+  };
+
   /* ===================== MEDIA EXERCICE (PHOTO/GIF — stockée en base64 dans Firestore, 100% gratuit) ===================== */
   const handleMediaUpload = (bIdx, eIdx, file) => {
     if (!file) return;
@@ -2385,21 +2434,103 @@ export default function Workout() {
                       marginBottom: 10,
                     }}
                   >
-                    <input
-                      type="text"
-                      placeholder="Nom exercice"
-                      value={ex.name}
-                      onChange={(e) =>
-                        updateExercise(bIdx, eIdx, "name", e.target.value)
-                      }
-                      style={{
-                        padding: 10,
-                        borderRadius: 6,
-                        border: "1px solid #2a2620",
-                        background: "#0d0c0a",
-                        color: "#f3f0ea",
-                      }}
-                    />
+                    <div style={{ position: "relative" }}>
+                      <input
+                        type="text"
+                        placeholder="Nom exercice"
+                        value={ex.name}
+                        onChange={(e) => {
+                          updateExercise(bIdx, eIdx, "name", e.target.value);
+                          setOpenSuggestFor(`${bIdx}-${eIdx}`);
+                        }}
+                        onFocus={() => setOpenSuggestFor(`${bIdx}-${eIdx}`)}
+                        onBlur={() =>
+                          setTimeout(() => setOpenSuggestFor(null), 150)
+                        }
+                        autoComplete="off"
+                        style={{
+                          width: "100%",
+                          padding: 10,
+                          borderRadius: 6,
+                          border: "1px solid #2a2620",
+                          background: "#0d0c0a",
+                          color: "#f3f0ea",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      {openSuggestFor === `${bIdx}-${eIdx}` &&
+                        getExerciseSuggestions(ex.name).length > 0 && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "100%",
+                              left: 0,
+                              right: 0,
+                              zIndex: 20,
+                              background: "#1a1815",
+                              border: "1px solid rgba(255,255,255,0.16)",
+                              borderRadius: 8,
+                              marginTop: 4,
+                              maxHeight: 260,
+                              overflowY: "auto",
+                              boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
+                            }}
+                          >
+                            {getExerciseSuggestions(ex.name).map((entry, i) => (
+                              <div
+                                key={i}
+                                onMouseDown={() =>
+                                  selectExerciseFromLibrary(bIdx, eIdx, entry)
+                                }
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 10,
+                                  padding: "8px 10px",
+                                  cursor: "pointer",
+                                  borderBottom:
+                                    i < getExerciseSuggestions(ex.name).length - 1
+                                      ? "1px solid rgba(255,255,255,0.08)"
+                                      : "none",
+                                }}
+                              >
+                                {entry.mediaUrl ? (
+                                  <img
+                                    src={entry.mediaUrl}
+                                    alt=""
+                                    style={{
+                                      width: 32,
+                                      height: 32,
+                                      objectFit: "cover",
+                                      borderRadius: 6,
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      width: 32,
+                                      height: 32,
+                                      borderRadius: 6,
+                                      background: "#0d0c0a",
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                )}
+                                <span
+                                  style={{
+                                    fontSize: 13,
+                                    color: "#f3f0ea",
+                                    textTransform: "capitalize",
+                                  }}
+                                >
+                                  {entry.name}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                    </div>
                     <button
                       onClick={() => removeExercise(bIdx, eIdx)}
                       style={{

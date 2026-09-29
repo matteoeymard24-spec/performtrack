@@ -7,6 +7,7 @@ import {
   doc,
   updateDoc,
   setDoc,
+  deleteDoc,
   writeBatch,
 } from "firebase/firestore";
 import {
@@ -76,6 +77,24 @@ export default function Dashboard() {
   const [selfRpeReliability, setSelfRpeReliability] = useState(null);
   const [selfInjuries, setSelfInjuries] = useState([]);
   const [selfPainZone, setSelfPainZone] = useState(null);
+  // Modal historique de blessures (coach) — ouvert en cliquant sur la
+  // rubrique dans le détail athlète, édition/suppression sur place.
+  const [showInjuryHistory, setShowInjuryHistory] = useState(false);
+  const [editingInjury, setEditingInjury] = useState(null);
+  const [injuryEditDraft, setInjuryEditDraft] = useState(null);
+  const TISSUE_LABELS = {
+    muscle: "Muscle",
+    tendon: "Tendon",
+    ligament: "Ligament",
+    os: "Os / articulation",
+    autre: "Autre",
+  };
+  const MECHANISM_LABELS = {
+    contact: "Contact / traumatique",
+    non_contact: "Non-contact (sans contact)",
+    surcharge: "Surcharge / usure",
+    autre: "Autre",
+  };
   const [weightHistory, setWeightHistory] = useState([]);
   const [lastWeightDate, setLastWeightDate] = useState(null);
   const [canUpdateWeight, setCanUpdateWeight] = useState(true);
@@ -632,9 +651,12 @@ export default function Dashboard() {
             wellnessZStatus: getWellnessZScoreStatus(wellnessZ),
             crossStatus: cross,
             cmjStatus: uCmjStatus,
+            cmjEntries: uCmjEntries
+              .slice()
+              .sort((a, b) => (a.date || "").localeCompare(b.date || "")),
             rpeReliability: uRpeReliability,
             rpeReliabilityStatus: getRPEReliabilityStatus(uRpeReliability),
-            injuries: uInjuries.slice(0, 5),
+            injuries: uInjuries,
             acwr: acwr,
             acwrStatus: getACWRStatus(acwr),
             todayCompleted: todayWorkout ? isWorkoutCompleted(todayWorkout, u.id) : false,
@@ -734,6 +756,9 @@ export default function Dashboard() {
       const acwrHist = calculateACWRHistory(uWorkouts, athlete.id);
 
       setShowAthleteDetail(athlete);
+      setShowInjuryHistory(false);
+      setEditingInjury(null);
+      setInjuryEditDraft(null);
       setDetailedAthleteRMHistory(rmByEx);
       setAcwrHistory(acwrHist);
       setAthleteDetails({
@@ -900,27 +925,35 @@ export default function Dashboard() {
             {wellnessHistory.length > 1 && (
               <ResponsiveContainer width="100%" height={150}>
                 <LineChart data={wellnessHistory}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
                   <XAxis
                     dataKey="date"
                     stroke="#a8a199"
                     fontSize={10}
-                    tickFormatter={(d) => d.slice(5)}
+                    tickFormatter={(d) =>
+                      new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })
+                    }
                   />
                   <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={10} />
                   <Tooltip
                     contentStyle={{
-                      background: "#0d0c0a",
-                      border: "1px solid rgba(255, 255, 255, 0.05)",
+                      background: "#1a1815",
+                      border: "1px solid rgba(255,255,255,0.16)",
+                      borderRadius: 8,
                       fontSize: 12,
                     }}
+                    labelStyle={{ color: "#f3f0ea" }}
+                    labelFormatter={(d) => new Date(d).toLocaleDateString("fr-FR")}
+                    formatter={(value) => [`${value.toFixed(1)}/10`, "Score wellness"]}
                   />
                   <Line
                     type="monotone"
                     dataKey="normalizedScore"
+                    name="Score wellness"
                     stroke="#e0a13d"
-                    strokeWidth={2}
-                    dot={{ r: 3 }}
+                    strokeWidth={2.5}
+                    dot={{ fill: "#e0a13d", r: 3 }}
+                    activeDot={{ r: 6 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -2007,6 +2040,55 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {showAthleteDetail.cmjEntries && showAthleteDetail.cmjEntries.length > 1 && (
+              <div
+                style={{
+                  background: "#151310",
+                  padding: 18,
+                  borderRadius: 10,
+                  marginBottom: 25,
+                  border: "1px solid rgba(255,255,255,0.16)",
+                }}
+              >
+                <h3 style={{ margin: "0 0 12px 0", fontSize: 16, color: "#d9a441" }}>
+                  🦘 Évolution CMJ (détente verticale)
+                </h3>
+                <ResponsiveContainer width="100%" height={220}>
+                  <LineChart
+                    data={showAthleteDetail.cmjEntries.map((e) => ({
+                      ...e,
+                      shortDate: new Date(e.date).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                      }),
+                    }))}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
+                    <XAxis dataKey="shortDate" stroke="#a8a199" fontSize={11} />
+                    <YAxis stroke="#a8a199" fontSize={11} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#1a1815",
+                        border: "1px solid rgba(255,255,255,0.16)",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      labelStyle={{ color: "#f3f0ea" }}
+                      formatter={(value) => [`${value} cm`, "CMJ"]}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="heightCm"
+                      name="CMJ (cm)"
+                      stroke="#d9a441"
+                      strokeWidth={2.5}
+                      dot={{ fill: "#d9a441", r: 4 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
             {showAthleteDetail.crossStatus && (
               <div
                 style={{
@@ -2032,7 +2114,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {showAthleteDetail.injuries && showAthleteDetail.injuries.length > 0 && (
+            {showAthleteDetail.injuries && (
               <div
                 style={{
                   background: "#151310",
@@ -2042,18 +2124,206 @@ export default function Dashboard() {
                   border: "1px solid rgba(217,105,90,0.4)",
                 }}
               >
-                <h3 style={{ margin: "0 0 12px 0", fontSize: 16, color: "#d9695a" }}>
-                  🚑 Blessures déclarées récemment
-                </h3>
-                {showAthleteDetail.injuries.map((inj) => (
-                  <div key={inj.id} style={{ fontSize: 13, color: "#a8a199", marginBottom: 6 }}>
-                    <strong style={{ color: "#f3f0ea" }}>{inj.date}</strong>
-                    {inj.zone ? ` — ${inj.zone}` : ""}
-                    {" "}
-                    {inj.tissueType && `(${inj.tissueType}${inj.mechanism ? `, ${inj.mechanism}` : ""})`}
-                    {inj.daysLost !== null && inj.daysLost !== undefined ? ` — ${inj.daysLost}j d'arrêt` : ""}
+                <button
+                  onClick={() => setShowInjuryHistory((v) => !v)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    color: "#d9695a",
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 16, color: "#d9695a" }}>
+                    🚑 Historique de blessures ({showAthleteDetail.injuries.length})
+                  </h3>
+                  <span style={{ fontSize: 13, color: "#a8a199" }}>
+                    {showInjuryHistory ? "▾ Réduire" : "▸ Voir / modifier"}
+                  </span>
+                </button>
+
+                {showInjuryHistory && (
+                  <div style={{ marginTop: 14 }}>
+                    {showAthleteDetail.injuries.length === 0 && (
+                      <div style={{ fontSize: 13, color: "#a8a199" }}>
+                        Aucune blessure déclarée par cet athlète.
+                      </div>
+                    )}
+                    {showAthleteDetail.injuries.map((inj) =>
+                      editingInjury === inj.id ? (
+                        <div
+                          key={inj.id}
+                          style={{
+                            background: "#1a1815",
+                            padding: 14,
+                            borderRadius: 8,
+                            marginBottom: 10,
+                            border: "1px solid rgba(217,105,90,0.4)",
+                          }}
+                        >
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                            <div>
+                              <label style={{ fontSize: 11, color: "#a8a199" }}>Date</label>
+                              <input
+                                type="date"
+                                value={injuryEditDraft?.date || ""}
+                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, date: e.target.value }))}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 11, color: "#a8a199" }}>Zone</label>
+                              <input
+                                type="text"
+                                value={injuryEditDraft?.zone || ""}
+                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, zone: e.target.value }))}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 11, color: "#a8a199" }}>Tissu</label>
+                              <select
+                                value={injuryEditDraft?.tissueType || "muscle"}
+                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, tissueType: e.target.value }))}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                              >
+                                {Object.entries(TISSUE_LABELS).map(([k, label]) => (
+                                  <option key={k} value={k}>{label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 11, color: "#a8a199" }}>Mécanisme</label>
+                              <select
+                                value={injuryEditDraft?.mechanism || "surcharge"}
+                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, mechanism: e.target.value }))}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                              >
+                                {Object.entries(MECHANISM_LABELS).map(([k, label]) => (
+                                  <option key={k} value={k}>{label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 11, color: "#a8a199" }}>Jours d'arrêt</label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={injuryEditDraft?.daysLost ?? ""}
+                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, daysLost: e.target.value }))}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                              />
+                            </div>
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <label style={{ fontSize: 11, color: "#a8a199" }}>Notes</label>
+                              <textarea
+                                value={injuryEditDraft?.notes || ""}
+                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, notes: e.target.value }))}
+                                rows={2}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea", resize: "vertical" }}
+                              />
+                            </div>
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const payload = {
+                                    date: injuryEditDraft.date,
+                                    zone: injuryEditDraft.zone || "",
+                                    tissueType: injuryEditDraft.tissueType,
+                                    mechanism: injuryEditDraft.mechanism,
+                                    daysLost: injuryEditDraft.daysLost !== "" ? Number(injuryEditDraft.daysLost) : null,
+                                    notes: injuryEditDraft.notes || "",
+                                  };
+                                  await updateDoc(doc(db, "injuries", inj.id), payload);
+                                  setShowAthleteDetail((prev) => ({
+                                    ...prev,
+                                    injuries: prev.injuries.map((i) => (i.id === inj.id ? { ...i, ...payload } : i)),
+                                  }));
+                                  setEditingInjury(null);
+                                  setInjuryEditDraft(null);
+                                } catch (e) {
+                                  alert("Erreur : " + e.message);
+                                }
+                              }}
+                              style={{ padding: "8px 14px", background: "#4fae7d", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
+                            >
+                              ✅ Enregistrer
+                            </button>
+                            <button
+                              onClick={() => { setEditingInjury(null); setInjuryEditDraft(null); }}
+                              style={{ padding: "8px 14px", background: "transparent", color: "#a8a199", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          key={inj.id}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            fontSize: 13,
+                            color: "#a8a199",
+                            marginBottom: 8,
+                            paddingBottom: 8,
+                            borderBottom: "1px solid rgba(255,255,255,0.08)",
+                          }}
+                        >
+                          <div>
+                            <strong style={{ color: "#f3f0ea" }}>{inj.date}</strong>
+                            {inj.zone ? ` — ${inj.zone}` : ""}{" "}
+                            {inj.tissueType && `(${TISSUE_LABELS[inj.tissueType] || inj.tissueType}${inj.mechanism ? `, ${MECHANISM_LABELS[inj.mechanism] || inj.mechanism}` : ""})`}
+                            {inj.daysLost !== null && inj.daysLost !== undefined ? ` — ${inj.daysLost}j d'arrêt` : ""}
+                            {inj.notes ? <div style={{ fontSize: 12, marginTop: 2 }}>{inj.notes}</div> : null}
+                          </div>
+                          <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 10 }}>
+                            <button
+                              onClick={() => {
+                                setEditingInjury(inj.id);
+                                setInjuryEditDraft({
+                                  date: inj.date || "",
+                                  zone: inj.zone || "",
+                                  tissueType: inj.tissueType || "muscle",
+                                  mechanism: inj.mechanism || "surcharge",
+                                  daysLost: inj.daysLost !== null && inj.daysLost !== undefined ? String(inj.daysLost) : "",
+                                  notes: inj.notes || "",
+                                });
+                              }}
+                              style={{ padding: "5px 10px", background: "transparent", color: "#e0a13d", border: "1px solid rgba(224,161,61,0.4)", borderRadius: 6, cursor: "pointer", fontSize: 12 }}
+                            >
+                              Modifier
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (!window.confirm("Supprimer cette blessure de l'historique ?")) return;
+                                try {
+                                  await deleteDoc(doc(db, "injuries", inj.id));
+                                  setShowAthleteDetail((prev) => ({
+                                    ...prev,
+                                    injuries: prev.injuries.filter((i) => i.id !== inj.id),
+                                  }));
+                                } catch (e) {
+                                  alert("Erreur suppression : " + e.message);
+                                }
+                              }}
+                              style={{ padding: "5px 10px", background: "transparent", color: "#d9695a", border: "1px solid rgba(217,105,90,0.4)", borderRadius: 6, cursor: "pointer", fontSize: 12 }}
+                            >
+                              Supprimer
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    )}
                   </div>
-                ))}
+                )}
               </div>
             )}
 
@@ -2274,95 +2544,90 @@ export default function Dashboard() {
             )}
 
             {athleteDetails.wellness.length > 0 && (
-              <div
-                style={{
-                  background: "#151310",
-                  padding: 20,
-                  borderRadius: 10,
-                  marginBottom: 25,
-                }}
-              >
-                <h3 style={{ margin: "0 0 15px 0", fontSize: 17 }}>
-                  🧘 Détail Wellness
-                </h3>
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={athleteDetails.wellness}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
-                    <XAxis
-                      dataKey="date"
-                      stroke="#a8a199"
-                      fontSize={11}
-                      tickFormatter={(d) => d.slice(5)}
-                    />
-                    <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={11} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#0d0c0a",
-                        border: "1px solid rgba(255, 255, 255, 0.05)",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Line
-                      type="monotone"
-                      dataKey="sommeil"
-                      name="Sommeil"
-                      stroke="#3498db"
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="fatigue"
-                      name="Fatigue"
-                      stroke="#d9695a"
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="stress"
-                      name="Stress"
-                      stroke="#d9a441"
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="douleur"
-                      name="Douleur"
-                      stroke="#c0392b"
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="motivation"
-                      name="Motivation"
-                      stroke="#e0a13d"
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="nutrition"
-                      name="Nutrition"
-                      stroke="#1abc9c"
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="hydratation"
-                      name="Hydratation"
-                      stroke="#16a085"
-                      strokeWidth={2}
-                      dot={{ r: 2 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              <>
+                <div
+                  style={{
+                    background: "#151310",
+                    padding: 20,
+                    borderRadius: 10,
+                    marginBottom: 20,
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: 17, color: "#d9695a" }}>
+                    ⚠️ Indicateurs à surveiller
+                  </h3>
+                  <p style={{ margin: "0 0 15px 0", fontSize: 12, color: "#a8a199" }}>
+                    Fatigue, stress, douleur — plus haut = plus préoccupant
+                  </p>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart
+                      data={athleteDetails.wellness.map((e) => ({
+                        ...e,
+                        shortDate: new Date(e.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                      }))}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis dataKey="shortDate" stroke="#a8a199" fontSize={11} />
+                      <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={11} />
+                      <Tooltip
+                        contentStyle={{
+                          background: "#1a1815",
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                        labelStyle={{ color: "#f3f0ea" }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line type="monotone" dataKey="fatigue" name="Fatigue" stroke="#d9695a" strokeWidth={2} strokeDasharray="0" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="stress" name="Stress" stroke="#e0a13d" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="douleur" name="Douleur" stroke="#b06fd9" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 2 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div
+                  style={{
+                    background: "#151310",
+                    padding: 20,
+                    borderRadius: 10,
+                    marginBottom: 25,
+                  }}
+                >
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: 17, color: "#4fae7d" }}>
+                    ✅ Indicateurs positifs
+                  </h3>
+                  <p style={{ margin: "0 0 15px 0", fontSize: 12, color: "#a8a199" }}>
+                    Sommeil, nutrition, hydratation, motivation — plus haut = mieux
+                  </p>
+                  <ResponsiveContainer width="100%" height={220}>
+                    <LineChart
+                      data={athleteDetails.wellness.map((e) => ({
+                        ...e,
+                        shortDate: new Date(e.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                      }))}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                      <XAxis dataKey="shortDate" stroke="#a8a199" fontSize={11} />
+                      <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={11} />
+                      <Tooltip
+                        contentStyle={{
+                          background: "#1a1815",
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          borderRadius: 8,
+                          fontSize: 12,
+                        }}
+                        labelStyle={{ color: "#f3f0ea" }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Line type="monotone" dataKey="sommeil" name="Sommeil" stroke="#4fae7d" strokeWidth={2} strokeDasharray="0" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="nutrition" name="Nutrition" stroke="#3fa8c9" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="hydratation" name="Hydratation" stroke="#5cc28e" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="motivation" name="Motivation" stroke="#8bc34a" strokeWidth={2} strokeDasharray="8 3 2 3" dot={{ r: 2 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </>
             )}
 
             {athleteDetails.weightHistory.length > 0 && (
@@ -2493,27 +2758,36 @@ export default function Dashboard() {
                             >
                               <CartesianGrid
                                 strokeDasharray="3 3"
-                                stroke="#333"
+                                stroke="rgba(255,255,255,0.1)"
                               />
                               <XAxis
                                 dataKey="dateShort"
                                 stroke="#a8a199"
                                 fontSize={10}
                               />
-                              <YAxis stroke="#a8a199" fontSize={10} />
+                              <YAxis
+                                stroke="#a8a199"
+                                fontSize={10}
+                                domain={["dataMin - 2", "dataMax + 2"]}
+                              />
                               <Tooltip
                                 contentStyle={{
-                                  background: "#000",
-                                  border: "1px solid rgba(255, 255, 255, 0.05)",
-                                  fontSize: 11,
+                                  background: "#1a1815",
+                                  border: "1px solid rgba(255,255,255,0.16)",
+                                  borderRadius: 8,
+                                  fontSize: 12,
                                 }}
+                                labelStyle={{ color: "#f3f0ea" }}
+                                formatter={(value) => [`${value} kg`, "1RM"]}
                               />
                               <Line
                                 type="monotone"
                                 dataKey="kg"
+                                name="1RM (kg)"
                                 stroke="#e0a13d"
-                                strokeWidth={2}
+                                strokeWidth={2.5}
                                 dot={{ fill: "#e0a13d", r: 4 }}
+                                activeDot={{ r: 6 }}
                               />
                             </LineChart>
                           </ResponsiveContainer>
