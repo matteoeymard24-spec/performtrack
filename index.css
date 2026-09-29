@@ -2,10 +2,9 @@
    RESET CSS COMPLET - SUPPRESSION TOTALE DES MARGES
    ================================================ */
 
-/* Reset universel - Force tout à 0 */
+/* Reset universel - Force tout à 0 SAUF padding pour éviter les problèmes */
 *, *::before, *::after {
-  margin: 0 !important;
-  padding: 0 !important;
+  margin: 0;
   box-sizing: border-box !important;
 }
 

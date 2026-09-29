@@ -1,16 +1,36 @@
 <!DOCTYPE html>
 <html lang="fr">
-<head>
-	<meta charset="utf-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-	<meta name="theme-color" content="#000000">
-	<meta name="description" content="PerformTrack - Application de suivi performance sportive">
-	<link rel="shortcut icon" href="/favicon.ico">
-	<title>PerformTrack</title>
-</head>
-<body>
-	<noscript>You need to enable JavaScript to run this app.</noscript>
-	<div id="root"></div>
-	<script type="module" src="/index.jsx"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="PerformTrack - Suivi de performance athlétique" />
+    <title>PerformTrack</title>
+    <style>
+      /* Reset complet pour supprimer les marges blanches */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html, body, #root {
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        overflow-x: hidden !important;
+        background: #000000 !important;
+      }
+      body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    <script type="module" src="/index.jsx"></script>
+  </body>
 </html>

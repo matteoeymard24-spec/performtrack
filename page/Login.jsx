@@ -6,6 +6,14 @@ import {
 import { auth } from "../firebase";
 import { useNavigate } from "react-router-dom";
 
+const ACCENT = "#e0a13d";
+const BG = "#0d0c0a";
+const SURFACE = "#151310";
+const SURFACE_2 = "#1a1815";
+const BORDER = "rgba(255,255,255,0.08)";
+const BORDER_STRONG = "rgba(255,255,255,0.16)";
+const TEXT_MUTED = "#a8a199";
+
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +29,7 @@ export default function Login() {
       await signInWithEmailAndPassword(auth, email, password);
       navigate("/");
     } catch (err) {
-      setError("Email ou mot de passe incorrect");
+      setError("Email ou mot de passe incorrect.");
     } finally {
       setLoading(false);
     }
@@ -35,11 +43,11 @@ export default function Login() {
       navigate("/");
     } catch (err) {
       if (err.code === "auth/email-already-in-use") {
-        setError("Cet email est déjà utilisé");
+        setError("Cet email est déjà utilisé.");
       } else if (err.code === "auth/weak-password") {
-        setError("Le mot de passe doit contenir au moins 6 caractères");
+        setError("Le mot de passe doit contenir au moins 6 caractères.");
       } else {
-        setError("Erreur lors de la création du compte");
+        setError("La création du compte a échoué. Réessaie.");
       }
     } finally {
       setLoading(false);
@@ -59,113 +67,115 @@ export default function Login() {
     <div
       style={{
         minHeight: "100vh",
-        background: "linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%)",
+        background: BG,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "20px",
+        padding: 20,
+        fontFamily: "'Outfit', -apple-system, sans-serif",
       }}
     >
       <div
         style={{
           width: "100%",
-          maxWidth: "400px",
-          background: "#2a2a2a",
+          maxWidth: 400,
+          background: SURFACE,
           borderRadius: 16,
-          padding: "40px 30px",
-          boxShadow: "0 10px 40px rgba(0,0,0,0.5)",
-          border: "1px solid #444",
+          padding: "36px 30px",
+          border: `1px solid ${BORDER}`,
         }}
       >
-        {/* Logo/Title */}
-        <div style={{ textAlign: "center", marginBottom: 40 }}>
+        {/* Logo / titre */}
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
           <div
             style={{
-              width: 80,
-              height: 80,
-              margin: "0 auto 20px",
-              background: "linear-gradient(135deg, #2f80ed 0%, #1a5fb4 100%)",
-              borderRadius: "50%",
+              width: 56,
+              height: 56,
+              margin: "0 auto 18px",
+              background: SURFACE_2,
+              border: `1px solid ${BORDER_STRONG}`,
+              borderRadius: 14,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 36,
+              fontSize: 24,
+              color: ACCENT,
+              fontWeight: 800,
             }}
           >
-            🏋️
+            P
           </div>
           <h1
             style={{
-              margin: "0 0 8px 0",
-              color: "#ffffff",
-              fontSize: 28,
-              fontWeight: "bold",
+              margin: "0 0 6px 0",
+              color: "#f3f0ea",
+              fontSize: 26,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
             }}
           >
             PerformTrack
           </h1>
-          <p style={{ margin: 0, color: "#888", fontSize: 14 }}>
-            Suivi d'entraînement et de performance
+          <p style={{ margin: 0, color: TEXT_MUTED, fontSize: 14 }}>
+            Suivi de charge et de performance
           </p>
         </div>
 
-        {/* Tabs */}
+        {/* Onglets */}
         <div
           style={{
             display: "flex",
-            gap: 0,
-            marginBottom: 30,
-            background: "#1a1a1a",
+            gap: 4,
+            marginBottom: 26,
+            background: SURFACE_2,
             borderRadius: 10,
             padding: 4,
           }}
         >
           <button
+            type="button"
             onClick={() => setIsRegister(false)}
             style={{
               flex: 1,
-              padding: 12,
-              background: !isRegister ? "#2f80ed" : "transparent",
-              color: !isRegister ? "white" : "#888",
-              border: "none",
-              borderRadius: 8,
-              cursor: "pointer",
-              fontSize: 15,
-              fontWeight: !isRegister ? "bold" : "normal",
-              transition: "all 0.2s",
+              padding: 11,
+              background: !isRegister ? ACCENT : "transparent",
+              color: !isRegister ? "#1a1306" : TEXT_MUTED,
+              borderRadius: 7,
+              fontSize: 14,
+              fontWeight: 600,
+              transition: "all 0.15s ease",
             }}
           >
             Connexion
           </button>
           <button
+            type="button"
             onClick={() => setIsRegister(true)}
             style={{
               flex: 1,
-              padding: 12,
-              background: isRegister ? "#2f80ed" : "transparent",
-              color: isRegister ? "white" : "#888",
-              border: "none",
-              borderRadius: 8,
-              cursor: "pointer",
-              fontSize: 15,
-              fontWeight: isRegister ? "bold" : "normal",
-              transition: "all 0.2s",
+              padding: 11,
+              background: isRegister ? ACCENT : "transparent",
+              color: isRegister ? "#1a1306" : TEXT_MUTED,
+              borderRadius: 7,
+              fontSize: 14,
+              fontWeight: 600,
+              transition: "all 0.15s ease",
             }}
           >
             Inscription
           </button>
         </div>
 
-        {/* Form */}
+        {/* Formulaire */}
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 20 }}>
+          <div style={{ marginBottom: 18 }}>
             <label
               style={{
                 display: "block",
-                marginBottom: 8,
-                color: "#e0e0e0",
-                fontSize: 14,
-                fontWeight: "500",
+                marginBottom: 7,
+                color: TEXT_MUTED,
+                fontSize: 13,
+                fontWeight: 500,
               }}
             >
               Email
@@ -178,28 +188,27 @@ export default function Login() {
               required
               style={{
                 width: "100%",
-                padding: 14,
+                padding: 13,
                 borderRadius: 10,
-                border: "1px solid #444",
-                background: "#1a1a1a",
-                color: "#ffffff",
-                fontSize: 16,
-                outline: "none",
-                transition: "border 0.2s",
+                border: `1px solid ${BORDER}`,
+                background: SURFACE_2,
+                color: "#f3f0ea",
+                fontSize: 15,
+                transition: "border-color 0.15s ease",
               }}
-              onFocus={(e) => (e.target.style.borderColor = "#2f80ed")}
-              onBlur={(e) => (e.target.style.borderColor = "#444")}
+              onFocus={(e) => (e.target.style.borderColor = ACCENT)}
+              onBlur={(e) => (e.target.style.borderColor = BORDER)}
             />
           </div>
 
-          <div style={{ marginBottom: 25 }}>
+          <div style={{ marginBottom: 22 }}>
             <label
               style={{
                 display: "block",
-                marginBottom: 8,
-                color: "#e0e0e0",
-                fontSize: 14,
-                fontWeight: "500",
+                marginBottom: 7,
+                color: TEXT_MUTED,
+                fontSize: 13,
+                fontWeight: 500,
               }}
             >
               Mot de passe
@@ -212,30 +221,29 @@ export default function Login() {
               required
               style={{
                 width: "100%",
-                padding: 14,
+                padding: 13,
                 borderRadius: 10,
-                border: "1px solid #444",
-                background: "#1a1a1a",
-                color: "#ffffff",
-                fontSize: 16,
-                outline: "none",
-                transition: "border 0.2s",
+                border: `1px solid ${BORDER}`,
+                background: SURFACE_2,
+                color: "#f3f0ea",
+                fontSize: 15,
+                transition: "border-color 0.15s ease",
               }}
-              onFocus={(e) => (e.target.style.borderColor = "#2f80ed")}
-              onBlur={(e) => (e.target.style.borderColor = "#444")}
+              onFocus={(e) => (e.target.style.borderColor = ACCENT)}
+              onBlur={(e) => (e.target.style.borderColor = BORDER)}
             />
           </div>
 
           {error && (
             <div
               style={{
-                padding: 12,
-                marginBottom: 20,
-                background: "#3a1f1f",
-                border: "1px solid #e74c3c",
+                padding: 11,
+                marginBottom: 18,
+                background: "rgba(217,105,90,0.12)",
+                border: "1px solid rgba(217,105,90,0.35)",
                 borderRadius: 8,
-                color: "#ff6b6b",
-                fontSize: 14,
+                color: "#e8998c",
+                fontSize: 13,
                 textAlign: "center",
               }}
             >
@@ -248,50 +256,43 @@ export default function Login() {
             disabled={loading}
             style={{
               width: "100%",
-              padding: 16,
-              background: loading
-                ? "#555"
-                : "linear-gradient(135deg, #2f80ed 0%, #1a5fb4 100%)",
-              color: "white",
-              border: "none",
+              padding: 14,
+              background: loading ? SURFACE_2 : ACCENT,
+              color: loading ? TEXT_MUTED : "#1a1306",
               borderRadius: 10,
-              fontSize: 16,
-              fontWeight: "bold",
+              fontSize: 15,
+              fontWeight: 700,
               cursor: loading ? "not-allowed" : "pointer",
-              boxShadow: loading ? "none" : "0 4px 12px rgba(47,128,237,0.3)",
-              transition: "all 0.2s",
+              transition: "background 0.15s ease, transform 0.1s ease",
             }}
             onMouseEnter={(e) => {
-              if (!loading) {
-                e.target.style.transform = "translateY(-2px)";
-                e.target.style.boxShadow = "0 6px 20px rgba(47,128,237,0.4)";
-              }
+              if (!loading) e.currentTarget.style.background = "#edb454";
             }}
             onMouseLeave={(e) => {
-              e.target.style.transform = "translateY(0)";
-              e.target.style.boxShadow = "0 4px 12px rgba(47,128,237,0.3)";
+              if (!loading) e.currentTarget.style.background = ACCENT;
+            }}
+            onMouseDown={(e) => {
+              if (!loading) e.currentTarget.style.transform = "scale(0.98)";
+            }}
+            onMouseUp={(e) => {
+              if (!loading) e.currentTarget.style.transform = "scale(1)";
             }}
           >
-            {loading
-              ? "Chargement..."
-              : isRegister
-              ? "Créer mon compte"
-              : "Se connecter"}
+            {loading ? "Chargement…" : isRegister ? "Créer mon compte" : "Se connecter"}
           </button>
         </form>
 
-        {/* Info */}
         {isRegister && (
           <p
             style={{
-              marginTop: 20,
+              marginTop: 18,
               fontSize: 12,
-              color: "#888",
+              color: TEXT_MUTED,
               textAlign: "center",
               lineHeight: 1.5,
             }}
           >
-            En créant un compte, vous acceptez nos conditions d'utilisation et
+            En créant un compte, tu acceptes nos conditions d'utilisation et
             notre politique de confidentialité.
           </p>
         )}
