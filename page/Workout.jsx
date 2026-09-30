@@ -49,15 +49,20 @@ const normalizeExerciseName = (name) => {
 // d'exercices (gestionnaire "🔤 Noms d'exercices") et filtrer/regrouper
 // côté athlète (MyRM) et côté coach (Dashboard, détail athlète).
 const EXERCISE_CATEGORIES = [
-  { value: "bas_anterieure", label: "🦵 Bas du corps — Chaîne antérieure" },
-  { value: "bas_posterieure", label: "🦵 Bas du corps — Chaîne postérieure" },
+  { value: "bas_corps", label: "🦵 Bas du corps" },
   { value: "haut_tirage", label: "💪 Haut du corps — Tirage" },
   { value: "haut_pousse", label: "💪 Haut du corps — Poussée" },
   { value: "gainage", label: "🧱 Gainage" },
   { value: "autre", label: "📦 Autre" },
 ];
+// Anciennes fiches catégorisées avant la fusion "Chaîne antérieure" /
+// "Chaîne postérieure" en une seule catégorie "Bas du corps" — pour que ces
+// exercices restent correctement classés sans avoir à être retapés.
+const normalizeCategoryValue = (value) =>
+  value === "bas_anterieure" || value === "bas_posterieure" ? "bas_corps" : value;
 const getExerciseCategoryLabel = (value) =>
-  EXERCISE_CATEGORIES.find((c) => c.value === value)?.label || "📦 Autre";
+  EXERCISE_CATEGORIES.find((c) => c.value === normalizeCategoryValue(value))?.label ||
+  "📦 Autre";
 
 // Harmonise UNIQUEMENT la casse d'un nom d'exercice (une majuscule à
 // chaque mot/segment) — jamais l'orthographe : les noms sont un mélange de
@@ -1840,7 +1845,7 @@ export default function Workout() {
   const startCategorizeExercise = (entry) => {
     setCategorizingKey(entry.key);
     setCategorizeDraft({
-      category: entry.category || "autre",
+      category: normalizeCategoryValue(entry.category) || "autre",
       isWarmup: !!entry.isWarmup,
       isPDC: !!entry.isPDC,
     });

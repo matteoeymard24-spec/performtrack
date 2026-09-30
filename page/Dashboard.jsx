@@ -72,15 +72,19 @@ const normalizeExerciseNameLocal = (name) => {
 // Mêmes catégories que la banque d'exercices (gestionnaire "🔤 Noms
 // d'exercices" dans Workout.jsx) — pour regrouper les graphiques de RM ici.
 const EXERCISE_CATEGORIES = [
-  { value: "bas_anterieure", label: "🦵 Bas du corps — Chaîne antérieure" },
-  { value: "bas_posterieure", label: "🦵 Bas du corps — Chaîne postérieure" },
+  { value: "bas_corps", label: "🦵 Bas du corps" },
   { value: "haut_tirage", label: "💪 Haut du corps — Tirage" },
   { value: "haut_pousse", label: "💪 Haut du corps — Poussée" },
   { value: "gainage", label: "🧱 Gainage" },
   { value: "autre", label: "📦 Autre" },
 ];
+// Anciennes fiches catégorisées avant la fusion "Chaîne antérieure" /
+// "Chaîne postérieure" en une seule catégorie "Bas du corps".
+const normalizeCategoryValue = (value) =>
+  value === "bas_anterieure" || value === "bas_posterieure" ? "bas_corps" : value;
 const getExerciseCategoryLabel = (value) =>
-  EXERCISE_CATEGORIES.find((c) => c.value === value)?.label || "📦 Autre";
+  EXERCISE_CATEGORIES.find((c) => c.value === normalizeCategoryValue(value))?.label ||
+  "📦 Autre";
 
 export default function Dashboard() {
   const { currentUser, userRole, userProfile, isSuperAdmin } = useAuth();
@@ -555,7 +559,7 @@ export default function Dashboard() {
             return;
           }
           if (data.kg === null || data.kg === undefined) return; // pas encore testé
-          categoriesMap[name] = data.category || "autre";
+          categoriesMap[name] = normalizeCategoryValue(data.category) || "autre";
           if (Array.isArray(data.history) && data.history.length > 0) {
             fullHistory[name] = data.history.map((h) => ({
               kg: h.kg,
@@ -888,7 +892,7 @@ export default function Dashboard() {
           athleteCmj = { kg: data.kg, history: data.history || [] };
           return;
         }
-        rmCategories[name] = data.category || "autre";
+        rmCategories[name] = normalizeCategoryValue(data.category) || "autre";
         // Historique complet (champ "history", comme VMA/CMJ) si présent,
         // sinon repli sur le point unique kg/updatedAt pour les anciennes
         // fiches. Une fiche "en attente" (kg: null, jamais testée) n'a pas

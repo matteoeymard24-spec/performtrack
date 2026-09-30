@@ -23,15 +23,19 @@ import {
 // Mêmes catégories que la banque d'exercices (gestionnaire "🔤 Noms
 // d'exercices" dans Workout.jsx) — utilisées ici pour filtrer/regrouper.
 const EXERCISE_CATEGORIES = [
-  { value: "bas_anterieure", label: "🦵 Bas du corps — Chaîne antérieure" },
-  { value: "bas_posterieure", label: "🦵 Bas du corps — Chaîne postérieure" },
+  { value: "bas_corps", label: "🦵 Bas du corps" },
   { value: "haut_tirage", label: "💪 Haut du corps — Tirage" },
   { value: "haut_pousse", label: "💪 Haut du corps — Poussée" },
   { value: "gainage", label: "🧱 Gainage" },
   { value: "autre", label: "📦 Autre" },
 ];
+// Anciennes fiches catégorisées avant la fusion "Chaîne antérieure" /
+// "Chaîne postérieure" en une seule catégorie "Bas du corps".
+const normalizeCategoryValue = (value) =>
+  value === "bas_anterieure" || value === "bas_posterieure" ? "bas_corps" : value;
 const getExerciseCategoryLabel = (value) =>
-  EXERCISE_CATEGORIES.find((c) => c.value === value)?.label || "📦 Autre";
+  EXERCISE_CATEGORIES.find((c) => c.value === normalizeCategoryValue(value))?.label ||
+  "📦 Autre";
 
 export default function MyRM() {
   const { currentUser } = useAuth();
@@ -120,7 +124,7 @@ export default function MyRM() {
           // temps) vient du champ "history" ; à défaut (anciennes fiches
           // sans historique, ou fiche jamais testée avec kg:null), on
           // retombe sur un point unique tiré de kg/updatedAt.
-          categories[name] = data.category || "autre";
+          categories[name] = normalizeCategoryValue(data.category) || "autre";
           autoCreatedMap[name] = data.kg === null || data.kg === undefined;
           if (Array.isArray(data.history) && data.history.length > 0) {
             grouped[name] = data.history.map((h) => ({
