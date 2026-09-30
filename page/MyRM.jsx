@@ -78,6 +78,17 @@ export default function MyRM() {
   // Formulaire RM
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingRM, setEditingRM] = useState(null);
+
+  // Le formulaire "Modifier" s'ouvre en haut de la page (au-dessus de la
+  // liste), loin du bouton "✏️ Modifier" cliqué en bas dans le détail d'un
+  // exercice — sans ça, rien ne semblait se passer au clic (le formulaire
+  // s'ouvrait bien mais hors écran). On l'amène automatiquement en vue.
+  const formRef = useRef(null);
+  useEffect(() => {
+    if (showAddForm && formRef.current) {
+      formRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [showAddForm]);
   const [exerciseName, setExerciseName] = useState("");
   const [testWeight, setTestWeight] = useState("");
   const [testReps, setTestReps] = useState(1);
@@ -1041,12 +1052,14 @@ export default function MyRM() {
       {/* ==================== FORMULAIRE RM (édition uniquement) ==================== */}
       {showAddForm && (
         <div
+          ref={formRef}
           style={{
             background: "#1a1815",
             padding: 25,
             borderRadius: 12,
             border: "2px solid #e0a13d",
             marginBottom: 30,
+            scrollMarginTop: 90,
           }}
         >
           <h3 style={{ margin: "0 0 20px 0", fontSize: 18, textTransform: "capitalize" }}>
