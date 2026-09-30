@@ -22,6 +22,8 @@ import {
   Legend,
   AreaChart,
   Area,
+  BarChart,
+  Bar,
 } from "recharts";
 import BodyScan from "../component/BodyScan";
 import {
@@ -53,6 +55,20 @@ const getAthleteGroupIds = (athleteId, customGroups) =>
     .filter((g) => (g.athleteIds || []).includes(athleteId))
     .map((g) => g.id);
 
+// Même normalisation que Workout.jsx (voir normalizeExerciseName là-bas) —
+// utilisée ici uniquement pour rapprocher le "rmName" d'un exercice de
+// séance avec la clé stockée dans users/{uid}/rm (résumé post-séance).
+const normalizeExerciseNameLocal = (name) => {
+  if (!name) return "";
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[/\\.]/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+};
+
 export default function Dashboard() {
   const { currentUser, userRole, userProfile, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
@@ -81,6 +97,11 @@ export default function Dashboard() {
   const [todayWellness, setTodayWellness] = useState(null);
   const [wellnessHistory, setWellnessHistory] = useState([]);
   const [todayWorkout, setTodayWorkout] = useState(null);
+  // Séances de l'athlète (déjà filtrées par groupe/cible) et aperçu de la
+  // semaine en cours — alimentent la mini-frise 7 jours et la sparkline de
+  // charge, sans refaire de requête Firestore séparée.
+  const [athleteWorkouts, setAthleteWorkouts] = useState([]);
+  const [weekOverview, setWeekOverview] = useState([]);
   const [selfCrossStatus, setSelfCrossStatus] = useState(null);
   const [selfRediRatio, setSelfRediRatio] = useState(null);
   const [selfWellnessZ, setSelfWellnessZ] = useState(null);
@@ -394,10 +415,92 @@ export default function Dashboard() {
   useEffect(() => {
     if (userRole !== "athlete" || !currentUser || !userProfile) return;
 
+    // IMPORTANT : chaque section ci-dessous a son propre try/catch, isolée
+    // des autres. Avant, tout était dans UN SEUL bloc try/catch : si une
+    // section (wellness, poids...) plantait sur une donnée mal formée (ex.
+    // un document sans champ "date"), TOUT le reste — y compris la séance
+    // du jour, la section la plus visible du Dashboard — n'était jamais
+    // calculé, sans aucune erreur visible pour l'athlète ("Pas de séance
+    // programmée aujourd'hui" alors qu'une séance individuelle existait
+    // bien). La séance du jour est volontairement calculée EN PREMIER,
+    // isolée, pour ne plus jamais dépendre du succès des autres sections.
     const load = async () => {
-      try {
-        const today = getLocalDateStr(new Date());
+      const today = getLocalDateStr(new Date());
 
+      // --- Séances (séance du jour + stats globales) ---
+      let userWorkouts = [];
+      try {
+        const allWorkouts = (await getDocs(collection(db, "workout"))).docs.map(
+          (d) => ({ id: d.id, ...d.data() })
+        );
+        const userGrp = userProfile?.group || "total";
+        const myGroupIds = getAthleteGroupIds(currentUser.uid, customGroups);
+
+        userWorkouts = allWorkouts.filter((w) => {
+          return (
+            w.group === "total" ||
+            w.group === userGrp ||
+            (w.group === "moi" && w.createdBy === currentUser.uid) ||
+            w.targetUserId === currentUser.uid ||
+            myGroupIds.includes(w.group)
+          );
+        });
+
+        setAthleteWorkouts(userWorkouts);
+        // Taux de complétion = séances RÉALISÉES parmi celles déjà passées
+        // (date ≤ aujourd'hui) — les séances futures ne comptent pas dans
+        // le dénominateur, sinon le taux baisse mécaniquement pour un
+        // programme chargé sur plusieurs mois sans que ça reflète un
+        // retard réel.
+        const pastOrTodayWorkouts = userWorkouts.filter((w) => w.date <= today);
+        setTotalSessions(pastOrTodayWorkouts.length);
+        setCompletedSessions(
+          pastOrTodayWorkouts.filter((w) => isWorkoutCompleted(w, currentUser.uid)).length
+        );
+
+        const todayWorkouts = userWorkouts.filter((w) => w.date === today);
+        if (todayWorkouts.length > 0) setTodayWorkout(todayWorkouts[0]);
+
+        // Mini-frise de la semaine en cours (lundi → dimanche) : un statut
+        // par jour, pour un coup d'œil rapide sans ouvrir le calendrier.
+        const todayDate = new Date(today + "T12:00:00");
+        const dow = todayDate.getDay(); // 0 = dimanche
+        const mondayOffset = dow === 0 ? -6 : 1 - dow;
+        const monday = new Date(todayDate);
+        monday.setDate(monday.getDate() + mondayOffset);
+        const week = [];
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(monday);
+          d.setDate(d.getDate() + i);
+          const dateStr = getLocalDateStr(d);
+          const sessionsThatDay = userWorkouts.filter((w) => w.date === dateStr);
+          let status = "none"; // aucune séance ce jour-là
+          let session = null;
+          if (sessionsThatDay.length > 0) {
+            session =
+              sessionsThatDay.find((w) => isWorkoutCompleted(w, currentUser.uid)) ||
+              sessionsThatDay[0];
+            if (isWorkoutCompleted(session, currentUser.uid)) status = "done";
+            else if (isWorkoutInProgress(session, currentUser.uid)) status = "inProgress";
+            else if (dateStr < today) status = "missed";
+            else if (dateStr === today) status = "today";
+            else status = "upcoming";
+          }
+          week.push({
+            date: dateStr,
+            dayLabel: d.toLocaleDateString("fr-FR", { weekday: "short" }),
+            isToday: dateStr === today,
+            status,
+            sessionId: session?.id || null,
+          });
+        }
+        setWeekOverview(week);
+      } catch (e) {
+        console.error("Erreur séances (dashboard athlète):", e);
+      }
+
+      // --- RM ---
+      try {
         const rmSnap = await getDocs(
           collection(db, "users", currentUser.uid, "rm")
         );
@@ -407,16 +510,24 @@ export default function Dashboard() {
             kg: d.data().kg,
             date: d.data().updatedAt,
             autoAdjusted: d.data().autoAdjusted || false,
+            autoCreated: d.data().autoCreated || false,
           }))
         );
+      } catch (e) {
+        console.error("Erreur RM (dashboard athlète):", e);
+      }
 
+      // --- Wellness ---
+      let myWellness = [];
+      let todayW = null;
+      try {
         const allWellness = await getDocs(collection(db, "wellness"));
-        const myWellness = allWellness.docs
+        myWellness = allWellness.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .filter((w) => w.userId === currentUser.uid)
-          .sort((a, b) => b.date.localeCompare(a.date));
+          .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
-        const todayW = myWellness.find((w) => w.date === today);
+        todayW = myWellness.find((w) => w.date === today) || null;
         if (todayW) setTodayWellness(todayW);
 
         const last7 = myWellness.slice(0, 7).reverse();
@@ -426,13 +537,18 @@ export default function Dashboard() {
             normalizedScore: calculateWellnessScore(d),
           }))
         );
+      } catch (e) {
+        console.error("Erreur wellness (dashboard athlète):", e);
+      }
 
+      // --- Poids ---
+      try {
         const whtSnap = await getDocs(
           collection(db, "users", currentUser.uid, "weight_history")
         );
         const whtData = whtSnap.docs
           .map((d) => ({ weight: d.data().weight, date: d.data().date }))
-          .sort((a, b) => a.date.localeCompare(b.date));
+          .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
         setWeightHistory(whtData);
 
@@ -443,43 +559,15 @@ export default function Dashboard() {
           setLastWeightDate(lastDate);
           setCanUpdateWeight((new Date() - lastDate) / 86400000 >= 7);
         }
+      } catch (e) {
+        console.error("Erreur poids (dashboard athlète):", e);
+      }
 
-        const allWorkouts = (await getDocs(collection(db, "workout"))).docs.map(
-          (d) => ({ id: d.id, ...d.data() })
-        );
-        const userGrp = userProfile?.group || "total";
-        const myGroupIds = getAthleteGroupIds(currentUser.uid, customGroups);
-
-        const userWorkouts = allWorkouts.filter((w) => {
-          return (
-            w.group === "total" ||
-            w.group === userGrp ||
-            (w.group === "moi" && w.createdBy === currentUser.uid) ||
-            w.targetUserId === currentUser.uid ||
-            myGroupIds.includes(w.group)
-          );
-        });
-
-        setTotalSessions(userWorkouts.length);
-        setCompletedSessions(
-          userWorkouts.filter((w) => isWorkoutCompleted(w, currentUser.uid)).length
-        );
-
-        const todayWorkouts = allWorkouts.filter((w) => {
-          if (w.date !== today) return false;
-          return (
-            w.group === "total" ||
-            w.group === userGrp ||
-            (w.group === "moi" && w.createdBy === currentUser.uid) ||
-            w.targetUserId === currentUser.uid ||
-            myGroupIds.includes(w.group)
-          );
-        });
-
-        if (todayWorkouts.length > 0) setTodayWorkout(todayWorkouts[0]);
-
-        // REDI × wellness (z-score), recalculé à chaque chargement du
-        // dashboard donc renouvelé chaque jour.
+      // --- Indicateurs croisés (REDI × wellness × RPE × CMJ) — dépendent de
+      // userWorkouts/myWellness/todayW calculés ci-dessus (valeurs par
+      // défaut sûres si leur section a échoué), jamais bloquant pour le
+      // reste du Dashboard.
+      try {
         const myDailyLoads = buildDailyLoads(userWorkouts, currentUser.uid);
         const ratio = rediRatio(myDailyLoads, today);
         setSelfRediRatio(ratio);
@@ -489,9 +577,6 @@ export default function Dashboard() {
         const wZ = todayScoreForZ !== null ? zScore(todayScoreForZ, myWellnessHistoryForZ) : null;
         setSelfWellnessZ(wZ);
 
-        // Fiabilité RPE (variance sur les dernières séances) + CMJ du jour
-        // vs baseline propre — croisés avec REDI × wellness, chacun ignoré
-        // s'il est indisponible (aucune donnée bloquante).
         const myDailyRPE = buildDailyRPE(userWorkouts, currentUser.uid);
         const myRpeReliability = rpeVariability(myDailyRPE.map((e) => e.rpe));
         setSelfRpeReliability(myRpeReliability);
@@ -509,21 +594,21 @@ export default function Dashboard() {
             rpeReliability: myRpeReliability,
           })
         );
-
-        // Journal de blessures — dernières déclarations personnelles.
-        try {
-          const injSnap = await getDocs(collection(db, "injuries"));
-          const myInjuries = injSnap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((inj) => inj.userId === currentUser.uid)
-            .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
-            .slice(0, 5);
-          setSelfInjuries(myInjuries);
-        } catch (e) {
-          console.error("Erreur chargement blessures:", e);
-        }
       } catch (e) {
-        console.error("Erreur athlète:", e);
+        console.error("Erreur indicateurs croisés (dashboard athlète):", e);
+      }
+
+      // --- Journal de blessures — dernières déclarations personnelles. ---
+      try {
+        const injSnap = await getDocs(collection(db, "injuries"));
+        const myInjuries = injSnap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((inj) => inj.userId === currentUser.uid)
+          .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+          .slice(0, 5);
+        setSelfInjuries(myInjuries);
+      } catch (e) {
+        console.error("Erreur chargement blessures:", e);
       }
     };
     load();
@@ -837,6 +922,75 @@ export default function Dashboard() {
           ).toFixed(1)
         : null;
 
+    // Séance non démarrée en fin d'après-midi : rappel doux, seulement
+    // après 17h, pour ne pas alerter dans la matinée pour rien.
+    const sessionReminderDue =
+      todayWorkout &&
+      !isWorkoutCompleted(todayWorkout) &&
+      !isWorkoutInProgress(todayWorkout) &&
+      new Date().getHours() >= 17;
+
+    // RM auto-créés en attente d'une vraie valeur (kg null/undefined) —
+    // voir ensureRMsExist dans Workout.jsx, qui les crée dès qu'un exercice
+    // sert de référence à un calcul de %, à charge pour l'athlète (ou le
+    // coach) de renseigner la vraie valeur.
+    const pendingRM = athleteRMHistory.filter(
+      (r) => r.kg === null || r.kg === undefined
+    );
+
+    // Résumé de la séance du jour une fois validée : RPE moyen déclaré +
+    // comparaison charges soulevées / RM actuel, pour ne pas avoir à
+    // rouvrir la séance juste pour ça.
+    let todaySummary = null;
+    if (todayWorkout && isWorkoutCompleted(todayWorkout)) {
+      const avgRpe = calcSessionAvgRPE(todayWorkout, currentUser?.uid);
+      const feedback = getUserFeedback(todayWorkout, currentUser?.uid);
+      const rmByName = {};
+      athleteRMHistory.forEach((r) => {
+        if (r.kg) rmByName[normalizeExerciseNameLocal(r.exercise)] = r.kg;
+      });
+      const vsRM = [];
+      (todayWorkout.blocks || []).forEach((block, bIdx) => {
+        (block.exercises || []).forEach((ex, eIdx) => {
+          if (!ex.rmName) return;
+          const rmKg = rmByName[normalizeExerciseNameLocal(ex.rmName)];
+          if (!rmKg) return;
+          const fb = feedback[`${bIdx}-${eIdx}`];
+          const series = fb?.series;
+          if (!series || series.length === 0) return;
+          const weights = series
+            .map((s) => Number(s.actualWeight))
+            .filter((w) => !Number.isNaN(w) && w > 0);
+          if (weights.length === 0) return;
+          const maxWeight = Math.max(...weights);
+          vsRM.push({
+            name: ex.name,
+            pct: Math.round((maxWeight / rmKg) * 100),
+            weight: maxWeight,
+          });
+        });
+      });
+      todaySummary = { avgRpe, vsRM: vsRM.slice(0, 3) };
+    }
+
+    // Charge (sRPE) des 21 derniers jours pour la sparkline de tendance —
+    // un jour sans séance complétée vaut simplement 0.
+    const loadsByDate = {};
+    buildDailyLoads(athleteWorkouts, currentUser?.uid).forEach((d) => {
+      loadsByDate[d.date] = d.load;
+    });
+    const sparklineData = [];
+    for (let i = 20; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = getLocalDateStr(d);
+      sparklineData.push({
+        date: dateStr,
+        load: Math.round(loadsByDate[dateStr] || 0),
+      });
+    }
+    const hasSparklineData = sparklineData.some((d) => d.load > 0);
+
     return (
       <div
         style={{
@@ -851,13 +1005,78 @@ export default function Dashboard() {
         <h2 style={{ fontSize: 24, marginBottom: 5 }}>
           Bonjour {userProfile?.firstName || "Athlète"} ! 👋
         </h2>
-        <p style={{ color: "#a8a199", marginBottom: 30, fontSize: 14 }}>
+        <p style={{ color: "#a8a199", marginBottom: 20, fontSize: 14 }}>
           {new Date().toLocaleDateString("fr-FR", {
             weekday: "long",
             day: "numeric",
             month: "long",
           })}
         </p>
+
+        {/* Mini-frise de la semaine : un coup d'œil sur les 7 jours (lundi
+            → dimanche) sans avoir à ouvrir le calendrier. Un jour sans
+            séance programmée reste un simple point neutre. */}
+        {weekOverview.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 6,
+              marginBottom: 20,
+              background: "#151310",
+              borderRadius: 12,
+              padding: "12px 10px",
+            }}
+          >
+            {weekOverview.map((day) => {
+              const STATUS_STYLE = {
+                done: { color: "#4fae7d", dot: "●", label: "Faite" },
+                inProgress: { color: "#d9a441", dot: "◐", label: "En cours" },
+                missed: { color: "#d9695a", dot: "●", label: "Manquée" },
+                today: { color: "#e0a13d", dot: "●", label: "Aujourd'hui" },
+                upcoming: { color: "#6f8fb0", dot: "○", label: "À venir" },
+                none: { color: "#3a362f", dot: "·", label: "Repos" },
+              };
+              const s = STATUS_STYLE[day.status] || STATUS_STYLE.none;
+              return (
+                <div
+                  key={day.date}
+                  onClick={() => day.sessionId && goToWorkout(day.sessionId, false)}
+                  title={s.label}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 4,
+                    flex: 1,
+                    cursor: day.sessionId ? "pointer" : "default",
+                    opacity: day.isToday ? 1 : 0.85,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: day.isToday ? "#e0a13d" : "#a8a199",
+                      fontWeight: day.isToday ? "bold" : "normal",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {day.dayLabel}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 20,
+                      color: s.color,
+                      lineHeight: 1,
+                    }}
+                  >
+                    {s.dot}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {!todayWellness && (
           <div
@@ -877,6 +1096,60 @@ export default function Dashboard() {
             <p style={{ margin: 0, fontSize: 14, color: "#f0c98a" }}>
               N'oublie pas de remplir ton questionnaire wellness d'aujourd'hui !
             </p>
+          </div>
+        )}
+
+        {sessionReminderDue && (
+          <div
+            style={{
+              background: "rgba(217,105,90,0.14)",
+              padding: 20,
+              borderRadius: 12,
+              border: "2px solid #d9695a",
+              marginBottom: 20,
+            }}
+          >
+            <h3 style={{ margin: "0 0 10px 0", fontSize: 18, color: "#d9695a" }}>
+              ⏰ Séance pas encore démarrée
+            </h3>
+            <p style={{ margin: 0, fontSize: 14, color: "#f0b5ab" }}>
+              "{todayWorkout.title}" t'attend toujours aujourd'hui.
+            </p>
+          </div>
+        )}
+
+        {pendingRM.length > 0 && (
+          <div
+            style={{
+              background: "rgba(224,161,61,0.14)",
+              padding: 20,
+              borderRadius: 12,
+              border: "2px solid #e0a13d",
+              marginBottom: 20,
+            }}
+          >
+            <h3 style={{ margin: "0 0 10px 0", fontSize: 18, color: "#e0a13d" }}>
+              🎯 {pendingRM.length} RM en attente de validation
+            </h3>
+            <p style={{ margin: "0 0 12px 0", fontSize: 14, color: "#f0d9ae" }}>
+              {pendingRM.map((r) => r.exercise).slice(0, 4).join(", ")}
+              {pendingRM.length > 4 ? "…" : ""}
+            </p>
+            <button
+              onClick={() => navigate("/myrm")}
+              style={{
+                padding: "10px 16px",
+                background: "#e0a13d",
+                color: "#1a1306",
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontSize: 14,
+              }}
+            >
+              Aller sur Mes RM →
+            </button>
           </div>
         )}
 
@@ -1118,7 +1391,7 @@ export default function Dashboard() {
               }}
             >
               <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
-                Total
+                Passées
               </div>
               <div
                 style={{ fontSize: 28, fontWeight: "bold", color: "#e0a13d" }}
@@ -1137,7 +1410,7 @@ export default function Dashboard() {
             }}
           >
             <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 4 }}>
-              Taux de complétion
+              Taux de réalisation (séances passées)
             </div>
             <div style={{ fontSize: 24, fontWeight: "bold", color: "#4fae7d" }}>
               {totalSessions > 0
@@ -1146,6 +1419,28 @@ export default function Dashboard() {
               %
             </div>
           </div>
+
+          {hasSparklineData && (
+            <div style={{ marginTop: 15 }}>
+              <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
+                📈 Charge des 3 dernières semaines
+              </div>
+              <ResponsiveContainer width="100%" height={60}>
+                <BarChart data={sparklineData}>
+                  <Bar dataKey="load" fill="#4fae7d" radius={[2, 2, 0, 0]} />
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0d0c0a",
+                      border: "1px solid rgba(255,255,255,0.05)",
+                      fontSize: 12,
+                    }}
+                    labelFormatter={(d) => d}
+                    formatter={(v) => [v, "Charge"]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </div>
 
         <div
@@ -1184,7 +1479,31 @@ export default function Dashboard() {
                 >
                   ✅ Séance validée
                 </div>
-              ) : isWorkoutInProgress(todayWorkout) ? (
+              ) : null}
+              {todaySummary && (todaySummary.avgRpe !== null || todaySummary.vsRM.length > 0) && (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "#0d0c0a",
+                    borderRadius: 8,
+                    marginBottom: 10,
+                    fontSize: 13,
+                  }}
+                >
+                  {todaySummary.avgRpe !== null && (
+                    <div style={{ color: "#a8a199", marginBottom: todaySummary.vsRM.length > 0 ? 8 : 0 }}>
+                      RPE moyen : <strong style={{ color: "#f3f0ea" }}>{todaySummary.avgRpe.toFixed(1)}</strong>
+                    </div>
+                  )}
+                  {todaySummary.vsRM.map((v, i) => (
+                    <div key={i} style={{ color: "#a8a199" }}>
+                      {v.name} : <strong style={{ color: "#f3f0ea" }}>{v.weight} kg</strong>{" "}
+                      ({v.pct}% du RM)
+                    </div>
+                  ))}
+                </div>
+              )}
+              {isWorkoutCompleted(todayWorkout) ? null : isWorkoutInProgress(todayWorkout) ? (
                 <div
                   style={{
                     padding: 12,

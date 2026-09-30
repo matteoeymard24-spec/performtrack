@@ -686,9 +686,29 @@ export default function Workout() {
     try {
       for (const [key, fb] of Object.entries(feedback)) {
         const [bIdx, eIdx] = key.split("-").map(Number);
-        const exercise = session.blocks[bIdx]?.exercises[eIdx];
-        if (!exercise?.rmName) continue;
-        
+        const block = session.blocks[bIdx];
+        const exercise = block?.exercises[eIdx];
+        if (!exercise) continue;
+
+        // Bloc d'échauffement : jamais pris en compte pour le RM, quel que
+        // soit le poids/RPE déclaré (repéré par le nom du bloc — "Bloc 1"
+        // reste inclus, "Échauffement"/"Warm up"/"Activation" est exclu).
+        if (/échauffement|echauffement|warm.?up|activation/i.test(block?.name || "")) {
+          continue;
+        }
+
+        // Poids du corps (PDC) : pas de charge externe pertinente pour un RM.
+        if (exercise.rmPercent === "PDC") continue;
+
+        // Nom utilisé pour la fiche RM : celui choisi explicitement par le
+        // coach (rmName, quand l'exercice sert de référence pour calculer
+        // des % de charge), sinon le nom de l'exercice réalisé lui-même —
+        // pour que TOUT exercice fait proche du max (filtré juste en dessous
+        // sur reps≤6 et RPE≥8) alimente "Mes RM" automatiquement, sans
+        // réglage manuel préalable.
+        const rmName = exercise.rmName || exercise.name;
+        if (!rmName) continue;
+
         // Normaliser le feedback (rétrocompatibilité)
         const normalized = normalizeFeedback(fb);
         if (!normalized || !normalized.series || normalized.series.length === 0) continue;
@@ -726,7 +746,7 @@ export default function Workout() {
         );
 
         // Normaliser le nom de l'exercice
-        const normalizedRmName = normalizeExerciseName(exercise.rmName);
+        const normalizedRmName = normalizeExerciseName(rmName);
         const currentRM = userRM[normalizedRmName];
         const predicted = medianPredicted;
         if (predicted) {
@@ -1096,6 +1116,65 @@ export default function Workout() {
     try {
       await deleteDoc(doc(db, "workout", id));
       alert("Supprimée !");
+      await fetchSessions();
+      setSelectedSession(null);
+    } catch (e) {
+      console.error(e);
+      alert("Erreur suppression");
+    }
+  };
+
+  // Suppression groupée : toutes les séances d'un jour donné, tous
+  // athlètes/groupes confondus (celles visibles par l'admin dans "events").
+  const deleteSessionsForDay = async (dateStr) => {
+    const dayEvents = events.filter((e) => e.date === dateStr);
+    if (dayEvents.length === 0) return;
+    if (
+      !window.confirm(
+        `Supprimer les ${dayEvents.length} séance(s) du ${new Date(
+          dateStr + "T12:00:00"
+        ).toLocaleDateString("fr-FR")} ? Cette action est irréversible.`
+      )
+    )
+      return;
+    try {
+      await Promise.all(dayEvents.map((e) => deleteDoc(doc(db, "workout", e.id))));
+      alert(`${dayEvents.length} séance(s) supprimée(s) !`);
+      await fetchSessions();
+      setSelectedSession(null);
+    } catch (e) {
+      console.error(e);
+      alert("Erreur suppression");
+    }
+  };
+
+  // Suppression groupée : toutes les séances de la semaine (lundi → dimanche)
+  // contenant la date donnée.
+  const deleteSessionsForWeek = async (dateStr) => {
+    const ref = new Date(dateStr + "T12:00:00");
+    const dow = ref.getDay(); // 0 = dimanche
+    const mondayOffset = dow === 0 ? -6 : 1 - dow;
+    const monday = new Date(ref);
+    monday.setDate(monday.getDate() + mondayOffset);
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    const mondayStr = getLocalDateStr(monday);
+    const sundayStr = getLocalDateStr(sunday);
+    const weekEvents = events.filter(
+      (e) => e.date >= mondayStr && e.date <= sundayStr
+    );
+    if (weekEvents.length === 0) return;
+    if (
+      !window.confirm(
+        `Supprimer les ${weekEvents.length} séance(s) de la semaine du ${monday.toLocaleDateString(
+          "fr-FR"
+        )} au ${sunday.toLocaleDateString("fr-FR")} ? Cette action est irréversible.`
+      )
+    )
+      return;
+    try {
+      await Promise.all(weekEvents.map((e) => deleteDoc(doc(db, "workout", e.id))));
+      alert(`${weekEvents.length} séance(s) supprimée(s) !`);
       await fetchSessions();
       setSelectedSession(null);
     } catch (e) {
@@ -3125,8 +3204,6 @@ export default function Workout() {
             >
               <option value="total">Total (tous)</option>
               <option value="moi">🌟 Moi (privé)</option>
-              <option value="avant">Avant</option>
-              <option value="trois quart">Trois Quart</option>
               <option value="individuel">Individuel</option>
               {customGroups.length > 0 && (
                 <optgroup label="Groupes personnalisés">
@@ -5108,13 +5185,60 @@ export default function Workout() {
                 marginBottom: 20,
               }}
             >
-              <h3 style={{ margin: "0 0 15px 0", fontSize: 18 }}>
-                Séances du{" "}
-                {new Date(selectedDate + "T12:00:00").toLocaleDateString(
-                  "fr-FR",
-                  { weekday: "long", day: "numeric", month: "long" }
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  marginBottom: 15,
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: 18 }}>
+                  Séances du{" "}
+                  {new Date(selectedDate + "T12:00:00").toLocaleDateString(
+                    "fr-FR",
+                    { weekday: "long", day: "numeric", month: "long" }
+                  )}
+                </h3>
+                {isAdminLike && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    {events.filter((e) => e.date === selectedDate).length > 0 && (
+                      <button
+                        onClick={() => deleteSessionsForDay(selectedDate)}
+                        style={{
+                          padding: "8px 12px",
+                          background: "rgba(217,105,90,0.14)",
+                          color: "#d9695a",
+                          border: "1px solid #d9695a",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          fontSize: 12,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        🗑️ Supprimer la journée
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteSessionsForWeek(selectedDate)}
+                      style={{
+                        padding: "8px 12px",
+                        background: "rgba(217,105,90,0.14)",
+                        color: "#d9695a",
+                        border: "1px solid #d9695a",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        fontSize: 12,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      🗑️ Supprimer la semaine
+                    </button>
+                  </div>
                 )}
-              </h3>
+              </div>
               {events.filter((e) => e.date === selectedDate).length === 0 ? (
                 <div style={{ color: "#a8a199", fontSize: 14 }}>
                   Aucune séance ce jour

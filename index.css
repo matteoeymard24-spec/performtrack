@@ -218,3 +218,26 @@ a:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
 }
+
+/* ================================================
+   INPUTS DATE — lisibilité sur fond sombre
+   Sans ça, l'icône calendrier du navigateur (et le petit
+   calendrier qui s'ouvre au clic) reste noire par défaut et
+   devient quasi invisible sur nos fonds sombres. Réglé ici une
+   fois pour toutes les pages (date de blessure, date de séance,
+   duplication, etc.) plutôt que page par page.
+   ================================================ */
+
+input[type="date"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}

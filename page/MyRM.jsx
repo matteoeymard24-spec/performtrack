@@ -432,7 +432,10 @@ export default function MyRM() {
     >
       <h2 style={{ fontSize: 24, marginBottom: 10 }}>💪 Mes RM, VMA & CMJ</h2>
       <p style={{ color: "#a8a199", marginBottom: 30, fontSize: 14 }}>
-        Gère tes charges maximales, ta VMA, ton CMJ et suis ta progression
+        Tes charges maximales se mettent à jour automatiquement après chaque
+        séance (à partir des séries proches du max : ≤6 reps, RPE≥8 — hors
+        échauffement et poids du corps), mais tu peux aussi les ajouter ou
+        les corriger toi-même ici, comme ta VMA et ton CMJ.
       </p>
 
       {/* ==================== VMA CARD ==================== */}
