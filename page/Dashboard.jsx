@@ -5,6 +5,8 @@ import { db } from "../firebase";
 import {
   collection,
   getDocs,
+  query,
+  where,
   doc,
   updateDoc,
   setDoc,
@@ -584,10 +586,16 @@ export default function Dashboard() {
       let myWellness = [];
       let todayW = null;
       try {
-        const allWellness = await getDocs(collection(db, "wellness"));
-        myWellness = allWellness.docs
+        // Requête filtrée côté serveur (et non collection(db,"wellness") entière) :
+        // les règles Firestore n'autorisent la lecture d'un doc wellness qu'à son
+        // propriétaire ou à un admin, donc une requête non filtrée sur toute la
+        // collection est rejetée par Firestore pour un athlète (erreur silencieuse
+        // attrapée plus bas -> le wellness du jour n'apparaissait jamais).
+        const myWellnessSnap = await getDocs(
+          query(collection(db, "wellness"), where("userId", "==", currentUser.uid))
+        );
+        myWellness = myWellnessSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((w) => w.userId === currentUser.uid)
           .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
         todayW = myWellness.find((w) => w.date === today) || null;
@@ -663,10 +671,14 @@ export default function Dashboard() {
 
       // --- Journal de blessures — dernières déclarations personnelles. ---
       try {
-        const injSnap = await getDocs(collection(db, "injuries"));
+        // Même raison que pour le wellness ci-dessus : requête filtrée côté
+        // serveur, une lecture non filtrée de toute la collection "injuries"
+        // est rejetée par les règles Firestore pour un athlète non-admin.
+        const injSnap = await getDocs(
+          query(collection(db, "injuries"), where("userId", "==", currentUser.uid))
+        );
         const myInjuries = injSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((inj) => inj.userId === currentUser.uid)
           .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
           .slice(0, 5);
         setSelfInjuries(myInjuries);

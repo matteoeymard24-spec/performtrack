@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import {
@@ -65,6 +65,15 @@ export default function MyRM() {
   const [loading, setLoading] = useState(true);
   const [rmSearchQuery, setRmSearchQuery] = useState("");
   const [rmCategoryFilter, setRmCategoryFilter] = useState("all");
+
+  // Pour amener le graphique juste sous l'exercice cliqué (plutôt que de
+  // laisser l'utilisateur scroller jusqu'en bas de la page pour le voir).
+  const detailRef = useRef(null);
+  useEffect(() => {
+    if (selectedExercise && detailRef.current) {
+      detailRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [selectedExercise]);
 
   // Formulaire RM
   const [showAddForm, setShowAddForm] = useState(false);
@@ -364,12 +373,18 @@ export default function MyRM() {
         await deleteDoc(doc(db, "users", currentUser.uid, "rm", editingRM));
       }
 
-      // Relit la fiche existante pour ne jamais écraser sa catégorie ni son
-      // historique (le graphique d'évolution a besoin de tous les points,
-      // pas seulement du dernier).
+      // Relit la fiche existante pour ne jamais écraser son historique (le
+      // graphique d'évolution a besoin de tous les points, pas seulement du
+      // dernier). Pour la catégorie, la banque d'exercices (gestionnaire
+      // "🔤 Noms d'exercices") reste la référence — elle prime sur ce qui
+      // était déjà écrit sur la fiche RM.
       const targetRef = doc(db, "users", currentUser.uid, "rm", normalizedName);
-      const existingSnap = await getDoc(targetRef);
+      const [existingSnap, catalogSnap] = await Promise.all([
+        getDoc(targetRef),
+        getDoc(doc(db, "exerciseMedia", normalizedName)),
+      ]);
       const existingData = existingSnap.exists() ? existingSnap.data() : null;
+      const catalogCategory = catalogSnap.exists() ? catalogSnap.data().category : null;
       const nowIso = new Date().toISOString();
       const history = [...(existingData?.history || [])];
       history.push({ date: nowIso, kg: rm1, autoAdjusted: false });
@@ -377,7 +392,7 @@ export default function MyRM() {
       const rmData = {
         exerciseName: normalizedName,
         kg: rm1,
-        category: existingData?.category || "autre",
+        category: normalizeCategoryValue(catalogCategory) || existingData?.category || "autre",
         originalWeight: Number(testWeight),
         originalReps: Number(testReps),
         updatedAt: nowIso,
@@ -1401,11 +1416,13 @@ export default function MyRM() {
           {/* ==================== DÉTAILS EXERCICE ==================== */}
           {selectedExercise && rmHistory[selectedExercise] && (
             <div
+              ref={detailRef}
               style={{
                 background: "#1a1815",
                 padding: 20,
                 borderRadius: 12,
                 border: "2px solid #e0a13d",
+                scrollMarginTop: 90,
               }}
             >
               <div

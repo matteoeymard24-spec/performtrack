@@ -804,13 +804,17 @@ export default function Workout() {
           history.push({ date: nowIso, kg: roundedRM, autoAdjusted: true });
 
           // Sauvegarder avec le nom normalisé (merge pour ne jamais écraser
-          // une catégorie déjà posée manuellement sur la fiche).
+          // le reste de la fiche). La banque d'exercices est la source de
+          // référence pour la catégorie : elle prime sur ce qui était déjà
+          // écrit (souvent juste "Autre", posé par défaut avant que
+          // l'exercice soit catégorisé) — sinon une correction faite dans
+          // le gestionnaire n'atteignait jamais les fiches déjà créées.
           await setDoc(
             rmRef,
             {
               kg: roundedRM,
               exerciseName: normalizedRmName,
-              category: existingData?.category || catalogCategory || "autre",
+              category: catalogCategory || existingData?.category || "autre",
               previousRM: currentRM || 0,
               updatedAt: nowIso,
               autoAdjusted: true,
@@ -1655,7 +1659,12 @@ export default function Workout() {
         const rmRef = doc(db, "users", uid, "rm", key);
         const rmSnap = await getDoc(rmRef);
         if (rmSnap.exists()) {
-          if (!rmSnap.data().category) {
+          // La banque d'exercices est la source de référence pour la
+          // catégorie : on la resynchronise à chaque (re)catégorisation,
+          // même si la fiche en avait déjà une (souvent juste "Autre" par
+          // défaut) — sinon une correction faite ici depuis le gestionnaire
+          // ne se propageait jamais aux fiches déjà créées.
+          if (rmSnap.data().category !== category) {
             await updateDoc(rmRef, { category });
           }
           continue;
@@ -1673,6 +1682,37 @@ export default function Workout() {
       alert("❌ Erreur lors de la diffusion aux athlètes : " + e.message);
     } finally {
       setPropagatingCategory(null);
+    }
+  };
+
+  const [resyncingAllCategories, setResyncingAllCategories] = useState(false);
+
+  // Rattrapage : avant la correction du bug de propagation (qui ne
+  // resynchronisait jamais une catégorie déjà écrite sur une fiche, même
+  // fausse), les exercices catégorisés depuis le gestionnaire pouvaient
+  // rester en "Autre" chez les athlètes. Ce bouton repasse sur toute la
+  // banque et repropage chaque catégorie à tout le monde en une fois.
+  const resyncAllCategoriesToAthletes = async () => {
+    if (
+      !window.confirm(
+        "Resynchroniser les catégories de TOUS les exercices de la banque vers \"Mes RM\" de tous les athlètes ? (utile si certains exercices sont restés classés en \"Autre\" malgré une catégorie déjà posée ici)"
+      )
+    )
+      return;
+    setResyncingAllCategories(true);
+    try {
+      const entries = getExerciseNameEntries().filter(
+        (e) => e.category && !e.isWarmup && !e.isPDC
+      );
+      for (const entry of entries) {
+        await propagateExerciseToAllAthletes(entry.key, entry.category);
+      }
+      alert(`✅ ${entries.length} exercice(s) resynchronisé(s) vers tous les athlètes.`);
+    } catch (e) {
+      console.error("Erreur resynchronisation globale:", e);
+      alert("❌ Erreur lors de la resynchronisation : " + e.message);
+    } finally {
+      setResyncingAllCategories(false);
     }
   };
 
@@ -2437,6 +2477,26 @@ export default function Workout() {
               une fois, sans rien dupliquer. Tu peux aussi toujours en
               ajouter directement en tapant le nom dans une séance.
             </p>
+
+            <button
+              disabled={resyncingAllCategories}
+              onClick={resyncAllCategoriesToAthletes}
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                marginBottom: 16,
+                background: "#2a2620",
+                color: "#f3f0ea",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 8,
+                cursor: resyncingAllCategories ? "wait" : "pointer",
+                fontSize: 13,
+              }}
+            >
+              {resyncingAllCategories
+                ? "🔄 Resynchronisation en cours…"
+                : "🔄 Resynchroniser toutes les catégories vers tous les athlètes"}
+            </button>
 
             {/* Ajouter un nouvel exercice (avec ou sans photo tout de
                 suite) sans avoir à créer une séance. */}
