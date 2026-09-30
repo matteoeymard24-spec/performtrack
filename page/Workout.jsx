@@ -5746,10 +5746,14 @@ export default function Workout() {
         }
         
         input[type="date"]::-webkit-calendar-picker-indicator {
-          filter: invert(1);
           cursor: pointer;
+          opacity: 1;
+          background-color: #e0a13d;
+          border-radius: 6px;
+          padding: 4px;
+          margin-right: 2px;
         }
-        
+
         /* Force le style des selects et options */
         select {
           color: #f3f0ea !important;

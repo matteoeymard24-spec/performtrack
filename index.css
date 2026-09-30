@@ -230,14 +230,23 @@ a:focus-visible {
 
 input[type="date"] {
   color-scheme: dark;
+  position: relative;
 }
 
+/* Icône rendue comme un vrai petit bouton (fond ambre bien visible) plutôt
+   qu'une icône blanche discrète sur fond sombre — pour qu'elle saute aux
+   yeux même en un coup d'œil rapide, quelle que soit la taille du champ.
+   Pas d'invert() ici : l'icône reste sombre, mais sur fond ambre c'est déjà
+   très contrasté, et invert() inverserait aussi le fond ambre lui-même. */
 input[type="date"]::-webkit-calendar-picker-indicator {
-  filter: invert(1);
   cursor: pointer;
-  opacity: 0.85;
+  opacity: 1;
+  background-color: var(--accent);
+  border-radius: 6px;
+  padding: 4px;
+  margin-right: 2px;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator:hover {
-  opacity: 1;
+  background-color: var(--accent-hover);
 }
