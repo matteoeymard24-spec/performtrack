@@ -1,5 +1,5 @@
 import { db } from "../firebase";
-import { collection, getDocs, updateDoc, doc, query, where, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, getDoc, setDoc, updateDoc, doc, query, where, deleteDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { Navigate } from "react-router-dom";
@@ -127,12 +127,44 @@ export default function Athletes() {
   // pas approuvé ou refusé sa demande ici.
   const pendingUsers = users.filter((u) => u.status === "pending");
 
+  // Initialise "Mes RM" pour un athlète qui vient d'être approuvé : une
+  // fiche (en attente, kg: null) pour chaque exercice déjà catégorisé dans
+  // la banque d'exercices (hors échauffement/PDC/masqués), comme le fait
+  // déjà "propagateExerciseToAllAthletes" côté Workout.jsx pour les
+  // athlètes existants à chaque (re)catégorisation. Sans ça, un athlète créé
+  // APRÈS la catégorisation d'un exercice n'a jamais reçu sa fiche — "Mes
+  // RM" restait vide tant qu'aucun exercice n'était re-catégorisé.
+  const initRMForNewAthlete = async (uid) => {
+    try {
+      const catalogSnap = await getDocs(collection(db, "exerciseMedia"));
+      const entries = catalogSnap.docs.filter((d) => {
+        const data = d.data();
+        return data.category && !data.isWarmup && !data.isPDC && !data.hidden;
+      });
+      for (const entry of entries) {
+        const rmRef = doc(db, "users", uid, "rm", entry.id);
+        const rmSnap = await getDoc(rmRef);
+        if (rmSnap.exists()) continue;
+        await setDoc(rmRef, {
+          kg: null,
+          exerciseName: entry.id,
+          category: entry.data().category,
+          autoCreated: true,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.error("Erreur initialisation Mes RM pour nouvel athlète:", e);
+    }
+  };
+
   const approveUser = async (id) => {
     try {
       await updateDoc(doc(db, "users", id), { status: "approved" });
       setUsers((prev) =>
         prev.map((u) => (u.id === id ? { ...u, status: "approved" } : u))
       );
+      await initRMForNewAthlete(id);
     } catch (err) {
       console.error("Erreur approveUser:", err);
       alert("Erreur lors de la validation de l'accès");
