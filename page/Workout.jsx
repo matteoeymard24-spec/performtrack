@@ -45,6 +45,20 @@ const normalizeExerciseName = (name) => {
     .replace(/\s+/g, " ");                  // normalise espaces multiples en un seul
 };
 
+// Catégories d'exercices pour "Mes RM" — utilisées pour classer la banque
+// d'exercices (gestionnaire "🔤 Noms d'exercices") et filtrer/regrouper
+// côté athlète (MyRM) et côté coach (Dashboard, détail athlète).
+const EXERCISE_CATEGORIES = [
+  { value: "bas_anterieure", label: "🦵 Bas du corps — Chaîne antérieure" },
+  { value: "bas_posterieure", label: "🦵 Bas du corps — Chaîne postérieure" },
+  { value: "haut_tirage", label: "💪 Haut du corps — Tirage" },
+  { value: "haut_pousse", label: "💪 Haut du corps — Poussée" },
+  { value: "gainage", label: "🧱 Gainage" },
+  { value: "autre", label: "📦 Autre" },
+];
+const getExerciseCategoryLabel = (value) =>
+  EXERCISE_CATEGORIES.find((c) => c.value === value)?.label || "📦 Autre";
+
 // Harmonise UNIQUEMENT la casse d'un nom d'exercice (une majuscule à
 // chaque mot/segment) — jamais l'orthographe : les noms sont un mélange de
 // français ("Développé couché") et d'anglais ("Hip Thrust", "Nordic Curl"),
@@ -751,9 +765,15 @@ export default function Workout() {
           Math.abs(cur.predicted - medianPredicted) < Math.abs(best.predicted - medianPredicted) ? cur : best
         );
 
-        // Normaliser le nom de l'exercice
+        // Normaliser le nom de l'exercice — on relit toujours la fiche à
+        // jour depuis Firestore (plutôt que le state local "userRM", qui
+        // peut être périmé) pour récupérer sa vraie valeur ET son
+        // historique complet (nécessaire pour le graphique d'évolution).
         const normalizedRmName = normalizeExerciseName(rmName);
-        const currentRM = userRM[normalizedRmName];
+        const rmRef = doc(db, "users", currentUser.uid, "rm", normalizedRmName);
+        const existingSnap = await getDoc(rmRef);
+        const existingData = existingSnap.exists() ? existingSnap.data() : null;
+        const currentRM = existingData?.kg || null;
         const predicted = medianPredicted;
         if (predicted) {
           let finalRM = predicted;
@@ -764,23 +784,44 @@ export default function Workout() {
             if (change > 10) finalRM = currentRM * 1.1;
             if (change < -10) finalRM = currentRM * 0.9;
           }
+          const roundedRM = Math.round(finalRM * 10) / 10;
+          const nowIso = new Date().toISOString();
 
-          // Sauvegarder avec le nom normalisé
-          await setDoc(doc(db, "users", currentUser.uid, "rm", normalizedRmName), {
-            kg: Math.round(finalRM * 10) / 10,
-            exerciseName: normalizedRmName,
-            previousRM: currentRM || 0,
-            updatedAt: new Date().toISOString(),
-            autoAdjusted: true,
-            lastRPE: refSeries.rpe,
-            lastWeight: refSeries.weight,
-            lastReps: refSeries.reps,
-            seriesUsedForRM: validPredictions.length,
-          });
+          // Catégorie : celle déjà sur la fiche (priorité — posée
+          // manuellement), sinon celle de la banque d'exercices
+          // (gestionnaire "🔤 Noms d'exercices"), sinon "Autre" par défaut.
+          const catalogCategory = exerciseMediaLibrary[normalizedRmName]?.category;
+
+          // Historique complet (comme VMA/CMJ) : chaque ajustement ajoute un
+          // point, plutôt que d'écraser l'unique valeur — c'est ce qui rend
+          // le graphique d'évolution possible avec plus d'un point.
+          const history = [...(existingData?.history || [])];
+          history.push({ date: nowIso, kg: roundedRM, autoAdjusted: true });
+
+          // Sauvegarder avec le nom normalisé (merge pour ne jamais écraser
+          // une catégorie déjà posée manuellement sur la fiche).
+          await setDoc(
+            rmRef,
+            {
+              kg: roundedRM,
+              exerciseName: normalizedRmName,
+              category: existingData?.category || catalogCategory || "autre",
+              previousRM: currentRM || 0,
+              updatedAt: nowIso,
+              autoAdjusted: true,
+              autoCreated: false,
+              lastRPE: refSeries.rpe,
+              lastWeight: refSeries.weight,
+              lastReps: refSeries.reps,
+              seriesUsedForRM: validPredictions.length,
+              history: history.slice(-20),
+            },
+            { merge: true }
+          );
 
           // Log si c'est un nouveau RM créé
           if (isNewRM) {
-            console.log(`✅ Nouveau RM créé : "${normalizedRmName}" = ${Math.round(finalRM * 10) / 10} kg (médiane de ${validPredictions.length} série(s) valide(s))`);
+            console.log(`✅ Nouveau RM créé : "${normalizedRmName}" = ${roundedRM} kg (médiane de ${validPredictions.length} série(s) valide(s))`);
           }
         }
       }
@@ -1581,9 +1622,53 @@ export default function Workout() {
         fromRM: !!merged[key]?.fromRM,
         mediaUrl: v.mediaUrl,
         mediaType: v.mediaType,
+        category: v.category || null,
+        isWarmup: !!v.isWarmup,
+        isPDC: !!v.isPDC,
       };
     });
     return Object.values(merged).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  };
+
+  const [propagatingCategory, setPropagatingCategory] = useState(null);
+
+  // Dès qu'un exercice de la banque reçoit une catégorie (hors échauffement
+  // et poids du corps), crée une fiche "en attente" (kg: null) dans le
+  // "Mes RM" de CHAQUE athlète — pour qu'il apparaisse tout de suite dans
+  // leur liste/recherche, même avant d'avoir été testé. Une fiche déjà
+  // remplie (vraie valeur testée) n'est jamais écrasée : on complète
+  // seulement sa catégorie si elle n'en a pas.
+  const propagateExerciseToAllAthletes = async (key, category) => {
+    if (!key || !category) return;
+    setPropagatingCategory(key);
+    try {
+      const usersSnap = await getDocs(collection(db, "users"));
+      const athleteIds = usersSnap.docs
+        .filter((d) => d.data().role !== "admin" && d.data().superAdmin !== true)
+        .map((d) => d.id);
+      for (const uid of athleteIds) {
+        const rmRef = doc(db, "users", uid, "rm", key);
+        const rmSnap = await getDoc(rmRef);
+        if (rmSnap.exists()) {
+          if (!rmSnap.data().category) {
+            await updateDoc(rmRef, { category });
+          }
+          continue;
+        }
+        await setDoc(rmRef, {
+          kg: null,
+          exerciseName: key,
+          category,
+          autoCreated: true,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      console.error("Erreur propagation exercice aux athlètes:", e);
+      alert("❌ Erreur lors de la diffusion aux athlètes : " + e.message);
+    } finally {
+      setPropagatingCategory(null);
+    }
   };
 
   const startRenameExercise = (entry) => {
@@ -1676,6 +1761,9 @@ export default function Workout() {
   // rendu), l'ordre de déclaration dans le fichier n'a pas d'importance.
   const [newExerciseDraftName, setNewExerciseDraftName] = useState("");
   const [newExerciseDraftFile, setNewExerciseDraftFile] = useState(null);
+  const [newExerciseDraftCategory, setNewExerciseDraftCategory] = useState("");
+  const [newExerciseDraftWarmup, setNewExerciseDraftWarmup] = useState(false);
+  const [newExerciseDraftPDC, setNewExerciseDraftPDC] = useState(false);
   const [addingExercise, setAddingExercise] = useState(false);
 
   const addNewExerciseName = async () => {
@@ -1690,22 +1778,42 @@ export default function Workout() {
       alert(`"${name}" existe déjà dans la liste.`);
       return;
     }
+    // Échauffement / poids du corps : jamais de catégorie RM, donc jamais
+    // diffusé dans "Mes RM" des athlètes.
+    const isExcluded = newExerciseDraftWarmup || newExerciseDraftPDC;
+    const category = isExcluded ? null : newExerciseDraftCategory || "autre";
     setAddingExercise(true);
     try {
       if (newExerciseDraftFile) {
-        await saveExerciseMedia(name, newExerciseDraftFile, "catalog-new");
+        await saveExerciseMedia(name, newExerciseDraftFile, "catalog-new", {
+          category,
+          isWarmup: newExerciseDraftWarmup,
+          isPDC: newExerciseDraftPDC,
+        });
       } else {
         // Pas de photo pour l'instant : on enregistre quand même le nom,
         // pour qu'il apparaisse tout de suite dans l'autocomplétion — la
         // photo pourra être ajoutée plus tard (ici ou depuis une séance).
         await setDoc(doc(db, "exerciseMedia", key), {
           name,
+          category,
+          isWarmup: newExerciseDraftWarmup,
+          isPDC: newExerciseDraftPDC,
           updatedAt: serverTimestamp(),
         });
-        setExerciseMediaLibrary((prev) => ({ ...prev, [key]: { name } }));
+        setExerciseMediaLibrary((prev) => ({
+          ...prev,
+          [key]: { name, category, isWarmup: newExerciseDraftWarmup, isPDC: newExerciseDraftPDC },
+        }));
+      }
+      if (!isExcluded) {
+        await propagateExerciseToAllAthletes(key, category);
       }
       setNewExerciseDraftName("");
       setNewExerciseDraftFile(null);
+      setNewExerciseDraftCategory("");
+      setNewExerciseDraftWarmup(false);
+      setNewExerciseDraftPDC(false);
     } catch (e) {
       console.error("Erreur ajout exercice:", e);
       alert("❌ Erreur lors de l'ajout : " + e.message);
@@ -1716,6 +1824,64 @@ export default function Workout() {
 
   const changeExerciseCatalogImage = (entry, file) => {
     saveExerciseMedia(entry.name, file, `catalog-${entry.key}`);
+  };
+
+  // Modifier la catégorie / échauffement / PDC d'un exercice déjà présent
+  // dans la banque (nouveau OU ancien — voir EXERCISE_CATEGORIES). Diffuse
+  // aussitôt vers "Mes RM" de tous les athlètes, sauf si l'exercice est
+  // marqué échauffement ou poids du corps.
+  const [categorizingKey, setCategorizingKey] = useState(null);
+  const [categorizeDraft, setCategorizeDraft] = useState({
+    category: "autre",
+    isWarmup: false,
+    isPDC: false,
+  });
+
+  const startCategorizeExercise = (entry) => {
+    setCategorizingKey(entry.key);
+    setCategorizeDraft({
+      category: entry.category || "autre",
+      isWarmup: !!entry.isWarmup,
+      isPDC: !!entry.isPDC,
+    });
+  };
+
+  const cancelCategorizeExercise = () => {
+    setCategorizingKey(null);
+  };
+
+  const confirmCategorizeExercise = async (entry) => {
+    const isExcluded = categorizeDraft.isWarmup || categorizeDraft.isPDC;
+    const category = isExcluded ? null : categorizeDraft.category || "autre";
+    try {
+      await setDoc(
+        doc(db, "exerciseMedia", entry.key),
+        {
+          name: entry.name,
+          category,
+          isWarmup: categorizeDraft.isWarmup,
+          isPDC: categorizeDraft.isPDC,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setExerciseMediaLibrary((prev) => ({
+        ...prev,
+        [entry.key]: {
+          ...(prev[entry.key] || { name: entry.name }),
+          category,
+          isWarmup: categorizeDraft.isWarmup,
+          isPDC: categorizeDraft.isPDC,
+        },
+      }));
+      if (!isExcluded) {
+        await propagateExerciseToAllAthletes(entry.key, category);
+      }
+      setCategorizingKey(null);
+    } catch (e) {
+      console.error("Erreur catégorisation exercice:", e);
+      alert("❌ Erreur lors de l'enregistrement de la catégorie : " + e.message);
+    }
   };
 
   const deleteExerciseCatalogEntry = async (entry) => {
@@ -1744,17 +1910,35 @@ export default function Workout() {
         });
         setExerciseMediaLibrary((prev) => ({
           ...prev,
-          [entry.key]: { name: entry.name },
+          [entry.key]: {
+            name: entry.name,
+            category: entry.category || null,
+            isWarmup: !!entry.isWarmup,
+            isPDC: !!entry.isPDC,
+          },
         }));
       } else if (entry.usedInSessions || entry.fromRM) {
-        await setDoc(doc(db, "exerciseMedia", entry.key), {
-          name: entry.name,
-          hidden: true,
-          updatedAt: serverTimestamp(),
-        });
+        await setDoc(
+          doc(db, "exerciseMedia", entry.key),
+          {
+            name: entry.name,
+            category: entry.category || null,
+            isWarmup: !!entry.isWarmup,
+            isPDC: !!entry.isPDC,
+            hidden: true,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
         setExerciseMediaLibrary((prev) => ({
           ...prev,
-          [entry.key]: { name: entry.name, hidden: true },
+          [entry.key]: {
+            name: entry.name,
+            category: entry.category || null,
+            isWarmup: !!entry.isWarmup,
+            isPDC: !!entry.isPDC,
+            hidden: true,
+          },
         }));
       } else {
         await deleteDoc(doc(db, "exerciseMedia", entry.key));
@@ -1779,7 +1963,7 @@ export default function Workout() {
      saveExerciseMedia() est le cœur partagé : utilisé à la fois depuis une
      séance (handleMediaUpload) ET depuis le gestionnaire de noms
      d'exercices (ajout/modification d'image sans passer par une séance). */
-  const saveExerciseMedia = (exerciseName, file, progressKey) => {
+  const saveExerciseMedia = (exerciseName, file, progressKey, extra = {}) => {
     return new Promise((resolve, reject) => {
       if (!file) return resolve();
       if (!file.type.startsWith("image/")) {
@@ -1796,11 +1980,18 @@ export default function Workout() {
       const persist = async (dataUrl, mediaType) => {
         try {
           const existing = exerciseMediaLibrary[mediaKey];
+          // Ajouter/changer une photo ne doit jamais effacer la catégorie ou
+          // les flags échauffement/PDC déjà enregistrés — on les préserve
+          // depuis la fiche existante, sauf si "extra" en fournit de nouveaux
+          // (cas de l'ajout initial depuis le formulaire du gestionnaire).
           const entry = {
             name: exerciseName,
             mediaUrl: dataUrl,
             mediaType,
             mediaZoom: existing?.mediaZoom || DEFAULT_MEDIA_ZOOM,
+            category: extra.category !== undefined ? extra.category : existing?.category ?? null,
+            isWarmup: extra.isWarmup !== undefined ? extra.isWarmup : !!existing?.isWarmup,
+            isPDC: extra.isPDC !== undefined ? extra.isPDC : !!existing?.isPDC,
           };
           await setDoc(doc(db, "exerciseMedia", mediaKey), {
             ...entry,
@@ -2269,6 +2460,45 @@ export default function Workout() {
                 }}
               />
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <select
+                  value={newExerciseDraftCategory}
+                  onChange={(e) => setNewExerciseDraftCategory(e.target.value)}
+                  disabled={newExerciseDraftWarmup || newExerciseDraftPDC}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #2a2620",
+                    background: "#151310",
+                    color: "#f3f0ea",
+                    fontSize: 12,
+                    opacity: newExerciseDraftWarmup || newExerciseDraftPDC ? 0.5 : 1,
+                  }}
+                >
+                  <option value="">Catégorie (défaut : Autre)</option>
+                  {EXERCISE_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <label style={{ fontSize: 12, color: "#a8a199", display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={newExerciseDraftWarmup}
+                    onChange={(e) => setNewExerciseDraftWarmup(e.target.checked)}
+                  />
+                  Échauffement
+                </label>
+                <label style={{ fontSize: 12, color: "#a8a199", display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={newExerciseDraftPDC}
+                    onChange={(e) => setNewExerciseDraftPDC(e.target.checked)}
+                  />
+                  Poids du corps
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <label
                   style={{
                     fontSize: 12,
@@ -2306,6 +2536,11 @@ export default function Workout() {
                   {addingExercise ? "…" : "➕ Ajouter"}
                 </button>
               </div>
+              {!newExerciseDraftWarmup && !newExerciseDraftPDC && (
+                <p style={{ fontSize: 11, color: "#a8a199", margin: 0 }}>
+                  Sera automatiquement ajouté dans "Mes RM" de tous les athlètes (en attente de test).
+                </p>
+              )}
             </div>
 
             <input
@@ -2386,6 +2621,85 @@ export default function Workout() {
                           ✕
                         </button>
                       </div>
+                    ) : categorizingKey === entry.key ? (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <select
+                            value={categorizeDraft.category}
+                            onChange={(e) =>
+                              setCategorizeDraft((d) => ({ ...d, category: e.target.value }))
+                            }
+                            disabled={categorizeDraft.isWarmup || categorizeDraft.isPDC}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 6,
+                              border: "1px solid #2a2620",
+                              background: "#151310",
+                              color: "#f3f0ea",
+                              fontSize: 12,
+                              opacity: categorizeDraft.isWarmup || categorizeDraft.isPDC ? 0.5 : 1,
+                            }}
+                          >
+                            {EXERCISE_CATEGORIES.map((c) => (
+                              <option key={c.value} value={c.value}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </select>
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={categorizeDraft.isWarmup}
+                              onChange={(e) =>
+                                setCategorizeDraft((d) => ({ ...d, isWarmup: e.target.checked }))
+                              }
+                            />
+                            Échauffement
+                          </label>
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={categorizeDraft.isPDC}
+                              onChange={(e) =>
+                                setCategorizeDraft((d) => ({ ...d, isPDC: e.target.checked }))
+                              }
+                            />
+                            Poids du corps
+                          </label>
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            disabled={propagatingCategory === entry.key}
+                            onClick={() => confirmCategorizeExercise(entry)}
+                            style={{
+                              padding: "6px 14px",
+                              background: "#4fae7d",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              cursor: propagatingCategory === entry.key ? "wait" : "pointer",
+                              fontWeight: "bold",
+                              fontSize: 13,
+                            }}
+                          >
+                            {propagatingCategory === entry.key ? "Diffusion…" : "✅ Enregistrer"}
+                          </button>
+                          <button
+                            onClick={cancelCategorizeExercise}
+                            style={{
+                              padding: "6px 14px",
+                              background: "#2a2620",
+                              color: "#f3f0ea",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              fontSize: 13,
+                            }}
+                          >
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <div
                         style={{
@@ -2420,18 +2734,42 @@ export default function Workout() {
                               }}
                             />
                           )}
-                          <span
+                          <div style={{ minWidth: 0 }}>
+                            <div
+                              style={{
+                                fontSize: 14,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {entry.name}
+                            </div>
+                            <div style={{ fontSize: 11, color: "#a8a199", marginTop: 2 }}>
+                              {entry.isWarmup
+                                ? "🔥 Échauffement"
+                                : entry.isPDC
+                                ? "🧍 Poids du corps"
+                                : getExerciseCategoryLabel(entry.category)}
+                            </div>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            onClick={() => startCategorizeExercise(entry)}
                             style={{
-                              fontSize: 14,
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
+                              padding: "6px 10px",
+                              background: "#2a2620",
+                              color: "#f3f0ea",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              fontSize: 13,
                               whiteSpace: "nowrap",
                             }}
                           >
-                            {entry.name}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            🏷️ Catégorie
+                          </button>
                           <label
                             style={{
                               padding: "6px 10px",

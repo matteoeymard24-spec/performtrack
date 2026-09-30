@@ -69,6 +69,19 @@ const normalizeExerciseNameLocal = (name) => {
     .replace(/\s+/g, " ");
 };
 
+// Mêmes catégories que la banque d'exercices (gestionnaire "🔤 Noms
+// d'exercices" dans Workout.jsx) — pour regrouper les graphiques de RM ici.
+const EXERCISE_CATEGORIES = [
+  { value: "bas_anterieure", label: "🦵 Bas du corps — Chaîne antérieure" },
+  { value: "bas_posterieure", label: "🦵 Bas du corps — Chaîne postérieure" },
+  { value: "haut_tirage", label: "💪 Haut du corps — Tirage" },
+  { value: "haut_pousse", label: "💪 Haut du corps — Poussée" },
+  { value: "gainage", label: "🧱 Gainage" },
+  { value: "autre", label: "📦 Autre" },
+];
+const getExerciseCategoryLabel = (value) =>
+  EXERCISE_CATEGORIES.find((c) => c.value === value)?.label || "📦 Autre";
+
 export default function Dashboard() {
   const { currentUser, userRole, userProfile, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
@@ -89,9 +102,17 @@ export default function Dashboard() {
   const [showAthleteDetail, setShowAthleteDetail] = useState(null);
   const [athleteDetails, setAthleteDetails] = useState(null);
   const [detailedAthleteRMHistory, setDetailedAthleteRMHistory] = useState({});
+  const [detailedAthleteRMCategories, setDetailedAthleteRMCategories] = useState({});
   const [acwrHistory, setAcwrHistory] = useState([]);
 
   const [athleteRMHistory, setAthleteRMHistory] = useState([]);
+  // Historique complet par exercice (pour les graphiques d'évolution),
+  // séparé de athleteRMHistory ci-dessus qui reste un instantané "dernière
+  // valeur" utilisé ailleurs (bannière RM en attente, résumé post-séance).
+  const [athleteRMFullHistory, setAthleteRMFullHistory] = useState({});
+  const [athleteRMCategoriesMap, setAthleteRMCategoriesMap] = useState({});
+  const [athleteVma, setAthleteVmaData] = useState(null);
+  const [athleteCmj, setAthleteCmjData] = useState(null);
   const [athleteWeight, setAthleteWeight] = useState("");
   const [editingWeight, setEditingWeight] = useState(false);
   const [todayWellness, setTodayWellness] = useState(null);
@@ -513,6 +534,44 @@ export default function Dashboard() {
             autoCreated: d.data().autoCreated || false,
           }))
         );
+
+        // Historique complet + catégories, pour le graphique d'évolution —
+        // UNIQUEMENT les exercices déjà réalisés au moins une fois (kg
+        // renseigné) : une fiche "en attente" créée depuis la banque
+        // d'exercices n'a encore aucune donnée à tracer.
+        const fullHistory = {};
+        const categoriesMap = {};
+        let vmaEntry = null;
+        let cmjEntry = null;
+        rmSnap.docs.forEach((d) => {
+          const data = d.data();
+          const name = (data.exerciseName || d.id).toLowerCase();
+          if (name === "vma") {
+            vmaEntry = { kg: data.kg, history: data.history || [] };
+            return;
+          }
+          if (name === "cmj") {
+            cmjEntry = { kg: data.kg, history: data.history || [] };
+            return;
+          }
+          if (data.kg === null || data.kg === undefined) return; // pas encore testé
+          categoriesMap[name] = data.category || "autre";
+          if (Array.isArray(data.history) && data.history.length > 0) {
+            fullHistory[name] = data.history.map((h) => ({
+              kg: h.kg,
+              date: h.date,
+              autoAdjusted: h.autoAdjusted || false,
+            }));
+          } else {
+            fullHistory[name] = [
+              { kg: data.kg, date: data.updatedAt, autoAdjusted: data.autoAdjusted || false },
+            ];
+          }
+        });
+        setAthleteRMFullHistory(fullHistory);
+        setAthleteRMCategoriesMap(categoriesMap);
+        setAthleteVmaData(vmaEntry);
+        setAthleteCmjData(cmjEntry);
       } catch (e) {
         console.error("Erreur RM (dashboard athlète):", e);
       }
@@ -813,15 +872,40 @@ export default function Dashboard() {
 
       const rmSnap = await getDocs(collection(db, "users", athlete.id, "rm"));
       const rmByEx = {};
+      const rmCategories = {};
+      let athleteVma = null;
+      let athleteCmj = null;
       rmSnap.docs.forEach((d) => {
         const data = d.data();
         const name = data.exerciseName || d.id;
-        if (!rmByEx[name]) rmByEx[name] = [];
-        rmByEx[name].push({
-          kg: data.kg,
-          date: data.updatedAt,
-          autoAdjusted: data.autoAdjusted || false,
-        });
+        // CMJ/VMA ont leurs propres cartes (unités différentes — cm / km/h)
+        // et ne doivent jamais se mélanger aux exercices de muscu classiques.
+        if (name.toLowerCase() === "vma") {
+          athleteVma = { kg: data.kg, history: data.history || [] };
+          return;
+        }
+        if (name.toLowerCase() === "cmj") {
+          athleteCmj = { kg: data.kg, history: data.history || [] };
+          return;
+        }
+        rmCategories[name] = data.category || "autre";
+        // Historique complet (champ "history", comme VMA/CMJ) si présent,
+        // sinon repli sur le point unique kg/updatedAt pour les anciennes
+        // fiches. Une fiche "en attente" (kg: null, jamais testée) n'a pas
+        // de point du tout.
+        if (Array.isArray(data.history) && data.history.length > 0) {
+          rmByEx[name] = data.history.map((h) => ({
+            kg: h.kg,
+            date: h.date,
+            autoAdjusted: h.autoAdjusted || false,
+          }));
+        } else if (data.kg !== null && data.kg !== undefined) {
+          rmByEx[name] = [
+            { kg: data.kg, date: data.updatedAt, autoAdjusted: data.autoAdjusted || false },
+          ];
+        } else {
+          rmByEx[name] = [];
+        }
       });
       Object.keys(rmByEx).forEach((k) =>
         rmByEx[k].sort((a, b) => new Date(a.date) - new Date(b.date))
@@ -857,6 +941,7 @@ export default function Dashboard() {
       setInjuryEditDraft(null);
       setShowRMEvolution(false);
       setDetailedAthleteRMHistory(rmByEx);
+      setDetailedAthleteRMCategories(rmCategories);
       setAcwrHistory(acwrHist);
       setAthleteDetails({
         wellness: wellnessData,
@@ -864,6 +949,8 @@ export default function Dashboard() {
         weeklyAvg,
         weightHistory: weightData,
         todayWorkout: todayW,
+        vma: athleteVma,
+        cmj: athleteCmj,
       });
     } catch (e) {
       console.error("❌ Erreur détails:", e);
@@ -1731,7 +1818,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        {athleteRMHistory.length > 0 && (
+        {(athleteVma || athleteCmj) && (
           <div
             style={{
               background: "#151310",
@@ -1741,58 +1828,150 @@ export default function Dashboard() {
             }}
           >
             <h3 style={{ marginTop: 0, fontSize: 18, marginBottom: 15 }}>
-              💪 Mes RM
+              🏃 Ma VMA & 🦘 Mon CMJ
             </h3>
-            <div style={{ display: "grid", gap: 12 }}>
-              {athleteRMHistory
-                .sort((a, b) => b.kg - a.kg)
-                .map((rm, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      background: "#0d0c0a",
-                      padding: 15,
-                      borderRadius: 8,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{ fontSize: 14, color: "#a8a199", marginBottom: 4 }}
-                      >
-                        {rm.exercise}
-                      </div>
-                      {rm.date && (
-                        <div style={{ fontSize: 11, color: "#a8a199" }}>
-                          {new Date(rm.date).toLocaleDateString("fr-FR")}
-                        </div>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 24,
-                        fontWeight: "bold",
-                        color: "#e0a13d",
-                      }}
-                    >
-                      {rm.kg} <span style={{ fontSize: 14 }}>kg</span>
-                      {rm.autoAdjusted && (
-                        <span
-                          style={{
-                            fontSize: 14,
-                            marginLeft: 6,
-                            color: "#d9a441",
-                          }}
-                        >
-                          ⚡
-                        </span>
-                      )}
-                    </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {athleteVma && athleteVma.kg != null && (
+                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
+                    🏃 VMA actuelle
                   </div>
-                ))}
+                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#e0a13d", marginBottom: 10 }}>
+                    {athleteVma.kg} km/h
+                  </div>
+                  {athleteVma.history.length > 1 && (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <LineChart
+                        data={athleteVma.history.map((item) => ({
+                          ...item,
+                          dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                        }))}
+                      >
+                        <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
+                        <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
+                        <Tooltip
+                          contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                          formatter={(value) => [`${value} km/h`, "VMA"]}
+                        />
+                        <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              )}
+              {athleteCmj && athleteCmj.kg != null && (
+                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                  <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
+                    🦘 CMJ actuel
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#e0a13d", marginBottom: 10 }}>
+                    {athleteCmj.kg} cm
+                  </div>
+                  {athleteCmj.history.length > 1 && (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <LineChart
+                        data={athleteCmj.history.map((item) => ({
+                          ...item,
+                          dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                        }))}
+                      >
+                        <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
+                        <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
+                        <Tooltip
+                          contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                          formatter={(value) => [`${value} cm`, "CMJ"]}
+                        />
+                        <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              )}
             </div>
+          </div>
+        )}
+
+        {Object.keys(athleteRMFullHistory).length > 0 && (
+          <div
+            style={{
+              background: "#151310",
+              padding: 20,
+              borderRadius: 12,
+              border: "1px solid rgba(255, 255, 255, 0.05)",
+            }}
+          >
+            <h3 style={{ marginTop: 0, fontSize: 18, marginBottom: 15 }}>
+              💪 Mes RM — exercices déjà réalisés
+            </h3>
+            {EXERCISE_CATEGORIES.map((cat) => {
+              const exercisesInCat = Object.entries(athleteRMFullHistory).filter(
+                ([ex]) => (athleteRMCategoriesMap[ex] || "autre") === cat.value
+              );
+              if (exercisesInCat.length === 0) return null;
+              return (
+                <div key={cat.value} style={{ marginBottom: 20 }}>
+                  <h4 style={{ fontSize: 13, color: "#a8a199", margin: "0 0 10px 0" }}>
+                    {cat.label} ({exercisesInCat.length})
+                  </h4>
+                  <div style={{ display: "grid", gap: 12 }}>
+                    {exercisesInCat.map(([exercise, history]) => {
+                      const latest = history[history.length - 1];
+                      return (
+                        <div
+                          key={exercise}
+                          style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: history.length > 1 ? 10 : 0,
+                              flexWrap: "wrap",
+                              gap: 8,
+                            }}
+                          >
+                            <div style={{ fontSize: 14, textTransform: "capitalize" }}>
+                              {exercise}
+                            </div>
+                            <div style={{ fontSize: 20, fontWeight: "bold", color: "#e0a13d" }}>
+                              {latest.kg} <span style={{ fontSize: 13 }}>kg</span>
+                              {latest.autoAdjusted && (
+                                <span style={{ fontSize: 13, marginLeft: 6, color: "#d9a441" }}>⚡</span>
+                              )}
+                            </div>
+                          </div>
+                          {history.length > 1 && (
+                            <ResponsiveContainer width="100%" height={120}>
+                              <LineChart
+                                data={history.map((item) => ({
+                                  ...item,
+                                  dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                                }))}
+                              >
+                                <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
+                                <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
+                                <Tooltip
+                                  contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                                  formatter={(value) => [`${value} kg`, "1RM"]}
+                                />
+                                <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -3067,6 +3246,104 @@ export default function Dashboard() {
               </div>
             )}
 
+            {(athleteDetails.vma || athleteDetails.cmj) && (
+              <div
+                style={{ background: "#151310", padding: 20, borderRadius: 10 }}
+              >
+                <h3 style={{ margin: "0 0 15px 0", fontSize: 17, color: "#f3f0ea" }}>
+                  🏃 VMA & 🦘 CMJ
+                </h3>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                    gap: 20,
+                  }}
+                >
+                  {athleteDetails.vma && (
+                    <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                      <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
+                        🏃 VMA
+                      </h4>
+                      {athleteDetails.vma.history.length > 1 ? (
+                        <ResponsiveContainer width="100%" height={160}>
+                          <LineChart
+                            data={athleteDetails.vma.history.map((item) => ({
+                              ...item,
+                              dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                              }),
+                            }))}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                            <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
+                            <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
+                            <Tooltip
+                              contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                              labelStyle={{ color: "#f3f0ea" }}
+                              formatter={(value) => [`${value} km/h`, "VMA"]}
+                            />
+                            <Line type="monotone" dataKey="kg" name="VMA (km/h)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
+                          {athleteDetails.vma.kg != null ? "1 seul point" : "Non renseignée"}
+                        </div>
+                      )}
+                      <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
+                        VMA actuelle :{" "}
+                        <strong style={{ color: "#e0a13d" }}>
+                          {athleteDetails.vma.kg != null ? `${athleteDetails.vma.kg} km/h` : "—"}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
+                  {athleteDetails.cmj && (
+                    <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                      <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
+                        🦘 CMJ
+                      </h4>
+                      {athleteDetails.cmj.history.length > 1 ? (
+                        <ResponsiveContainer width="100%" height={160}>
+                          <LineChart
+                            data={athleteDetails.cmj.history.map((item) => ({
+                              ...item,
+                              dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                              }),
+                            }))}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                            <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
+                            <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
+                            <Tooltip
+                              contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                              labelStyle={{ color: "#f3f0ea" }}
+                              formatter={(value) => [`${value} cm`, "CMJ"]}
+                            />
+                            <Line type="monotone" dataKey="kg" name="CMJ (cm)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
+                          {athleteDetails.cmj.kg != null ? "1 seul point" : "Non renseigné"}
+                        </div>
+                      )}
+                      <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
+                        CMJ actuel :{" "}
+                        <strong style={{ color: "#e0a13d" }}>
+                          {athleteDetails.cmj.kg != null ? `${athleteDetails.cmj.kg} cm` : "—"}
+                        </strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {Object.keys(detailedAthleteRMHistory).length > 0 && (
               <div
                 style={{ background: "#151310", padding: 20, borderRadius: 10 }}
@@ -3086,123 +3363,145 @@ export default function Dashboard() {
                   }}
                 >
                   <h3 style={{ margin: 0, fontSize: 17, color: "#f3f0ea" }}>
-                    💪 Évolution des RM ({Object.keys(detailedAthleteRMHistory).length})
+                    💪 Évolution des RM — exercices de muscu ({Object.keys(detailedAthleteRMHistory).length})
                   </h3>
                   <span style={{ fontSize: 13, color: "#a8a199" }}>
                     {showRMEvolution ? "▾ Réduire" : "▸ Afficher"}
                   </span>
                 </button>
-                {showRMEvolution && (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))",
-                    gap: 20,
-                  }}
-                >
-                  {Object.entries(detailedAthleteRMHistory).map(
-                    ([exercise, history]) => (
+                {showRMEvolution && EXERCISE_CATEGORIES.map((cat) => {
+                  const exercisesInCat = Object.entries(detailedAthleteRMHistory).filter(
+                    ([ex]) => (detailedAthleteRMCategories[ex] || "autre") === cat.value
+                  );
+                  if (exercisesInCat.length === 0) return null;
+                  return (
+                    <div key={cat.value} style={{ marginBottom: 20 }}>
+                      <h4 style={{ fontSize: 14, color: "#a8a199", margin: "0 0 12px 0" }}>
+                        {cat.label} ({exercisesInCat.length})
+                      </h4>
                       <div
-                        key={exercise}
                         style={{
-                          background: "#0d0c0a",
-                          padding: 15,
-                          borderRadius: 8,
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))",
+                          gap: 20,
                         }}
                       >
-                        <h4
-                          style={{
-                            margin: "0 0 12px 0",
-                            fontSize: 15,
-                            textTransform: "capitalize",
-                            color: "#e0a13d",
-                          }}
-                        >
-                          {exercise}
-                        </h4>
-                        {history.length > 1 ? (
-                          <ResponsiveContainer width="100%" height={180}>
-                            <LineChart
-                              data={history.map((item) => ({
-                                ...item,
-                                dateShort: new Date(
-                                  item.date
-                                ).toLocaleDateString("fr-FR", {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                }),
-                              }))}
-                            >
-                              <CartesianGrid
-                                strokeDasharray="3 3"
-                                stroke="rgba(255,255,255,0.1)"
-                              />
-                              <XAxis
-                                dataKey="dateShort"
-                                stroke="#a8a199"
-                                fontSize={10}
-                              />
-                              <YAxis
-                                stroke="#a8a199"
-                                fontSize={10}
-                                domain={["dataMin - 2", "dataMax + 2"]}
-                              />
-                              <Tooltip
-                                contentStyle={{
-                                  background: "#1a1815",
-                                  border: "1px solid rgba(255,255,255,0.16)",
-                                  borderRadius: 8,
-                                  fontSize: 12,
-                                }}
-                                labelStyle={{ color: "#f3f0ea" }}
-                                formatter={(value) => [`${value} kg`, "1RM"]}
-                              />
-                              <Line
-                                type="monotone"
-                                dataKey="kg"
-                                name="1RM (kg)"
-                                stroke="#e0a13d"
-                                strokeWidth={2.5}
-                                dot={{ fill: "#e0a13d", r: 4 }}
-                                activeDot={{ r: 6 }}
-                              />
-                            </LineChart>
-                          </ResponsiveContainer>
-                        ) : (
+                        {exercisesInCat.map(([exercise, history]) => (
                           <div
+                            key={exercise}
                             style={{
-                              textAlign: "center",
-                              padding: 20,
-                              color: "#a8a199",
-                              fontSize: 14,
+                              background: "#0d0c0a",
+                              padding: 15,
+                              borderRadius: 8,
                             }}
                           >
-                            1 seul point
+                            <h4
+                              style={{
+                                margin: "0 0 12px 0",
+                                fontSize: 15,
+                                textTransform: "capitalize",
+                                color: "#e0a13d",
+                              }}
+                            >
+                              {exercise}
+                            </h4>
+                            {history.length > 1 ? (
+                              <ResponsiveContainer width="100%" height={180}>
+                                <LineChart
+                                  data={history.map((item) => ({
+                                    ...item,
+                                    dateShort: new Date(
+                                      item.date
+                                    ).toLocaleDateString("fr-FR", {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                    }),
+                                  }))}
+                                >
+                                  <CartesianGrid
+                                    strokeDasharray="3 3"
+                                    stroke="rgba(255,255,255,0.1)"
+                                  />
+                                  <XAxis
+                                    dataKey="dateShort"
+                                    stroke="#a8a199"
+                                    fontSize={10}
+                                  />
+                                  <YAxis
+                                    stroke="#a8a199"
+                                    fontSize={10}
+                                    domain={["dataMin - 2", "dataMax + 2"]}
+                                  />
+                                  <Tooltip
+                                    contentStyle={{
+                                      background: "#1a1815",
+                                      border: "1px solid rgba(255,255,255,0.16)",
+                                      borderRadius: 8,
+                                      fontSize: 12,
+                                    }}
+                                    labelStyle={{ color: "#f3f0ea" }}
+                                    formatter={(value) => [`${value} kg`, "1RM"]}
+                                  />
+                                  <Line
+                                    type="monotone"
+                                    dataKey="kg"
+                                    name="1RM (kg)"
+                                    stroke="#e0a13d"
+                                    strokeWidth={2.5}
+                                    dot={{ fill: "#e0a13d", r: 4 }}
+                                    activeDot={{ r: 6 }}
+                                  />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            ) : history.length === 1 ? (
+                              <div
+                                style={{
+                                  textAlign: "center",
+                                  padding: 20,
+                                  color: "#a8a199",
+                                  fontSize: 14,
+                                }}
+                              >
+                                1 seul point
+                              </div>
+                            ) : (
+                              <div
+                                style={{
+                                  textAlign: "center",
+                                  padding: 20,
+                                  color: "#a8a199",
+                                  fontSize: 14,
+                                }}
+                              >
+                                ⏳ En attente de test
+                              </div>
+                            )}
+                            {history.length > 0 && (
+                              <div
+                                style={{
+                                  marginTop: 8,
+                                  fontSize: 13,
+                                  color: "#a8a199",
+                                  textAlign: "center",
+                                }}
+                              >
+                                RM actuel :{" "}
+                                <strong style={{ color: "#e0a13d" }}>
+                                  {history[history.length - 1].kg} kg
+                                </strong>
+                                {history[history.length - 1].autoAdjusted && (
+                                  <span style={{ marginLeft: 8, color: "#d9a441" }}>
+                                    ⚡
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
-                        )}
-                        <div
-                          style={{
-                            marginTop: 8,
-                            fontSize: 13,
-                            color: "#a8a199",
-                            textAlign: "center",
-                          }}
-                        >
-                          RM actuel :{" "}
-                          <strong style={{ color: "#e0a13d" }}>
-                            {history[history.length - 1].kg} kg
-                          </strong>
-                          {history[history.length - 1].autoAdjusted && (
-                            <span style={{ marginLeft: 8, color: "#d9a441" }}>
-                              ⚡
-                            </span>
-                          )}
-                        </div>
+                        ))}
                       </div>
-                    )
-                  )}
-                </div>
-                )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import {
   collection,
   getDocs,
+  getDoc,
   doc,
   setDoc,
   deleteDoc,
@@ -18,6 +19,19 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+
+// Mêmes catégories que la banque d'exercices (gestionnaire "🔤 Noms
+// d'exercices" dans Workout.jsx) — utilisées ici pour filtrer/regrouper.
+const EXERCISE_CATEGORIES = [
+  { value: "bas_anterieure", label: "🦵 Bas du corps — Chaîne antérieure" },
+  { value: "bas_posterieure", label: "🦵 Bas du corps — Chaîne postérieure" },
+  { value: "haut_tirage", label: "💪 Haut du corps — Tirage" },
+  { value: "haut_pousse", label: "💪 Haut du corps — Poussée" },
+  { value: "gainage", label: "🧱 Gainage" },
+  { value: "autre", label: "📦 Autre" },
+];
+const getExerciseCategoryLabel = (value) =>
+  EXERCISE_CATEGORIES.find((c) => c.value === value)?.label || "📦 Autre";
 
 export default function MyRM() {
   const { currentUser } = useAuth();
@@ -41,8 +55,12 @@ export default function MyRM() {
 
   // États RM
   const [rmHistory, setRmHistory] = useState({});
+  const [rmCategories, setRmCategories] = useState({});
+  const [rmAutoCreated, setRmAutoCreated] = useState({});
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [rmSearchQuery, setRmSearchQuery] = useState("");
+  const [rmCategoryFilter, setRmCategoryFilter] = useState("all");
 
   // Formulaire RM
   const [showAddForm, setShowAddForm] = useState(false);
@@ -77,6 +95,8 @@ export default function MyRM() {
 
       // Séparer VMA, CMJ et RM
       const grouped = {};
+      const categories = {};
+      const autoCreatedMap = {};
       let vmaData = null;
       let vmaHist = [];
       let cmjData = null;
@@ -96,18 +116,33 @@ export default function MyRM() {
           cmjData = data;
           cmjHist = data.history || [];
         } else {
-          // RM normaux
-          if (!grouped[name]) {
+          // RM normaux — l'historique complet (plusieurs points dans le
+          // temps) vient du champ "history" ; à défaut (anciennes fiches
+          // sans historique, ou fiche jamais testée avec kg:null), on
+          // retombe sur un point unique tiré de kg/updatedAt.
+          categories[name] = data.category || "autre";
+          autoCreatedMap[name] = data.kg === null || data.kg === undefined;
+          if (Array.isArray(data.history) && data.history.length > 0) {
+            grouped[name] = data.history.map((h) => ({
+              date: h.date,
+              kg: h.kg,
+              autoAdjusted: h.autoAdjusted,
+            }));
+          } else if (data.kg !== null && data.kg !== undefined) {
+            grouped[name] = [
+              {
+                date: data.updatedAt,
+                kg: data.kg,
+                originalWeight: data.originalWeight,
+                originalReps: data.originalReps,
+                autoAdjusted: data.autoAdjusted,
+              },
+            ];
+          } else {
+            // Fiche "en attente" (créée automatiquement depuis la banque
+            // d'exercices) : pas encore de valeur testée.
             grouped[name] = [];
           }
-
-          grouped[name].push({
-            date: data.updatedAt,
-            kg: data.kg,
-            originalWeight: data.originalWeight,
-            originalReps: data.originalReps,
-            autoAdjusted: data.autoAdjusted,
-          });
         }
       });
 
@@ -117,6 +152,8 @@ export default function MyRM() {
       });
 
       setRmHistory(grouped);
+      setRmCategories(categories);
+      setRmAutoCreated(autoCreatedMap);
       setVma(vmaData);
       setVmaHistory(vmaHist);
       setCmj(cmjData);
@@ -318,25 +355,35 @@ export default function MyRM() {
     const rm1 = calculate1RM(testWeight, testReps);
 
     try {
-      const rmData = {
-        exerciseName: normalizedName,
-        kg: rm1,
-        originalWeight: Number(testWeight),
-        originalReps: Number(testReps),
-        updatedAt: new Date().toISOString(),
-        autoAdjusted: false,
-        lastRPE: null,
-      };
-
       // Si on modifie et que le nom change, supprimer l'ancien
       if (editingRM && editingRM !== normalizedName) {
         await deleteDoc(doc(db, "users", currentUser.uid, "rm", editingRM));
       }
 
-      await setDoc(
-        doc(db, "users", currentUser.uid, "rm", normalizedName),
-        rmData
-      );
+      // Relit la fiche existante pour ne jamais écraser sa catégorie ni son
+      // historique (le graphique d'évolution a besoin de tous les points,
+      // pas seulement du dernier).
+      const targetRef = doc(db, "users", currentUser.uid, "rm", normalizedName);
+      const existingSnap = await getDoc(targetRef);
+      const existingData = existingSnap.exists() ? existingSnap.data() : null;
+      const nowIso = new Date().toISOString();
+      const history = [...(existingData?.history || [])];
+      history.push({ date: nowIso, kg: rm1, autoAdjusted: false });
+
+      const rmData = {
+        exerciseName: normalizedName,
+        kg: rm1,
+        category: existingData?.category || "autre",
+        originalWeight: Number(testWeight),
+        originalReps: Number(testReps),
+        updatedAt: nowIso,
+        autoAdjusted: false,
+        autoCreated: false,
+        lastRPE: null,
+        history: history.slice(-20),
+      };
+
+      await setDoc(targetRef, rmData, { merge: true });
 
       if (editingRM && editingRM !== normalizedName) {
         alert("Exercice renommé et mis à jour !");
@@ -362,12 +409,12 @@ export default function MyRM() {
 
   const handleEditRM = (exerciseName) => {
     const history = rmHistory[exerciseName];
-    const latest = history[history.length - 1];
+    const latest = history && history.length > 0 ? history[history.length - 1] : null;
 
     setEditingRM(exerciseName);
     setExerciseName(exerciseName);
-    setTestWeight(latest.originalWeight || latest.kg);
-    setTestReps(latest.originalReps || 1);
+    setTestWeight(latest ? latest.originalWeight || latest.kg : "");
+    setTestReps(latest ? latest.originalReps || 1 : 1);
     setShowAddForm(true);
   };
 
@@ -401,6 +448,14 @@ export default function MyRM() {
 
   const exercises = Object.keys(rmHistory)
     .filter((ex) => ex !== "vma")
+    .filter((ex) =>
+      rmCategoryFilter === "all" ? true : rmCategories[ex] === rmCategoryFilter
+    )
+    .filter((ex) =>
+      rmSearchQuery.trim()
+        ? ex.includes(rmSearchQuery.trim().toLowerCase())
+        : true
+    )
     .sort();
 
   if (loading) {
@@ -1154,6 +1209,65 @@ export default function MyRM() {
         </div>
       )}
 
+      {/* ==================== RECHERCHE + CATÉGORIES ==================== */}
+      {Object.keys(rmHistory).length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <input
+            type="text"
+            placeholder="🔍 Rechercher un exercice..."
+            value={rmSearchQuery}
+            onChange={(e) => setRmSearchQuery(e.target.value)}
+            style={{
+              width: "100%",
+              padding: 12,
+              borderRadius: 8,
+              border: "1px solid #2a2620",
+              background: "#1a1815",
+              color: "#f3f0ea",
+              boxSizing: "border-box",
+              marginBottom: 12,
+              fontSize: 14,
+            }}
+          />
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              onClick={() => setRmCategoryFilter("all")}
+              style={{
+                padding: "6px 12px",
+                borderRadius: 20,
+                border: "1px solid #2a2620",
+                background: rmCategoryFilter === "all" ? "#e0a13d" : "#1a1815",
+                color: rmCategoryFilter === "all" ? "#1a1306" : "#f3f0ea",
+                fontSize: 12,
+                fontWeight: rmCategoryFilter === "all" ? "bold" : "normal",
+                cursor: "pointer",
+              }}
+            >
+              Toutes
+            </button>
+            {EXERCISE_CATEGORIES.map((c) => (
+              <button
+                key={c.value}
+                onClick={() => setRmCategoryFilter(c.value)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 20,
+                  border: "1px solid #2a2620",
+                  background: rmCategoryFilter === c.value ? "#e0a13d" : "#1a1815",
+                  color: rmCategoryFilter === c.value ? "#1a1306" : "#f3f0ea",
+                  fontSize: 12,
+                  fontWeight: rmCategoryFilter === c.value ? "bold" : "normal",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ==================== LISTE DES EXERCICES ==================== */}
       {exercises.length > 0 ? (
         <>
@@ -1164,13 +1278,14 @@ export default function MyRM() {
             <div style={{ display: "grid", gap: 12 }}>
               {exercises.map((exercise) => {
                 const history = rmHistory[exercise];
-                const latest = history[history.length - 1];
-                const first = history[0];
-                const progression = latest.kg - first.kg;
-                const progressionPercent = (
-                  (progression / first.kg) *
-                  100
-                ).toFixed(1);
+                const hasData = history.length > 0;
+                const latest = hasData ? history[history.length - 1] : null;
+                const first = hasData ? history[0] : null;
+                const progression = hasData ? latest.kg - first.kg : 0;
+                const progressionPercent =
+                  hasData && first.kg
+                    ? ((progression / first.kg) * 100).toFixed(1)
+                    : "0";
 
                 return (
                   <div
@@ -1185,6 +1300,7 @@ export default function MyRM() {
                       }`,
                       cursor: "pointer",
                       transition: "all 0.2s",
+                      opacity: hasData ? 1 : 0.75,
                     }}
                   >
                     <div
@@ -1199,16 +1315,20 @@ export default function MyRM() {
                       <div style={{ flex: "1 1 200px" }}>
                         <h4
                           style={{
-                            margin: "0 0 6px 0",
+                            margin: "0 0 4px 0",
                             fontSize: 16,
                             textTransform: "capitalize",
                           }}
                         >
                           {exercise}
                         </h4>
+                        <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
+                          {getExerciseCategoryLabel(rmCategories[exercise])}
+                        </div>
                         <div style={{ fontSize: 12, color: "#a8a199" }}>
-                          {history.length} enregistrement
-                          {history.length > 1 ? "s" : ""}
+                          {hasData
+                            ? `${history.length} enregistrement${history.length > 1 ? "s" : ""}`
+                            : "Pas encore testé"}
                         </div>
                       </div>
 
@@ -1225,16 +1345,16 @@ export default function MyRM() {
                           </div>
                           <div
                             style={{
-                              fontSize: 20,
+                              fontSize: hasData ? 20 : 13,
                               fontWeight: "bold",
-                              color: "#e0a13d",
+                              color: hasData ? "#e0a13d" : "#a8a199",
                             }}
                           >
-                            {latest.kg} kg
+                            {hasData ? `${latest.kg} kg` : "En attente"}
                           </div>
                         </div>
 
-                        {history.length > 1 && (
+                        {hasData && history.length > 1 && (
                           <div style={{ textAlign: "center" }}>
                             <div
                               style={{
@@ -1354,6 +1474,20 @@ export default function MyRM() {
                 <h4 style={{ fontSize: 16, marginBottom: 15 }}>
                   📈 Évolution du 1RM
                 </h4>
+                {rmHistory[selectedExercise].length === 0 ? (
+                  <div
+                    style={{
+                      textAlign: "center",
+                      padding: 30,
+                      color: "#a8a199",
+                      fontSize: 14,
+                    }}
+                  >
+                    Pas encore testé — complète une séance avec cet exercice
+                    (série proche du max, ≤6 reps, RPE≥8) ou ajoute une valeur
+                    toi-même avec "✏️ Modifier".
+                  </div>
+                ) : (
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart
                     data={rmHistory[selectedExercise].map((item, index) => ({
@@ -1394,6 +1528,7 @@ export default function MyRM() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
+                )}
               </div>
 
               {/* Historique détaillé */}
