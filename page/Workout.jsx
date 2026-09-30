@@ -33,6 +33,13 @@ const normalizeExerciseName = (name) => {
     .toLowerCase()                           // minuscules
     .normalize("NFD")                        // décompose les caractères accentués
     .replace(/[\u0300-\u036f]/g, "")        // supprime les accents
+    // "/" (et les autres caractères interdits dans un identifiant de
+    // document Firestore) sont remplacés par un espace : un nom comme
+    // "flexion/extension ischio" faisait planter toute la page, Firestore
+    // lisant le "/" comme un séparateur de dossier dans l'identifiant du
+    // document exerciseMedia (erreur "Invalid document reference" non
+    // rattrapée = écran noir figé).
+    .replace(/[/\\.]/g, " ")
     .trim()                                  // supprime espaces début/fin
     .replace(/\s+/g, " ");                  // normalise espaces multiples en un seul
 };
