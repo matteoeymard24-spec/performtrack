@@ -196,6 +196,13 @@ export default function Athletes() {
       return;
     }
 
+    // Garde-fou : le créateur de l'app ne peut jamais être supprimé, même si
+    // ce bouton venait à être ré-affiché par erreur pour ce compte.
+    if ((userEmail || "").toLowerCase() === "matteo.eymard24@gmail.com") {
+      alert("Ce compte est le créateur de l'application, il ne peut pas être supprimé.");
+      return;
+    }
+
     const confirmation = prompt(
       `⚠️ ATTENTION : Cette action est IRRÉVERSIBLE !\n\n` +
       `Vous êtes sur le point de supprimer DÉFINITIVEMENT :\n` +
@@ -689,7 +696,9 @@ export default function Athletes() {
                       {user.role === "admin" ? "👤 → Athlete" : "🛡️ → Admin"}
                     </button>
 
-                    {isSuperAdmin && (
+                    {isSuperAdmin &&
+                      (user.email || "").toLowerCase() !==
+                        "matteo.eymard24@gmail.com" && (
                       <button
                         onClick={() => deleteAthlete(user.id, user.email)}
                         style={{
