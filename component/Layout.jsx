@@ -25,7 +25,7 @@ export default function Layout() {
     { path: "/workout", label: "Workout", icon: "🏋️", roles: ["superadmin", "admin", "athlete"] },
     { path: "/wellness", label: "Wellness", icon: "🧘", roles: ["superadmin", "admin", "athlete"] },
     { path: "/myrm", label: "My RM", icon: "🏋️‍♂️", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/acwr", label: "ACWR", icon: "📈", roles: ["superadmin", "admin"] },
+    { path: "/acwr", label: "REDI", icon: "📈", roles: ["superadmin", "admin"] },
     { path: "/athletes", label: "Athlètes", icon: "👥", roles: ["superadmin", "admin"] },
   ];
 

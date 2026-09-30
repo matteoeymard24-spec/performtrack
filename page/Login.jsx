@@ -3,7 +3,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
-import { auth } from "../firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { auth, db } from "../firebase";
 import { useNavigate } from "react-router-dom";
 
 const ACCENT = "#e0a13d";
@@ -39,7 +40,18 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      // Création du profil Firestore en attente de validation par le coach —
+      // les règles Firestore interdisent explicitement de le créer avec un
+      // statut différent de "pending" (voir firestore-rules-avec-groupes.rules).
+      // L'accès réel à l'app est bloqué tant que le coach n'a pas approuvé
+      // la demande depuis la page Athlètes.
+      await setDoc(doc(db, "users", cred.user.uid), {
+        email: cred.user.email,
+        role: "athlete",
+        status: "pending",
+        createdAt: serverTimestamp(),
+      });
       navigate("/");
     } catch (err) {
       if (err.code === "auth/email-already-in-use") {
@@ -292,8 +304,9 @@ export default function Login() {
               lineHeight: 1.5,
             }}
           >
-            En créant un compte, tu acceptes nos conditions d'utilisation et
-            notre politique de confidentialité.
+            Ton compte devra être validé par ton coach avant que tu puisses
+            accéder à l'application. En créant un compte, tu acceptes nos
+            conditions d'utilisation et notre politique de confidentialité.
           </p>
         )}
       </div>

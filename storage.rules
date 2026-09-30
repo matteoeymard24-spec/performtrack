@@ -1,0 +1,30 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Même logique que isAdmin() dans firestore-rules-avec-groupes.rules :
+    // on relit le document Firestore users/{uid} du visiteur pour vérifier
+    // son rôle, plutôt que de dupliquer une notion d'admin uniquement côté
+    // Storage (ce qui aurait pu diverger avec le temps).
+    function isAdmin() {
+      return isSignedIn() && (
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.superAdmin == true
+      );
+    }
+
+    // Photos/gifs de démonstration des exercices (voir Workout.jsx) :
+    // lecture pour tout utilisateur connecté (comme la collection Firestore
+    // "workout"), envoi/suppression réservés au coach, avec une limite de
+    // taille par fichier pour éviter un envoi abusif.
+    match /exercise-media/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && request.resource.size < 8 * 1024 * 1024;
+      allow delete: if isAdmin();
+    }
+  }
+}

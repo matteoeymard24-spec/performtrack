@@ -82,6 +82,7 @@ export default function Dashboard() {
   const [showInjuryHistory, setShowInjuryHistory] = useState(false);
   const [editingInjury, setEditingInjury] = useState(null);
   const [injuryEditDraft, setInjuryEditDraft] = useState(null);
+  const [showRMEvolution, setShowRMEvolution] = useState(false);
   const TISSUE_LABELS = {
     muscle: "Muscle",
     tendon: "Tendon",
@@ -91,7 +92,6 @@ export default function Dashboard() {
   };
   const MECHANISM_LABELS = {
     contact: "Contact / traumatique",
-    non_contact: "Non-contact (sans contact)",
     surcharge: "Surcharge / usure",
     autre: "Autre",
   };
@@ -759,6 +759,7 @@ export default function Dashboard() {
       setShowInjuryHistory(false);
       setEditingInjury(null);
       setInjuryEditDraft(null);
+      setShowRMEvolution(false);
       setDetailedAthleteRMHistory(rmByEx);
       setAcwrHistory(acwrHist);
       setAthleteDetails({
@@ -2620,10 +2621,10 @@ export default function Dashboard() {
                         labelStyle={{ color: "#f3f0ea" }}
                       />
                       <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Line type="monotone" dataKey="sommeil" name="Sommeil" stroke="#4fae7d" strokeWidth={2} strokeDasharray="0" dot={{ r: 2 }} />
-                      <Line type="monotone" dataKey="nutrition" name="Nutrition" stroke="#3fa8c9" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 2 }} />
-                      <Line type="monotone" dataKey="hydratation" name="Hydratation" stroke="#5cc28e" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 2 }} />
-                      <Line type="monotone" dataKey="motivation" name="Motivation" stroke="#8bc34a" strokeWidth={2} strokeDasharray="8 3 2 3" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="sommeil" name="Sommeil" stroke="#2f9e78" strokeWidth={2} strokeDasharray="0" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="nutrition" name="Nutrition" stroke="#3d7fd9" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="hydratation" name="Hydratation" stroke="#29b6c9" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 2 }} />
+                      <Line type="monotone" dataKey="motivation" name="Motivation" stroke="#a4c639" strokeWidth={2} strokeDasharray="8 3 2 3" dot={{ r: 2 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
@@ -2713,9 +2714,28 @@ export default function Dashboard() {
               <div
                 style={{ background: "#151310", padding: 20, borderRadius: 10 }}
               >
-                <h3 style={{ margin: "0 0 15px 0", fontSize: 17 }}>
-                  💪 Évolution des RM
-                </h3>
+                <button
+                  onClick={() => setShowRMEvolution((v) => !v)}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    marginBottom: showRMEvolution ? 15 : 0,
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 17, color: "#f3f0ea" }}>
+                    💪 Évolution des RM ({Object.keys(detailedAthleteRMHistory).length})
+                  </h3>
+                  <span style={{ fontSize: 13, color: "#a8a199" }}>
+                    {showRMEvolution ? "▾ Réduire" : "▸ Afficher"}
+                  </span>
+                </button>
+                {showRMEvolution && (
                 <div
                   style={{
                     display: "grid",
@@ -2825,6 +2845,7 @@ export default function Dashboard() {
                     )
                   )}
                 </div>
+                )}
               </div>
             )}
           </div>

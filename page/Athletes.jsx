@@ -115,6 +115,37 @@ export default function Athletes() {
     }
   };
 
+  // ===================== AUTORISATION D'ACCÈS (1ère connexion) =====================
+  // Un athlète qui s'inscrit lui-même arrive avec status: "pending" (voir
+  // Login.jsx) et reste bloqué par ProtectedRoute.jsx tant que le coach n'a
+  // pas approuvé ou refusé sa demande ici.
+  const pendingUsers = users.filter((u) => u.status === "pending");
+
+  const approveUser = async (id) => {
+    try {
+      await updateDoc(doc(db, "users", id), { status: "approved" });
+      setUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, status: "approved" } : u))
+      );
+    } catch (err) {
+      console.error("Erreur approveUser:", err);
+      alert("Erreur lors de la validation de l'accès");
+    }
+  };
+
+  const rejectUser = async (id) => {
+    if (!window.confirm("Refuser l'accès à cet athlète ?")) return;
+    try {
+      await updateDoc(doc(db, "users", id), { status: "rejected" });
+      setUsers((prev) =>
+        prev.map((u) => (u.id === id ? { ...u, status: "rejected" } : u))
+      );
+    } catch (err) {
+      console.error("Erreur rejectUser:", err);
+      alert("Erreur lors du refus de l'accès");
+    }
+  };
+
   const startEdit = (user) => {
     setEditingUser(user.id);
     setEditForm({
@@ -295,6 +326,78 @@ export default function Athletes() {
         👥 Gestion des Athlètes
       </h2>
 
+      {pendingUsers.length > 0 && (
+        <div
+          style={{
+            background: "#1a1815",
+            border: "2px solid #e0a13d",
+            borderRadius: 12,
+            padding: 20,
+            marginBottom: 25,
+          }}
+        >
+          <h3 style={{ margin: "0 0 15px 0", fontSize: 17, color: "#e0a13d" }}>
+            🔔 Demandes d'accès en attente ({pendingUsers.length})
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {pendingUsers.map((u) => (
+              <div
+                key={u.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  background: "#151310",
+                  padding: 14,
+                  borderRadius: 8,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: "bold" }}>{u.email}</div>
+                  <div style={{ fontSize: 12, color: "#a8a199" }}>
+                    Souhaite rejoindre en tant qu'athlète
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => approveUser(u.id)}
+                    style={{
+                      padding: "8px 16px",
+                      background: "#4fae7d",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontWeight: "600",
+                      fontSize: 13,
+                    }}
+                  >
+                    ✅ Autoriser
+                  </button>
+                  <button
+                    onClick={() => rejectUser(u.id)}
+                    style={{
+                      padding: "8px 16px",
+                      background: "transparent",
+                      color: "#d9695a",
+                      border: "1px solid #d9695a",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontWeight: "600",
+                      fontSize: 13,
+                    }}
+                  >
+                    ❌ Refuser
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Barre de recherche */}
       <div style={{ marginBottom: 20 }}>
         <input
@@ -316,6 +419,7 @@ export default function Athletes() {
       </div>
 
       {users.filter((u) => {
+        if (u.status === "pending") return false; // déjà affichés ci-dessus
         if (!searchQuery.trim()) return true;
         const search = searchQuery.toLowerCase();
         const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
@@ -328,6 +432,7 @@ export default function Athletes() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
           {users.filter((u) => {
+            if (u.status === "pending") return false; // déjà affichés ci-dessus
             if (!searchQuery.trim()) return true;
             const search = searchQuery.toLowerCase();
             const name = `${u.firstName || ''} ${u.lastName || ''}`.toLowerCase();
@@ -358,22 +463,43 @@ export default function Athletes() {
                   </div>
                   <div style={{ color: "#a8a199", fontSize: 14 }}>{user.email}</div>
                 </div>
-                <div
-                  style={{
-                    padding: "6px 14px",
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: "700",
-                    textTransform: "uppercase",
-                    background:
-                      user.role === "admin"
-                        ? "#2a2620"
-                        : "#e0a13d",
-                    color: user.role === "admin" ? "#f3f0ea" : "#1a1306",
-                    boxShadow: "0 4px 15px rgba(0, 0, 0, 0.3)",
-                  }}
-                >
-                  {user.role === "admin" ? "ADMIN" : "ATHLETE"}
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                  <div
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      fontSize: 11,
+                      fontWeight: "700",
+                      textTransform: "uppercase",
+                      background:
+                        user.role === "admin"
+                          ? "#2a2620"
+                          : "#e0a13d",
+                      color: user.role === "admin" ? "#f3f0ea" : "#1a1306",
+                      boxShadow: "0 4px 15px rgba(0, 0, 0, 0.3)",
+                    }}
+                  >
+                    {user.role === "admin" ? "ADMIN" : "ATHLETE"}
+                  </div>
+                  {user.status === "rejected" && (
+                    <button
+                      onClick={() => approveUser(user.id)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 14,
+                        fontSize: 10,
+                        fontWeight: "700",
+                        textTransform: "uppercase",
+                        background: "rgba(217,105,90,0.14)",
+                        color: "#d9695a",
+                        border: "1px solid rgba(217,105,90,0.4)",
+                        cursor: "pointer",
+                      }}
+                      title="Cliquer pour autoriser l'accès malgré tout"
+                    >
+                      🚫 Refusé — réautoriser
+                    </button>
+                  )}
                 </div>
               </div>
 

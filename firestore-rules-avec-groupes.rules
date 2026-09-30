@@ -7,9 +7,15 @@ service cloud.firestore {
     }
 
     function isAdmin() {
+      // ATTENTION : le champ réellement utilisé partout dans l'app (Dashboard,
+      // Admin, ACWRMonitoring, AuthProvider) est "superAdmin", pas
+      // "isSuperAdmin". Une version précédente de ces règles vérifiait
+      // "isSuperAdmin", un champ qui n'existe nulle part côté app — la garde
+      // anti-auto-promotion ci-dessous ne protégeait donc PAS le vrai champ
+      // "superAdmin", qu'un athlète aurait pu s'attribuer directement.
       return isSignedIn() && (
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.superAdmin == true
       );
     }
 
@@ -31,18 +37,26 @@ service cloud.firestore {
       // rôle, son statut superAdmin, ni son groupe (assigné par le coach) —
       // seul un admin (vérifié côté serveur, pas côté client) peut toucher
       // ces trois champs.
+      // "status" gère l'autorisation d'accès à la première connexion : un
+      // athlète qui s'inscrit lui-même ne peut créer son profil qu'avec
+      // status = 'pending' (jamais 'approved' directement), et ne peut plus
+      // jamais changer son propre statut ensuite (seul un admin approuve ou
+      // refuse). L'absence du champ (comptes créés avant cette fonctionnalité)
+      // est traitée comme "approuvé" côté app.
       allow create: if isAdmin() || (
         isOwner(userId) &&
         (!('role' in request.resource.data) || request.resource.data.role == 'athlete') &&
-        (!('isSuperAdmin' in request.resource.data) || request.resource.data.isSuperAdmin == false)
+        (!('superAdmin' in request.resource.data) || request.resource.data.superAdmin == false) &&
+        (!('status' in request.resource.data) || request.resource.data.status == 'pending')
       );
 
       allow update: if isAdmin() || (
         isOwner(userId) &&
         (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
-        (!('isSuperAdmin' in request.resource.data) ||
-          request.resource.data.isSuperAdmin == (resource.data.isSuperAdmin == true)) &&
-        (!('group' in request.resource.data) || request.resource.data.group == resource.data.group)
+        (!('superAdmin' in request.resource.data) ||
+          request.resource.data.superAdmin == (resource.data.superAdmin == true)) &&
+        (!('group' in request.resource.data) || request.resource.data.group == resource.data.group) &&
+        (!('status' in request.resource.data) || request.resource.data.status == resource.data.status)
       );
 
       allow delete: if isAdmin();
@@ -129,6 +143,20 @@ service cloud.firestore {
       allow read: if isSignedIn();
 
       // Écriture (création / modification / suppression) : admins uniquement
+      allow write: if isAdmin();
+    }
+
+    // ========== EXERCISE MEDIA (photos/gifs de démonstration, une seule
+    // fois par nom d'exercice — voir Workout.jsx) ==========
+    match /exerciseMedia/{exerciseKey} {
+      // Lecture : tout utilisateur authentifié (le coach ET les athlètes
+      // voient la photo pendant la séance).
+      allow read: if isSignedIn();
+
+      // Écriture (création / modification / suppression) : admins
+      // uniquement. Cette collection ne contient qu'UN document par
+      // exercice (dédupliqué), donc bien moins coûteuse que si l'image
+      // était recopiée dans chaque séance.
       allow write: if isAdmin();
     }
   }

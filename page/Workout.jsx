@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import {
@@ -1088,14 +1088,78 @@ export default function Workout() {
 
   const removeBlock = (i) => setBlocks(blocks.filter((_, idx) => idx !== i));
 
-  // Déplace un bloc vers le haut (-1) ou vers le bas (+1) dans la liste
-  const moveBlock = (i, direction) => {
-    const target = i + direction;
-    if (target < 0 || target >= blocks.length) return;
-    const nb = [...blocks];
-    [nb[i], nb[target]] = [nb[target], nb[i]];
-    setBlocks(nb);
+  /* ===================== RÉORDONNER LES BLOCS PAR GLISSER-DÉPOSER =====================
+     Poignée "⠿" sur chaque bloc : au clic maintenu (souris) ou au toucher
+     maintenu (mobile), on suit le pointeur via les Pointer Events (une seule
+     API pour les deux) et on déplace le bloc dans la liste au relâchement,
+     en fonction de sur quel autre bloc on l'a lâché. Les fonctions sont
+     stabilisées avec useCallback (deps vides + refs pour les données
+     mutables) pour que addEventListener/removeEventListener retirent bien
+     le même écouteur qu'ils ont ajouté. */
+  const blockRefs = useRef([]);
+  const dragInfoRef = useRef({ from: null, over: null });
+  const [dragBlockIndex, setDragBlockIndex] = useState(null);
+  const [dragOverBlockIndex, setDragOverBlockIndex] = useState(null);
+
+  const onBlockDragMove = useCallback((e) => {
+    const y = e.clientY;
+    if (typeof y !== "number") return;
+    const refs = blockRefs.current;
+    let found = null;
+    for (let idx = 0; idx < refs.length; idx++) {
+      const el = refs[idx];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom) {
+        found = idx;
+        break;
+      }
+    }
+    if (found === null && refs.length > 0) {
+      const firstRect = refs[0]?.getBoundingClientRect();
+      const lastRect = refs[refs.length - 1]?.getBoundingClientRect();
+      if (firstRect && y < firstRect.top) found = 0;
+      else if (lastRect && y > lastRect.bottom) found = refs.length - 1;
+    }
+    if (found !== null && found !== dragInfoRef.current.over) {
+      dragInfoRef.current.over = found;
+      setDragOverBlockIndex(found);
+    }
+  }, []);
+
+  const onBlockDragEnd = useCallback(() => {
+    window.removeEventListener("pointermove", onBlockDragMove);
+    window.removeEventListener("pointerup", onBlockDragEnd);
+    document.body.style.userSelect = "";
+    const { from, over } = dragInfoRef.current;
+    if (from !== null && over !== null && from !== over) {
+      setBlocks((prev) => {
+        const nb = [...prev];
+        const [moved] = nb.splice(from, 1);
+        nb.splice(over, 0, moved);
+        return nb;
+      });
+    }
+    dragInfoRef.current = { from: null, over: null };
+    setDragBlockIndex(null);
+    setDragOverBlockIndex(null);
+  }, [onBlockDragMove]);
+
+  const startBlockDrag = (bIdx) => (e) => {
+    e.preventDefault();
+    dragInfoRef.current = { from: bIdx, over: bIdx };
+    setDragBlockIndex(bIdx);
+    setDragOverBlockIndex(bIdx);
+    window.addEventListener("pointermove", onBlockDragMove);
+    window.addEventListener("pointerup", onBlockDragEnd);
+    document.body.style.userSelect = "none";
   };
+
+  // Bascule replier/déplier les exercices d'un bloc, pour y voir plus clair
+  // pendant la création d'une séance avec plusieurs blocs.
+  const [collapsedBlocks, setCollapsedBlocks] = useState({});
+  const toggleBlockCollapsed = (bIdx) =>
+    setCollapsedBlocks((prev) => ({ ...prev, [bIdx]: !prev[bIdx] }));
 
   const addExercise = (bIdx) => {
     const nb = [...blocks];
@@ -1156,12 +1220,26 @@ export default function Workout() {
     setBlocks(nb);
   };
 
-  /* ===================== BIBLIOTHÈQUE D'EXERCICES (autocomplete + image) =====================
-     Reconstruite à partir de toutes les séances déjà créées (déjà chargées dans `events`,
-     aucune lecture Firestore supplémentaire) : pour chaque nom d'exercice déjà utilisé, on
-     retient sa dernière photo/gif associée. Quand le coach retape un nom déjà connu, une liste
-     déroulante lui permet de cliquer dessus pour ré-utiliser automatiquement l'image. */
-  const [exerciseLibrary, setExerciseLibrary] = useState({});
+  /* ===================== BIBLIOTHÈQUE D'EXERCICES (autocomplete + image partagée) =====================
+     Le NOM des exercices déjà utilisés vient toujours des séances déjà
+     chargées (`events`, aucune lecture Firestore supplémentaire) — ça permet
+     de retrouver par autocomplétion n'importe quel exercice déjà tapé, même
+     sans photo.
+     L'IMAGE, elle, vient d'une petite collection Firestore dédiée,
+     "exerciseMedia" (une seule lecture, une seule fois à l'ouverture de la
+     page) : chaque exercice n'y a QU'UN SEUL document, quel que soit le
+     nombre de séances qui l'utilisent. Avant, l'image était recopiée en
+     base64 dans CHAQUE exercice de CHAQUE séance dès qu'on cliquait une
+     suggestion : "Squat" avec une photo réutilisé dans 100 séances
+     dupliquait 100 fois les mêmes octets dans Firestore, qui facture au
+     volume stocké. Désormais une séance ne retient que le NOM de l'exercice
+     ; l'image est retrouvée par nom au moment de l'affichage, et modifier ou
+     supprimer une photo met à jour TOUTES les séances qui utilisent ce nom
+     d'un coup, sans rien recopier nulle part. (Firebase Storage n'est pas
+     utilisé ici : il nécessite le plan payant Blaze, alors que Firestore a
+     un palier gratuit.) */
+  const [exerciseNames, setExerciseNames] = useState({});
+  const [exerciseMediaLibrary, setExerciseMediaLibrary] = useState({});
   const [openSuggestFor, setOpenSuggestFor] = useState(null);
 
   useEffect(() => {
@@ -1172,79 +1250,130 @@ export default function Workout() {
           if (!ex.name) return;
           const key = normalizeExerciseName(ex.name);
           if (!key) return;
-          const prev = lib[key];
-          lib[key] = {
-            name: ex.name,
-            mediaUrl: ex.mediaUrl || prev?.mediaUrl || null,
-            mediaType: ex.mediaType || prev?.mediaType || null,
-            mediaZoom: ex.mediaZoom || prev?.mediaZoom || null,
-          };
+          lib[key] = { name: ex.name };
         });
       });
     });
-    setExerciseLibrary(lib);
+    setExerciseNames(lib);
   }, [events]);
+
+  const loadExerciseMediaLibrary = async () => {
+    try {
+      const snap = await getDocs(collection(db, "exerciseMedia"));
+      const lib = {};
+      snap.docs.forEach((d) => {
+        lib[d.id] = d.data();
+      });
+      setExerciseMediaLibrary(lib);
+    } catch (e) {
+      console.error("Erreur chargement bibliothèque média des exercices:", e);
+    }
+  };
+
+  useEffect(() => {
+    loadExerciseMediaLibrary();
+  }, []);
+
+  // Résout l'image partagée d'un exercice par son nom (jamais stockée dans
+  // la séance elle-même).
+  const getExerciseMedia = (exerciseName) => {
+    const key = normalizeExerciseName(exerciseName);
+    return key ? exerciseMediaLibrary[key] || null : null;
+  };
 
   const getExerciseSuggestions = (typed) => {
     const q = normalizeExerciseName(typed);
     if (!q) return [];
-    return Object.values(exerciseLibrary)
+    const merged = {};
+    Object.entries(exerciseNames).forEach(([key, v]) => {
+      merged[key] = { name: v.name };
+    });
+    Object.entries(exerciseMediaLibrary).forEach(([key, v]) => {
+      merged[key] = { name: merged[key]?.name || v.name, ...v };
+    });
+    return Object.values(merged)
       .filter((entry) => normalizeExerciseName(entry.name).includes(q))
       .slice(0, 6);
   };
 
+  // Cliquer une suggestion ne fait que compléter le NOM de l'exercice —
+  // l'image associée (s'il y en a une) s'affiche automatiquement via la
+  // bibliothèque partagée, sans jamais être recopiée dans cette séance.
   const selectExerciseFromLibrary = (bIdx, eIdx, entry) => {
-    const nb = [...blocks];
-    nb[bIdx].exercises[eIdx].name = entry.name;
-    if (entry.mediaUrl) {
-      nb[bIdx].exercises[eIdx].mediaUrl = entry.mediaUrl;
-      nb[bIdx].exercises[eIdx].mediaType = entry.mediaType || "image";
-      nb[bIdx].exercises[eIdx].mediaZoom = entry.mediaZoom || DEFAULT_MEDIA_ZOOM;
-    }
-    setBlocks(nb);
+    updateExercise(bIdx, eIdx, "name", entry.name);
     setOpenSuggestFor(null);
   };
 
-  /* ===================== MEDIA EXERCICE (PHOTO/GIF — stockée en base64 dans Firestore, 100% gratuit) ===================== */
-  const handleMediaUpload = (bIdx, eIdx, file) => {
+  /* ===================== MEDIA EXERCICE (PHOTO/GIF) =====================
+     Enregistrée UNE SEULE FOIS par nom d'exercice dans la collection
+     Firestore "exerciseMedia" (compressée en base64, comme avant Storage) —
+     jamais copiée dans le document de la séance. C'est ce qui évite la
+     duplication de stockage : quel que soit le nombre de séances qui
+     utilisent "Squat", une seule image "Squat" existe dans la base. */
+  const handleMediaUpload = async (bIdx, eIdx, file) => {
     if (!file) return;
 
+    const exerciseName = blocks[bIdx]?.exercises[eIdx]?.name?.trim();
+    if (!exerciseName) {
+      alert("Merci de donner un nom à l'exercice avant d'ajouter une photo/gif");
+      return;
+    }
+
     if (!file.type.startsWith("image/")) {
-      alert("Merci de choisir une image ou un GIF (les vidéos ne sont pas supportées pour rester gratuit)");
+      alert("Merci de choisir une image ou un GIF");
       return;
     }
 
     const key = `${bIdx}-${eIdx}`;
+    const mediaKey = normalizeExerciseName(exerciseName);
     const isGif = file.type === "image/gif";
 
+    const saveToLibrary = async (dataUrl, mediaType) => {
+      try {
+        const existing = exerciseMediaLibrary[mediaKey];
+        await setDoc(doc(db, "exerciseMedia", mediaKey), {
+          name: exerciseName,
+          mediaUrl: dataUrl,
+          mediaType,
+          mediaZoom: existing?.mediaZoom || DEFAULT_MEDIA_ZOOM,
+          updatedAt: serverTimestamp(),
+        });
+        setExerciseMediaLibrary((prev) => ({
+          ...prev,
+          [mediaKey]: {
+            name: exerciseName,
+            mediaUrl: dataUrl,
+            mediaType,
+            mediaZoom: existing?.mediaZoom || DEFAULT_MEDIA_ZOOM,
+          },
+        }));
+      } catch (e) {
+        console.error("Erreur enregistrement media:", e);
+        alert("❌ Erreur lors de l'enregistrement du fichier : " + e.message);
+      } finally {
+        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
+      }
+    };
+
     if (isGif) {
-      // Les GIF ne peuvent PAS passer par un <canvas> : ça ne garderait qu'une seule
-      // image fixe et l'animation serait perdue. On stocke donc le GIF tel quel en
-      // base64, avec une limite de taille plus stricte (pas de compression possible).
-      const maxGifSize = 800 * 1024; // 800 Ko max pour un GIF brut
+      // Les GIF ne peuvent pas passer par un <canvas> (l'animation serait
+      // perdue) : on les encode tels quels en base64, avec une limite de
+      // taille plus stricte que les images fixes puisqu'un GIF non
+      // compressé pèse vite lourd dans Firestore (limite 1 Mo/document).
+      const maxGifSize = 700 * 1024; // ~700 Ko max pour un GIF
       if (file.size > maxGifSize) {
         alert(
           "⚠️ Ce GIF est trop volumineux (" +
             Math.round(file.size / 1024) +
-            " Ko, max 800 Ko) pour être stocké gratuitement animé. Essaie un GIF plus court/léger, ou utilise une image fixe (JPEG/PNG)."
+            " Ko, max ~700 Ko). Essaie un GIF plus court/léger, ou utilise une image fixe (JPEG/PNG)."
         );
         return;
       }
-
       setUploadingMedia((prev) => ({ ...prev, [key]: true }));
       const reader = new FileReader();
-      reader.onload = (event) => {
-        const nb = [...blocks];
-        nb[bIdx].exercises[eIdx].mediaUrl = event.target.result;
-        nb[bIdx].exercises[eIdx].mediaType = "gif";
-        if (!nb[bIdx].exercises[eIdx].mediaZoom) {
-          nb[bIdx].exercises[eIdx].mediaZoom = DEFAULT_MEDIA_ZOOM;
-        }
-        setBlocks(nb);
-        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
-      };
+      reader.onload = (event) => saveToLibrary(event.target.result, "gif");
       reader.onerror = () => {
-        alert("❌ Erreur lors de la lecture du GIF");
+        alert("❌ Erreur lors de la lecture du fichier");
         setUploadingMedia((prev) => ({ ...prev, [key]: false }));
       };
       reader.readAsDataURL(file);
@@ -1279,20 +1408,10 @@ export default function Workout() {
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, width, height);
 
-        let dataUrl = canvas.toDataURL("image/jpeg", 0.65);
-        // Si encore trop lourd (limite Firestore = 1 Mo par document), on recompresse plus fort
-        if (dataUrl.length * 0.75 > 500 * 1024) {
-          dataUrl = canvas.toDataURL("image/jpeg", 0.4);
-        }
-
-        const nb = [...blocks];
-        nb[bIdx].exercises[eIdx].mediaUrl = dataUrl;
-        nb[bIdx].exercises[eIdx].mediaType = "image";
-        if (!nb[bIdx].exercises[eIdx].mediaZoom) {
-          nb[bIdx].exercises[eIdx].mediaZoom = DEFAULT_MEDIA_ZOOM;
-        }
-        setBlocks(nb);
-        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
+        // toDataURL (base64) car stocké dans Firestore, mais UNE SEULE fois
+        // par exercice grâce à la bibliothèque partagée ci-dessus.
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+        saveToLibrary(dataUrl, "image");
       };
       img.onerror = () => {
         alert("❌ Erreur lors du chargement de l'image");
@@ -1308,17 +1427,37 @@ export default function Workout() {
   };
 
   const removeMedia = (bIdx, eIdx) => {
-    const nb = [...blocks];
-    nb[bIdx].exercises[eIdx].mediaUrl = "";
-    nb[bIdx].exercises[eIdx].mediaType = "";
-    nb[bIdx].exercises[eIdx].mediaZoom = "";
-    setBlocks(nb);
+    const exerciseName = blocks[bIdx]?.exercises[eIdx]?.name?.trim();
+    const mediaKey = normalizeExerciseName(exerciseName);
+    if (!mediaKey || !exerciseMediaLibrary[mediaKey]) return;
+    if (
+      !window.confirm(
+        `Supprimer la photo/gif de "${exerciseName}" ? Elle disparaîtra de TOUTES les séances qui utilisent cet exercice.`
+      )
+    ) {
+      return;
+    }
+    deleteDoc(doc(db, "exerciseMedia", mediaKey)).catch((e) => {
+      console.error("Erreur suppression media:", e);
+    });
+    setExerciseMediaLibrary((prev) => {
+      const next = { ...prev };
+      delete next[mediaKey];
+      return next;
+    });
   };
 
   const setMediaZoom = (bIdx, eIdx, zoom) => {
-    const nb = [...blocks];
-    nb[bIdx].exercises[eIdx].mediaZoom = zoom;
-    setBlocks(nb);
+    const exerciseName = blocks[bIdx]?.exercises[eIdx]?.name?.trim();
+    const mediaKey = normalizeExerciseName(exerciseName);
+    if (!mediaKey || !exerciseMediaLibrary[mediaKey]) return;
+    setExerciseMediaLibrary((prev) => ({
+      ...prev,
+      [mediaKey]: { ...prev[mediaKey], mediaZoom: zoom },
+    }));
+    updateDoc(doc(db, "exerciseMedia", mediaKey), { mediaZoom: zoom }).catch((e) => {
+      console.error("Erreur mise à jour zoom:", e);
+    });
   };
 
   /* ===================== COULEURS ===================== */
@@ -2332,12 +2471,18 @@ export default function Workout() {
           {blocks.map((block, bIdx) => (
             <div
               key={bIdx}
+              ref={(el) => (blockRefs.current[bIdx] = el)}
               style={{
                 background: "#0d0c0a",
                 padding: 18,
                 borderRadius: 10,
                 marginBottom: 16,
-                border: "1px solid rgba(255, 255, 255, 0.05)",
+                border:
+                  dragOverBlockIndex === bIdx && dragBlockIndex !== null
+                    ? "2px solid #e0a13d"
+                    : "1px solid rgba(255, 255, 255, 0.05)",
+                opacity: dragBlockIndex === bIdx ? 0.5 : 1,
+                transition: "opacity 0.15s ease, border-color 0.15s ease",
               }}
             >
               <div
@@ -2346,8 +2491,24 @@ export default function Workout() {
                   justifyContent: "space-between",
                   alignItems: "center",
                   marginBottom: 12,
+                  gap: 8,
                 }}
               >
+                <span
+                  onPointerDown={startBlockDrag(bIdx)}
+                  title="Glisser pour réordonner ce bloc"
+                  style={{
+                    cursor: "grab",
+                    fontSize: 20,
+                    color: "#a8a199",
+                    padding: "4px 6px",
+                    touchAction: "none",
+                    userSelect: "none",
+                    flexShrink: 0,
+                  }}
+                >
+                  ⠿
+                </span>
                 <input
                   type="text"
                   value={block.name}
@@ -2364,46 +2525,22 @@ export default function Workout() {
                   }}
                 />
                 <button
-                  onClick={() => moveBlock(bIdx, -1)}
-                  disabled={bIdx === 0}
-                  title="Monter ce bloc"
+                  onClick={() => toggleBlockCollapsed(bIdx)}
+                  title={collapsedBlocks[bIdx] ? "Déplier ce bloc" : "Replier ce bloc"}
                   style={{
-                    marginLeft: 10,
                     padding: "6px 10px",
-                    background: bIdx === 0 ? "rgba(255,255,255,0.16)" : "#e0a13d",
-                    color: "white",
+                    background: "#2a2620",
+                    color: "#f3f0ea",
                     border: "none",
                     borderRadius: 6,
-                    cursor: bIdx === 0 ? "not-allowed" : "pointer",
-                    opacity: bIdx === 0 ? 0.4 : 1,
+                    cursor: "pointer",
                   }}
                 >
-                  ▲
-                </button>
-                <button
-                  onClick={() => moveBlock(bIdx, 1)}
-                  disabled={bIdx === blocks.length - 1}
-                  title="Descendre ce bloc"
-                  style={{
-                    marginLeft: 6,
-                    padding: "6px 10px",
-                    background:
-                      bIdx === blocks.length - 1
-                        ? "rgba(255,255,255,0.16)"
-                        : "#e0a13d",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 6,
-                    cursor: bIdx === blocks.length - 1 ? "not-allowed" : "pointer",
-                    opacity: bIdx === blocks.length - 1 ? 0.4 : 1,
-                  }}
-                >
-                  ▼
+                  {collapsedBlocks[bIdx] ? "▸" : "▾"}
                 </button>
                 <button
                   onClick={() => removeBlock(bIdx)}
                   style={{
-                    marginLeft: 6,
                     padding: "6px 12px",
                     background: "#d9695a",
                     color: "white",
@@ -2416,6 +2553,15 @@ export default function Workout() {
                 </button>
               </div>
 
+              {collapsedBlocks[bIdx] && (
+                <div style={{ fontSize: 13, color: "#a8a199", padding: "4px 2px 8px" }}>
+                  {block.exercises.length} exercice{block.exercises.length > 1 ? "s" : ""} —{" "}
+                  {block.exercises.map((ex) => ex.name || "sans nom").join(", ") || "vide"}
+                </div>
+              )}
+
+              {!collapsedBlocks[bIdx] && (
+              <>
               {block.exercises.map((ex, eIdx) => (
                 <div
                   key={eIdx}
@@ -2576,7 +2722,7 @@ export default function Workout() {
                     <label style={{ fontSize: 12, color: "#a8a199", marginBottom: 4, display: "block" }}>
                       📸 Photo / GIF de démonstration
                     </label>
-                    {ex.mediaUrl ? (
+                    {getExerciseMedia(ex.name)?.mediaUrl ? (
                       <div style={{ position: "relative", marginBottom: 8 }}>
                         <div
                           style={{
@@ -2591,14 +2737,14 @@ export default function Workout() {
                           }}
                         >
                           <img
-                            src={ex.mediaUrl}
+                            src={getExerciseMedia(ex.name)?.mediaUrl}
                             alt="Démo exercice"
                             style={{
                               maxWidth: "100%",
                               maxHeight: "100%",
                               objectFit: "contain",
                               transform: `scale(${
-                                (ex.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
+                                (getExerciseMedia(ex.name)?.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
                               })`,
                               transition: "transform 0.1s ease-out",
                             }}
@@ -2622,7 +2768,7 @@ export default function Workout() {
                         >
                           ✕
                         </button>
-                        {ex.mediaType === "gif" && (
+                        {getExerciseMedia(ex.name)?.mediaType === "gif" && (
                           <span
                             style={{
                               position: "absolute",
@@ -2653,7 +2799,7 @@ export default function Workout() {
                             min={MIN_MEDIA_ZOOM}
                             max={MAX_MEDIA_ZOOM}
                             step={5}
-                            value={ex.mediaZoom || DEFAULT_MEDIA_ZOOM}
+                            value={getExerciseMedia(ex.name)?.mediaZoom || DEFAULT_MEDIA_ZOOM}
                             onChange={(e) =>
                               setMediaZoom(bIdx, eIdx, Number(e.target.value))
                             }
@@ -2668,7 +2814,7 @@ export default function Workout() {
                               textAlign: "right",
                             }}
                           >
-                            {ex.mediaZoom || DEFAULT_MEDIA_ZOOM}%
+                            {getExerciseMedia(ex.name)?.mediaZoom || DEFAULT_MEDIA_ZOOM}%
                           </span>
                         </div>
                       </div>
@@ -3494,6 +3640,8 @@ export default function Workout() {
               >
                 ➕ Ajouter exercice
               </button>
+              </>
+              )}
             </div>
           ))}
 
@@ -3828,8 +3976,9 @@ export default function Workout() {
                       </div>
                     )}
 
-                    {/* Photo/gif de démonstration si présente */}
-                    {ex.mediaUrl && (
+                    {/* Photo/gif de démonstration si présente (résolue par nom
+                        d'exercice depuis la bibliothèque partagée) */}
+                    {getExerciseMedia(ex.name)?.mediaUrl && (
                       <div style={{ marginBottom: 10, position: "relative" }}>
                         <div
                           style={{
@@ -3844,19 +3993,19 @@ export default function Workout() {
                           }}
                         >
                           <img
-                            src={ex.mediaUrl}
+                            src={getExerciseMedia(ex.name)?.mediaUrl}
                             alt={ex.name}
                             style={{
                               maxWidth: "100%",
                               maxHeight: "100%",
                               objectFit: "contain",
                               transform: `scale(${
-                                (ex.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
+                                (getExerciseMedia(ex.name)?.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
                               })`,
                             }}
                           />
                         </div>
-                        {ex.mediaType === "gif" && (
+                        {getExerciseMedia(ex.name)?.mediaType === "gif" && (
                           <span
                             style={{
                               position: "absolute",

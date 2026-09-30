@@ -37,7 +37,10 @@ import {
 // uniquement de la couleur.
 const ACCENT = "#e0a13d";
 const NEGATIVE_COLORS = { fatigue: "#d9695a", stress: "#e0a13d", douleur: "#b06fd9" };
-const POSITIVE_COLORS = { sommeil: "#4fae7d", nutrition: "#3fa8c9", hydratation: "#5cc28e", motivation: "#8bc34a" };
+// Familles de teintes plus espacées (vert profond / bleu / cyan / olive) pour
+// que les 4 courbes positives restent distinguables même sans regarder la
+// légende, au lieu de plusieurs verts trop proches visuellement.
+const POSITIVE_COLORS = { sommeil: "#2f9e78", nutrition: "#3d7fd9", hydratation: "#29b6c9", motivation: "#a4c639" };
 const DASH_BY_INDEX = ["0", "6 4", "2 3", "8 3 2 3"];
 
 const formatShortDate = (d) => {
@@ -81,7 +84,6 @@ export default function Wellness() {
   };
   const MECHANISM_LABELS = {
     contact: "Contact / traumatique",
-    non_contact: "Non-contact (sans contact)",
     surcharge: "Surcharge / usure",
     autre: "Autre",
   };
