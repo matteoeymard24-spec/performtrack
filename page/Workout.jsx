@@ -15,6 +15,7 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  deleteField,
 } from "firebase/firestore";
 
 const getLocalDateStr = (date) => {
@@ -114,6 +115,11 @@ export default function Workout() {
 
   const [selectedSession, setSelectedSession] = useState(null);
   const [userRM, setUserRM] = useState({});
+  // Noms d'exercices repérés dans "Mes RM" (base des séries en % de charge) :
+  // pas forcément tapés dans une séance, mais on veut qu'ils apparaissent
+  // aussi dans le gestionnaire "🔤 Noms d'exercices" pour pouvoir leur
+  // associer une photo. Clé = nom normalisé -> { name: nom d'origine }.
+  const [rmExerciseNames, setRmExerciseNames] = useState({});
   const [vma, setVma] = useState(null);
 
   const [sessionInProgress, setSessionInProgress] = useState(null);
@@ -152,6 +158,7 @@ export default function Workout() {
           collection(db, "users", currentUser.uid, "rm")
         );
         const rmData = {};
+        const rmNames = {};
         let vmaEntry = null;
 
         snap.docs.forEach((d) => {
@@ -162,10 +169,14 @@ export default function Workout() {
             // Normaliser le nom de l'exercice pour la clé
             const normalizedName = normalizeExerciseName(d.id);
             rmData[normalizedName] = data.kg;
+            if (normalizedName) {
+              rmNames[normalizedName] = { name: data.exerciseName || d.id };
+            }
           }
         });
 
         setUserRM(rmData);
+        setRmExerciseNames(rmNames);
         setVma(vmaEntry?.kg || null);
       } catch (e) {
         console.error("Erreur RM:", e);
@@ -1438,11 +1449,26 @@ export default function Workout() {
     Object.entries(exerciseNames).forEach(([key, v]) => {
       merged[key] = { key, name: v.name, usedInSessions: true };
     });
+    // Complète avec les noms venus de "Mes RM" (exercices de base pour le
+    // calcul des % de charge) qui n'ont jamais été tapés tels quels dans
+    // une séance.
+    Object.entries(rmExerciseNames).forEach(([key, v]) => {
+      if (!merged[key]) {
+        merged[key] = { key, name: v.name, usedInSessions: false, fromRM: true };
+      }
+    });
     Object.entries(exerciseMediaLibrary).forEach(([key, v]) => {
+      if (v.hidden) {
+        // Fiche "masquée" (supprimée depuis ce gestionnaire) : on la retire
+        // de la liste même si elle vient d'une séance ou de "Mes RM".
+        delete merged[key];
+        return;
+      }
       merged[key] = {
         key,
         name: merged[key]?.name || v.name,
         usedInSessions: !!merged[key]?.usedInSessions,
+        fromRM: !!merged[key]?.fromRM,
         mediaUrl: v.mediaUrl,
         mediaType: v.mediaType,
       };
@@ -1549,7 +1575,8 @@ export default function Workout() {
       return;
     }
     const key = normalizeExerciseName(name);
-    if (exerciseMediaLibrary[key] || exerciseNames[key]) {
+    const alreadyVisible = getExerciseNameEntries().some((e) => e.key === key);
+    if (alreadyVisible) {
       alert(`"${name}" existe déjà dans la liste.`);
       return;
     }
@@ -1582,17 +1609,51 @@ export default function Workout() {
   };
 
   const deleteExerciseCatalogEntry = async (entry) => {
-    const msg = entry.usedInSessions
+    const hasMedia = !!entry.mediaUrl;
+    // Trois cas :
+    // 1) A une photo + utilisé dans des séances -> on retire juste la
+    //    photo, le nom reste utilisable.
+    // 2) Pas de photo mais utilisé dans des séances (ou issu de "Mes RM")
+    //    -> impossible de le faire disparaître des séances existantes,
+    //    donc on le "masque" (fiche hidden:true) : il quitte cette liste
+    //    et les suggestions, sans toucher aux séances déjà créées.
+    // 3) Ni photo ni usage -> suppression complète de la fiche.
+    const msg = hasMedia && entry.usedInSessions
       ? `Supprimer la photo de "${entry.name}" ? Le nom reste disponible (il est utilisé dans des séances existantes) — seule l'image sera retirée.`
+      : entry.usedInSessions || entry.fromRM
+      ? `Retirer "${entry.name}" de cette liste ? Les séances existantes qui l'utilisent ne sont pas modifiées, mais il n'apparaîtra plus ici ni dans les suggestions tant que tu ne l'auras pas rajouté.`
       : `Supprimer "${entry.name}" de la liste ? Il n'est utilisé dans aucune séance pour l'instant, il disparaîtra complètement (tu pourras toujours le retaper à la main plus tard).`;
     if (!window.confirm(msg)) return;
     try {
-      await deleteDoc(doc(db, "exerciseMedia", entry.key));
-      setExerciseMediaLibrary((prev) => {
-        const next = { ...prev };
-        delete next[entry.key];
-        return next;
-      });
+      if (hasMedia && entry.usedInSessions) {
+        await updateDoc(doc(db, "exerciseMedia", entry.key), {
+          mediaUrl: deleteField(),
+          mediaType: deleteField(),
+          mediaZoom: deleteField(),
+          updatedAt: serverTimestamp(),
+        });
+        setExerciseMediaLibrary((prev) => ({
+          ...prev,
+          [entry.key]: { name: entry.name },
+        }));
+      } else if (entry.usedInSessions || entry.fromRM) {
+        await setDoc(doc(db, "exerciseMedia", entry.key), {
+          name: entry.name,
+          hidden: true,
+          updatedAt: serverTimestamp(),
+        });
+        setExerciseMediaLibrary((prev) => ({
+          ...prev,
+          [entry.key]: { name: entry.name, hidden: true },
+        }));
+      } else {
+        await deleteDoc(doc(db, "exerciseMedia", entry.key));
+        setExerciseMediaLibrary((prev) => {
+          const next = { ...prev };
+          delete next[entry.key];
+          return next;
+        });
+      }
     } catch (e) {
       console.error("Erreur suppression exercice:", e);
       alert("❌ Erreur lors de la suppression : " + e.message);
@@ -2305,27 +2366,25 @@ export default function Workout() {
                           >
                             ✏️ Renommer
                           </button>
-                          {(entry.mediaUrl || !entry.usedInSessions) && (
-                            <button
-                              onClick={() => deleteExerciseCatalogEntry(entry)}
-                              title={
-                                entry.mediaUrl
-                                  ? "Supprimer la photo"
-                                  : "Supprimer l'exercice de la liste"
-                              }
-                              style={{
-                                padding: "6px 10px",
-                                background: "#d9695a",
-                                color: "white",
-                                border: "none",
-                                borderRadius: 6,
-                                cursor: "pointer",
-                                fontSize: 13,
-                              }}
-                            >
-                              🗑️
-                            </button>
-                          )}
+                          <button
+                            onClick={() => deleteExerciseCatalogEntry(entry)}
+                            title={
+                              entry.mediaUrl && entry.usedInSessions
+                                ? "Supprimer la photo"
+                                : "Retirer de la liste"
+                            }
+                            style={{
+                              padding: "6px 10px",
+                              background: "#d9695a",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              fontSize: 13,
+                            }}
+                          >
+                            🗑️
+                          </button>
                         </div>
                       </div>
                     )}
