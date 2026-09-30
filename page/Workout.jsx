@@ -812,7 +812,35 @@ export default function Workout() {
     console.log("[endSession] ✅ Session trouvée:", workoutSession.id);
     console.log("[endSession] sessionInProgress:", !!sessionInProgress);
     console.log("[endSession] selectedSession:", !!selectedSession);
-    
+
+    // Avertir AVANT de terminer si des exercices muscu n'ont pas reçu de
+    // feedback (poids/reps/RPE) via le bouton "✅ Valider" de la popup —
+    // sans ce clic, rien n'est enregistré dans sessionFeedback, et ces
+    // exercices ne pourront donc jamais alimenter "Mes RM". Une fois la
+    // séance terminée, sessionFeedback est réinitialisé : sans cet
+    // avertissement, l'oubli est silencieux et irrécupérable.
+    if ((workoutSession.type || "muscu") === "muscu" && workoutSession.blocks) {
+      const missing = [];
+      workoutSession.blocks.forEach((block, bIdx) => {
+        if (/échauffement|echauffement|warm.?up|activation/i.test(block?.name || "")) {
+          return;
+        }
+        (block.exercises || []).forEach((exercise, eIdx) => {
+          if (exercise.rmPercent === "PDC") return;
+          const key = `${bIdx}-${eIdx}`;
+          if (!sessionFeedback[key]) {
+            missing.push(exercise.name || "Exercice sans nom");
+          }
+        });
+      });
+      if (missing.length > 0) {
+        const confirmEnd = window.confirm(
+          `⚠️ ${missing.length} exercice(s) n'ont pas de feedback enregistré (tu n'as pas cliqué sur "✅ Valider" dans leur popup) :\n\n${missing.join("\n")}\n\nSans ce feedback, ces exercices ne pourront pas mettre à jour tes RM dans "Mes RM".\n\nTerminer quand même la séance ?`
+        );
+        if (!confirmEnd) return;
+      }
+    }
+
     try {
       console.log("[endSession] 🏁 Début de la terminaison de séance", workoutSession.id);
       const endTime = new Date().toISOString();
