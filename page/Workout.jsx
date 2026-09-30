@@ -1685,6 +1685,31 @@ export default function Workout() {
     }
   };
 
+  // Supprime la fiche RM correspondante ("users/{uid}/rm/{key}") chez TOUS
+  // les athlètes — utilisé quand un exercice disparaît réellement de la
+  // banque (masqué ou supprimé), puisque "Mes RM" est désormais alimenté
+  // automatiquement par la banque : plus besoin (ni possibilité) d'ajouter/
+  // supprimer un exercice à la main côté athlète ou admin dans My RM.
+  const deleteExerciseFromAllAthletesRM = async (key) => {
+    if (!key) return;
+    try {
+      const usersSnap = await getDocs(collection(db, "users"));
+      const athleteIds = usersSnap.docs
+        .filter((d) => d.data().role !== "admin" && d.data().superAdmin !== true)
+        .map((d) => d.id);
+      for (const uid of athleteIds) {
+        const rmRef = doc(db, "users", uid, "rm", key);
+        const rmSnap = await getDoc(rmRef);
+        if (rmSnap.exists()) {
+          await deleteDoc(rmRef);
+        }
+      }
+    } catch (e) {
+      console.error("Erreur suppression RM athlètes:", e);
+      alert("❌ Erreur lors de la suppression de cet exercice chez les athlètes : " + e.message);
+    }
+  };
+
   const [resyncingAllCategories, setResyncingAllCategories] = useState(false);
 
   // Rattrapage : avant la correction du bug de propagation (qui ne
@@ -1985,6 +2010,10 @@ export default function Workout() {
             hidden: true,
           },
         }));
+        // L'exercice quitte la banque (même s'il reste techniquement
+        // présent dans d'anciennes séances) -> il doit aussi disparaître de
+        // "Mes RM" chez tous les athlètes.
+        await deleteExerciseFromAllAthletesRM(entry.key);
       } else {
         await deleteDoc(doc(db, "exerciseMedia", entry.key));
         setExerciseMediaLibrary((prev) => {
@@ -1992,6 +2021,7 @@ export default function Workout() {
           delete next[entry.key];
           return next;
         });
+        await deleteExerciseFromAllAthletesRM(entry.key);
       }
     } catch (e) {
       console.error("Erreur suppression exercice:", e);

@@ -528,9 +528,19 @@ export default function Dashboard() {
 
       // --- RM ---
       try {
-        const rmSnap = await getDocs(
-          collection(db, "users", currentUser.uid, "rm")
-        );
+        const [rmSnap, exerciseMediaSnap] = await Promise.all([
+          getDocs(collection(db, "users", currentUser.uid, "rm")),
+          getDocs(collection(db, "exerciseMedia")),
+        ]);
+        // La banque d'exercices (exerciseMedia) est la source de vérité pour
+        // la catégorie — priorité sur la catégorie stockée sur la fiche RM
+        // elle-même, qui peut être restée "autre" tant qu'elle n'a pas été
+        // resynchronisée.
+        const catalogCategoryByKey = {};
+        exerciseMediaSnap.docs.forEach((d) => {
+          const cat = d.data().category;
+          if (cat) catalogCategoryByKey[d.id] = normalizeCategoryValue(cat);
+        });
         setAthleteRMHistory(
           rmSnap.docs.map((d) => ({
             exercise: d.data().exerciseName || d.id,
@@ -561,7 +571,10 @@ export default function Dashboard() {
             return;
           }
           if (data.kg === null || data.kg === undefined) return; // pas encore testé
-          categoriesMap[name] = normalizeCategoryValue(data.category) || "autre";
+          categoriesMap[name] =
+            catalogCategoryByKey[d.id] ||
+            normalizeCategoryValue(data.category) ||
+            "autre";
           if (Array.isArray(data.history) && data.history.length > 0) {
             fullHistory[name] = data.history.map((h) => ({
               kg: h.kg,
@@ -886,7 +899,19 @@ export default function Dashboard() {
             ).toFixed(1)
           : null;
 
-      const rmSnap = await getDocs(collection(db, "users", athlete.id, "rm"));
+      const [rmSnap, exerciseMediaSnap] = await Promise.all([
+        getDocs(collection(db, "users", athlete.id, "rm")),
+        getDocs(collection(db, "exerciseMedia")),
+      ]);
+      // La banque d'exercices (exerciseMedia) est la source de vérité pour la
+      // catégorie : on l'utilise en priorité, avant la catégorie stockée sur
+      // la fiche RM individuelle de l'athlète (qui peut être restée "autre"
+      // si elle n'a jamais été resynchronisée).
+      const catalogCategoryByKey = {};
+      exerciseMediaSnap.docs.forEach((d) => {
+        const cat = d.data().category;
+        if (cat) catalogCategoryByKey[d.id] = normalizeCategoryValue(cat);
+      });
       const rmByEx = {};
       const rmCategories = {};
       let athleteVma = null;
@@ -904,7 +929,10 @@ export default function Dashboard() {
           athleteCmj = { kg: data.kg, history: data.history || [] };
           return;
         }
-        rmCategories[name] = normalizeCategoryValue(data.category) || "autre";
+        rmCategories[name] =
+          catalogCategoryByKey[d.id] ||
+          normalizeCategoryValue(data.category) ||
+          "autre";
         // Historique complet (champ "history", comme VMA/CMJ) si présent,
         // sinon repli sur le point unique kg/updatedAt pour les anciennes
         // fiches. Une fiche "en attente" (kg: null, jamais testée) n'a pas

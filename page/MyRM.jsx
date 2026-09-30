@@ -102,9 +102,19 @@ export default function MyRM() {
     if (!currentUser) return;
 
     try {
-      const rmSnap = await getDocs(
-        collection(db, "users", currentUser.uid, "rm")
-      );
+      const [rmSnap, exerciseMediaSnap] = await Promise.all([
+        getDocs(collection(db, "users", currentUser.uid, "rm")),
+        getDocs(collection(db, "exerciseMedia")),
+      ]);
+      // La banque d'exercices (exerciseMedia) est la source de vérité pour la
+      // catégorie — priorité sur la catégorie stockée sur la fiche RM
+      // elle-même, qui peut être restée "autre" tant qu'elle n'a pas été
+      // resynchronisée (voir bouton admin "Resynchroniser les catégories").
+      const catalogCategoryByKey = {};
+      exerciseMediaSnap.docs.forEach((d) => {
+        const cat = d.data().category;
+        if (cat) catalogCategoryByKey[d.id] = normalizeCategoryValue(cat);
+      });
 
       // Séparer VMA, CMJ et RM
       const grouped = {};
@@ -133,7 +143,10 @@ export default function MyRM() {
           // temps) vient du champ "history" ; à défaut (anciennes fiches
           // sans historique, ou fiche jamais testée avec kg:null), on
           // retombe sur un point unique tiré de kg/updatedAt.
-          categories[name] = normalizeCategoryValue(data.category) || "autre";
+          categories[name] =
+            catalogCategoryByKey[d.id] ||
+            normalizeCategoryValue(data.category) ||
+            "autre";
           autoCreatedMap[name] = data.kg === null || data.kg === undefined;
           if (Array.isArray(data.history) && data.history.length > 0) {
             grouped[name] = data.history.map((h) => ({
@@ -437,24 +450,10 @@ export default function MyRM() {
     setShowAddForm(true);
   };
 
-  const handleDeleteRM = async (exerciseName) => {
-    if (
-      !window.confirm(`Supprimer tous les enregistrements de ${exerciseName} ?`)
-    )
-      return;
-
-    try {
-      await deleteDoc(doc(db, "users", currentUser.uid, "rm", exerciseName));
-      alert("RM supprimé");
-      loadRM();
-      if (selectedExercise === exerciseName) {
-        setSelectedExercise(null);
-      }
-    } catch (error) {
-      console.error("Erreur suppression:", error);
-      alert("Erreur lors de la suppression");
-    }
-  };
+  // Suppression obsolète : un exercice ne se supprime plus depuis "Mes RM"
+  // (ni pour un athlète, ni pour un admin) — la banque d'exercices est
+  // l'unique source : supprimer un exercice de la banque le retire
+  // automatiquement de "Mes RM" chez tous les athlètes.
 
   const cancelForm = () => {
     setShowAddForm(false);
@@ -1032,27 +1031,14 @@ export default function MyRM() {
       </div>
 
       {/* ==================== BOUTON AJOUTER RM ==================== */}
-      {!showAddForm && (
-        <button
-          onClick={() => setShowAddForm(true)}
-          style={{
-            width: "100%",
-            padding: 16,
-            background: "#e0a13d",
-            color: "#1a1306",
-            border: "none",
-            borderRadius: 12,
-            fontSize: 16,
-            fontWeight: "bold",
-            cursor: "pointer",
-            marginBottom: 30,
-          }}
-        >
-          ➕ Ajouter un exercice
-        </button>
-      )}
+      {/* Le bouton "Ajouter un exercice" a été retiré : la liste des
+          exercices est désormais entièrement alimentée par la banque
+          d'exercices (automatique). Le formulaire ci-dessous ne sert plus
+          qu'à enregistrer le 1RM réel d'un exercice déjà présent, via le
+          bouton "✏️ Modifier" sur sa fiche — pour remplacer le 1RM
+          théorique par la valeur effectivement testée. */}
 
-      {/* ==================== FORMULAIRE RM ==================== */}
+      {/* ==================== FORMULAIRE RM (édition uniquement) ==================== */}
       {showAddForm && (
         <div
           style={{
@@ -1063,42 +1049,14 @@ export default function MyRM() {
             marginBottom: 30,
           }}
         >
-          <h3 style={{ margin: "0 0 20px 0", fontSize: 18 }}>
-            {editingRM ? "✏️ Modifier" : "➕ Nouvel exercice"}
+          <h3 style={{ margin: "0 0 20px 0", fontSize: 18, textTransform: "capitalize" }}>
+            ✏️ Modifier — {editingRM}
           </h3>
 
           <div style={{ marginBottom: 20 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 8,
-                fontSize: 14,
-                color: "#f3f0ea",
-                fontWeight: "bold",
-              }}
-            >
-              Nom de l'exercice
-            </label>
-            <input
-              type="text"
-              value={exerciseName}
-              onChange={(e) => setExerciseName(e.target.value)}
-              placeholder="Ex: squat, bench press, deadlift..."
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "1px solid #2a2620",
-                background: "#151310",
-                color: "#f3f0ea",
-                fontSize: 16,
-              }}
-            />
-            <p style={{ fontSize: 12, color: "#a8a199", margin: "5px 0 0 0" }}>
-              💡{" "}
-              {editingRM
-                ? "Tu peux modifier le nom de l'exercice"
-                : "Le nom doit être identique à celui utilisé dans les séances"}
+            <p style={{ fontSize: 12, color: "#a8a199", margin: "0 0 5px 0" }}>
+              💡 Renseigne ici le poids et les répétitions réellement effectués
+              pour remplacer le 1RM théorique par ta vraie valeur testée.
             </p>
           </div>
 
@@ -1460,20 +1418,6 @@ export default function MyRM() {
                     ✏️ Modifier
                   </button>
                   <button
-                    onClick={() => handleDeleteRM(selectedExercise)}
-                    style={{
-                      padding: "8px 14px",
-                      background: "#d9695a",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontSize: 14,
-                    }}
-                  >
-                    🗑️ Supprimer
-                  </button>
-                  <button
                     onClick={() => setSelectedExercise(null)}
                     style={{
                       padding: "8px 14px",
@@ -1642,10 +1586,11 @@ export default function MyRM() {
             }}
           >
             <p style={{ fontSize: 16, margin: "0 0 10px 0" }}>
-              Aucun RM enregistré
+              Aucun exercice pour l'instant
             </p>
             <p style={{ fontSize: 14, color: "#a8a199", margin: 0 }}>
-              Ajoute tes exercices pour commencer !
+              Tes exercices apparaîtront ici automatiquement dès qu'un
+              coach les ajoute à la banque d'exercices.
             </p>
           </div>
         )
