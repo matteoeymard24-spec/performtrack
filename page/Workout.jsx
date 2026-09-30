@@ -1411,14 +1411,11 @@ export default function Workout() {
   const getExerciseSuggestions = (typed) => {
     const q = normalizeExerciseName(typed);
     if (!q) return [];
-    const merged = {};
-    Object.entries(exerciseNames).forEach(([key, v]) => {
-      merged[key] = { name: v.name };
-    });
-    Object.entries(exerciseMediaLibrary).forEach(([key, v]) => {
-      merged[key] = { name: merged[key]?.name || v.name, ...v };
-    });
-    return Object.values(merged)
+    // Réutilise la même liste fusionnée que le gestionnaire "🔤 Noms
+    // d'exercices" (séances + Mes RM + bibliothèque photo, en excluant les
+    // fiches masquées) pour que l'autocomplétion et la liste affichent
+    // toujours exactement les mêmes exercices.
+    return getExerciseNameEntries()
       .filter((entry) => normalizeExerciseName(entry.name).includes(q))
       .slice(0, 6);
   };
