@@ -1436,14 +1436,18 @@ export default function Workout() {
   const getExerciseNameEntries = () => {
     const merged = {};
     Object.entries(exerciseNames).forEach(([key, v]) => {
-      merged[key] = v.name;
+      merged[key] = { key, name: v.name, usedInSessions: true };
     });
     Object.entries(exerciseMediaLibrary).forEach(([key, v]) => {
-      merged[key] = v.name;
+      merged[key] = {
+        key,
+        name: merged[key]?.name || v.name,
+        usedInSessions: !!merged[key]?.usedInSessions,
+        mediaUrl: v.mediaUrl,
+        mediaType: v.mediaType,
+      };
     });
-    return Object.entries(merged)
-      .map(([key, name]) => ({ key, name }))
-      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+    return Object.values(merged).sort((a, b) => a.name.localeCompare(b.name, "fr"));
   };
 
   const startRenameExercise = (entry) => {
@@ -1529,126 +1533,201 @@ export default function Workout() {
     }
   };
 
+  // Ajouter / supprimer / changer l'image d'un exercice directement depuis
+  // le gestionnaire de noms, sans avoir besoin de créer une séance d'abord.
+  // saveExerciseMedia est défini un peu plus bas (section MEDIA EXERCICE) ;
+  // comme ces fonctions ne sont appelées qu'au clic (jamais pendant le
+  // rendu), l'ordre de déclaration dans le fichier n'a pas d'importance.
+  const [newExerciseDraftName, setNewExerciseDraftName] = useState("");
+  const [newExerciseDraftFile, setNewExerciseDraftFile] = useState(null);
+  const [addingExercise, setAddingExercise] = useState(false);
+
+  const addNewExerciseName = async () => {
+    const name = formatExerciseDisplayName(newExerciseDraftName.trim());
+    if (!name) {
+      alert("Merci d'indiquer un nom d'exercice");
+      return;
+    }
+    const key = normalizeExerciseName(name);
+    if (exerciseMediaLibrary[key] || exerciseNames[key]) {
+      alert(`"${name}" existe déjà dans la liste.`);
+      return;
+    }
+    setAddingExercise(true);
+    try {
+      if (newExerciseDraftFile) {
+        await saveExerciseMedia(name, newExerciseDraftFile, "catalog-new");
+      } else {
+        // Pas de photo pour l'instant : on enregistre quand même le nom,
+        // pour qu'il apparaisse tout de suite dans l'autocomplétion — la
+        // photo pourra être ajoutée plus tard (ici ou depuis une séance).
+        await setDoc(doc(db, "exerciseMedia", key), {
+          name,
+          updatedAt: serverTimestamp(),
+        });
+        setExerciseMediaLibrary((prev) => ({ ...prev, [key]: { name } }));
+      }
+      setNewExerciseDraftName("");
+      setNewExerciseDraftFile(null);
+    } catch (e) {
+      console.error("Erreur ajout exercice:", e);
+      alert("❌ Erreur lors de l'ajout : " + e.message);
+    } finally {
+      setAddingExercise(false);
+    }
+  };
+
+  const changeExerciseCatalogImage = (entry, file) => {
+    saveExerciseMedia(entry.name, file, `catalog-${entry.key}`);
+  };
+
+  const deleteExerciseCatalogEntry = async (entry) => {
+    const msg = entry.usedInSessions
+      ? `Supprimer la photo de "${entry.name}" ? Le nom reste disponible (il est utilisé dans des séances existantes) — seule l'image sera retirée.`
+      : `Supprimer "${entry.name}" de la liste ? Il n'est utilisé dans aucune séance pour l'instant, il disparaîtra complètement (tu pourras toujours le retaper à la main plus tard).`;
+    if (!window.confirm(msg)) return;
+    try {
+      await deleteDoc(doc(db, "exerciseMedia", entry.key));
+      setExerciseMediaLibrary((prev) => {
+        const next = { ...prev };
+        delete next[entry.key];
+        return next;
+      });
+    } catch (e) {
+      console.error("Erreur suppression exercice:", e);
+      alert("❌ Erreur lors de la suppression : " + e.message);
+    }
+  };
+
   /* ===================== MEDIA EXERCICE (PHOTO/GIF) =====================
      Enregistrée UNE SEULE FOIS par nom d'exercice dans la collection
      Firestore "exerciseMedia" (compressée en base64, comme avant Storage) —
      jamais copiée dans le document de la séance. C'est ce qui évite la
      duplication de stockage : quel que soit le nombre de séances qui
-     utilisent "Squat", une seule image "Squat" existe dans la base. */
-  const handleMediaUpload = async (bIdx, eIdx, file) => {
-    if (!file) return;
+     utilisent "Squat", une seule image "Squat" existe dans la base.
+     saveExerciseMedia() est le cœur partagé : utilisé à la fois depuis une
+     séance (handleMediaUpload) ET depuis le gestionnaire de noms
+     d'exercices (ajout/modification d'image sans passer par une séance). */
+  const saveExerciseMedia = (exerciseName, file, progressKey) => {
+    return new Promise((resolve, reject) => {
+      if (!file) return resolve();
+      if (!file.type.startsWith("image/")) {
+        alert("Merci de choisir une image ou un GIF");
+        return resolve();
+      }
 
+      const mediaKey = normalizeExerciseName(exerciseName);
+      const isGif = file.type === "image/gif";
+      const stopProgress = () => {
+        if (progressKey) setUploadingMedia((prev) => ({ ...prev, [progressKey]: false }));
+      };
+
+      const persist = async (dataUrl, mediaType) => {
+        try {
+          const existing = exerciseMediaLibrary[mediaKey];
+          const entry = {
+            name: exerciseName,
+            mediaUrl: dataUrl,
+            mediaType,
+            mediaZoom: existing?.mediaZoom || DEFAULT_MEDIA_ZOOM,
+          };
+          await setDoc(doc(db, "exerciseMedia", mediaKey), {
+            ...entry,
+            updatedAt: serverTimestamp(),
+          });
+          setExerciseMediaLibrary((prev) => ({ ...prev, [mediaKey]: entry }));
+          resolve();
+        } catch (e) {
+          console.error("Erreur enregistrement media:", e);
+          alert("❌ Erreur lors de l'enregistrement du fichier : " + e.message);
+          reject(e);
+        } finally {
+          stopProgress();
+        }
+      };
+
+      if (isGif) {
+        // Les GIF ne peuvent pas passer par un <canvas> (l'animation serait
+        // perdue) : on les encode tels quels en base64, avec une limite de
+        // taille plus stricte que les images fixes puisqu'un GIF non
+        // compressé pèse vite lourd dans Firestore (limite 1 Mo/document).
+        const maxGifSize = 700 * 1024; // ~700 Ko max pour un GIF
+        if (file.size > maxGifSize) {
+          alert(
+            "⚠️ Ce GIF est trop volumineux (" +
+              Math.round(file.size / 1024) +
+              " Ko, max ~700 Ko). Essaie un GIF plus court/léger, ou utilise une image fixe (JPEG/PNG)."
+          );
+          return resolve();
+        }
+        if (progressKey) setUploadingMedia((prev) => ({ ...prev, [progressKey]: true }));
+        const reader = new FileReader();
+        reader.onload = (event) => persist(event.target.result, "gif");
+        reader.onerror = () => {
+          alert("❌ Erreur lors de la lecture du fichier");
+          stopProgress();
+          reject(new Error("read error"));
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const maxOriginalSize = 15 * 1024 * 1024; // 15 Mo avant compression
+      if (file.size > maxOriginalSize) {
+        alert("Image trop volumineuse (max 15 Mo avant compression)");
+        return resolve();
+      }
+
+      if (progressKey) setUploadingMedia((prev) => ({ ...prev, [progressKey]: true }));
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 800;
+          let { width, height } = img;
+          if (width > height && width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else if (height >= width && height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // toDataURL (base64) car stocké dans Firestore, mais UNE SEULE fois
+          // par exercice grâce à la bibliothèque partagée ci-dessus.
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
+          persist(dataUrl, "image");
+        };
+        img.onerror = () => {
+          alert("❌ Erreur lors du chargement de l'image");
+          stopProgress();
+          reject(new Error("img load error"));
+        };
+        img.src = event.target.result;
+      };
+      reader.onerror = () => {
+        alert("❌ Erreur lors de la lecture du fichier");
+        stopProgress();
+        reject(new Error("read error"));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleMediaUpload = (bIdx, eIdx, file) => {
     const exerciseName = blocks[bIdx]?.exercises[eIdx]?.name?.trim();
     if (!exerciseName) {
       alert("Merci de donner un nom à l'exercice avant d'ajouter une photo/gif");
       return;
     }
-
-    if (!file.type.startsWith("image/")) {
-      alert("Merci de choisir une image ou un GIF");
-      return;
-    }
-
-    const key = `${bIdx}-${eIdx}`;
-    const mediaKey = normalizeExerciseName(exerciseName);
-    const isGif = file.type === "image/gif";
-
-    const saveToLibrary = async (dataUrl, mediaType) => {
-      try {
-        const existing = exerciseMediaLibrary[mediaKey];
-        await setDoc(doc(db, "exerciseMedia", mediaKey), {
-          name: exerciseName,
-          mediaUrl: dataUrl,
-          mediaType,
-          mediaZoom: existing?.mediaZoom || DEFAULT_MEDIA_ZOOM,
-          updatedAt: serverTimestamp(),
-        });
-        setExerciseMediaLibrary((prev) => ({
-          ...prev,
-          [mediaKey]: {
-            name: exerciseName,
-            mediaUrl: dataUrl,
-            mediaType,
-            mediaZoom: existing?.mediaZoom || DEFAULT_MEDIA_ZOOM,
-          },
-        }));
-      } catch (e) {
-        console.error("Erreur enregistrement media:", e);
-        alert("❌ Erreur lors de l'enregistrement du fichier : " + e.message);
-      } finally {
-        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
-      }
-    };
-
-    if (isGif) {
-      // Les GIF ne peuvent pas passer par un <canvas> (l'animation serait
-      // perdue) : on les encode tels quels en base64, avec une limite de
-      // taille plus stricte que les images fixes puisqu'un GIF non
-      // compressé pèse vite lourd dans Firestore (limite 1 Mo/document).
-      const maxGifSize = 700 * 1024; // ~700 Ko max pour un GIF
-      if (file.size > maxGifSize) {
-        alert(
-          "⚠️ Ce GIF est trop volumineux (" +
-            Math.round(file.size / 1024) +
-            " Ko, max ~700 Ko). Essaie un GIF plus court/léger, ou utilise une image fixe (JPEG/PNG)."
-        );
-        return;
-      }
-      setUploadingMedia((prev) => ({ ...prev, [key]: true }));
-      const reader = new FileReader();
-      reader.onload = (event) => saveToLibrary(event.target.result, "gif");
-      reader.onerror = () => {
-        alert("❌ Erreur lors de la lecture du fichier");
-        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
-      };
-      reader.readAsDataURL(file);
-      return;
-    }
-
-    const maxOriginalSize = 15 * 1024 * 1024; // 15 Mo avant compression
-    if (file.size > maxOriginalSize) {
-      alert("Image trop volumineuse (max 15 Mo avant compression)");
-      return;
-    }
-
-    setUploadingMedia((prev) => ({ ...prev, [key]: true }));
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const maxDim = 800;
-        let { width, height } = img;
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else if (height >= width && height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // toDataURL (base64) car stocké dans Firestore, mais UNE SEULE fois
-        // par exercice grâce à la bibliothèque partagée ci-dessus.
-        const dataUrl = canvas.toDataURL("image/jpeg", 0.6);
-        saveToLibrary(dataUrl, "image");
-      };
-      img.onerror = () => {
-        alert("❌ Erreur lors du chargement de l'image");
-        setUploadingMedia((prev) => ({ ...prev, [key]: false }));
-      };
-      img.src = event.target.result;
-    };
-    reader.onerror = () => {
-      alert("❌ Erreur lors de la lecture du fichier");
-      setUploadingMedia((prev) => ({ ...prev, [key]: false }));
-    };
-    reader.readAsDataURL(file);
+    saveExerciseMedia(exerciseName, file, `${bIdx}-${eIdx}`);
   };
 
   const removeMedia = (bIdx, eIdx) => {
@@ -1988,8 +2067,76 @@ export default function Workout() {
             <p style={{ fontSize: 13, color: "#a8a199", marginTop: 0, marginBottom: 16 }}>
               Renommer un exercice met à jour toutes les séances (passées et
               futures) qui l'utilisent, ainsi que sa photo/gif partagé — en
-              une fois, sans rien dupliquer.
+              une fois, sans rien dupliquer. Tu peux aussi toujours en
+              ajouter directement en tapant le nom dans une séance.
             </p>
+
+            {/* Ajouter un nouvel exercice (avec ou sans photo tout de
+                suite) sans avoir à créer une séance. */}
+            <div
+              style={{
+                background: "#0d0c0a",
+                borderRadius: 8,
+                padding: 10,
+                marginBottom: 14,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <input
+                type="text"
+                placeholder="➕ Nom du nouvel exercice..."
+                value={newExerciseDraftName}
+                onChange={(e) => setNewExerciseDraftName(e.target.value)}
+                style={{
+                  padding: 10,
+                  borderRadius: 6,
+                  border: "1px solid #2a2620",
+                  background: "#151310",
+                  color: "#f3f0ea",
+                  boxSizing: "border-box",
+                }}
+              />
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <label
+                  style={{
+                    fontSize: 12,
+                    color: "#a8a199",
+                    padding: "6px 10px",
+                    background: "#151310",
+                    borderRadius: 6,
+                    border: "1px solid #2a2620",
+                    cursor: "pointer",
+                  }}
+                >
+                  📷 {newExerciseDraftFile ? newExerciseDraftFile.name : "Photo (optionnel)"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setNewExerciseDraftFile(e.target.files?.[0] || null)}
+                    style={{ display: "none" }}
+                  />
+                </label>
+                <button
+                  disabled={addingExercise}
+                  onClick={addNewExerciseName}
+                  style={{
+                    marginLeft: "auto",
+                    padding: "8px 16px",
+                    background: "#4fae7d",
+                    color: "white",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: addingExercise ? "wait" : "pointer",
+                    fontWeight: "bold",
+                    fontSize: 13,
+                  }}
+                >
+                  {addingExercise ? "…" : "➕ Ajouter"}
+                </button>
+              </div>
+            </div>
+
             <input
               type="text"
               placeholder="🔍 Rechercher un exercice..."
@@ -2075,24 +2222,111 @@ export default function Workout() {
                           justifyContent: "space-between",
                           alignItems: "center",
                           gap: 10,
+                          flexWrap: "wrap",
                         }}
                       >
-                        <span style={{ fontSize: 14 }}>{entry.name}</span>
-                        <button
-                          onClick={() => startRenameExercise(entry)}
-                          style={{
-                            padding: "6px 12px",
-                            background: "#2a2620",
-                            color: "#f3f0ea",
-                            border: "1px solid rgba(255,255,255,0.12)",
-                            borderRadius: 6,
-                            cursor: "pointer",
-                            fontSize: 13,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          ✏️ Renommer
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                          {entry.mediaUrl ? (
+                            <img
+                              src={entry.mediaUrl}
+                              alt=""
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 6,
+                                objectFit: "cover",
+                                flexShrink: 0,
+                              }}
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: 6,
+                                background: "#151310",
+                                flexShrink: 0,
+                              }}
+                            />
+                          )}
+                          <span
+                            style={{
+                              fontSize: 14,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {entry.name}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <label
+                            style={{
+                              padding: "6px 10px",
+                              background: "#2a2620",
+                              color: "#f3f0ea",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: 6,
+                              cursor: uploadingMedia[`catalog-${entry.key}`] ? "wait" : "pointer",
+                              fontSize: 13,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {uploadingMedia[`catalog-${entry.key}`]
+                              ? "…"
+                              : entry.mediaUrl
+                              ? "📷 Changer"
+                              : "📷 Ajouter photo"}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              disabled={uploadingMedia[`catalog-${entry.key}`]}
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) changeExerciseCatalogImage(entry, file);
+                                e.target.value = "";
+                              }}
+                              style={{ display: "none" }}
+                            />
+                          </label>
+                          <button
+                            onClick={() => startRenameExercise(entry)}
+                            style={{
+                              padding: "6px 10px",
+                              background: "#2a2620",
+                              color: "#f3f0ea",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              fontSize: 13,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            ✏️ Renommer
+                          </button>
+                          {(entry.mediaUrl || !entry.usedInSessions) && (
+                            <button
+                              onClick={() => deleteExerciseCatalogEntry(entry)}
+                              title={
+                                entry.mediaUrl
+                                  ? "Supprimer la photo"
+                                  : "Supprimer l'exercice de la liste"
+                              }
+                              style={{
+                                padding: "6px 10px",
+                                background: "#d9695a",
+                                color: "white",
+                                border: "none",
+                                borderRadius: 6,
+                                cursor: "pointer",
+                                fontSize: 13,
+                              }}
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

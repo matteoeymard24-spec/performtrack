@@ -1,9 +1,16 @@
 @echo off
 cd /d "%~dp0"
-echo === Envoi des modifications vers GitHub ===
-git add -A
-git commit -m "Mise a jour PerformTrack"
-git push
+echo ===================================
+echo   Envoi des changements vers GitHub
+echo ===================================
 echo.
-echo === Termine ! Vercel va redeployer automatiquement (1-2 min) ===
+
+git add .
+git commit -m "Mise a jour"
+git push
+
+echo.
+echo ===================================
+echo   Termine. Verifie le resultat au-dessus.
+echo ===================================
 pause
