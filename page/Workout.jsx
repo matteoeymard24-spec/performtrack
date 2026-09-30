@@ -114,13 +114,13 @@ export default function Workout() {
   const [workoutType, setWorkoutType] = useState("muscu");
 
   const [athletes, setAthletes] = useState([]);
-  // Filtre calendrier par athlète (admin) : quand renseigné, un agenda de la
-  // semaine en cours s'affiche au-dessus du calendrier mensuel, limité aux
-  // séances visibles par CET athlète (total / son groupe / groupes
-  // personnalisés dont il fait partie / ciblées individuellement sur lui).
-  // Le calendrier mensuel complet (tous groupes, tous athlètes) reste
-  // toujours affiché juste en dessous, inchangé.
+  // Filtres calendrier (admin) : filtrent le calendrier MENSUEL en place
+  // (pas de vue séparée) sur les séances visibles par un athlète OU par un
+  // groupe personnalisé donné. Mutuellement exclusifs — choisir l'un
+  // réinitialise l'autre, pour ne pas avoir un filtrage ambigu des deux à
+  // la fois. Laisser les deux vides redonne le calendrier complet.
   const [athleteFilterId, setAthleteFilterId] = useState("");
+  const [groupFilterId, setGroupFilterId] = useState("");
   const [blocks, setBlocks] = useState([
     {
       name: "Bloc A",
@@ -2256,10 +2256,33 @@ export default function Workout() {
     setShowForm(true);
   };
 
-  // Athlète actuellement sélectionné dans le filtre calendrier (null =
-  // aucun filtre, calendrier complet). Calculé une fois, réutilisé partout
-  // (grille mensuelle + panneau "Séances du ...") pour rester cohérent.
+  // Une séance n'est visible pour un groupe donné que si elle cible ce
+  // groupe précisément, ou "total" (visible par tout le monde).
+  const isEventVisibleToGroup = (evt, groupId) => {
+    if (!groupId) return true;
+    if (evt.group === "total") return true;
+    return evt.group === groupId;
+  };
+
+  // Ouvre le formulaire de création pré-rempli pour CE groupe.
+  const openCreateForGroup = (groupId, date) => {
+    resetForm();
+    setFormDate(date);
+    setGroup(groupId);
+    setShowForm(true);
+  };
+
+  // Filtre actif dans le calendrier (athlète OU groupe, mutuellement
+  // exclusifs — voir la déclaration des states). Calculé une fois, réutilisé
+  // partout (grille mensuelle + panneau "Séances du ...") pour rester
+  // cohérent entre ce que montre chaque jour et ce que montre le panneau.
   const filterAthlete = athletes.find((a) => a.id === athleteFilterId) || null;
+  const filterGroup = customGroups.find((g) => g.id === groupFilterId) || null;
+  const isEventVisibleToFilter = (evt) => {
+    if (filterAthlete) return isEventVisibleToAthlete(evt, filterAthlete);
+    if (filterGroup) return isEventVisibleToGroup(evt, filterGroup.id);
+    return true;
+  };
 
   /* ===================== CALENDRIER MENSUEL ===================== */
   const renderCalendar = () => {
@@ -2290,7 +2313,7 @@ export default function Workout() {
       const isToday = dateStr === todayStr;
       const isSelected = selectedDate === dateStr;
       const dayEvents = events.filter(
-        (e) => e.date === dateStr && isEventVisibleToAthlete(e, filterAthlete)
+        (e) => e.date === dateStr && isEventVisibleToFilter(e)
       );
       const isMobile = window.innerWidth <= 768;
 
@@ -2420,6 +2443,10 @@ export default function Workout() {
                 // calendrier est individualisée pour lui par défaut (le
                 // formulaire permet ensuite de viser son groupe à la place).
                 openCreateForAthlete(filterAthlete, date);
+              } else if (filterGroup) {
+                // Un filtre groupe est actif : la séance créée cible ce
+                // groupe par défaut.
+                openCreateForGroup(filterGroup.id, date);
               } else {
                 setShowForm(true);
                 setFormDate(date);
@@ -2436,7 +2463,11 @@ export default function Workout() {
               cursor: "pointer",
             }}
           >
-            {athleteFilterId ? "➕ Créer séance pour cet athlète" : "➕ Créer séance"}
+            {athleteFilterId
+              ? "➕ Créer séance pour cet athlète"
+              : groupFilterId
+              ? "➕ Créer séance pour ce groupe"
+              : "➕ Créer séance"}
           </button>
           <button
             onClick={() => setShowDuplicateModal(true)}
@@ -5598,12 +5629,13 @@ export default function Workout() {
         </div>
       )}
 
-      {/* ============ FILTRE PAR ATHLÈTE (ADMIN) ============
-          Filtre le calendrier MENSUEL lui-même (pas une vue séparée) : le
+      {/* ============ FILTRES PAR ATHLÈTE / PAR GROUPE (ADMIN) ============
+          Filtrent le calendrier MENSUEL lui-même (pas une vue séparée) : le
           mois entier reste affiché, seules les séances visibles par
-          l'athlète choisi sont montrées dans chaque jour. "Tous les
-          athlètes" redonne instantanément le calendrier complet (tous
-          groupes, tous athlètes) — rien n'est jamais perdu. */}
+          l'athlète ou le groupe choisi sont montrées dans chaque jour.
+          Mutuellement exclusifs. "Tous les athlètes" / "Tous les groupes"
+          redonnent instantanément le calendrier complet — rien n'est jamais
+          perdu. */}
       {isAdminLike && !showForm && !selectedSession && (
         <div
           style={{
@@ -5619,6 +5651,7 @@ export default function Workout() {
               alignItems: "center",
               gap: 10,
               flexWrap: "wrap",
+              marginBottom: 10,
             }}
           >
             <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>
@@ -5626,7 +5659,10 @@ export default function Workout() {
             </label>
             <select
               value={athleteFilterId}
-              onChange={(e) => setAthleteFilterId(e.target.value)}
+              onChange={(e) => {
+                setAthleteFilterId(e.target.value);
+                if (e.target.value) setGroupFilterId("");
+              }}
               style={{
                 flex: "1 1 220px",
                 padding: 10,
@@ -5637,7 +5673,7 @@ export default function Workout() {
                 fontSize: 14,
               }}
             >
-              <option value="">Tous les athlètes (calendrier complet)</option>
+              <option value="">Tous les athlètes</option>
               {athletes.map((a) => (
                 <option key={a.id} value={a.id}>
                   {getAthleteDisplayName(a)}
@@ -5658,16 +5694,71 @@ export default function Workout() {
                   whiteSpace: "nowrap",
                 }}
               >
-                ✕ Voir tout le calendrier
+                ✕
               </button>
             )}
           </div>
-          {athleteFilterId && (
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>
+              🏷️ Filtrer par groupe
+            </label>
+            <select
+              value={groupFilterId}
+              onChange={(e) => {
+                setGroupFilterId(e.target.value);
+                if (e.target.value) setAthleteFilterId("");
+              }}
+              style={{
+                flex: "1 1 220px",
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "#0d0c0a",
+                color: "#f3f0ea",
+                fontSize: 14,
+              }}
+            >
+              <option value="">Tous les groupes</option>
+              {customGroups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+            {groupFilterId && (
+              <button
+                onClick={() => setGroupFilterId("")}
+                style={{
+                  padding: "8px 14px",
+                  background: "rgba(255,255,255,0.1)",
+                  color: "white",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {(athleteFilterId || groupFilterId) && (
             <p style={{ fontSize: 12, color: "#6f685f", margin: "10px 0 0 0" }}>
-              💡 Le calendrier ci-dessous n'affiche que les séances vues par cet
-              athlète. Une séance créée depuis ce filtre est individualisée pour
-              lui par défaut — change le groupe dans le formulaire si tu préfères
-              viser tout son groupe.
+              💡 Le calendrier ci-dessous n'affiche que les séances vues par{" "}
+              {filterAthlete ? "cet athlète" : "ce groupe"}. Une séance créée
+              depuis ce filtre cible{" "}
+              {filterAthlete ? "cet athlète seul" : "ce groupe"} par défaut —
+              change le ciblage dans le formulaire si besoin.
             </p>
           )}
         </div>
@@ -5838,18 +5929,20 @@ export default function Workout() {
                 )}
               </div>
               {events.filter(
-                (e) => e.date === selectedDate && isEventVisibleToAthlete(e, filterAthlete)
+                (e) => e.date === selectedDate && isEventVisibleToFilter(e)
               ).length === 0 ? (
                 <div style={{ color: "#a8a199", fontSize: 14 }}>
                   {filterAthlete
                     ? "Aucune séance ce jour pour cet athlète"
+                    : filterGroup
+                    ? "Aucune séance ce jour pour ce groupe"
                     : "Aucune séance ce jour"}
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
                   {events
                     .filter(
-                      (e) => e.date === selectedDate && isEventVisibleToAthlete(e, filterAthlete)
+                      (e) => e.date === selectedDate && isEventVisibleToFilter(e)
                     )
                     .map((session) => (
                       <div
