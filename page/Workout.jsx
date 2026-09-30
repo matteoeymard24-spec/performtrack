@@ -114,6 +114,13 @@ export default function Workout() {
   const [workoutType, setWorkoutType] = useState("muscu");
 
   const [athletes, setAthletes] = useState([]);
+  // Filtre calendrier par athlète (admin) : quand renseigné, un agenda de la
+  // semaine en cours s'affiche au-dessus du calendrier mensuel, limité aux
+  // séances visibles par CET athlète (total / son groupe / groupes
+  // personnalisés dont il fait partie / ciblées individuellement sur lui).
+  // Le calendrier mensuel complet (tous groupes, tous athlètes) reste
+  // toujours affiché juste en dessous, inchangé.
+  const [athleteFilterId, setAthleteFilterId] = useState("");
   const [blocks, setBlocks] = useState([
     {
       name: "Bloc A",
@@ -2213,6 +2220,57 @@ export default function Workout() {
     if (type === "sprint") return "#d9695a";
     if (type === "endurance") return "#4fae7d";
     return "#9b59b6";
+  };
+
+  /* ===================== FILTRE CALENDRIER PAR ATHLÈTE (ADMIN) =====================
+     Réutilise exactement la même logique de visibilité que le filtrage
+     côté athlète dans fetchSessions (total / son groupe / groupes
+     personnalisés / ciblage individuel "individuel"+targetUserId), pour que
+     "ce que l'admin voit en filtrant sur un athlète" corresponde exactement
+     à "ce que cet athlète voit lui-même". */
+  const getAthleteDisplayName = (a) =>
+    a.firstName && a.lastName
+      ? `${a.firstName} ${a.lastName}`
+      : a.displayName || a.email || "Athlète";
+
+  const isEventVisibleToAthlete = (evt, athlete) => {
+    if (!athlete) return true;
+    if (evt.group === "total") return true;
+    if (evt.targetUserId === athlete.id) return true;
+    if (evt.group === "moi") return evt.createdBy === athlete.id;
+    if (athlete.group && evt.group === athlete.group) return true;
+    const memberGroupIds = customGroups
+      .filter((g) => (g.athleteIds || []).includes(athlete.id))
+      .map((g) => g.id);
+    return memberGroupIds.includes(evt.group);
+  };
+
+  // Lundi -> dimanche de la semaine en cours (pas liée à la navigation du
+  // calendrier mensuel, qui reste indépendante).
+  const getCurrentWeekDates = () => {
+    const now = new Date();
+    const dow = now.getDay() === 0 ? 6 : now.getDay() - 1;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - dow);
+    monday.setHours(12, 0, 0, 0);
+    const days = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      days.push(d);
+    }
+    return days;
+  };
+
+  // Ouvre le formulaire de création pré-rempli pour CET athlète (ciblage
+  // individuel par défaut) — l'admin peut toujours changer le groupe dans le
+  // formulaire s'il préfère cibler tout son groupe plutôt que lui seul.
+  const openCreateForAthlete = (athlete, date) => {
+    resetForm();
+    setFormDate(date);
+    setGroup("individuel");
+    setTargetUserId(athlete.id);
+    setShowForm(true);
   };
 
   /* ===================== CALENDRIER MENSUEL ===================== */
@@ -5539,6 +5597,168 @@ export default function Workout() {
               })}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ============ FILTRE PAR ATHLÈTE + AGENDA DE LA SEMAINE (ADMIN) ============ */}
+      {isAdminLike && !showForm && !selectedSession && (
+        <div
+          style={{
+            background: "#151310",
+            padding: window.innerWidth <= 768 ? "12px" : "16px 18px",
+            borderRadius: 8,
+            marginBottom: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+              marginBottom: athleteFilterId ? 14 : 0,
+            }}
+          >
+            <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>
+              👤 Filtrer par athlète
+            </label>
+            <select
+              value={athleteFilterId}
+              onChange={(e) => setAthleteFilterId(e.target.value)}
+              style={{
+                flex: "1 1 220px",
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid rgba(255,255,255,0.16)",
+                background: "#0d0c0a",
+                color: "#f3f0ea",
+                fontSize: 14,
+              }}
+            >
+              <option value="">Tous les athlètes (calendrier complet)</option>
+              {athletes.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {getAthleteDisplayName(a)}
+                </option>
+              ))}
+            </select>
+            {athleteFilterId && (
+              <button
+                onClick={() => setAthleteFilterId("")}
+                style={{
+                  padding: "8px 14px",
+                  background: "rgba(255,255,255,0.1)",
+                  color: "white",
+                  border: "1px solid rgba(255,255,255,0.2)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ✕ Voir tout le calendrier
+              </button>
+            )}
+          </div>
+
+          {athleteFilterId &&
+            (() => {
+              const athlete = athletes.find((a) => a.id === athleteFilterId);
+              if (!athlete) return null;
+              const weekDates = getCurrentWeekDates();
+              return (
+                <div>
+                  <h4 style={{ margin: "0 0 10px 0", fontSize: 15, color: "#a8a199" }}>
+                    📅 Cette semaine pour {getAthleteDisplayName(athlete)}
+                  </h4>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: window.innerWidth <= 768 ? "1fr" : "repeat(7, 1fr)",
+                      gap: 8,
+                    }}
+                  >
+                    {weekDates.map((d) => {
+                      const dateStr = getLocalDateStr(d);
+                      const todayStr = getLocalDateStr(new Date());
+                      const dayEvents = events.filter(
+                        (e) => e.date === dateStr && isEventVisibleToAthlete(e, athlete)
+                      );
+                      return (
+                        <div
+                          key={dateStr}
+                          style={{
+                            background: dateStr === todayStr ? "rgba(79,174,125,0.14)" : "#1a1815",
+                            border:
+                              dateStr === todayStr
+                                ? "2px solid #4fae7d"
+                                : "1px solid rgba(255,255,255,0.16)",
+                            borderRadius: 8,
+                            padding: 10,
+                            minHeight: 90,
+                            display: "flex",
+                            flexDirection: "column",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6, textTransform: "capitalize" }}>
+                            {d.toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "numeric" })}
+                          </div>
+                          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
+                            {dayEvents.length === 0 && (
+                              <div style={{ fontSize: 11, color: "#6f685f" }}>—</div>
+                            )}
+                            {dayEvents.map((evt) => (
+                              <div
+                                key={evt.id}
+                                onClick={() => {
+                                  setSelectedDate(dateStr);
+                                  setSelectedSession(evt);
+                                }}
+                                style={{
+                                  background: getColor(evt),
+                                  borderRadius: 4,
+                                  padding: "3px 6px",
+                                  fontSize: 11,
+                                  fontWeight: "bold",
+                                  color: "#f3f0ea",
+                                  cursor: "pointer",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {evt.title}
+                              </div>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => openCreateForAthlete(athlete, d)}
+                            style={{
+                              marginTop: 6,
+                              padding: "4px 0",
+                              background: "rgba(224,161,61,0.14)",
+                              color: "#e0a13d",
+                              border: "1px dashed rgba(224,161,61,0.4)",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              fontSize: 11,
+                              fontWeight: "bold",
+                            }}
+                          >
+                            + Séance
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p style={{ fontSize: 12, color: "#6f685f", margin: "10px 0 0 0" }}>
+                    💡 Une séance créée ici est individualisée pour {getAthleteDisplayName(athlete)}{" "}
+                    par défaut — tu peux changer le groupe ciblé dans le formulaire si tu préfères
+                    viser tout son groupe.
+                  </p>
+                </div>
+              );
+            })()}
         </div>
       )}
 
