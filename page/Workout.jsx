@@ -682,7 +682,13 @@ export default function Workout() {
   };
 
   const adjustRMFromFeedback = async (feedback, session) => {
-    if (!currentUser || !session.blocks || session.type !== "muscu") return;
+    // Comme ailleurs dans ce fichier (workoutType par défaut "muscu"), une
+    // séance sans champ "type" explicite est une séance muscu : un test
+    // strict "session.type !== 'muscu'" excluait à tort TOUTES ces séances
+    // (type undefined) et empêchait silencieusement toute création/mise à
+    // jour de RM, même quand les séries saisies respectaient bien le filtre
+    // ≤6 répétitions / RPE≥8.
+    if (!currentUser || !session.blocks || (session.type || "muscu") !== "muscu") return;
     try {
       for (const [key, fb] of Object.entries(feedback)) {
         const [bIdx, eIdx] = key.split("-").map(Number);

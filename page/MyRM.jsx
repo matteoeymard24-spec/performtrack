@@ -1482,13 +1482,19 @@ export default function MyRM() {
         >
           <li>
             Le <strong>1RM théorique</strong> est calculé avec la formule
-            d'Epley
+            d'Epley, à partir des séries proches du maximum (≤6 répétitions,
+            RPE≥8)
           </li>
           <li>
-            Le nom de l'exercice doit être <strong>identique</strong> à celui
-            dans les séances
+            Pas besoin d'écrire le nom de l'exercice au caractère près
+            (majuscules/accents ignorés) — il doit juste désigner le même
+            exercice que dans tes séances
           </li>
-          <li>Tes RM s'ajustent automatiquement selon tes feedbacks RPE</li>
+          <li>
+            Tes RM se mettent à jour <strong>automatiquement</strong> après
+            chaque séance validée, uniquement sur les séries proches du max
+            (échauffement et poids du corps exclus)
+          </li>
           <li>
             Tu peux modifier ton RM réel à tout moment si tu fais un vrai test
           </li>
