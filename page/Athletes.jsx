@@ -105,7 +105,13 @@ export default function Athletes() {
     return <Navigate to="/" replace />;
   }
 
-  const updateRole = async (id, role) => {
+  const updateRole = async (id, role, email) => {
+    // Garde-fou : le créateur de l'app ne peut jamais être rétrogradé en
+    // athlète, même si ce bouton venait à être ré-affiché par erreur.
+    if (role === "athlete" && (email || "").toLowerCase() === "matteo.eymard24@gmail.com") {
+      alert("Ce compte est le créateur de l'application, il ne peut pas être rétrogradé en athlète.");
+      return;
+    }
     try {
       await updateDoc(doc(db, "users", id), { role });
       setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, role } : u)));
@@ -151,7 +157,6 @@ export default function Athletes() {
     setEditForm({
       weight: user.weight || "",
       height: user.height || "",
-      group: user.group || "avant",
     });
   };
 
@@ -160,7 +165,6 @@ export default function Athletes() {
       await updateDoc(doc(db, "users", userId), {
         weight: editForm.weight ? Number(editForm.weight) : null,
         height: editForm.height ? Number(editForm.height) : null,
-        group: editForm.group,
         updatedAt: new Date().toISOString(),
       });
 
@@ -171,7 +175,6 @@ export default function Athletes() {
                 ...u,
                 weight: editForm.weight ? Number(editForm.weight) : null,
                 height: editForm.height ? Number(editForm.height) : null,
-                group: editForm.group,
               }
             : u
         )
@@ -547,24 +550,6 @@ export default function Athletes() {
                     />
                   </div>
 
-                  <select
-                    value={editForm.group}
-                    onChange={(e) =>
-                      setEditForm({ ...editForm, group: e.target.value })
-                    }
-                    style={{
-                      padding: 10,
-                      borderRadius: 8,
-                      border: "1px solid rgba(255, 255, 255, 0.1)",
-                      background: "#151310",
-                      color: "white",
-                    }}
-                  >
-                    <option value="avant">Avant</option>
-                    <option value="trois quart">Trois Quart</option>
-                    <option value="arrière">Arrière</option>
-                  </select>
-
                   <div style={{ display: "flex", gap: 10 }}>
                     <button
                       onClick={() => saveEdit(user.id)}
@@ -625,20 +610,6 @@ export default function Athletes() {
                         {user.height ? `${user.height} cm` : "—"}
                       </div>
                     </div>
-                    <div>
-                      <div style={{ color: "#a8a199", fontSize: 12, marginBottom: 3 }}>
-                        Groupe
-                      </div>
-                      <div style={{ fontSize: 16, fontWeight: "600" }}>
-                        {user.group === "avant"
-                          ? "Avant"
-                          : user.group === "trois quart"
-                          ? "Trois Quart"
-                          : user.group === "arrière"
-                          ? "Arrière"
-                          : user.group || "—"}
-                      </div>
-                    </div>
                   </div>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -668,33 +639,42 @@ export default function Athletes() {
                       ✏️ Modifier
                     </button>
 
-                    <button
-                      onClick={() =>
-                        updateRole(user.id, user.role === "admin" ? "athlete" : "admin")
-                      }
-                      style={{
-                        flex: "1 1 120px",
-                        padding: 12,
-                        background: "#2a2620",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 10,
-                        cursor: "pointer",
-                        fontWeight: "600",
-                        boxShadow: "0 4px 15px rgba(0, 0, 0, 0.35)",
-                        transition: "all 0.3s ease",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.target.style.transform = "translateY(-2px)";
-                        e.target.style.boxShadow = "0 6px 20px rgba(0, 0, 0, 0.45)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.target.style.transform = "translateY(0)";
-                        e.target.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.35)";
-                      }}
-                    >
-                      {user.role === "admin" ? "👤 → Athlete" : "🛡️ → Admin"}
-                    </button>
+                    {!(
+                      user.role === "admin" &&
+                      (user.email || "").toLowerCase() === "matteo.eymard24@gmail.com"
+                    ) && (
+                      <button
+                        onClick={() =>
+                          updateRole(
+                            user.id,
+                            user.role === "admin" ? "athlete" : "admin",
+                            user.email
+                          )
+                        }
+                        style={{
+                          flex: "1 1 120px",
+                          padding: 12,
+                          background: "#2a2620",
+                          color: "white",
+                          border: "none",
+                          borderRadius: 10,
+                          cursor: "pointer",
+                          fontWeight: "600",
+                          boxShadow: "0 4px 15px rgba(0, 0, 0, 0.35)",
+                          transition: "all 0.3s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.target.style.transform = "translateY(-2px)";
+                          e.target.style.boxShadow = "0 6px 20px rgba(0, 0, 0, 0.45)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.transform = "translateY(0)";
+                          e.target.style.boxShadow = "0 4px 15px rgba(0, 0, 0, 0.35)";
+                        }}
+                      >
+                        {user.role === "admin" ? "👤 → Athlete" : "🛡️ → Admin"}
+                      </button>
+                    )}
 
                     {isSuperAdmin &&
                       (user.email || "").toLowerCase() !==
