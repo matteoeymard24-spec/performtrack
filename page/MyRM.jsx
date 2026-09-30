@@ -430,13 +430,44 @@ export default function MyRM() {
         margin: "0 auto",
       }}
     >
-      <h2 style={{ fontSize: 24, marginBottom: 10 }}>💪 Mes RM, VMA & CMJ</h2>
-      <p style={{ color: "#a8a199", marginBottom: 30, fontSize: 14 }}>
-        Tes charges maximales se mettent à jour automatiquement après chaque
-        séance (à partir des séries proches du max : ≤6 reps, RPE≥8 — hors
-        échauffement et poids du corps), mais tu peux aussi les ajouter ou
-        les corriger toi-même ici, comme ta VMA et ton CMJ.
-      </p>
+      <h2 style={{ fontSize: 24, marginBottom: 20 }}>💪 Mes RM, VMA & CMJ</h2>
+
+      {/* Info */}
+      <div
+        style={{
+          marginBottom: 30,
+          padding: 20,
+          background: "rgba(217,164,65,0.14)",
+          borderRadius: 10,
+          border: "2px solid #b8862e",
+        }}
+      >
+        <h4 style={{ marginTop: 0, color: "#d9a441", fontSize: 16 }}>
+          💡 Comment ça fonctionne ?
+        </h4>
+        <ul
+          style={{ color: "#f0c98a", lineHeight: 1.8, margin: 0, fontSize: 14 }}
+        >
+          <li>
+            Le <strong>1RM théorique</strong> est calculé avec la formule
+            d'Epley, à partir des séries proches du maximum (≤6 répétitions,
+            RPE≥8)
+          </li>
+          <li>
+            Tes RM se mettent à jour <strong>automatiquement</strong> après
+            chaque séance validée, uniquement sur les séries proches du max
+            (échauffement et poids du corps exclus)
+          </li>
+          <li>
+            Tu peux modifier ton RM réel à tout moment si tu fais un vrai test
+          </li>
+          <li>Les ajustements automatiques sont signalés par ⚡</li>
+          <li>
+            La <strong>VMA</strong> est utilisée pour calculer les séances
+            d'endurance
+          </li>
+        </ul>
+      </div>
 
       {/* ==================== VMA CARD ==================== */}
       <div
@@ -1463,48 +1494,6 @@ export default function MyRM() {
           </div>
         )
       )}
-
-      {/* Info */}
-      <div
-        style={{
-          marginTop: 30,
-          padding: 20,
-          background: "rgba(217,164,65,0.14)",
-          borderRadius: 10,
-          border: "2px solid #b8862e",
-        }}
-      >
-        <h4 style={{ marginTop: 0, color: "#d9a441", fontSize: 16 }}>
-          💡 Comment ça fonctionne ?
-        </h4>
-        <ul
-          style={{ color: "#f0c98a", lineHeight: 1.8, margin: 0, fontSize: 14 }}
-        >
-          <li>
-            Le <strong>1RM théorique</strong> est calculé avec la formule
-            d'Epley, à partir des séries proches du maximum (≤6 répétitions,
-            RPE≥8)
-          </li>
-          <li>
-            Pas besoin d'écrire le nom de l'exercice au caractère près
-            (majuscules/accents ignorés) — il doit juste désigner le même
-            exercice que dans tes séances
-          </li>
-          <li>
-            Tes RM se mettent à jour <strong>automatiquement</strong> après
-            chaque séance validée, uniquement sur les séries proches du max
-            (échauffement et poids du corps exclus)
-          </li>
-          <li>
-            Tu peux modifier ton RM réel à tout moment si tu fais un vrai test
-          </li>
-          <li>Les ajustements automatiques sont signalés par ⚡</li>
-          <li>
-            La <strong>VMA</strong> est utilisée pour calculer les séances
-            d'endurance
-          </li>
-        </ul>
-      </div>
     </div>
   );
 }
