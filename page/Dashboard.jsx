@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import {
@@ -54,6 +55,16 @@ const getAthleteGroupIds = (athleteId, customGroups) =>
 
 export default function Dashboard() {
   const { currentUser, userRole, userProfile, isSuperAdmin } = useAuth();
+  const navigate = useNavigate();
+
+  // Ouvre la séance du jour dans Workout, en lecture ("voir") ou en la
+  // démarrant directement ("autostart") — évite à l'athlète de devoir
+  // rechercher lui-même sa séance dans le calendrier de la page Séances.
+  const goToWorkout = (sessionId, autostart) => {
+    const params = new URLSearchParams({ sessionId });
+    if (autostart) params.set("autostart", "1");
+    navigate(`/workout?${params.toString()}`);
+  };
 
   const [athletes, setAthletes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1168,6 +1179,7 @@ export default function Dashboard() {
                     color: "#4fae7d",
                     textAlign: "center",
                     fontWeight: "bold",
+                    marginBottom: 10,
                   }}
                 >
                   ✅ Séance validée
@@ -1181,28 +1193,51 @@ export default function Dashboard() {
                     color: "#d9a441",
                     textAlign: "center",
                     fontWeight: "bold",
+                    marginBottom: 10,
                   }}
                 >
                   ⏳ En cours
                 </div>
               ) : (
-                <>
-                  <div
-                    style={{
-                      padding: 12,
-                      background: "rgba(217,105,90,0.14)",
-                      borderRadius: 8,
-                      color: "#d9695a",
-                      textAlign: "center",
-                      marginBottom: 10,
-                    }}
-                  >
-                    ❌ Non démarrée
-                  </div>
+                <div
+                  style={{
+                    padding: 12,
+                    background: "rgba(217,105,90,0.14)",
+                    borderRadius: 8,
+                    color: "#d9695a",
+                    textAlign: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  ❌ Non démarrée
+                </div>
+              )}
+              {/* Deux actions toujours disponibles : voir la séance en entier
+                  sans rien démarrer, ou la démarrer/reprendre directement —
+                  sans avoir à aller la chercher dans le calendrier de la
+                  page Séances. */}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => goToWorkout(todayWorkout.id, false)}
+                  style={{
+                    flex: 1,
+                    padding: 12,
+                    background: "#2a2620",
+                    color: "#f3f0ea",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    fontSize: 14,
+                  }}
+                >
+                  👁️ Voir la séance
+                </button>
+                {!isWorkoutCompleted(todayWorkout) && (
                   <button
-                    onClick={() => (window.location.href = "/workout")}
+                    onClick={() => goToWorkout(todayWorkout.id, true)}
                     style={{
-                      width: "100%",
+                      flex: 1,
                       padding: 12,
                       background: "#e0a13d",
                       color: "#1a1306",
@@ -1210,12 +1245,15 @@ export default function Dashboard() {
                       borderRadius: 8,
                       cursor: "pointer",
                       fontWeight: "bold",
+                      fontSize: 14,
                     }}
                   >
-                    🏋️ Commencer la séance
+                    {isWorkoutInProgress(todayWorkout)
+                      ? "▶️ Reprendre"
+                      : "▶️ Démarrer"}
                   </button>
-                </>
-              )}
+                )}
+              </div>
             </div>
           ) : (
             <div style={{ textAlign: "center", padding: 20, color: "#a8a199" }}>

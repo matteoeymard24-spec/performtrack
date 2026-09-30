@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import {
@@ -36,6 +37,31 @@ const normalizeExerciseName = (name) => {
     .replace(/\s+/g, " ");                  // normalise espaces multiples en un seul
 };
 
+// Harmonise UNIQUEMENT la casse d'un nom d'exercice (une majuscule à
+// chaque mot/segment) — jamais l'orthographe : les noms sont un mélange de
+// français ("Développé couché") et d'anglais ("Hip Thrust", "Nordic Curl"),
+// et une correction automatique risquerait de "corriger" un terme anglais
+// correct en le traitant comme une faute de français (ou l'inverse). La
+// correction orthographique reste volontairement manuelle, via le
+// gestionnaire de noms d'exercices — c'est le coach qui sait quels termes
+// sont volontairement en anglais.
+const formatExerciseDisplayName = (name) => {
+  if (!name) return name;
+  return name
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map((word) =>
+      word
+        .split("-")
+        .map((part) =>
+          part.length === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+        )
+        .join("-")
+    )
+    .join(" ");
+};
+
 // Cadre fixe d'affichage des photos/gifs de démonstration + zoom réglable
 const MEDIA_FRAME_HEIGHT = 220;
 const DEFAULT_MEDIA_ZOOM = 100; // en %
@@ -43,7 +69,8 @@ const MIN_MEDIA_ZOOM = 40;
 const MAX_MEDIA_ZOOM = 250;
 
 export default function Workout() {
-  const { currentUser, userRole, userGroup } = useAuth();
+  const { currentUser, userRole, userGroup, isSuperAdmin } = useAuth();
+  const isAdminLike = userRole === "admin" || isSuperAdmin;
 
   const [events, setEvents] = useState([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -186,6 +213,27 @@ export default function Workout() {
   useEffect(() => {
     fetchSessions();
   }, [currentUser, userRole, userGroup, customGroups]);
+
+  /* ===================== OUVERTURE DIRECTE DEPUIS LE DASHBOARD =====================
+     Le Dashboard peut envoyer ici avec ?sessionId=xxx (et éventuellement
+     &autostart=1) pour ouvrir directement la séance du jour en vue complète,
+     sans que l'athlète ait à la rechercher dans le calendrier. */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autoOpenedSessionRef = useRef(false);
+
+  useEffect(() => {
+    if (autoOpenedSessionRef.current) return;
+    const targetId = searchParams.get("sessionId");
+    if (!targetId || events.length === 0) return;
+    const target = events.find((e) => e.id === targetId);
+    if (!target) return;
+    autoOpenedSessionRef.current = true;
+    setSelectedSession(target);
+    if (searchParams.get("autostart") === "1") {
+      startSession(target);
+    }
+    setSearchParams({}, { replace: true });
+  }, [events, searchParams]);
 
   /* ===================== GROUPES PERSONNALISÉS : chargement ===================== */
   const fetchGroupsList = async () => {
@@ -1240,21 +1288,38 @@ export default function Workout() {
      un palier gratuit.) */
   const [exerciseNames, setExerciseNames] = useState({});
   const [exerciseMediaLibrary, setExerciseMediaLibrary] = useState({});
+  const [mediaLibraryLoaded, setMediaLibraryLoaded] = useState(false);
+  const [legacyExerciseMedia, setLegacyExerciseMedia] = useState({});
   const [openSuggestFor, setOpenSuggestFor] = useState(null);
+  const migratedMediaKeysRef = useRef(new Set());
 
   useEffect(() => {
-    const lib = {};
+    const names = {};
+    // Anciennes séances (créées avant le passage à la bibliothèque
+    // partagée) : leur image était enregistrée directement sur l'exercice
+    // (ex.mediaUrl). On les repère ici pour pouvoir (a) les afficher quand
+    // même tout de suite, et (b) les migrer une fois vers "exerciseMedia".
+    const legacy = {};
     events.forEach((w) => {
       (w.blocks || []).forEach((block) => {
         (block.exercises || []).forEach((ex) => {
           if (!ex.name) return;
           const key = normalizeExerciseName(ex.name);
           if (!key) return;
-          lib[key] = { name: ex.name };
+          names[key] = { name: ex.name };
+          if (ex.mediaUrl && !legacy[key]) {
+            legacy[key] = {
+              name: ex.name,
+              mediaUrl: ex.mediaUrl,
+              mediaType: ex.mediaType || "image",
+              mediaZoom: ex.mediaZoom || DEFAULT_MEDIA_ZOOM,
+            };
+          }
         });
       });
     });
-    setExerciseNames(lib);
+    setExerciseNames(names);
+    setLegacyExerciseMedia(legacy);
   }, [events]);
 
   const loadExerciseMediaLibrary = async () => {
@@ -1267,6 +1332,8 @@ export default function Workout() {
       setExerciseMediaLibrary(lib);
     } catch (e) {
       console.error("Erreur chargement bibliothèque média des exercices:", e);
+    } finally {
+      setMediaLibraryLoaded(true);
     }
   };
 
@@ -1274,11 +1341,53 @@ export default function Workout() {
     loadExerciseMediaLibrary();
   }, []);
 
-  // Résout l'image partagée d'un exercice par son nom (jamais stockée dans
-  // la séance elle-même).
-  const getExerciseMedia = (exerciseName) => {
-    const key = normalizeExerciseName(exerciseName);
-    return key ? exerciseMediaLibrary[key] || null : null;
+  // Migration ponctuelle : la première fois qu'un exercice avec une image
+  // "ancien format" (stockée directement sur la séance) est rencontré et
+  // qu'il n'a pas encore de fiche dans "exerciseMedia", on la crée — une
+  // seule fois par exercice, jamais recopiée ensuite. Seul le coach a le
+  // droit d'écrire dans "exerciseMedia" (règles Firestore), donc cette
+  // migration ne se déclenche que pour lui.
+  useEffect(() => {
+    if (!isAdminLike || !mediaLibraryLoaded) return;
+    Object.entries(legacyExerciseMedia).forEach(([key, entry]) => {
+      if (exerciseMediaLibrary[key] || migratedMediaKeysRef.current.has(key)) return;
+      migratedMediaKeysRef.current.add(key);
+      setDoc(doc(db, "exerciseMedia", key), {
+        name: entry.name,
+        mediaUrl: entry.mediaUrl,
+        mediaType: entry.mediaType,
+        mediaZoom: entry.mediaZoom,
+        updatedAt: serverTimestamp(),
+      })
+        .then(() => {
+          setExerciseMediaLibrary((prev) => ({ ...prev, [key]: entry }));
+        })
+        .catch((e) => {
+          console.error("Erreur migration media exercice:", key, e);
+          migratedMediaKeysRef.current.delete(key);
+        });
+    });
+  }, [isAdminLike, mediaLibraryLoaded, legacyExerciseMedia, exerciseMediaLibrary]);
+
+  // Résout l'image d'un exercice par son nom : d'abord dans la bibliothèque
+  // partagée "exerciseMedia" (cas normal), sinon en repli sur l'ancien
+  // champ ex.mediaUrl s'il existe encore sur cette séance précise (le temps
+  // que la migration ci-dessus passe, ou pour un athlète qui n'a pas le
+  // droit d'écrire dans "exerciseMedia" mais peut toujours lire l'ancien
+  // champ sur sa propre séance).
+  const getExerciseMedia = (ex) => {
+    if (!ex) return null;
+    const key = normalizeExerciseName(ex.name);
+    const shared = key ? exerciseMediaLibrary[key] : null;
+    if (shared && shared.mediaUrl) return shared;
+    if (ex.mediaUrl) {
+      return {
+        mediaUrl: ex.mediaUrl,
+        mediaType: ex.mediaType || "image",
+        mediaZoom: ex.mediaZoom || DEFAULT_MEDIA_ZOOM,
+      };
+    }
+    return null;
   };
 
   const getExerciseSuggestions = (typed) => {
@@ -1300,8 +1409,117 @@ export default function Workout() {
   // l'image associée (s'il y en a une) s'affiche automatiquement via la
   // bibliothèque partagée, sans jamais être recopiée dans cette séance.
   const selectExerciseFromLibrary = (bIdx, eIdx, entry) => {
-    updateExercise(bIdx, eIdx, "name", entry.name);
+    updateExercise(bIdx, eIdx, "name", formatExerciseDisplayName(entry.name));
     setOpenSuggestFor(null);
+  };
+
+  /* ===================== GESTIONNAIRE DE NOMS D'EXERCICES (casse + orthographe) =====================
+     Renommer un exercice ici le met à jour PARTOUT d'un coup : dans toutes
+     les séances (déjà chargées) qui l'utilisent, et dans sa fiche média
+     partagée — jamais un renommage manuel séance par séance. La correction
+     orthographique reste volontairement manuelle (voir formatExerciseDisplayName
+     plus haut) : le coach seul sait quels noms sont volontairement en
+     anglais ("Hip Thrust") et lesquels sont de vraies fautes. */
+  const [showExerciseNameManager, setShowExerciseNameManager] = useState(false);
+  const [exerciseNameFilter, setExerciseNameFilter] = useState("");
+  const [renamingKey, setRenamingKey] = useState(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+
+  const getExerciseNameEntries = () => {
+    const merged = {};
+    Object.entries(exerciseNames).forEach(([key, v]) => {
+      merged[key] = v.name;
+    });
+    Object.entries(exerciseMediaLibrary).forEach(([key, v]) => {
+      merged[key] = v.name;
+    });
+    return Object.entries(merged)
+      .map(([key, name]) => ({ key, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  };
+
+  const startRenameExercise = (entry) => {
+    setRenamingKey(entry.key);
+    setRenameDraft(entry.name);
+  };
+
+  const cancelRenameExercise = () => {
+    setRenamingKey(null);
+    setRenameDraft("");
+  };
+
+  const confirmRenameExercise = async (oldKey) => {
+    const newName = renameDraft.trim();
+    if (!newName) {
+      alert("Le nom ne peut pas être vide");
+      return;
+    }
+    const newKey = normalizeExerciseName(newName);
+    const oldName =
+      exerciseNames[oldKey]?.name || exerciseMediaLibrary[oldKey]?.name || oldKey;
+    if (newName === oldName) {
+      cancelRenameExercise();
+      return;
+    }
+    if (
+      !window.confirm(
+        `Renommer "${oldName}" en "${newName}" ?\n\nÇa mettra à jour TOUTES les séances (passées et futures) qui utilisent ce nom, ainsi que sa photo/gif partagé.`
+      )
+    ) {
+      return;
+    }
+    setRenameBusy(true);
+    try {
+      // 1) Met à jour toutes les séances déjà chargées dont un exercice
+      // correspond à l'ancien nom. Firestore ne permet pas de modifier un
+      // seul champ imbriqué dans un tableau d'objets : on réécrit le
+      // tableau "blocks" en entier pour chaque séance concernée.
+      const sessionsToUpdate = events.filter((w) =>
+        (w.blocks || []).some((block) =>
+          (block.exercises || []).some(
+            (ex) => normalizeExerciseName(ex.name) === oldKey
+          )
+        )
+      );
+      for (const session of sessionsToUpdate) {
+        const newBlocks = session.blocks.map((block) => ({
+          ...block,
+          exercises: block.exercises.map((ex) =>
+            normalizeExerciseName(ex.name) === oldKey ? { ...ex, name: newName } : ex
+          ),
+        }));
+        await updateDoc(doc(db, "workout", session.id), { blocks: newBlocks });
+      }
+
+      // 2) Déplace la fiche média partagée si elle existe.
+      if (exerciseMediaLibrary[oldKey]) {
+        const mediaEntry = { ...exerciseMediaLibrary[oldKey], name: newName };
+        if (newKey !== oldKey) {
+          await setDoc(doc(db, "exerciseMedia", newKey), {
+            ...mediaEntry,
+            updatedAt: serverTimestamp(),
+          });
+          await deleteDoc(doc(db, "exerciseMedia", oldKey));
+        } else {
+          await updateDoc(doc(db, "exerciseMedia", oldKey), { name: newName });
+        }
+        setExerciseMediaLibrary((prev) => {
+          const next = { ...prev };
+          delete next[oldKey];
+          next[newKey] = mediaEntry;
+          return next;
+        });
+      }
+
+      await fetchSessions();
+      cancelRenameExercise();
+    } catch (e) {
+      console.error("Erreur renommage exercice:", e);
+      alert("❌ Erreur lors du renommage : " + e.message);
+    } finally {
+      setRenameBusy(false);
+    }
   };
 
   /* ===================== MEDIA EXERCICE (PHOTO/GIF) =====================
@@ -1674,6 +1892,211 @@ export default function Workout() {
           >
             👥 Gérer les groupes
           </button>
+          <button
+            onClick={() => setShowExerciseNameManager(true)}
+            style={{
+              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
+              background: "#e0a13d",
+              color: "#1a1306",
+              border: "none",
+              borderRadius: 8,
+              fontSize: window.innerWidth <= 768 ? 13 : 15,
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            🔤 Noms d'exercices
+          </button>
+        </div>
+      )}
+
+      {/* Modal Gestion des noms d'exercices : harmonise la casse et corrige
+          les fautes d'orthographe — le renommage se répercute automatiquement
+          sur TOUTES les séances (passées et futures) qui utilisent ce nom,
+          plus la photo/gif partagé associé, sans rien dupliquer. La
+          correction orthographique reste manuelle (jamais automatique) car
+          les noms mélangent français et anglais (ex: "Hip Thrust", "Nordic
+          Curl") et une correction automatique risquerait de "corriger" un
+          terme anglais correct. */}
+      {showExerciseNameManager && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.75)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => {
+            setShowExerciseNameManager(false);
+            cancelRenameExercise();
+            setExerciseNameFilter("");
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "#151310",
+              borderRadius: 12,
+              padding: 24,
+              width: "100%",
+              maxWidth: 560,
+              maxHeight: "85vh",
+              overflowY: "auto",
+              border: "1px solid rgba(224,161,61,0.4)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 6,
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: 18 }}>🔤 Noms d'exercices</h3>
+              <button
+                onClick={() => {
+                  setShowExerciseNameManager(false);
+                  cancelRenameExercise();
+                  setExerciseNameFilter("");
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#a8a199",
+                  fontSize: 20,
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+            <p style={{ fontSize: 13, color: "#a8a199", marginTop: 0, marginBottom: 16 }}>
+              Renommer un exercice met à jour toutes les séances (passées et
+              futures) qui l'utilisent, ainsi que sa photo/gif partagé — en
+              une fois, sans rien dupliquer.
+            </p>
+            <input
+              type="text"
+              placeholder="🔍 Rechercher un exercice..."
+              value={exerciseNameFilter}
+              onChange={(e) => setExerciseNameFilter(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid #2a2620",
+                background: "#0d0c0a",
+                color: "#f3f0ea",
+                boxSizing: "border-box",
+                marginBottom: 14,
+              }}
+            />
+            <div style={{ display: "grid", gap: 8 }}>
+              {getExerciseNameEntries()
+                .filter((entry) =>
+                  normalizeExerciseName(entry.name).includes(
+                    normalizeExerciseName(exerciseNameFilter)
+                  )
+                )
+                .map((entry) => (
+                  <div
+                    key={entry.key}
+                    style={{
+                      background: "#0d0c0a",
+                      borderRadius: 8,
+                      padding: 10,
+                    }}
+                  >
+                    {renamingKey === entry.key ? (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          type="text"
+                          value={renameDraft}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          autoFocus
+                          style={{
+                            flex: 1,
+                            padding: 8,
+                            borderRadius: 6,
+                            border: "1px solid #e0a13d",
+                            background: "#151310",
+                            color: "#f3f0ea",
+                          }}
+                        />
+                        <button
+                          disabled={renameBusy}
+                          onClick={() => confirmRenameExercise(entry.key)}
+                          style={{
+                            padding: "0 14px",
+                            background: "#4fae7d",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 6,
+                            cursor: renameBusy ? "wait" : "pointer",
+                            fontWeight: "bold",
+                          }}
+                        >
+                          {renameBusy ? "…" : "✅"}
+                        </button>
+                        <button
+                          disabled={renameBusy}
+                          onClick={cancelRenameExercise}
+                          style={{
+                            padding: "0 14px",
+                            background: "#d9695a",
+                            color: "white",
+                            border: "none",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                          }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 10,
+                        }}
+                      >
+                        <span style={{ fontSize: 14 }}>{entry.name}</span>
+                        <button
+                          onClick={() => startRenameExercise(entry)}
+                          style={{
+                            padding: "6px 12px",
+                            background: "#2a2620",
+                            color: "#f3f0ea",
+                            border: "1px solid rgba(255,255,255,0.12)",
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            fontSize: 13,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          ✏️ Renommer
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              {getExerciseNameEntries().length === 0 && (
+                <div style={{ textAlign: "center", color: "#a8a199", padding: 20 }}>
+                  Aucun exercice enregistré pour le moment.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -2590,9 +3013,15 @@ export default function Workout() {
                           setOpenSuggestFor(`${bIdx}-${eIdx}`);
                         }}
                         onFocus={() => setOpenSuggestFor(`${bIdx}-${eIdx}`)}
-                        onBlur={() =>
-                          setTimeout(() => setOpenSuggestFor(null), 150)
-                        }
+                        onBlur={() => {
+                          // Harmonise la casse à la fin de la saisie (pas à
+                          // chaque frappe, pour ne pas gêner en tapant).
+                          const formatted = formatExerciseDisplayName(ex.name);
+                          if (formatted !== ex.name) {
+                            updateExercise(bIdx, eIdx, "name", formatted);
+                          }
+                          setTimeout(() => setOpenSuggestFor(null), 150);
+                        }}
                         autoComplete="off"
                         style={{
                           width: "100%",
@@ -2722,7 +3151,7 @@ export default function Workout() {
                     <label style={{ fontSize: 12, color: "#a8a199", marginBottom: 4, display: "block" }}>
                       📸 Photo / GIF de démonstration
                     </label>
-                    {getExerciseMedia(ex.name)?.mediaUrl ? (
+                    {getExerciseMedia(ex)?.mediaUrl ? (
                       <div style={{ position: "relative", marginBottom: 8 }}>
                         <div
                           style={{
@@ -2737,14 +3166,14 @@ export default function Workout() {
                           }}
                         >
                           <img
-                            src={getExerciseMedia(ex.name)?.mediaUrl}
+                            src={getExerciseMedia(ex)?.mediaUrl}
                             alt="Démo exercice"
                             style={{
                               maxWidth: "100%",
                               maxHeight: "100%",
                               objectFit: "contain",
                               transform: `scale(${
-                                (getExerciseMedia(ex.name)?.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
+                                (getExerciseMedia(ex)?.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
                               })`,
                               transition: "transform 0.1s ease-out",
                             }}
@@ -2768,7 +3197,7 @@ export default function Workout() {
                         >
                           ✕
                         </button>
-                        {getExerciseMedia(ex.name)?.mediaType === "gif" && (
+                        {getExerciseMedia(ex)?.mediaType === "gif" && (
                           <span
                             style={{
                               position: "absolute",
@@ -2799,7 +3228,7 @@ export default function Workout() {
                             min={MIN_MEDIA_ZOOM}
                             max={MAX_MEDIA_ZOOM}
                             step={5}
-                            value={getExerciseMedia(ex.name)?.mediaZoom || DEFAULT_MEDIA_ZOOM}
+                            value={getExerciseMedia(ex)?.mediaZoom || DEFAULT_MEDIA_ZOOM}
                             onChange={(e) =>
                               setMediaZoom(bIdx, eIdx, Number(e.target.value))
                             }
@@ -2814,7 +3243,7 @@ export default function Workout() {
                               textAlign: "right",
                             }}
                           >
-                            {getExerciseMedia(ex.name)?.mediaZoom || DEFAULT_MEDIA_ZOOM}%
+                            {getExerciseMedia(ex)?.mediaZoom || DEFAULT_MEDIA_ZOOM}%
                           </span>
                         </div>
                       </div>
@@ -3978,7 +4407,7 @@ export default function Workout() {
 
                     {/* Photo/gif de démonstration si présente (résolue par nom
                         d'exercice depuis la bibliothèque partagée) */}
-                    {getExerciseMedia(ex.name)?.mediaUrl && (
+                    {getExerciseMedia(ex)?.mediaUrl && (
                       <div style={{ marginBottom: 10, position: "relative" }}>
                         <div
                           style={{
@@ -3993,19 +4422,19 @@ export default function Workout() {
                           }}
                         >
                           <img
-                            src={getExerciseMedia(ex.name)?.mediaUrl}
+                            src={getExerciseMedia(ex)?.mediaUrl}
                             alt={ex.name}
                             style={{
                               maxWidth: "100%",
                               maxHeight: "100%",
                               objectFit: "contain",
                               transform: `scale(${
-                                (getExerciseMedia(ex.name)?.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
+                                (getExerciseMedia(ex)?.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
                               })`,
                             }}
                           />
                         </div>
-                        {getExerciseMedia(ex.name)?.mediaType === "gif" && (
+                        {getExerciseMedia(ex)?.mediaType === "gif" && (
                           <span
                             style={{
                               position: "absolute",
