@@ -631,7 +631,7 @@ export default function Workout() {
         series = normalized.series;
       } else {
         // Créer de nouvelles séries
-        const defaultWeight = calculateWeight(exercise.rmName, exercise.rmPercent) || 0;
+        const defaultWeight = calculateWeight(exercise.rmName || exercise.name, exercise.rmPercent) || 0;
         for (let i = 0; i < numSeries; i++) {
           series.push({
             set: i + 1,
@@ -1657,6 +1657,7 @@ export default function Workout() {
         category: v.category || null,
         isWarmup: !!v.isWarmup,
         isPDC: !!v.isPDC,
+        videoUrl: v.videoUrl || null,
       };
     });
     return Object.values(merged).sort((a, b) => a.name.localeCompare(b.name, "fr"));
@@ -1929,6 +1930,52 @@ export default function Workout() {
     isWarmup: false,
     isPDC: false,
   });
+
+  // Lien vidéo de démonstration d'un exercice de la banque (ex: YouTube non
+  // répertorié, Google Drive...). Stocké en simple URL sur la fiche partagée
+  // "exerciseMedia" — jamais de fichier vidéo uploadé (trop volumineux pour
+  // Firestore, voir le garde-fou ~1 Mo sur les photos).
+  const [editingVideoKey, setEditingVideoKey] = useState(null);
+  const [videoDraft, setVideoDraft] = useState("");
+  const [savingVideo, setSavingVideo] = useState(false);
+
+  const startEditVideo = (entry) => {
+    setEditingVideoKey(entry.key);
+    setVideoDraft(entry.videoUrl || "");
+  };
+
+  const cancelEditVideo = () => {
+    setEditingVideoKey(null);
+  };
+
+  const confirmEditVideo = async (entry) => {
+    const url = videoDraft.trim();
+    setSavingVideo(true);
+    try {
+      await setDoc(
+        doc(db, "exerciseMedia", entry.key),
+        {
+          name: entry.name,
+          videoUrl: url || deleteField(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      setExerciseMediaLibrary((prev) => ({
+        ...prev,
+        [entry.key]: {
+          ...(prev[entry.key] || { name: entry.name }),
+          videoUrl: url || undefined,
+        },
+      }));
+      setEditingVideoKey(null);
+    } catch (e) {
+      console.error("Erreur enregistrement lien vidéo:", e);
+      alert("❌ Erreur lors de l'enregistrement du lien vidéo : " + e.message);
+    } finally {
+      setSavingVideo(false);
+    }
+  };
 
   const startCategorizeExercise = (entry) => {
     setCategorizingKey(entry.key);
@@ -2898,6 +2945,58 @@ export default function Workout() {
                           </button>
                         </div>
                       </div>
+                    ) : editingVideoKey === entry.key ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 11, color: "#a8a199" }}>
+                          🎬 Lien vidéo (YouTube non répertorié, Drive...) — laisse vide pour retirer
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <input
+                            type="url"
+                            placeholder="https://..."
+                            value={videoDraft}
+                            onChange={(e) => setVideoDraft(e.target.value)}
+                            autoFocus
+                            style={{
+                              flex: 1,
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #e0a13d",
+                              background: "#151310",
+                              color: "#f3f0ea",
+                            }}
+                          />
+                          <button
+                            disabled={savingVideo}
+                            onClick={() => confirmEditVideo(entry)}
+                            style={{
+                              padding: "0 14px",
+                              background: "#4fae7d",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              cursor: savingVideo ? "wait" : "pointer",
+                              fontWeight: "bold",
+                            }}
+                          >
+                            {savingVideo ? "…" : "✅"}
+                          </button>
+                          <button
+                            disabled={savingVideo}
+                            onClick={cancelEditVideo}
+                            style={{
+                              padding: "0 14px",
+                              background: "#d9695a",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                            }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <div
                         style={{
@@ -2997,6 +3096,21 @@ export default function Workout() {
                               style={{ display: "none" }}
                             />
                           </label>
+                          <button
+                            onClick={() => startEditVideo(entry)}
+                            style={{
+                              padding: "6px 10px",
+                              background: entry.videoUrl ? "rgba(224,161,61,0.18)" : "#2a2620",
+                              color: entry.videoUrl ? "#e0a13d" : "#f3f0ea",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: 6,
+                              cursor: "pointer",
+                              fontSize: 13,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {entry.videoUrl ? "🎬 Vidéo ✓" : "🎬 Vidéo"}
+                          </button>
                           <button
                             onClick={() => startRenameExercise(entry)}
                             style={{
@@ -4260,6 +4374,33 @@ export default function Workout() {
                     )}
                   </div>
 
+                  {/* Lien vidéo de démonstration (renseigné dans la banque
+                      d'exercices, apparaît automatiquement dès que le nom
+                      de l'exercice correspond). */}
+                  {getExerciseMedia(ex)?.videoUrl && (
+                    <div style={{ marginBottom: 10 }}>
+                      <a
+                        href={getExerciseMedia(ex).videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "8px 12px",
+                          background: "rgba(224,161,61,0.12)",
+                          color: "#e0a13d",
+                          borderRadius: 6,
+                          fontSize: 13,
+                          fontWeight: "bold",
+                          textDecoration: "none",
+                        }}
+                      >
+                        🎬 Voir la vidéo de démonstration
+                      </a>
+                    </div>
+                  )}
+
                   {/* FORMULAIRE MUSCU */}
                   {workoutType === "muscu" && (
                     <>
@@ -4352,90 +4493,64 @@ export default function Workout() {
                           }}
                         />
                       </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, 1fr)",
-                          gap: 10,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Intensité
-                          </label>
-                          <select
-                            value={ex.rmPercent === "PDC" ? "PDC" : ex.rmPercent || 70}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "rmPercent",
-                                val === "PDC" ? "PDC" : Number(val)
-                              );
-                            }}
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          >
-                            <option value="PDC">PDC (Poids du corps)</option>
-                            {[...Array(19)].map((_, i) => {
-                              const percent = (i + 1) * 5;
-                              return (
-                                <option key={percent} value={percent}>
-                                  {percent}% RM
-                                </option>
-                              );
-                            })}
-                            <option value={100}>100% RM</option>
-                            <option value={105}>105% RM</option>
-                            <option value={110}>110% RM</option>
-                            <option value={115}>115% RM</option>
-                            <option value={120}>120% RM</option>
-                          </select>
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Nom RM
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="squat"
-                            value={ex.rmName}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "rmName",
-                                e.target.value
-                              )
-                            }
-                            disabled={ex.rmPercent === "PDC"}
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: ex.rmPercent === "PDC" 
-                                ? "#151310" 
-                                : "#0d0c0a",
-                              color: ex.rmPercent === "PDC" ? "#a8a199" : "#f3f0ea",
-                              cursor: ex.rmPercent === "PDC" ? "not-allowed" : "text",
-                            }}
-                          />
-                        </div>
+                      <div style={{ marginBottom: 10 }}>
+                        {/* Le champ "Nom RM" a été retiré : le RM utilisé
+                            pour calculer le poids cible est désormais
+                            toujours celui du nom de l'exercice lui-même
+                            (ex.name), qui correspond déjà à la fiche créée
+                            automatiquement dans "Mes RM" depuis la banque
+                            d'exercices — plus besoin de ressaisir un nom à
+                            part. Les anciennes séances qui avaient un "Nom
+                            RM" différent du nom de l'exercice continuent de
+                            fonctionner (repli sur ex.rmName s'il est
+                            présent, voir calculateWeight). */}
+                        <label style={{ fontSize: 12, color: "#a8a199" }}>
+                          Intensité
+                        </label>
+                        <select
+                          value={ex.rmPercent === "PDC" ? "PDC" : ex.rmPercent || 70}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateExercise(
+                              bIdx,
+                              eIdx,
+                              "rmPercent",
+                              val === "PDC" ? "PDC" : Number(val)
+                            );
+                          }}
+                          style={{
+                            width: "100%",
+                            padding: 8,
+                            borderRadius: 6,
+                            border: "1px solid #2a2620",
+                            background: "#0d0c0a",
+                            color: "#f3f0ea",
+                          }}
+                        >
+                          <option value="PDC">PDC (Poids du corps)</option>
+                          {[...Array(19)].map((_, i) => {
+                            const percent = (i + 1) * 5;
+                            return (
+                              <option key={percent} value={percent}>
+                                {percent}% RM
+                              </option>
+                            );
+                          })}
+                          <option value={100}>100% RM</option>
+                          <option value={105}>105% RM</option>
+                          <option value={110}>110% RM</option>
+                          <option value={115}>115% RM</option>
+                          <option value={120}>120% RM</option>
+                        </select>
                       </div>
-                      {/* CALCUL POIDS CIBLE */}
-                      {ex.rmPercent !== "PDC" && ex.rmName &&
+                      {/* CALCUL POIDS CIBLE — basé sur ex.rmName s'il existe
+                          encore (anciennes séances), sinon directement sur
+                          le nom de l'exercice. */}
+                      {ex.rmPercent !== "PDC" && (ex.rmName || ex.name) &&
                         ex.rmPercent &&
                         (() => {
-                          const normalizedName = normalizeExerciseName(ex.rmName);
+                          const lookupName = ex.rmName || ex.name;
+                          const normalizedName = normalizeExerciseName(lookupName);
                           const rm = userRM[normalizedName];
                           if (rm) {
                             const targetWeight = Math.round(
@@ -4460,7 +4575,7 @@ export default function Workout() {
                                   📏 Poids cible calculé :
                                 </div>
                                 <div>
-                                  • RM {ex.rmName} : <strong>{rm} kg</strong>
+                                  • RM {lookupName} : <strong>{rm} kg</strong>
                                 </div>
                                 <div>
                                   • {ex.rmPercent}% de {rm} kg ={" "}
@@ -4479,8 +4594,10 @@ export default function Workout() {
                                   color: "#f0c98a",
                                 }}
                               >
-                                ⚠️ <strong>RM "{ex.rmName}" non trouvé</strong>{" "}
-                                dans "My RM"
+                                ⚠️ <strong>RM "{lookupName}" non trouvé</strong>{" "}
+                                dans "My RM" (renseigné automatiquement dès
+                                qu'une séance avec cet exercice est terminée,
+                                ou manuellement par l'athlète)
                               </div>
                             );
                           }
@@ -5422,6 +5539,31 @@ export default function Workout() {
                       </div>
                     )}
 
+                    {/* Lien vidéo de démonstration si présent */}
+                    {getExerciseMedia(ex)?.videoUrl && (
+                      <div style={{ marginBottom: 10 }}>
+                        <a
+                          href={getExerciseMedia(ex).videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            padding: "8px 12px",
+                            background: "rgba(224,161,61,0.12)",
+                            color: "#e0a13d",
+                            borderRadius: 6,
+                            fontSize: 13,
+                            fontWeight: "bold",
+                            textDecoration: "none",
+                          }}
+                        >
+                          🎬 Voir la vidéo de démonstration
+                        </a>
+                      </div>
+                    )}
+
                     {/* AFFICHAGE MUSCU */}
                     {sessionType === "muscu" && (
                       <>
@@ -5437,7 +5579,7 @@ export default function Workout() {
                             <strong style={{ color: "#e0a13d" }}>PDC</strong>
                           ) : (
                             <>
-                              {ex.rmPercent}% ({calculateWeight(ex.rmName, ex.rmPercent)} kg)
+                              {ex.rmPercent}% ({calculateWeight(ex.rmName || ex.name, ex.rmPercent)} kg)
                             </>
                           )}
                           {" • "}
