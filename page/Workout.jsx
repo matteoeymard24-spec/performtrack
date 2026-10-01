@@ -124,6 +124,7 @@ export default function Workout() {
   const [blocks, setBlocks] = useState([
     {
       name: "Bloc A",
+      restMin: 2,
       exercises: [
         {
           name: "",
@@ -1117,17 +1118,30 @@ export default function Workout() {
       return;
     }
 
-    const dur = blocks.reduce(
-      (t, b) =>
-        t +
-        b.exercises.reduce(
-          (st, ex) =>
-            st +
-            (ex.series || 3) * ((ex.reps || 8) * 3 + (ex.restMin || 2) * 60),
-          0
-        ),
-      0
-    );
+    // Estimation de durée : pour une séance muscu, les exercices d'un même
+    // bloc s'enchaînent sans repos entre eux (superset/circuit dès qu'il y
+    // en a 2+), et le repos ne s'applique qu'une fois par round, au niveau
+    // du bloc — plus une addition par exercice comme avant. Les autres
+    // types (sprint/endurance) gardent le calcul inchangé.
+    const dur =
+      workoutType === "muscu"
+        ? blocks.reduce((t, b) => {
+            const rounds = Math.max(1, ...b.exercises.map((ex) => ex.series || 3));
+            const perRound = b.exercises.reduce((s, ex) => s + (ex.reps || 8) * 3, 0);
+            const blockRest = (b.restMin ?? b.exercises[0]?.restMin ?? 2) * 60;
+            return t + rounds * (perRound + blockRest);
+          }, 0)
+        : blocks.reduce(
+            (t, b) =>
+              t +
+              b.exercises.reduce(
+                (st, ex) =>
+                  st +
+                  (ex.series || 3) * ((ex.reps || 8) * 3 + (ex.restMin || 2) * 60),
+                0
+              ),
+            0
+          );
 
     const payload = {
       title,
@@ -1174,6 +1188,7 @@ export default function Workout() {
     setBlocks([
       {
         name: "Bloc A",
+        restMin: 2,
         exercises: [
           {
             name: "",
@@ -1317,6 +1332,7 @@ export default function Workout() {
       ...blocks,
       {
         name: `Bloc ${String.fromCharCode(65 + blocks.length)}`,
+        restMin: 2,
         exercises: [newExercise],
       },
     ]);
@@ -3585,6 +3601,7 @@ export default function Workout() {
                       setBlocks([
                         {
                           name: "Bloc A",
+                          restMin: 2,
                           exercises: [
                             {
                               name: "",
@@ -3903,6 +3920,43 @@ export default function Workout() {
                   🗑️
                 </button>
               </div>
+
+              {!collapsedBlocks[bIdx] && workoutType === "muscu" && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginBottom: 12,
+                    padding: "8px 10px",
+                    background: "rgba(224,161,61,0.08)",
+                    borderRadius: 6,
+                  }}
+                >
+                  <label style={{ fontSize: 13, color: "#e0a13d", fontWeight: "bold", whiteSpace: "nowrap" }}>
+                    ⏱️ Repos après ce bloc (min)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={block.restMin ?? 2}
+                    onChange={(e) => updateBlock(bIdx, "restMin", Number(e.target.value))}
+                    style={{
+                      width: 80,
+                      padding: 8,
+                      borderRadius: 6,
+                      border: "1px solid #2a2620",
+                      background: "#0d0c0a",
+                      color: "#f3f0ea",
+                    }}
+                  />
+                  {block.exercises.length > 1 && (
+                    <span style={{ fontSize: 12, color: "#a8a199" }}>
+                      Les {block.exercises.length} exercices s'enchaînent sans pause, puis ce repos s'applique une fois.
+                    </span>
+                  )}
+                </div>
+              )}
 
               {collapsedBlocks[bIdx] && (
                 <div style={{ fontSize: 13, color: "#a8a199", padding: "4px 2px 8px" }}>
@@ -4268,64 +4322,35 @@ export default function Workout() {
                           />
                         </div>
                       </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, 1fr)",
-                          gap: 10,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Tempo
-                          </label>
-                          <input
-                            type="text"
-                            value={ex.tempo}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "tempo",
-                                e.target.value
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Repos (min)
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.restMin}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "restMin",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
+                      <div style={{ marginBottom: 10 }}>
+                        {/* Le repos n'est plus réglé par exercice : quand un
+                            bloc contient 2+ exercices, ils s'enchaînent sans
+                            pause entre eux, et le repos ne vient qu'une fois
+                            à la fin du bloc (réglé plus haut, au niveau du
+                            bloc). */}
+                        <label style={{ fontSize: 12, color: "#a8a199" }}>
+                          Tempo
+                        </label>
+                        <input
+                          type="text"
+                          value={ex.tempo}
+                          onChange={(e) =>
+                            updateExercise(
+                              bIdx,
+                              eIdx,
+                              "tempo",
+                              e.target.value
+                            )
+                          }
+                          style={{
+                            width: "100%",
+                            padding: 8,
+                            borderRadius: 6,
+                            border: "1px solid #2a2620",
+                            background: "#0d0c0a",
+                            color: "#f3f0ea",
+                          }}
+                        />
                       </div>
                       <div
                         style={{
@@ -5292,8 +5317,23 @@ export default function Workout() {
                 marginBottom: 16,
               }}
             >
-              <h4 style={{ margin: "0 0 12px 0", fontSize: 17 }}>
+              <h4
+                style={{
+                  margin: "0 0 12px 0",
+                  fontSize: 17,
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
                 {block.name}
+                {sessionType === "muscu" && (
+                  <span style={{ fontSize: 13, color: "#e0a13d", fontWeight: "normal" }}>
+                    ⏱️ Repos après le bloc : {block.restMin ?? block.exercises?.[0]?.restMin ?? 2} min
+                    {block.exercises?.length > 1 && " (exercices enchaînés sans pause)"}
+                  </span>
+                )}
               </h4>
               {block.exercises.map((ex, eIdx) => {
                 const key = `${bIdx}-${eIdx}`;
@@ -5401,7 +5441,7 @@ export default function Workout() {
                             </>
                           )}
                           {" • "}
-                          Tempo: {ex.tempo} • Repos: {ex.restMin} min
+                          Tempo: {ex.tempo}
                         </div>
                         {fb && (() => {
                           const normalized = normalizeFeedback(fb);
