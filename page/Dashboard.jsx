@@ -1002,6 +1002,51 @@ export default function Dashboard() {
     }
   };
 
+  // Saisie manuelle de la VMA / du CMJ par le coach (vue détail athlète),
+  // pour que l'évolution continue à se construire même si l'athlète oublie
+  // de la renseigner lui-même depuis "Mes RM". Écrit dans la même fiche
+  // Firestore (users/{id}/rm/VMA ou CMJ) et le même format d'historique, pour
+  // que ça alimente exactement le même graphique.
+  const [vmaCmjInput, setVmaCmjInput] = useState({ vma: "", cmj: "" });
+  const [savingVmaCmj, setSavingVmaCmj] = useState(null); // "vma" | "cmj" | null
+
+  const saveManualVmaCmj = async (type) => {
+    if (!showAthleteDetail) return;
+    const value = Number(vmaCmjInput[type]);
+    if (!value || isNaN(value)) {
+      alert("Entre une valeur valide.");
+      return;
+    }
+    const docId = type === "vma" ? "VMA" : "CMJ";
+    const existing = type === "vma" ? athleteDetails?.vma : athleteDetails?.cmj;
+    const history = existing?.history ? [...existing.history] : [];
+    history.push({ date: new Date().toISOString(), kg: value });
+    setSavingVmaCmj(type);
+    try {
+      await setDoc(
+        doc(db, "users", showAthleteDetail.id, "rm", docId),
+        {
+          kg: value,
+          exerciseName: docId,
+          updatedAt: new Date().toISOString(),
+          autoAdjusted: false,
+          history: history.slice(-20),
+        },
+        { merge: true }
+      );
+      setAthleteDetails((prev) => ({
+        ...prev,
+        [type]: { kg: value, history: history.slice(-20) },
+      }));
+      setVmaCmjInput((prev) => ({ ...prev, [type]: "" }));
+    } catch (e) {
+      console.error(`Erreur enregistrement ${docId} (admin):`, e);
+      alert("❌ Erreur lors de l'enregistrement : " + e.message);
+    } finally {
+      setSavingVmaCmj(null);
+    }
+  };
+
   const filtered = athletes.filter((a) => {
     if (athleteSearchQuery.trim()) {
       const searchLower = athleteSearchQuery.toLowerCase();
@@ -3290,7 +3335,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {(athleteDetails.vma || athleteDetails.cmj) && (
+            {showAthleteDetail && (
               <div
                 style={{ background: "#151310", padding: 20, borderRadius: 10 }}
               >
@@ -3304,86 +3349,168 @@ export default function Dashboard() {
                     gap: 20,
                   }}
                 >
-                  {athleteDetails.vma && (
-                    <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
-                      <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
-                        🏃 VMA
-                      </h4>
-                      {athleteDetails.vma.history.length > 1 ? (
-                        <ResponsiveContainer width="100%" height={160}>
-                          <LineChart
-                            data={athleteDetails.vma.history.map((item) => ({
-                              ...item,
-                              dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
-                                day: "2-digit",
-                                month: "2-digit",
-                              }),
-                            }))}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                            <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
-                            <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
-                            <Tooltip
-                              contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
-                              labelStyle={{ color: "#f3f0ea" }}
-                              formatter={(value) => [`${value} km/h`, "VMA"]}
-                            />
-                            <Line type="monotone" dataKey="kg" name="VMA (km/h)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
-                          {athleteDetails.vma.kg != null ? "1 seul point" : "Non renseignée"}
-                        </div>
-                      )}
-                      <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
-                        VMA actuelle :{" "}
-                        <strong style={{ color: "#e0a13d" }}>
-                          {athleteDetails.vma.kg != null ? `${athleteDetails.vma.kg} km/h` : "—"}
-                        </strong>
+                  <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                    <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
+                      🏃 VMA
+                    </h4>
+                    {athleteDetails.vma && athleteDetails.vma.history.length > 1 ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <LineChart
+                          data={athleteDetails.vma.history.map((item) => ({
+                            ...item,
+                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                            }),
+                          }))}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
+                          <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
+                          <Tooltip
+                            contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                            labelStyle={{ color: "#f3f0ea" }}
+                            formatter={(value) => [`${value} km/h`, "VMA"]}
+                          />
+                          <Line type="monotone" dataKey="kg" name="VMA (km/h)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
+                        {athleteDetails.vma?.kg != null ? "1 seul point" : "Non renseignée"}
                       </div>
+                    )}
+                    <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
+                      VMA actuelle :{" "}
+                      <strong style={{ color: "#e0a13d" }}>
+                        {athleteDetails.vma?.kg != null ? `${athleteDetails.vma.kg} km/h` : "—"}
+                      </strong>
                     </div>
-                  )}
-                  {athleteDetails.cmj && (
-                    <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
-                      <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
-                        🦘 CMJ
-                      </h4>
-                      {athleteDetails.cmj.history.length > 1 ? (
-                        <ResponsiveContainer width="100%" height={160}>
-                          <LineChart
-                            data={athleteDetails.cmj.history.map((item) => ({
-                              ...item,
-                              dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
-                                day: "2-digit",
-                                month: "2-digit",
-                              }),
-                            }))}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                            <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
-                            <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
-                            <Tooltip
-                              contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
-                              labelStyle={{ color: "#f3f0ea" }}
-                              formatter={(value) => [`${value} cm`, "CMJ"]}
-                            />
-                            <Line type="monotone" dataKey="kg" name="CMJ (cm)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      ) : (
-                        <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
-                          {athleteDetails.cmj.kg != null ? "1 seul point" : "Non renseigné"}
-                        </div>
-                      )}
-                      <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
-                        CMJ actuel :{" "}
-                        <strong style={{ color: "#e0a13d" }}>
-                          {athleteDetails.cmj.kg != null ? `${athleteDetails.cmj.kg} cm` : "—"}
-                        </strong>
+                    {/* Saisie manuelle par le coach — contribue au même
+                        historique que si l'athlète l'avait renseignée
+                        lui-même depuis "Mes RM". */}
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="Ex: 15.5"
+                        value={vmaCmjInput.vma}
+                        onChange={(e) =>
+                          setVmaCmjInput((p) => ({ ...p, vma: e.target.value }))
+                        }
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          padding: 8,
+                          borderRadius: 6,
+                          border: "1px solid #2a2620",
+                          background: "#151310",
+                          color: "#f3f0ea",
+                        }}
+                      />
+                      <button
+                        disabled={savingVmaCmj === "vma"}
+                        onClick={() => saveManualVmaCmj("vma")}
+                        style={{
+                          padding: "0 14px",
+                          background: "#4fae7d",
+                          color: "white",
+                          border: "none",
+                          borderRadius: 6,
+                          cursor: savingVmaCmj === "vma" ? "wait" : "pointer",
+                          fontWeight: "bold",
+                          fontSize: 13,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {savingVmaCmj === "vma" ? "…" : "✅ Enregistrer"}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
+                      💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
+                    </div>
+                  </div>
+                  <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                    <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
+                      🦘 CMJ
+                    </h4>
+                    {athleteDetails.cmj && athleteDetails.cmj.history.length > 1 ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <LineChart
+                          data={athleteDetails.cmj.history.map((item) => ({
+                            ...item,
+                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                            }),
+                          }))}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
+                          <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
+                          <Tooltip
+                            contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                            labelStyle={{ color: "#f3f0ea" }}
+                            formatter={(value) => [`${value} cm`, "CMJ"]}
+                          />
+                          <Line type="monotone" dataKey="kg" name="CMJ (cm)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
+                        {athleteDetails.cmj?.kg != null ? "1 seul point" : "Non renseigné"}
                       </div>
+                    )}
+                    <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
+                      CMJ actuel :{" "}
+                      <strong style={{ color: "#e0a13d" }}>
+                        {athleteDetails.cmj?.kg != null ? `${athleteDetails.cmj.kg} cm` : "—"}
+                      </strong>
                     </div>
-                  )}
+                    {/* Saisie manuelle par le coach — le CMJ DOIT contribuer
+                        au graphique d'évolution même quand c'est le coach
+                        qui le rentre. */}
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="Ex: 42"
+                        value={vmaCmjInput.cmj}
+                        onChange={(e) =>
+                          setVmaCmjInput((p) => ({ ...p, cmj: e.target.value }))
+                        }
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          padding: 8,
+                          borderRadius: 6,
+                          border: "1px solid #2a2620",
+                          background: "#151310",
+                          color: "#f3f0ea",
+                        }}
+                      />
+                      <button
+                        disabled={savingVmaCmj === "cmj"}
+                        onClick={() => saveManualVmaCmj("cmj")}
+                        style={{
+                          padding: "0 14px",
+                          background: "#4fae7d",
+                          color: "white",
+                          border: "none",
+                          borderRadius: 6,
+                          cursor: savingVmaCmj === "cmj" ? "wait" : "pointer",
+                          fontWeight: "bold",
+                          fontSize: 13,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {savingVmaCmj === "cmj" ? "…" : "✅ Enregistrer"}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
+                      💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

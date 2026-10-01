@@ -187,6 +187,9 @@ export default function Athletes() {
   const startEdit = (user) => {
     setEditingUser(user.id);
     setEditForm({
+      firstName: user.firstName || "",
+      lastName: user.lastName || "",
+      email: user.email || "",
       weight: user.weight || "",
       height: user.height || "",
     });
@@ -194,7 +197,15 @@ export default function Athletes() {
 
   const saveEdit = async (userId) => {
     try {
+      const firstName = (editForm.firstName || "").trim();
+      const lastName = (editForm.lastName || "").trim();
+      const email = (editForm.email || "").trim();
+      const displayName = `${firstName} ${lastName}`.trim() || email || null;
       await updateDoc(doc(db, "users", userId), {
+        firstName: firstName || null,
+        lastName: lastName || null,
+        email: email || null,
+        displayName,
         weight: editForm.weight ? Number(editForm.weight) : null,
         height: editForm.height ? Number(editForm.height) : null,
         updatedAt: new Date().toISOString(),
@@ -205,6 +216,10 @@ export default function Athletes() {
           u.id === userId
             ? {
                 ...u,
+                firstName: firstName || null,
+                lastName: lastName || null,
+                email: email || null,
+                displayName,
                 weight: editForm.weight ? Number(editForm.weight) : null,
                 height: editForm.height ? Number(editForm.height) : null,
               }
@@ -503,7 +518,15 @@ export default function Athletes() {
                   <div style={{ fontSize: 18, fontWeight: "bold", marginBottom: 5 }}>
                     {user.firstName || "Sans nom"} {user.lastName || ""}
                   </div>
-                  <div style={{ color: "#a8a199", fontSize: 14 }}>{user.email}</div>
+                  <div
+                    style={{
+                      color: user.email ? "#a8a199" : "#d9695a",
+                      fontSize: 14,
+                      fontStyle: user.email ? "normal" : "italic",
+                    }}
+                  >
+                    {user.email || "Email non renseigné"}
+                  </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
                   <div
@@ -547,6 +570,57 @@ export default function Athletes() {
 
               {editingUser === user.id ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <input
+                      type="text"
+                      placeholder="Prénom"
+                      value={editForm.firstName}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, firstName: e.target.value })
+                      }
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 8,
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        background: "#151310",
+                        color: "white",
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Nom"
+                      value={editForm.lastName}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, lastName: e.target.value })
+                      }
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 8,
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        background: "#151310",
+                        color: "white",
+                      }}
+                    />
+                  </div>
+
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={editForm.email}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, email: e.target.value })
+                    }
+                    style={{
+                      padding: 10,
+                      borderRadius: 8,
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      background: "#151310",
+                      color: "white",
+                    }}
+                  />
+
                   <div style={{ display: "flex", gap: 10 }}>
                     <input
                       type="number"
