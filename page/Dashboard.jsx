@@ -105,6 +105,33 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [customGroups, setCustomGroups] = useState([]);
   const [wellnessFilter, setWellnessFilter] = useState("total");
+
+  // Masquage par partie dans la fiche détail d'un athlète — permet de se
+  // concentrer sur une seule donnée (ex: juste le CMJ, sans la VMA) sans
+  // toucher aux données elles-mêmes, uniquement l'affichage.
+  const SECTION_TOGGLES = [
+    { key: "cmjSessions", label: "🦘 CMJ (séances)" },
+    { key: "cross", label: "🔀 Croisé" },
+    { key: "injuries", label: "🚑 Blessures" },
+    { key: "todayWorkout", label: "🏋️ Séance du jour" },
+    { key: "pain", label: "⚠️ Douleurs" },
+    { key: "redi", label: "📊 REDI" },
+    { key: "wellness", label: "🧠 Wellness" },
+    { key: "weight", label: "⚖️ Poids" },
+    { key: "vma", label: "🏃 VMA" },
+    { key: "cmj", label: "🦘 CMJ (manuel)" },
+    { key: "rmEvolution", label: "💪 RM muscu" },
+  ];
+  const [sectionVisibility, setSectionVisibility] = useState(
+    SECTION_TOGGLES.reduce((acc, s) => ({ ...acc, [s.key]: true }), {})
+  );
+  const toggleSection = (key) =>
+    setSectionVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
+  const showAllSections = () =>
+    setSectionVisibility(
+      SECTION_TOGGLES.reduce((acc, s) => ({ ...acc, [s.key]: true }), {})
+    );
+
   const [showAthleteDetail, setShowAthleteDetail] = useState(null);
   const [athleteDetails, setAthleteDetails] = useState(null);
   const [detailedAthleteRMHistory, setDetailedAthleteRMHistory] = useState({});
@@ -2435,6 +2462,61 @@ export default function Dashboard() {
 
             <div
               style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                alignItems: "center",
+                marginBottom: 20,
+                padding: "10px 12px",
+                background: "#151310",
+                borderRadius: 10,
+              }}
+            >
+              <span style={{ fontSize: 12, color: "#a8a199", marginRight: 4 }}>
+                👁️ Afficher :
+              </span>
+              {SECTION_TOGGLES.map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => toggleSection(s.key)}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 14,
+                    fontSize: 12,
+                    fontWeight: "600",
+                    border: sectionVisibility[s.key]
+                      ? "1px solid rgba(224,161,61,0.5)"
+                      : "1px solid rgba(255,255,255,0.1)",
+                    background: sectionVisibility[s.key]
+                      ? "rgba(224,161,61,0.16)"
+                      : "transparent",
+                    color: sectionVisibility[s.key] ? "#e0a13d" : "#5a564e",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+              <button
+                onClick={showAllSections}
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: 14,
+                  fontSize: 12,
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  background: "transparent",
+                  color: "#a8a199",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Tout afficher
+              </button>
+            </div>
+
+            <div
+              style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
                 gap: 15,
@@ -2666,7 +2748,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {showAthleteDetail.cmjEntries && showAthleteDetail.cmjEntries.length > 1 && (
+            {showAthleteDetail.cmjEntries && showAthleteDetail.cmjEntries.length > 1 && sectionVisibility.cmjSessions && (
               <div
                 style={{
                   background: "#151310",
@@ -2715,7 +2797,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {showAthleteDetail.crossStatus && (
+            {showAthleteDetail.crossStatus && sectionVisibility.cross && (
               <div
                 style={{
                   background: "#151310",
@@ -2740,7 +2822,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {showAthleteDetail.injuries && (
+            {showAthleteDetail.injuries && sectionVisibility.injuries && (
               <div
                 style={{
                   background: "#151310",
@@ -2953,6 +3035,7 @@ export default function Dashboard() {
               </div>
             )}
 
+            {sectionVisibility.todayWorkout && (
             <div
               style={{
                 background: "#151310",
@@ -3022,9 +3105,11 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+            )}
 
             {showAthleteDetail.lastWellness &&
-              showAthleteDetail.lastWellness.douleur > 0 && (
+              showAthleteDetail.lastWellness.douleur > 0 &&
+              sectionVisibility.pain && (
                 <div
                   style={{
                     background: "rgba(217,105,90,0.14)",
@@ -3095,7 +3180,7 @@ export default function Dashboard() {
                 </div>
               )}
 
-            {acwrHistory.length > 0 ? (
+            {sectionVisibility.redi && (acwrHistory.length > 0 ? (
               <div
                 style={{
                   background: "#151310",
@@ -3167,9 +3252,9 @@ export default function Dashboard() {
                   renseigné récemment)
                 </p>
               </div>
-            )}
+            ))}
 
-            {athleteDetails.wellness.length > 0 && (
+            {athleteDetails.wellness.length > 0 && sectionVisibility.wellness && (
               <>
                 <div
                   style={{
@@ -3256,7 +3341,7 @@ export default function Dashboard() {
               </>
             )}
 
-            {athleteDetails.weightHistory.length > 0 && (
+            {athleteDetails.weightHistory.length > 0 && sectionVisibility.weight && (
               <div
                 style={{
                   background: "#151310",
@@ -3335,7 +3420,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {showAthleteDetail && (
+            {showAthleteDetail && (sectionVisibility.vma || sectionVisibility.cmj) && (
               <div
                 style={{ background: "#151310", padding: 20, borderRadius: 10 }}
               >
@@ -3349,6 +3434,7 @@ export default function Dashboard() {
                     gap: 20,
                   }}
                 >
+                  {sectionVisibility.vma && (
                   <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
                     <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
                       🏃 VMA
@@ -3430,6 +3516,8 @@ export default function Dashboard() {
                       💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
                     </div>
                   </div>
+                  )}
+                  {sectionVisibility.cmj && (
                   <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
                     <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
                       🦘 CMJ
@@ -3511,11 +3599,12 @@ export default function Dashboard() {
                       💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
                     </div>
                   </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {Object.keys(detailedAthleteRMHistory).length > 0 && (
+            {Object.keys(detailedAthleteRMHistory).length > 0 && sectionVisibility.rmEvolution && (
               <div
                 style={{ background: "#151310", padding: 20, borderRadius: 10 }}
               >
