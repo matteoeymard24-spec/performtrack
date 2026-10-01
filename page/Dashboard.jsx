@@ -106,31 +106,42 @@ export default function Dashboard() {
   const [customGroups, setCustomGroups] = useState([]);
   const [wellnessFilter, setWellnessFilter] = useState("total");
 
-  // Masquage par partie dans la fiche détail d'un athlète — permet de se
-  // concentrer sur une seule donnée (ex: juste le CMJ, sans la VMA) sans
-  // toucher aux données elles-mêmes, uniquement l'affichage.
-  const SECTION_TOGGLES = [
-    { key: "cmjSessions", label: "🦘 CMJ (séances)" },
-    { key: "cross", label: "🔀 Croisé" },
-    { key: "injuries", label: "🚑 Blessures" },
-    { key: "todayWorkout", label: "🏋️ Séance du jour" },
-    { key: "pain", label: "⚠️ Douleurs" },
-    { key: "redi", label: "📊 REDI" },
-    { key: "wellness", label: "🧠 Wellness" },
-    { key: "weight", label: "⚖️ Poids" },
-    { key: "vma", label: "🏃 VMA" },
-    { key: "cmj", label: "🦘 CMJ (manuel)" },
-    { key: "rmEvolution", label: "💪 RM muscu" },
-  ];
-  const [sectionVisibility, setSectionVisibility] = useState(
-    SECTION_TOGGLES.reduce((acc, s) => ({ ...acc, [s.key]: true }), {})
-  );
+  // Repli/dépli par partie dans la fiche détail d'un athlète — même
+  // mécanisme que le repli des blocs dans la création de séance (Workout) :
+  // l'en-tête de chaque partie reste toujours visible, avec un bouton ▾/▸
+  // qui replie juste son contenu. Permet de se concentrer sur une seule
+  // donnée (ex: juste le CMJ, sans la VMA) sans rien masquer en bloc.
+  const [sectionVisibility, setSectionVisibility] = useState({
+    cmjSessions: true,
+    cross: true,
+    todayWorkout: true,
+    pain: true,
+    redi: true,
+    wellness: true,
+    weight: true,
+    vma: true,
+    cmj: true,
+  });
   const toggleSection = (key) =>
     setSectionVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
-  const showAllSections = () =>
-    setSectionVisibility(
-      SECTION_TOGGLES.reduce((acc, s) => ({ ...acc, [s.key]: true }), {})
-    );
+  const SectionToggleBtn = ({ sectionKey }) => (
+    <button
+      onClick={() => toggleSection(sectionKey)}
+      title={sectionVisibility[sectionKey] ? "Replier" : "Déplier"}
+      style={{
+        padding: "4px 10px",
+        background: "#2a2620",
+        color: "#f3f0ea",
+        border: "none",
+        borderRadius: 6,
+        cursor: "pointer",
+        fontSize: 13,
+        flexShrink: 0,
+      }}
+    >
+      {sectionVisibility[sectionKey] ? "▾" : "▸"}
+    </button>
+  );
 
   const [showAthleteDetail, setShowAthleteDetail] = useState(null);
   const [athleteDetails, setAthleteDetails] = useState(null);
@@ -2462,61 +2473,6 @@ export default function Dashboard() {
 
             <div
               style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 8,
-                alignItems: "center",
-                marginBottom: 20,
-                padding: "10px 12px",
-                background: "#151310",
-                borderRadius: 10,
-              }}
-            >
-              <span style={{ fontSize: 12, color: "#a8a199", marginRight: 4 }}>
-                👁️ Afficher :
-              </span>
-              {SECTION_TOGGLES.map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() => toggleSection(s.key)}
-                  style={{
-                    padding: "5px 10px",
-                    borderRadius: 14,
-                    fontSize: 12,
-                    fontWeight: "600",
-                    border: sectionVisibility[s.key]
-                      ? "1px solid rgba(224,161,61,0.5)"
-                      : "1px solid rgba(255,255,255,0.1)",
-                    background: sectionVisibility[s.key]
-                      ? "rgba(224,161,61,0.16)"
-                      : "transparent",
-                    color: sectionVisibility[s.key] ? "#e0a13d" : "#5a564e",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {s.label}
-                </button>
-              ))}
-              <button
-                onClick={showAllSections}
-                style={{
-                  padding: "5px 10px",
-                  borderRadius: 14,
-                  fontSize: 12,
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  background: "transparent",
-                  color: "#a8a199",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Tout afficher
-              </button>
-            </div>
-
-            <div
-              style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
                 gap: 15,
@@ -2748,7 +2704,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {showAthleteDetail.cmjEntries && showAthleteDetail.cmjEntries.length > 1 && sectionVisibility.cmjSessions && (
+            {showAthleteDetail.cmjEntries && showAthleteDetail.cmjEntries.length > 1 && (
               <div
                 style={{
                   background: "#151310",
@@ -2758,9 +2714,21 @@ export default function Dashboard() {
                   border: "1px solid rgba(255,255,255,0.16)",
                 }}
               >
-                <h3 style={{ margin: "0 0 12px 0", fontSize: 16, color: "#d9a441" }}>
-                  🦘 Évolution CMJ (détente verticale)
-                </h3>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: sectionVisibility.cmjSessions ? 12 : 0,
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 16, color: "#d9a441" }}>
+                    🦘 Évolution CMJ (détente verticale)
+                  </h3>
+                  <SectionToggleBtn sectionKey="cmjSessions" />
+                </div>
+                {sectionVisibility.cmjSessions && (
                 <ResponsiveContainer width="100%" height={220}>
                   <LineChart
                     data={showAthleteDetail.cmjEntries.map((e) => ({
@@ -2794,10 +2762,11 @@ export default function Dashboard() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
+                )}
               </div>
             )}
 
-            {showAthleteDetail.crossStatus && sectionVisibility.cross && (
+            {showAthleteDetail.crossStatus && (
               <div
                 style={{
                   background: "#151310",
@@ -2807,22 +2776,34 @@ export default function Dashboard() {
                   marginBottom: 25,
                 }}
               >
-                <h3
+                <div
                   style={{
-                    margin: "0 0 8px 0",
-                    fontSize: 16,
-                    color: showAthleteDetail.crossStatus.color,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
                   }}
                 >
-                  🔀 Statut croisé REDI × Wellness : {showAthleteDetail.crossStatus.label}
-                </h3>
+                  <h3
+                    style={{
+                      margin: "0 0 8px 0",
+                      fontSize: 16,
+                      color: showAthleteDetail.crossStatus.color,
+                    }}
+                  >
+                    🔀 Statut croisé REDI × Wellness : {showAthleteDetail.crossStatus.label}
+                  </h3>
+                  <SectionToggleBtn sectionKey="cross" />
+                </div>
+                {sectionVisibility.cross && (
                 <p style={{ margin: 0, fontSize: 13, color: "#a8a199", lineHeight: 1.5 }}>
                   {showAthleteDetail.crossStatus.detail}
                 </p>
+                )}
               </div>
             )}
 
-            {showAthleteDetail.injuries && sectionVisibility.injuries && (
+            {showAthleteDetail.injuries && (
               <div
                 style={{
                   background: "#151310",
@@ -3035,7 +3016,6 @@ export default function Dashboard() {
               </div>
             )}
 
-            {sectionVisibility.todayWorkout && (
             <div
               style={{
                 background: "#151310",
@@ -3044,10 +3024,22 @@ export default function Dashboard() {
                 marginBottom: 25,
               }}
             >
-              <h3 style={{ margin: "0 0 12px 0", fontSize: 17 }}>
-                🏋️ Séance aujourd'hui
-              </h3>
-              {athleteDetails.todayWorkout ? (
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: sectionVisibility.todayWorkout ? 12 : 0,
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: 17 }}>
+                  🏋️ Séance aujourd'hui
+                </h3>
+                <SectionToggleBtn sectionKey="todayWorkout" />
+              </div>
+              {sectionVisibility.todayWorkout && (
+              athleteDetails.todayWorkout ? (
                 <div>
                   <div
                     style={{
@@ -3103,13 +3095,12 @@ export default function Dashboard() {
                 <div style={{ color: "#a8a199", fontSize: 14 }}>
                   Pas de séance programmée
                 </div>
+              )
               )}
             </div>
-            )}
 
             {showAthleteDetail.lastWellness &&
-              showAthleteDetail.lastWellness.douleur > 0 &&
-              sectionVisibility.pain && (
+              showAthleteDetail.lastWellness.douleur > 0 && (
                 <div
                   style={{
                     background: "rgba(217,105,90,0.14)",
@@ -3119,16 +3110,28 @@ export default function Dashboard() {
                     marginBottom: 25,
                   }}
                 >
-                  <h4
+                  <div
                     style={{
-                      margin: "0 0 12px 0",
-                      color: "#d9695a",
-                      fontSize: 16,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                      marginBottom: sectionVisibility.pain ? 12 : 0,
                     }}
                   >
-                    ⚠️ Douleurs signalées
-                  </h4>
-
+                    <h4
+                      style={{
+                        margin: 0,
+                        color: "#d9695a",
+                        fontSize: 16,
+                      }}
+                    >
+                      ⚠️ Douleurs signalées
+                    </h4>
+                    <SectionToggleBtn sectionKey="pain" />
+                  </div>
+                  {sectionVisibility.pain && (
+                  <>
                   <div
                     style={{
                       marginBottom: 15,
@@ -3177,10 +3180,12 @@ export default function Dashboard() {
                         />
                       </div>
                     )}
+                  </>
+                  )}
                 </div>
               )}
 
-            {sectionVisibility.redi && (acwrHistory.length > 0 ? (
+            {acwrHistory.length > 0 ? (
               <div
                 style={{
                   background: "#151310",
@@ -3189,9 +3194,22 @@ export default function Dashboard() {
                   marginBottom: 25,
                 }}
               >
-                <h3 style={{ margin: "0 0 15px 0", fontSize: 17 }}>
-                  📊 Évolution REDI
-                </h3>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: sectionVisibility.redi ? 15 : 0,
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 17 }}>
+                    📊 Évolution REDI
+                  </h3>
+                  <SectionToggleBtn sectionKey="redi" />
+                </div>
+                {sectionVisibility.redi && (
+                <>
                 <ResponsiveContainer width="100%" height={280}>
                   <LineChart data={acwrHistory}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
@@ -3231,6 +3249,8 @@ export default function Dashboard() {
                   Zone optimale: 0.8 - 1.3 | Zone attention: 1.3 - 1.5 |
                   Surcharge: {'>'} 1.5
                 </div>
+                </>
+                )}
               </div>
             ) : (
               <div
@@ -3252,10 +3272,26 @@ export default function Dashboard() {
                   renseigné récemment)
                 </p>
               </div>
-            ))}
+            )}
 
-            {athleteDetails.wellness.length > 0 && sectionVisibility.wellness && (
+            {athleteDetails.wellness.length > 0 && (
               <>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: 12,
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: "#a8a199", fontWeight: "bold" }}>
+                    🧠 Wellness
+                  </span>
+                  <SectionToggleBtn sectionKey="wellness" />
+                </div>
+                {sectionVisibility.wellness && (
+                <>
                 <div
                   style={{
                     background: "#151310",
@@ -3338,10 +3374,12 @@ export default function Dashboard() {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
+                </>
+                )}
               </>
             )}
 
-            {athleteDetails.weightHistory.length > 0 && sectionVisibility.weight && (
+            {athleteDetails.weightHistory.length > 0 && (
               <div
                 style={{
                   background: "#151310",
@@ -3350,9 +3388,22 @@ export default function Dashboard() {
                   marginBottom: 25,
                 }}
               >
-                <h3 style={{ margin: "0 0 15px 0", fontSize: 17 }}>
-                  ⚖️ Évolution du poids
-                </h3>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: sectionVisibility.weight ? 15 : 0,
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 17 }}>
+                    ⚖️ Évolution du poids
+                  </h3>
+                  <SectionToggleBtn sectionKey="weight" />
+                </div>
+                {sectionVisibility.weight && (
+                <>
                 <ResponsiveContainer width="100%" height={220}>
                   <AreaChart data={athleteDetails.weightHistory}>
                     <defs>
@@ -3417,10 +3468,12 @@ export default function Dashboard() {
                     kg
                   </strong>
                 </div>
+                </>
+                )}
               </div>
             )}
 
-            {showAthleteDetail && (sectionVisibility.vma || sectionVisibility.cmj) && (
+            {showAthleteDetail && (
               <div
                 style={{ background: "#151310", padding: 20, borderRadius: 10 }}
               >
@@ -3434,11 +3487,23 @@ export default function Dashboard() {
                     gap: 20,
                   }}
                 >
-                  {sectionVisibility.vma && (
                   <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
-                    <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
-                      🏃 VMA
-                    </h4>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: sectionVisibility.vma ? 12 : 0,
+                      }}
+                    >
+                      <h4 style={{ margin: 0, fontSize: 15, color: "#e0a13d" }}>
+                        🏃 VMA
+                      </h4>
+                      <SectionToggleBtn sectionKey="vma" />
+                    </div>
+                    {sectionVisibility.vma && (
+                    <>
                     {athleteDetails.vma && athleteDetails.vma.history.length > 1 ? (
                       <ResponsiveContainer width="100%" height={160}>
                         <LineChart
@@ -3515,13 +3580,26 @@ export default function Dashboard() {
                     <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
                       💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
                     </div>
+                    </>
+                    )}
                   </div>
-                  )}
-                  {sectionVisibility.cmj && (
                   <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
-                    <h4 style={{ margin: "0 0 12px 0", fontSize: 15, color: "#e0a13d" }}>
-                      🦘 CMJ
-                    </h4>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: sectionVisibility.cmj ? 12 : 0,
+                      }}
+                    >
+                      <h4 style={{ margin: 0, fontSize: 15, color: "#e0a13d" }}>
+                        🦘 CMJ
+                      </h4>
+                      <SectionToggleBtn sectionKey="cmj" />
+                    </div>
+                    {sectionVisibility.cmj && (
+                    <>
                     {athleteDetails.cmj && athleteDetails.cmj.history.length > 1 ? (
                       <ResponsiveContainer width="100%" height={160}>
                         <LineChart
@@ -3598,13 +3676,14 @@ export default function Dashboard() {
                     <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
                       💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
                     </div>
+                    </>
+                    )}
                   </div>
-                  )}
                 </div>
               </div>
             )}
 
-            {Object.keys(detailedAthleteRMHistory).length > 0 && sectionVisibility.rmEvolution && (
+            {Object.keys(detailedAthleteRMHistory).length > 0 && (
               <div
                 style={{ background: "#151310", padding: 20, borderRadius: 10 }}
               >
