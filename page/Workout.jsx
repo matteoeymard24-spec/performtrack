@@ -1734,123 +1734,6 @@ export default function Workout() {
     }
   };
 
-  // Import ponctuel (one-shot) des liens vidéo YouTube de bonne exécution,
-  // recherchés manuellement pour les exercices déjà présents dans la banque
-  // au 02/10/2026. N'écrase jamais un lien déjà renseigné à la main —
-  // complète seulement les fiches qui n'en ont pas encore.
-  const VIDEO_LINKS_IMPORT = {
-    "90/90 hanche": "https://www.youtube.com/watch?v=nNH8GTq6S54",
-    "adducteur machine": "https://www.youtube.com/watch?v=A5asOtzaTKQ",
-    "box squat": "https://www.youtube.com/watch?v=TZ7A-ftjTbU",
-    "charrue": "https://www.youtube.com/watch?v=bHGazL-jXJw",
-    "chien tête en bas + cobra": "https://www.youtube.com/watch?v=RWO7To42vvk",
-    "cmj": "https://www.youtube.com/watch?v=7W6f6vNk1K8",
-    "developpe couche": "https://www.youtube.com/watch?v=feWp7jZopI8",
-    "developpe militaire": "https://www.youtube.com/watch?v=WmwFNLeuHd8",
-    "dorsiflexion chevilles": "https://www.youtube.com/watch?v=F1LEHIOlxiE",
-    "elevation laterale": "https://www.youtube.com/watch?v=q_DYeb_daeY",
-    "epauler": "https://www.youtube.com/watch?v=isIkJbkbyQU",
-    "fentes arrieres": "https://www.youtube.com/watch?v=T-a6-369Rrg",
-    "fentes avant": "https://www.youtube.com/watch?v=1Ac8Z0RyDX4",
-    "fentes avant zercher": "https://www.youtube.com/watch?v=w0dsCp3edNc",
-    "fentes bulgares": "https://www.youtube.com/watch?v=r_-HNEXkW00",
-    "flexion / extention ischio": "https://www.youtube.com/watch?v=_nMmP3kMGmk",
-    "front squat": "https://www.youtube.com/watch?v=q8SOga8nPss",
-    "gainage roulette": "https://www.youtube.com/watch?v=kFv2rLtgc8w",
-    "landmin twist": "https://www.youtube.com/watch?v=RLQLPFR8U9M",
-    "leg extension": "https://www.youtube.com/watch?v=HIN-69rdMys",
-    "pendlay row": "https://www.youtube.com/watch?v=OjuKHVXvS1Q",
-    "press": "https://www.youtube.com/watch?v=Ef1wVCbLWN0",
-    "psoas machine": "https://www.youtube.com/watch?v=_7ugpzFX00g",
-    "push press": "https://www.youtube.com/watch?v=i_1Sl4yHj44",
-    "rdl unilaterale": "https://www.youtube.com/watch?v=S8wkyvxNvac",
-    "rotation de hanche": "https://www.youtube.com/watch?v=MP6TdWLW754",
-    "rowing bucheron": "https://www.youtube.com/watch?v=2P2TyrYyTmU",
-    "shrug": "https://www.youtube.com/watch?v=6ebE-S78ua4",
-    "squat": "https://www.youtube.com/watch?v=Dr41gZwfTfM",
-    "squat spanish": "https://www.youtube.com/watch?v=wYWB-X8kGso",
-    "traction": "https://www.youtube.com/watch?v=bGa0EhTpudk",
-  };
-  const [importingVideoLinks, setImportingVideoLinks] = useState(false);
-
-  const importVideoLinks = async () => {
-    if (
-      !window.confirm(
-        "Remplir automatiquement le lien vidéo de tous les exercices de la banque qui n'en ont pas encore (recherché pour chacun) ? Un exercice déjà pourvu d'un lien n'est jamais modifié."
-      )
-    )
-      return;
-    setImportingVideoLinks(true);
-    let filled = 0;
-    let skippedExisting = 0;
-    let notFound = 0;
-    try {
-      const entries = getExerciseNameEntries();
-      for (const entry of entries) {
-        const match = VIDEO_LINKS_IMPORT[normalizeExerciseName(entry.name)];
-        if (!match) {
-          notFound++;
-          continue;
-        }
-        if (entry.videoUrl) {
-          skippedExisting++;
-          continue;
-        }
-        await setDoc(
-          doc(db, "exerciseMedia", entry.key),
-          { name: entry.name, videoUrl: match, updatedAt: serverTimestamp() },
-          { merge: true }
-        );
-        setExerciseMediaLibrary((prev) => ({
-          ...prev,
-          [entry.key]: { ...(prev[entry.key] || { name: entry.name }), videoUrl: match },
-        }));
-        filled++;
-      }
-      alert(
-        `✅ ${filled} lien(s) vidéo ajouté(s).` +
-          (skippedExisting ? `\n${skippedExisting} exercice(s) avaient déjà un lien (non touchés).` : "") +
-          (notFound ? `\n${notFound} exercice(s) sans correspondance trouvée (à ajouter à la main via "🎬 Vidéo").` : "")
-      );
-    } catch (e) {
-      console.error("Erreur import liens vidéo:", e);
-      alert("❌ Erreur lors de l'import : " + e.message);
-    } finally {
-      setImportingVideoLinks(false);
-    }
-  };
-
-  const [resyncingAllCategories, setResyncingAllCategories] = useState(false);
-
-  // Rattrapage : avant la correction du bug de propagation (qui ne
-  // resynchronisait jamais une catégorie déjà écrite sur une fiche, même
-  // fausse), les exercices catégorisés depuis le gestionnaire pouvaient
-  // rester en "Autre" chez les athlètes. Ce bouton repasse sur toute la
-  // banque et repropage chaque catégorie à tout le monde en une fois.
-  const resyncAllCategoriesToAthletes = async () => {
-    if (
-      !window.confirm(
-        "Resynchroniser les catégories de TOUS les exercices de la banque vers \"Mes RM\" de tous les athlètes ? (utile si certains exercices sont restés classés en \"Autre\" malgré une catégorie déjà posée ici)"
-      )
-    )
-      return;
-    setResyncingAllCategories(true);
-    try {
-      const entries = getExerciseNameEntries().filter(
-        (e) => e.category && !e.isWarmup && !e.isPDC
-      );
-      for (const entry of entries) {
-        await propagateExerciseToAllAthletes(entry.key, entry.category);
-      }
-      alert(`✅ ${entries.length} exercice(s) resynchronisé(s) vers tous les athlètes.`);
-    } catch (e) {
-      console.error("Erreur resynchronisation globale:", e);
-      alert("❌ Erreur lors de la resynchronisation : " + e.message);
-    } finally {
-      setResyncingAllCategories(false);
-    }
-  };
-
   const startRenameExercise = (entry) => {
     setRenamingKey(entry.key);
     setRenameDraft(entry.name);
@@ -1959,6 +1842,42 @@ export default function Workout() {
           });
         }
         await deleteDoc(oldRmRef);
+      }
+
+      // 3bis) Le compte du coach lui-même (currentUser) a sa PROPRE fiche
+      // "Mes RM" (users/{currentUser.uid}/rm), volontairement EXCLUE de la
+      // boucle ci-dessus (qui ne traite que les athlètes, pas les
+      // admins/superAdmin). Or c'est justement cette fiche qui alimente
+      // "rmExerciseNames" (voir le useEffect "RM + VMA" plus haut) — sans ce
+      // bloc, l'ancienne fiche du coach restait donc affichée sous l'ancien
+      // nom après un renommage, donnant l'impression que rien ne s'était
+      // passé (le renommage fonctionnait pourtant bien pour les séances et
+      // la photo partagée).
+      if (currentUser?.uid) {
+        const ownOldRmRef = doc(db, "users", currentUser.uid, "rm", oldKey);
+        const ownOldRmSnap = await getDoc(ownOldRmRef);
+        if (ownOldRmSnap.exists()) {
+          if (newKey === oldKey) {
+            await updateDoc(ownOldRmRef, { exerciseName: newName });
+          } else {
+            const ownNewRmRef = doc(db, "users", currentUser.uid, "rm", newKey);
+            const ownNewRmSnap = await getDoc(ownNewRmRef);
+            if (!ownNewRmSnap.exists()) {
+              await setDoc(ownNewRmRef, {
+                ...ownOldRmSnap.data(),
+                exerciseName: newName,
+                updatedAt: new Date().toISOString(),
+              });
+            }
+            await deleteDoc(ownOldRmRef);
+          }
+          setRmExerciseNames((prev) => {
+            const next = { ...prev };
+            delete next[oldKey];
+            next[newKey] = { name: newName };
+            return next;
+          });
+        }
       }
 
       await fetchSessions();
@@ -2789,46 +2708,6 @@ export default function Workout() {
               une fois, sans rien dupliquer. Tu peux aussi toujours en
               ajouter directement en tapant le nom dans une séance.
             </p>
-
-            <button
-              disabled={resyncingAllCategories}
-              onClick={resyncAllCategoriesToAthletes}
-              style={{
-                width: "100%",
-                padding: "10px 14px",
-                marginBottom: 16,
-                background: "#2a2620",
-                color: "#f3f0ea",
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderRadius: 8,
-                cursor: resyncingAllCategories ? "wait" : "pointer",
-                fontSize: 13,
-              }}
-            >
-              {resyncingAllCategories
-                ? "🔄 Resynchronisation en cours…"
-                : "🔄 Resynchroniser toutes les catégories vers tous les athlètes"}
-            </button>
-
-            <button
-              disabled={importingVideoLinks}
-              onClick={importVideoLinks}
-              style={{
-                width: "100%",
-                padding: "10px 14px",
-                marginBottom: 16,
-                background: "#2a2620",
-                color: "#f3f0ea",
-                border: "1px solid rgba(255,255,255,0.12)",
-                borderRadius: 8,
-                cursor: importingVideoLinks ? "wait" : "pointer",
-                fontSize: 13,
-              }}
-            >
-              {importingVideoLinks
-                ? "📥 Import en cours…"
-                : "📥 Importer les liens vidéo YouTube (exercices sans lien)"}
-            </button>
 
             {/* Ajouter un nouvel exercice (avec ou sans photo tout de
                 suite) sans avoir à créer une séance. */}
