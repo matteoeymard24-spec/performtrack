@@ -89,6 +89,67 @@ const formatExerciseDisplayName = (name) => {
     .join(" ");
 };
 
+/* ===================== ESTIMATION DE DURÉE (formule unique, normalisée) =====================
+   Une seule et même règle pour les trois types de séance, utilisée à la
+   création, à la modification ET par le bouton "Recalculer toutes les
+   séances" du gestionnaire d'exercices — pour que le chiffre affiché soit
+   TOUJOURS cohérent avec les champs réellement saisis, et augmente
+   toujours quand on ajoute des séries/reps/sets (plus jamais de calcul
+   "par round partagé" qui pouvait donner un total plus bas après une
+   simple modification).
+   - Muscu : pour chaque exercice, séries × (reps × 3s + repos). Chaque
+     exercice compte pour lui-même (pas de repos mutualisé entre exercices
+     d'un même bloc) : simple à suivre, et ajouter une série ou un exercice
+     ne peut jamais faire baisser le total.
+   - Sprint : pour chaque exercice, sets × reps × (temps de course estimé
+     [distance / 7 m/s, vitesse de sprint moyenne approximative] + repos
+     entre répétitions).
+   - Endurance/VMA : pour chaque exercice, reps × (temps d'effort + repos
+     entre répétitions) + repos après le bloc (une fois, pas par rep). */
+const estimateSessionDurationSeconds = (type, blocks) => {
+  if (!Array.isArray(blocks)) return 0;
+  if (type === "sprint") {
+    return blocks.reduce(
+      (t, b) =>
+        t +
+        (b.exercises || []).reduce((st, ex) => {
+          const sets = ex.sets || 3;
+          const reps = ex.reps || 6;
+          const runTime = (ex.distance || 30) / 7;
+          const recovery = (ex.recoveryMin || 0) * 60 + (ex.recoverySec || 0);
+          return st + sets * reps * (runTime + recovery);
+        }, 0),
+      0
+    );
+  }
+  if (type === "endurance" || type === "vma") {
+    return blocks.reduce(
+      (t, b) =>
+        t +
+        (b.exercises || []).reduce((st, ex) => {
+          const reps = ex.reps || 10;
+          const effort = ex.effortTime || 30;
+          const recovery = (ex.recoveryMin || 0) * 60 + (ex.recoverySec || 0);
+          const blockRecovery =
+            (ex.blockRecoveryMin || 0) * 60 + (ex.blockRecoverySec || 0);
+          return st + reps * (effort + recovery) + blockRecovery;
+        }, 0),
+      0
+    );
+  }
+  // Muscu (et tout type inconnu) : formule simple, additive, par exercice.
+  return blocks.reduce(
+    (t, b) =>
+      t +
+      (b.exercises || []).reduce(
+        (st, ex) =>
+          st + (ex.series || 3) * ((ex.reps || 8) * 3 + (ex.restMin ?? b.restMin ?? 2) * 60),
+        0
+      ),
+    0
+  );
+};
+
 // Cadre fixe d'affichage des photos/gifs de démonstration + zoom réglable
 const MEDIA_FRAME_HEIGHT = 220;
 const DEFAULT_MEDIA_ZOOM = 100; // en %
@@ -159,6 +220,9 @@ export default function Workout() {
   const [showDuplicateSessionModal, setShowDuplicateSessionModal] = useState(false);
   const [sessionToDuplicate, setSessionToDuplicate] = useState(null);
   const [duplicateTargetDate, setDuplicateTargetDate] = useState(null);
+  const [showDuplicateDayModal, setShowDuplicateDayModal] = useState(false);
+  const [duplicateDaySource, setDuplicateDaySource] = useState(null);
+  const [duplicateDayTarget, setDuplicateDayTarget] = useState(null);
   const [uploadingMedia, setUploadingMedia] = useState({});
   // Verrous anti-double-soumission (clic multiple / double-tap mobile) pour
   // les duplications — un état seul ne suffit pas car deux clics rapides
@@ -166,8 +230,46 @@ export default function Workout() {
   // (synchrone, contrairement à setState).
   const [isDuplicatingWeek, setIsDuplicatingWeek] = useState(false);
   const [isDuplicatingSession, setIsDuplicatingSession] = useState(false);
+  const [isDuplicatingDay, setIsDuplicatingDay] = useState(false);
+  const duplicatingDayLock = useRef(false);
   const duplicatingWeekLock = useRef(false);
   const duplicatingSessionLock = useRef(false);
+  const [recalculatingDurations, setRecalculatingDurations] = useState(false);
+
+  // Rattrapage ponctuel : recalcule et réécrit "estimatedDuration" pour
+  // TOUTES les séances déjà en base avec la formule unique ci-dessus (voir
+  // estimateSessionDurationSeconds), pour que les séances créées avant ce
+  // correctif affichent, elles aussi, un temps cohérent et à jour.
+  const recalculateAllDurations = async () => {
+    if (
+      !window.confirm(
+        "Recalculer la durée prévue de TOUTES les séances (passées et futures) avec la formule à jour ? Les séances déjà correctes ne changeront pas."
+      )
+    )
+      return;
+    setRecalculatingDurations(true);
+    try {
+      const snap = await getDocs(collection(db, "workout"));
+      let updated = 0;
+      for (const d of snap.docs) {
+        const w = d.data();
+        const newDuration = Math.round(
+          estimateSessionDurationSeconds(w.type || "muscu", w.blocks || []) / 60
+        );
+        if (newDuration !== w.estimatedDuration) {
+          await updateDoc(doc(db, "workout", d.id), { estimatedDuration: newDuration });
+          updated++;
+        }
+      }
+      alert(`✅ ${updated} séance(s) mise(s) à jour sur ${snap.docs.length}.`);
+      await fetchSessions();
+    } catch (e) {
+      console.error("Erreur recalcul des durées:", e);
+      alert("❌ Erreur lors du recalcul : " + e.message);
+    } finally {
+      setRecalculatingDurations(false);
+    }
+  };
 
   /* ===================== GROUPES PERSONNALISÉS ===================== */
   const [customGroups, setCustomGroups] = useState([]);
@@ -1063,6 +1165,85 @@ export default function Workout() {
     }
   };
 
+  /* ===================== DUPLICATION D'UNE JOURNÉE =====================
+     Comme "Dupliquer semaine", mais pour UN seul jour choisi librement (pas
+     forcément +7j) : toutes les séances (tous groupes/athlètes confondus)
+     présentes à la date source sont recréées à la date cible en une seule
+     fois, au lieu de dupliquer chaque séance une par une. */
+  const duplicateDay = async () => {
+    if (duplicatingDayLock.current) return;
+    if (!duplicateDaySource || !duplicateDayTarget) {
+      alert("Choisissez la date source et la date cible");
+      return;
+    }
+    duplicatingDayLock.current = true;
+    setIsDuplicatingDay(true);
+    try {
+      const seenIds = new Set();
+      const daySessions = events.filter((s) => {
+        if (s.date !== duplicateDaySource) return false;
+        if (seenIds.has(s.id)) return false;
+        seenIds.add(s.id);
+        return true;
+      });
+      if (daySessions.length === 0) {
+        alert("Aucune séance à cette date");
+        return;
+      }
+
+      // Même garde-fou anti-doublon que "Dupliquer semaine" : on relit
+      // Firestore à cet instant pour ne pas recréer une séance déjà présente
+      // à la date cible (si ce jour a déjà été dupliqué précédemment).
+      const existingSnap = await getDocs(collection(db, "workout"));
+      const existingKeys = new Set(
+        existingSnap.docs
+          .map((d) => d.data())
+          .filter((w) => w.date === duplicateDayTarget)
+          .map((w) => `${w.date}|${w.title}|${w.group}|${w.targetUserId || ""}`)
+      );
+
+      let created = 0;
+      let skipped = 0;
+      for (const s of daySessions) {
+        const key = `${duplicateDayTarget}|${s.title}|${s.group}|${s.targetUserId || ""}`;
+        if (existingKeys.has(key)) {
+          skipped++;
+          continue;
+        }
+        existingKeys.add(key);
+        await addDoc(collection(db, "workout"), {
+          title: s.title,
+          date: duplicateDayTarget,
+          group: s.group,
+          targetUserId: s.targetUserId || null,
+          blocks: s.blocks,
+          type: s.type || "muscu",
+          estimatedDuration: s.estimatedDuration,
+          createdBy: currentUser.uid,
+          createdAt: serverTimestamp(),
+          duplicatedFrom: s.id,
+          userProgress: {},
+        });
+        created++;
+      }
+      alert(
+        `${created} séance(s) dupliquée(s)` +
+          (skipped > 0 ? ` (${skipped} déjà existante(s) ignorée(s))` : "") +
+          " !"
+      );
+      setShowDuplicateDayModal(false);
+      setDuplicateDaySource(null);
+      setDuplicateDayTarget(null);
+      await fetchSessions();
+    } catch (e) {
+      console.error(e);
+      alert("Erreur duplication");
+    } finally {
+      duplicatingDayLock.current = false;
+      setIsDuplicatingDay(false);
+    }
+  };
+
   /* ===================== DUPLICATION SÉANCE UNIQUE ===================== */
   const duplicateSession = async () => {
     if (duplicatingSessionLock.current) return;
@@ -1118,30 +1299,7 @@ export default function Workout() {
       return;
     }
 
-    // Estimation de durée : pour une séance muscu, les exercices d'un même
-    // bloc s'enchaînent sans repos entre eux (superset/circuit dès qu'il y
-    // en a 2+), et le repos ne s'applique qu'une fois par round, au niveau
-    // du bloc — plus une addition par exercice comme avant. Les autres
-    // types (sprint/endurance) gardent le calcul inchangé.
-    const dur =
-      workoutType === "muscu"
-        ? blocks.reduce((t, b) => {
-            const rounds = Math.max(1, ...b.exercises.map((ex) => ex.series || 3));
-            const perRound = b.exercises.reduce((s, ex) => s + (ex.reps || 8) * 3, 0);
-            const blockRest = (b.restMin ?? b.exercises[0]?.restMin ?? 2) * 60;
-            return t + rounds * (perRound + blockRest);
-          }, 0)
-        : blocks.reduce(
-            (t, b) =>
-              t +
-              b.exercises.reduce(
-                (st, ex) =>
-                  st +
-                  (ex.series || 3) * ((ex.reps || 8) * 3 + (ex.restMin || 2) * 60),
-                0
-              ),
-            0
-          );
+    const dur = estimateSessionDurationSeconds(workoutType, blocks);
 
     const payload = {
       title,
@@ -2599,6 +2757,39 @@ export default function Workout() {
             📋 Dupliquer semaine
           </button>
           <button
+            onClick={() => setShowDuplicateDayModal(true)}
+            style={{
+              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
+              background: "#e0a13d",
+              color: "#1a1306",
+              border: "none",
+              borderRadius: 8,
+              fontSize: window.innerWidth <= 768 ? 13 : 15,
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            📅 Dupliquer journée
+          </button>
+          <button
+            disabled={recalculatingDurations}
+            onClick={recalculateAllDurations}
+            style={{
+              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
+              background: "#2a2620",
+              color: "#f3f0ea",
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 8,
+              fontSize: window.innerWidth <= 768 ? 13 : 15,
+              fontWeight: "bold",
+              cursor: recalculatingDurations ? "wait" : "pointer",
+            }}
+          >
+            {recalculatingDurations
+              ? "⏱️ Recalcul en cours…"
+              : "⏱️ Recalculer la durée de toutes les séances"}
+          </button>
+          <button
             onClick={() => {
               resetGroupForm();
               setShowGroupsManager(true);
@@ -3552,6 +3743,116 @@ export default function Workout() {
                 onClick={() => {
                   setShowDuplicateModal(false);
                   setDuplicateWeekStart(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  background: "#a8a199",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 16,
+                  cursor: "pointer",
+                }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============ MODAL DUPLICATION D'UNE JOURNÉE ============ */}
+      {showDuplicateDayModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.85)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: "#151310",
+              padding: 30,
+              borderRadius: 12,
+              maxWidth: 460,
+              width: "100%",
+            }}
+          >
+            <h3 style={{ margin: "0 0 10px 0" }}>📅 Dupliquer une journée</h3>
+            <p style={{ fontSize: 14, color: "#a8a199", marginBottom: 15 }}>
+              Toutes les séances (tous groupes/athlètes confondus) de la date
+              source seront recréées à la date cible, en une seule fois.
+            </p>
+            <label style={{ fontSize: 13, color: "#a8a199", display: "block", marginBottom: 6 }}>
+              Date source (le jour à copier)
+            </label>
+            <input
+              type="date"
+              value={duplicateDaySource || ""}
+              onChange={(e) => setDuplicateDaySource(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 12,
+                borderRadius: 8,
+                border: "2px solid rgba(102, 126, 234, 0.3)",
+                background: "#151310",
+                color: "#f3f0ea",
+                fontSize: 16,
+                marginBottom: 14,
+                cursor: "pointer",
+                boxSizing: "border-box",
+              }}
+            />
+            <label style={{ fontSize: 13, color: "#a8a199", display: "block", marginBottom: 6 }}>
+              Date cible (où les copier)
+            </label>
+            <input
+              type="date"
+              value={duplicateDayTarget || ""}
+              onChange={(e) => setDuplicateDayTarget(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 12,
+                borderRadius: 8,
+                border: "2px solid rgba(102, 126, 234, 0.3)",
+                background: "#151310",
+                color: "#f3f0ea",
+                fontSize: 16,
+                marginBottom: 18,
+                cursor: "pointer",
+                boxSizing: "border-box",
+              }}
+            />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={duplicateDay}
+                disabled={isDuplicatingDay}
+                style={{
+                  flex: 1,
+                  padding: 14,
+                  background: isDuplicatingDay ? "#a8a199" : "#4fae7d",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 8,
+                  fontSize: 16,
+                  fontWeight: "bold",
+                  cursor: isDuplicatingDay ? "not-allowed" : "pointer",
+                }}
+              >
+                {isDuplicatingDay ? "Duplication..." : "✅ Dupliquer"}
+              </button>
+              <button
+                onClick={() => {
+                  setShowDuplicateDayModal(false);
+                  setDuplicateDaySource(null);
+                  setDuplicateDayTarget(null);
                 }}
                 style={{
                   flex: 1,
