@@ -234,42 +234,6 @@ export default function Workout() {
   const duplicatingDayLock = useRef(false);
   const duplicatingWeekLock = useRef(false);
   const duplicatingSessionLock = useRef(false);
-  const [recalculatingDurations, setRecalculatingDurations] = useState(false);
-
-  // Rattrapage ponctuel : recalcule et réécrit "estimatedDuration" pour
-  // TOUTES les séances déjà en base avec la formule unique ci-dessus (voir
-  // estimateSessionDurationSeconds), pour que les séances créées avant ce
-  // correctif affichent, elles aussi, un temps cohérent et à jour.
-  const recalculateAllDurations = async () => {
-    if (
-      !window.confirm(
-        "Recalculer la durée prévue de TOUTES les séances (passées et futures) avec la formule à jour ? Les séances déjà correctes ne changeront pas."
-      )
-    )
-      return;
-    setRecalculatingDurations(true);
-    try {
-      const snap = await getDocs(collection(db, "workout"));
-      let updated = 0;
-      for (const d of snap.docs) {
-        const w = d.data();
-        const newDuration = Math.round(
-          estimateSessionDurationSeconds(w.type || "muscu", w.blocks || []) / 60
-        );
-        if (newDuration !== w.estimatedDuration) {
-          await updateDoc(doc(db, "workout", d.id), { estimatedDuration: newDuration });
-          updated++;
-        }
-      }
-      alert(`✅ ${updated} séance(s) mise(s) à jour sur ${snap.docs.length}.`);
-      await fetchSessions();
-    } catch (e) {
-      console.error("Erreur recalcul des durées:", e);
-      alert("❌ Erreur lors du recalcul : " + e.message);
-    } finally {
-      setRecalculatingDurations(false);
-    }
-  };
 
   /* ===================== GROUPES PERSONNALISÉS ===================== */
   const [customGroups, setCustomGroups] = useState([]);
@@ -2770,24 +2734,6 @@ export default function Workout() {
             }}
           >
             📅 Dupliquer journée
-          </button>
-          <button
-            disabled={recalculatingDurations}
-            onClick={recalculateAllDurations}
-            style={{
-              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "#2a2620",
-              color: "#f3f0ea",
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 8,
-              fontSize: window.innerWidth <= 768 ? 13 : 15,
-              fontWeight: "bold",
-              cursor: recalculatingDurations ? "wait" : "pointer",
-            }}
-          >
-            {recalculatingDurations
-              ? "⏱️ Recalcul en cours…"
-              : "⏱️ Recalculer la durée de toutes les séances"}
           </button>
           <button
             onClick={() => {
