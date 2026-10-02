@@ -1734,6 +1734,92 @@ export default function Workout() {
     }
   };
 
+  // Import ponctuel (one-shot) des liens vidéo YouTube de bonne exécution,
+  // recherchés manuellement pour les exercices déjà présents dans la banque
+  // au 02/10/2026. N'écrase jamais un lien déjà renseigné à la main —
+  // complète seulement les fiches qui n'en ont pas encore.
+  const VIDEO_LINKS_IMPORT = {
+    "90/90 hanche": "https://www.youtube.com/watch?v=nNH8GTq6S54",
+    "adducteur machine": "https://www.youtube.com/watch?v=A5asOtzaTKQ",
+    "box squat": "https://www.youtube.com/watch?v=TZ7A-ftjTbU",
+    "charrue": "https://www.youtube.com/watch?v=bHGazL-jXJw",
+    "chien tête en bas + cobra": "https://www.youtube.com/watch?v=RWO7To42vvk",
+    "cmj": "https://www.youtube.com/watch?v=7W6f6vNk1K8",
+    "developpe couche": "https://www.youtube.com/watch?v=feWp7jZopI8",
+    "developpe militaire": "https://www.youtube.com/watch?v=WmwFNLeuHd8",
+    "dorsiflexion chevilles": "https://www.youtube.com/watch?v=F1LEHIOlxiE",
+    "elevation laterale": "https://www.youtube.com/watch?v=q_DYeb_daeY",
+    "epauler": "https://www.youtube.com/watch?v=isIkJbkbyQU",
+    "fentes arrieres": "https://www.youtube.com/watch?v=T-a6-369Rrg",
+    "fentes avant": "https://www.youtube.com/watch?v=1Ac8Z0RyDX4",
+    "fentes avant zercher": "https://www.youtube.com/watch?v=w0dsCp3edNc",
+    "fentes bulgares": "https://www.youtube.com/watch?v=r_-HNEXkW00",
+    "flexion / extention ischio": "https://www.youtube.com/watch?v=_nMmP3kMGmk",
+    "front squat": "https://www.youtube.com/watch?v=q8SOga8nPss",
+    "gainage roulette": "https://www.youtube.com/watch?v=kFv2rLtgc8w",
+    "landmin twist": "https://www.youtube.com/watch?v=RLQLPFR8U9M",
+    "leg extension": "https://www.youtube.com/watch?v=HIN-69rdMys",
+    "pendlay row": "https://www.youtube.com/watch?v=OjuKHVXvS1Q",
+    "press": "https://www.youtube.com/watch?v=Ef1wVCbLWN0",
+    "psoas machine": "https://www.youtube.com/watch?v=_7ugpzFX00g",
+    "push press": "https://www.youtube.com/watch?v=i_1Sl4yHj44",
+    "rdl unilaterale": "https://www.youtube.com/watch?v=S8wkyvxNvac",
+    "rotation de hanche": "https://www.youtube.com/watch?v=MP6TdWLW754",
+    "rowing bucheron": "https://www.youtube.com/watch?v=2P2TyrYyTmU",
+    "shrug": "https://www.youtube.com/watch?v=6ebE-S78ua4",
+    "squat": "https://www.youtube.com/watch?v=Dr41gZwfTfM",
+    "squat spanish": "https://www.youtube.com/watch?v=wYWB-X8kGso",
+    "traction": "https://www.youtube.com/watch?v=bGa0EhTpudk",
+  };
+  const [importingVideoLinks, setImportingVideoLinks] = useState(false);
+
+  const importVideoLinks = async () => {
+    if (
+      !window.confirm(
+        "Remplir automatiquement le lien vidéo de tous les exercices de la banque qui n'en ont pas encore (recherché pour chacun) ? Un exercice déjà pourvu d'un lien n'est jamais modifié."
+      )
+    )
+      return;
+    setImportingVideoLinks(true);
+    let filled = 0;
+    let skippedExisting = 0;
+    let notFound = 0;
+    try {
+      const entries = getExerciseNameEntries();
+      for (const entry of entries) {
+        const match = VIDEO_LINKS_IMPORT[normalizeExerciseName(entry.name)];
+        if (!match) {
+          notFound++;
+          continue;
+        }
+        if (entry.videoUrl) {
+          skippedExisting++;
+          continue;
+        }
+        await setDoc(
+          doc(db, "exerciseMedia", entry.key),
+          { name: entry.name, videoUrl: match, updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+        setExerciseMediaLibrary((prev) => ({
+          ...prev,
+          [entry.key]: { ...(prev[entry.key] || { name: entry.name }), videoUrl: match },
+        }));
+        filled++;
+      }
+      alert(
+        `✅ ${filled} lien(s) vidéo ajouté(s).` +
+          (skippedExisting ? `\n${skippedExisting} exercice(s) avaient déjà un lien (non touchés).` : "") +
+          (notFound ? `\n${notFound} exercice(s) sans correspondance trouvée (à ajouter à la main via "🎬 Vidéo").` : "")
+      );
+    } catch (e) {
+      console.error("Erreur import liens vidéo:", e);
+      alert("❌ Erreur lors de l'import : " + e.message);
+    } finally {
+      setImportingVideoLinks(false);
+    }
+  };
+
   const [resyncingAllCategories, setResyncingAllCategories] = useState(false);
 
   // Rattrapage : avant la correction du bug de propagation (qui ne
@@ -1797,17 +1883,22 @@ export default function Workout() {
     }
     setRenameBusy(true);
     try {
-      // 1) Met à jour toutes les séances déjà chargées dont un exercice
-      // correspond à l'ancien nom. Firestore ne permet pas de modifier un
-      // seul champ imbriqué dans un tableau d'objets : on réécrit le
-      // tableau "blocks" en entier pour chaque séance concernée.
-      const sessionsToUpdate = events.filter((w) =>
-        (w.blocks || []).some((block) =>
-          (block.exercises || []).some(
-            (ex) => normalizeExerciseName(ex.name) === oldKey
+      // 1) Met à jour TOUTES les séances en base (requête directe Firestore,
+      // pas seulement celles déjà chargées dans "events" — qui peuvent être
+      // incomplètes si une séance a été créée pendant que ce gestionnaire
+      // était ouvert). Firestore ne permet pas de modifier un seul champ
+      // imbriqué dans un tableau d'objets : on réécrit le tableau "blocks"
+      // en entier pour chaque séance concernée.
+      const workoutSnap = await getDocs(collection(db, "workout"));
+      const sessionsToUpdate = workoutSnap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((w) =>
+          (w.blocks || []).some((block) =>
+            (block.exercises || []).some(
+              (ex) => normalizeExerciseName(ex.name) === oldKey
+            )
           )
-        )
-      );
+        );
       for (const session of sessionsToUpdate) {
         const newBlocks = session.blocks.map((block) => ({
           ...block,
@@ -1818,7 +1909,9 @@ export default function Workout() {
         await updateDoc(doc(db, "workout", session.id), { blocks: newBlocks });
       }
 
-      // 2) Déplace la fiche média partagée si elle existe.
+      // 2) Déplace la fiche média partagée si elle existe (conserve TOUS ses
+      // champs — photo, catégorie, lien vidéo... — en les recopiant sur la
+      // nouvelle fiche avant de supprimer l'ancienne).
       if (exerciseMediaLibrary[oldKey]) {
         const mediaEntry = { ...exerciseMediaLibrary[oldKey], name: newName };
         if (newKey !== oldKey) {
@@ -1836,6 +1929,36 @@ export default function Workout() {
           next[newKey] = mediaEntry;
           return next;
         });
+      }
+
+      // 3) Déplace la fiche "Mes RM" correspondante chez CHAQUE athlète.
+      // Sans ça, l'ancienne fiche (toujours présente sous l'ancien nom chez
+      // tous les athlètes, créée automatiquement dès qu'un exercice est
+      // catégorisé) continuait d'apparaître dans ce gestionnaire — donnant
+      // l'impression que le renommage n'avait rien fait et que l'image avait
+      // disparu (en réalité déplacée sur une fiche différente).
+      const usersSnap = await getDocs(collection(db, "users"));
+      const athleteIds = usersSnap.docs
+        .filter((d) => d.data().role !== "admin" && d.data().superAdmin !== true)
+        .map((d) => d.id);
+      for (const uid of athleteIds) {
+        const oldRmRef = doc(db, "users", uid, "rm", oldKey);
+        const oldRmSnap = await getDoc(oldRmRef);
+        if (!oldRmSnap.exists()) continue;
+        if (newKey === oldKey) {
+          await updateDoc(oldRmRef, { exerciseName: newName });
+          continue;
+        }
+        const newRmRef = doc(db, "users", uid, "rm", newKey);
+        const newRmSnap = await getDoc(newRmRef);
+        if (!newRmSnap.exists()) {
+          await setDoc(newRmRef, {
+            ...oldRmSnap.data(),
+            exerciseName: newName,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        await deleteDoc(oldRmRef);
       }
 
       await fetchSessions();
@@ -2137,11 +2260,20 @@ export default function Workout() {
             category: extra.category !== undefined ? extra.category : existing?.category ?? null,
             isWarmup: extra.isWarmup !== undefined ? extra.isWarmup : !!existing?.isWarmup,
             isPDC: extra.isPDC !== undefined ? extra.isPDC : !!existing?.isPDC,
+            // Préserve le lien vidéo déjà renseigné — ajouter/changer une
+            // photo ne doit jamais l'effacer (setDoc ci-dessous est un
+            // remplacement complet du document, merge:true en plus par
+            // sécurité).
+            ...(existing?.videoUrl ? { videoUrl: existing.videoUrl } : {}),
           };
-          await setDoc(doc(db, "exerciseMedia", mediaKey), {
-            ...entry,
-            updatedAt: serverTimestamp(),
-          });
+          await setDoc(
+            doc(db, "exerciseMedia", mediaKey),
+            {
+              ...entry,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
           setExerciseMediaLibrary((prev) => ({ ...prev, [mediaKey]: entry }));
           resolve();
         } catch (e) {
@@ -2676,6 +2808,26 @@ export default function Workout() {
               {resyncingAllCategories
                 ? "🔄 Resynchronisation en cours…"
                 : "🔄 Resynchroniser toutes les catégories vers tous les athlètes"}
+            </button>
+
+            <button
+              disabled={importingVideoLinks}
+              onClick={importVideoLinks}
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                marginBottom: 16,
+                background: "#2a2620",
+                color: "#f3f0ea",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 8,
+                cursor: importingVideoLinks ? "wait" : "pointer",
+                fontSize: 13,
+              }}
+            >
+              {importingVideoLinks
+                ? "📥 Import en cours…"
+                : "📥 Importer les liens vidéo YouTube (exercices sans lien)"}
             </button>
 
             {/* Ajouter un nouvel exercice (avec ou sans photo tout de
