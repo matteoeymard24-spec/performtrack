@@ -105,7 +105,14 @@ const formatExerciseDisplayName = (name) => {
      [distance / 7 m/s, vitesse de sprint moyenne approximative] + repos
      entre répétitions).
    - Endurance/VMA : pour chaque exercice, reps × (temps d'effort + repos
-     entre répétitions) + repos après le bloc (une fois, pas par rep). */
+     entre répétitions) + repos après le bloc (une fois, pas par rep).
+   - Un bloc en mode EMOM/AMRAP (muscu ou endurance) ignore ce calcul par
+     exercice : sa durée est directement intervalle × nombre de tours,
+     puisque c'est le chrono qui impose le temps, pas les exercices qui le
+     déterminent. */
+const blockTimerDurationSeconds = (b) =>
+  (b.timerIntervalSec || 60) * (b.timerRounds || 10);
+
 const estimateSessionDurationSeconds = (type, blocks) => {
   if (!Array.isArray(blocks)) return 0;
   if (type === "sprint") {
@@ -123,8 +130,11 @@ const estimateSessionDurationSeconds = (type, blocks) => {
     );
   }
   if (type === "endurance" || type === "vma") {
-    return blocks.reduce(
-      (t, b) =>
+    return blocks.reduce((t, b) => {
+      if (b.timerMode === "emom" || b.timerMode === "amrap") {
+        return t + blockTimerDurationSeconds(b);
+      }
+      return (
         t +
         (b.exercises || []).reduce((st, ex) => {
           const reps = ex.reps || 10;
@@ -133,21 +143,48 @@ const estimateSessionDurationSeconds = (type, blocks) => {
           const blockRecovery =
             (ex.blockRecoveryMin || 0) * 60 + (ex.blockRecoverySec || 0);
           return st + reps * (effort + recovery) + blockRecovery;
-        }, 0),
-      0
-    );
+        }, 0)
+      );
+    }, 0);
   }
   // Muscu (et tout type inconnu) : formule simple, additive, par exercice.
-  return blocks.reduce(
-    (t, b) =>
+  return blocks.reduce((t, b) => {
+    if (b.timerMode === "emom" || b.timerMode === "amrap") {
+      return t + blockTimerDurationSeconds(b);
+    }
+    return (
       t +
       (b.exercises || []).reduce(
         (st, ex) =>
           st + (ex.series || 3) * ((ex.reps || 8) * 3 + (ex.restMin ?? b.restMin ?? 2) * 60),
         0
-      ),
-    0
-  );
+      )
+    );
+  }, 0);
+};
+
+// Bip du chrono EMOM/AMRAP, généré à la volée (Web Audio API) — pas de
+// fichier audio à charger. "accent" = bip plus aigu et plus long, utilisé
+// au départ d'un nouveau tour (vs. un simple tic pour le décompte final).
+const playBeep = (accent = false) => {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = accent ? 1046 : 660;
+    gain.gain.value = 0.25;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + (accent ? 0.35 : 0.15));
+    osc.onended = () => ctx.close();
+  } catch (e) {
+    // Lecture audio indisponible (ex. navigateur qui bloque l'audio avant
+    // une interaction) : on ignore, le chrono visuel reste fonctionnel.
+  }
 };
 
 // Cadre fixe d'affichage des photos/gifs de démonstration + zoom réglable
@@ -212,6 +249,13 @@ export default function Workout() {
 
   const [sessionInProgress, setSessionInProgress] = useState(null);
   const [sessionStartTime, setSessionStartTime] = useState(null);
+  /* ===================== CHRONO EMOM / AMRAP =====================
+     Un seul chrono actif à la fois (un athlète ne fait qu'un bloc à la
+     fois) : blockKey identifie le bloc en cours ("bIdx"), remainingSec
+     décompte jusqu'à 0 avant de repartir sur un nouveau tour, round compte
+     les tours déjà faits. Un seul setInterval global (pas un par bloc) —
+     voir le useEffect juste après le composant. */
+  const [emomTimer, setEmomTimer] = useState(null);
   const [sessionFeedback, setSessionFeedback] = useState({});
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [currentExerciseFeedback, setCurrentExerciseFeedback] = useState(null);
@@ -921,6 +965,56 @@ export default function Workout() {
     } catch (e) {
       console.error("Erreur ajustement RM:", e);
     }
+  };
+
+  /* ===================== CHRONO EMOM / AMRAP (contrôles) =====================
+     Un seul setInterval, qui ne tourne que quand un chrono est "running" —
+     décrémente remainingSec chaque seconde, bipe et passe au tour suivant
+     (ou s'arrête) quand il atteint 0. */
+  useEffect(() => {
+    if (!emomTimer || !emomTimer.running) return;
+    const id = setInterval(() => {
+      setEmomTimer((prev) => {
+        if (!prev || !prev.running) return prev;
+        if (prev.remainingSec > 1) {
+          return { ...prev, remainingSec: prev.remainingSec - 1 };
+        }
+        // Fin du tour en cours.
+        const nextRound = prev.round + 1;
+        if (nextRound >= prev.totalRounds) {
+          playBeep(true);
+          return { ...prev, remainingSec: 0, round: nextRound, running: false };
+        }
+        playBeep(true);
+        return { ...prev, remainingSec: prev.intervalSec, round: nextRound };
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [emomTimer?.running]);
+
+  const startBlockTimer = (bIdx, block) => {
+    setEmomTimer({
+      blockIdx: bIdx,
+      mode: block.timerMode,
+      intervalSec: block.timerIntervalSec || 60,
+      totalRounds: block.timerRounds || 10,
+      remainingSec: block.timerIntervalSec || 60,
+      round: 0,
+      running: true,
+    });
+    playBeep(true);
+  };
+
+  const toggleBlockTimerPause = () => {
+    setEmomTimer((prev) => (prev ? { ...prev, running: !prev.running } : prev));
+  };
+
+  const resetBlockTimer = () => {
+    setEmomTimer((prev) =>
+      prev
+        ? { ...prev, remainingSec: prev.intervalSec, round: 0, running: false }
+        : prev
+    );
   };
 
   const endSession = async () => {
@@ -4350,6 +4444,110 @@ export default function Workout() {
                 </div>
               )}
 
+              {/* EMOM / AMRAP : remplace le calcul de durée habituel du bloc
+                  par un chrono qui impose son propre rythme — intervalle de
+                  départ libre (pas forcément 1 min), répété un nombre de
+                  tours donné. Disponible en muscu et en endurance. */}
+              {!collapsedBlocks[bIdx] &&
+                (workoutType === "muscu" || workoutType === "endurance") && (
+                  <div
+                    style={{
+                      marginBottom: 12,
+                      padding: "8px 10px",
+                      background: "rgba(79,174,125,0.08)",
+                      borderRadius: 6,
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <label style={{ fontSize: 13, color: "#4fae7d", fontWeight: "bold", whiteSpace: "nowrap" }}>
+                        ⏱️ Mode du bloc
+                      </label>
+                      <select
+                        value={block.timerMode || "normal"}
+                        onChange={(e) => {
+                          const mode = e.target.value;
+                          updateBlock(bIdx, "timerMode", mode === "normal" ? null : mode);
+                          if (mode !== "normal" && !block.timerIntervalSec) {
+                            updateBlock(bIdx, "timerIntervalSec", 60);
+                          }
+                          if (mode !== "normal" && !block.timerRounds) {
+                            updateBlock(bIdx, "timerRounds", 10);
+                          }
+                        }}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          border: "1px solid #2a2620",
+                          background: "#0d0c0a",
+                          color: "#f3f0ea",
+                          fontSize: 13,
+                        }}
+                      >
+                        <option value="normal">Normal</option>
+                        <option value="emom">EMOM</option>
+                        <option value="amrap">AMRAP</option>
+                      </select>
+                    </div>
+                    {(block.timerMode === "emom" || block.timerMode === "amrap") && (
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
+                            Départ toutes les (sec)
+                          </label>
+                          <input
+                            type="number"
+                            min="5"
+                            step="5"
+                            value={block.timerIntervalSec ?? 60}
+                            onChange={(e) =>
+                              updateBlock(bIdx, "timerIntervalSec", Number(e.target.value))
+                            }
+                            style={{
+                              width: 90,
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
+                            Nombre de tours
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={block.timerRounds ?? 10}
+                            onChange={(e) =>
+                              updateBlock(bIdx, "timerRounds", Number(e.target.value))
+                            }
+                            style={{
+                              width: 90,
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 12, color: "#a8a199" }}>
+                          = {Math.round(
+                            ((block.timerIntervalSec ?? 60) * (block.timerRounds ?? 10)) / 60
+                          )}{" "}
+                          min au total. {block.timerMode === "emom"
+                            ? "L'athlète refait les exercices du bloc à chaque nouveau départ."
+                            : "L'athlète enchaîne le plus de tours possible, le départ sert juste de repère."}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
               {collapsedBlocks[bIdx] && (
                 <div style={{ fontSize: 13, color: "#a8a199", padding: "4px 2px 8px" }}>
                   {block.exercises.length} exercice{block.exercises.length > 1 ? "s" : ""} —{" "}
@@ -5723,13 +5921,117 @@ export default function Workout() {
                 }}
               >
                 {block.name}
-                {sessionType === "muscu" && (
-                  <span style={{ fontSize: 13, color: "#e0a13d", fontWeight: "normal" }}>
-                    ⏱️ Repos après le bloc : {block.restMin ?? block.exercises?.[0]?.restMin ?? 2} min
-                    {block.exercises?.length > 1 && " (exercices enchaînés sans pause)"}
+                {sessionType === "muscu" &&
+                  !block.timerMode && (
+                    <span style={{ fontSize: 13, color: "#e0a13d", fontWeight: "normal" }}>
+                      ⏱️ Repos après le bloc : {block.restMin ?? block.exercises?.[0]?.restMin ?? 2} min
+                      {block.exercises?.length > 1 && " (exercices enchaînés sans pause)"}
+                    </span>
+                  )}
+                {(block.timerMode === "emom" || block.timerMode === "amrap") && (
+                  <span
+                    style={{
+                      fontSize: 13,
+                      color: "#4fae7d",
+                      fontWeight: "normal",
+                      background: "rgba(79,174,125,0.12)",
+                      padding: "2px 10px",
+                      borderRadius: 6,
+                    }}
+                  >
+                    {block.timerMode === "emom" ? "⏱️ EMOM" : "⏱️ AMRAP"} — départ
+                    toutes les {block.timerIntervalSec || 60}s × {block.timerRounds || 10} tours
                   </span>
                 )}
               </h4>
+
+              {(block.timerMode === "emom" || block.timerMode === "amrap") &&
+                (() => {
+                  const active = emomTimer && emomTimer.blockIdx === bIdx ? emomTimer : null;
+                  const totalRounds = block.timerRounds || 10;
+                  const intervalSec = block.timerIntervalSec || 60;
+                  const remaining = active ? active.remainingSec : intervalSec;
+                  const round = active ? active.round : 0;
+                  const finished = active && !active.running && round >= totalRounds;
+                  const mm = String(Math.floor(remaining / 60)).padStart(2, "0");
+                  const ss = String(remaining % 60).padStart(2, "0");
+                  return (
+                    <div
+                      style={{
+                        background: "#151310",
+                        borderRadius: 10,
+                        padding: 16,
+                        marginBottom: 14,
+                        textAlign: "center",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 42,
+                          fontWeight: "bold",
+                          color: finished ? "#4fae7d" : "#f3f0ea",
+                          fontFamily: "monospace",
+                        }}
+                      >
+                        {finished ? "✅" : `${mm}:${ss}`}
+                      </div>
+                      <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 10 }}>
+                        {finished
+                          ? "Terminé !"
+                          : `Tour ${Math.min(round + 1, totalRounds)} / ${totalRounds}`}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                        {!active || (!active.running && round >= totalRounds) ? (
+                          <button
+                            onClick={() => startBlockTimer(bIdx, block)}
+                            style={{
+                              padding: "10px 20px",
+                              background: "#4fae7d",
+                              color: "white",
+                              border: "none",
+                              borderRadius: 8,
+                              fontWeight: "bold",
+                              cursor: "pointer",
+                            }}
+                          >
+                            ▶️ Démarrer
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={toggleBlockTimerPause}
+                              style={{
+                                padding: "10px 20px",
+                                background: "#e0a13d",
+                                color: "#1a1306",
+                                border: "none",
+                                borderRadius: 8,
+                                fontWeight: "bold",
+                                cursor: "pointer",
+                              }}
+                            >
+                              {active.running ? "⏸️ Pause" : "▶️ Reprendre"}
+                            </button>
+                            <button
+                              onClick={resetBlockTimer}
+                              style={{
+                                padding: "10px 20px",
+                                background: "#2a2620",
+                                color: "#f3f0ea",
+                                border: "none",
+                                borderRadius: 8,
+                                cursor: "pointer",
+                              }}
+                            >
+                              🔁 Réinitialiser
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+
               {block.exercises.map((ex, eIdx) => {
                 const key = `${bIdx}-${eIdx}`;
                 const userFeedback = getUserFeedback(selectedSession);
