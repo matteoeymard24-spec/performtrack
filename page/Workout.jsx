@@ -132,7 +132,7 @@ const estimateSessionDurationSeconds = (type, blocks) => {
   if (type === "endurance" || type === "vma") {
     return blocks.reduce((t, b) => {
       if (b.timerMode === "emom" || b.timerMode === "amrap") {
-        return t + blockTimerDurationSeconds(b);
+        return t + blockTimerDurationSeconds(b) + (b.restMin ?? 2) * 60;
       }
       return (
         t +
@@ -150,7 +150,7 @@ const estimateSessionDurationSeconds = (type, blocks) => {
   // Muscu (et tout type inconnu) : formule simple, additive, par exercice.
   return blocks.reduce((t, b) => {
     if (b.timerMode === "emom" || b.timerMode === "amrap") {
-      return t + blockTimerDurationSeconds(b);
+      return t + blockTimerDurationSeconds(b) + (b.restMin ?? 2) * 60;
     }
     return (
       t +
@@ -4407,7 +4407,10 @@ export default function Workout() {
                 </button>
               </div>
 
-              {!collapsedBlocks[bIdx] && workoutType === "muscu" && (
+              {!collapsedBlocks[bIdx] &&
+                (workoutType === "muscu" ||
+                  (workoutType === "endurance" &&
+                    (block.timerMode === "emom" || block.timerMode === "amrap"))) && (
                 <div
                   style={{
                     display: "flex",
@@ -4439,6 +4442,7 @@ export default function Workout() {
                   {block.exercises.length > 1 && (
                     <span style={{ fontSize: 12, color: "#a8a199" }}>
                       Les {block.exercises.length} exercices s'enchaînent sans pause, puis ce repos s'applique une fois.
+                      Utilise un 2ᵉ bloc (avec d'autres exercices) pour une récup entre deux groupes d'exercices distincts.
                     </span>
                   )}
                 </div>
@@ -4469,11 +4473,18 @@ export default function Workout() {
                         onChange={(e) => {
                           const mode = e.target.value;
                           updateBlock(bIdx, "timerMode", mode === "normal" ? null : mode);
-                          if (mode !== "normal" && !block.timerIntervalSec) {
-                            updateBlock(bIdx, "timerIntervalSec", 60);
+                          if (mode === "emom") {
+                            if (!block.timerIntervalSec) updateBlock(bIdx, "timerIntervalSec", 60);
+                            updateBlock(bIdx, "timerRounds", block.timerRounds || 10);
                           }
-                          if (mode !== "normal" && !block.timerRounds) {
-                            updateBlock(bIdx, "timerRounds", 10);
+                          if (mode === "amrap") {
+                            // AMRAP : un seul tour, pas de "nombre de tours"
+                            // — c'est le nombre de reps par exercice (déjà
+                            // réglable juste en dessous, comme en muscu) qui
+                            // n'est pas figé, puisque le but est d'en faire
+                            // le plus possible pendant la durée impartie.
+                            if (!block.timerIntervalSec) updateBlock(bIdx, "timerIntervalSec", 600);
+                            updateBlock(bIdx, "timerRounds", 1);
                           }
                         }}
                         style={{
@@ -4490,7 +4501,7 @@ export default function Workout() {
                         <option value="amrap">AMRAP</option>
                       </select>
                     </div>
-                    {(block.timerMode === "emom" || block.timerMode === "amrap") && (
+                    {block.timerMode === "emom" && (
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
@@ -4539,9 +4550,41 @@ export default function Workout() {
                           = {Math.round(
                             ((block.timerIntervalSec ?? 60) * (block.timerRounds ?? 10)) / 60
                           )}{" "}
-                          min au total. {block.timerMode === "emom"
-                            ? "L'athlète refait les exercices du bloc à chaque nouveau départ."
-                            : "L'athlète enchaîne le plus de tours possible, le départ sert juste de repère."}
+                          min au total. L'athlète refait les exercices du bloc (avec
+                          leur nombre de reps réglé ci-dessous) à chaque nouveau départ.
+                        </span>
+                      </div>
+                    )}
+                    {block.timerMode === "amrap" && (
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
+                            Durée totale (sec)
+                          </label>
+                          <input
+                            type="number"
+                            min="10"
+                            step="10"
+                            value={block.timerIntervalSec ?? 600}
+                            onChange={(e) =>
+                              updateBlock(bIdx, "timerIntervalSec", Number(e.target.value))
+                            }
+                            style={{
+                              width: 90,
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
+                            }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 12, color: "#a8a199" }}>
+                          = {Math.round((block.timerIntervalSec ?? 600) / 60)} min au
+                          total. Pas de nombre de tours fixé à l'avance : l'athlète
+                          enchaîne le plus de tours possible, en validant le nombre de
+                          reps réglé pour chaque exercice ci-dessous avant de passer au
+                          suivant dans le tour.
                         </span>
                       </div>
                     )}
@@ -5939,8 +5982,9 @@ export default function Workout() {
                       borderRadius: 6,
                     }}
                   >
-                    {block.timerMode === "emom" ? "⏱️ EMOM" : "⏱️ AMRAP"} — départ
-                    toutes les {block.timerIntervalSec || 60}s × {block.timerRounds || 10} tours
+                    {block.timerMode === "emom"
+                      ? `⏱️ EMOM — départ toutes les ${block.timerIntervalSec || 60}s × ${block.timerRounds || 10} tours`
+                      : `⏱️ AMRAP — ${Math.round((block.timerIntervalSec || 600) / 60)} min, le plus de tours possible`}
                   </span>
                 )}
               </h4>
@@ -5978,6 +6022,8 @@ export default function Workout() {
                       <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 10 }}>
                         {finished
                           ? "Terminé !"
+                          : block.timerMode === "amrap"
+                          ? "Go !"
                           : `Tour ${Math.min(round + 1, totalRounds)} / ${totalRounds}`}
                       </div>
                       <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
