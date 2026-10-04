@@ -132,7 +132,7 @@ const estimateSessionDurationSeconds = (type, blocks) => {
   if (type === "endurance" || type === "vma") {
     return blocks.reduce((t, b) => {
       if (b.timerMode === "emom" || b.timerMode === "amrap") {
-        return t + blockTimerDurationSeconds(b) + (b.restMin ?? 2) * 60;
+        return t + blockTimerDurationSeconds(b) + ((b.restMin ?? 2) * 60 + (b.restSec || 0));
       }
       return (
         t +
@@ -150,7 +150,7 @@ const estimateSessionDurationSeconds = (type, blocks) => {
   // Muscu (et tout type inconnu) : formule simple, additive, par exercice.
   return blocks.reduce((t, b) => {
     if (b.timerMode === "emom" || b.timerMode === "amrap") {
-      return t + blockTimerDurationSeconds(b) + (b.restMin ?? 2) * 60;
+      return t + blockTimerDurationSeconds(b) + ((b.restMin ?? 2) * 60 + (b.restSec || 0));
     }
     return (
       t +
@@ -4420,25 +4420,66 @@ export default function Workout() {
                     padding: "8px 10px",
                     background: "rgba(224,161,61,0.08)",
                     borderRadius: 6,
+                    flexWrap: "wrap",
                   }}
                 >
                   <label style={{ fontSize: 13, color: "#e0a13d", fontWeight: "bold", whiteSpace: "nowrap" }}>
-                    ⏱️ Repos après ce bloc (min)
+                    ⏱️ Repos après ce bloc
                   </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    value={block.restMin ?? 2}
-                    onChange={(e) => updateBlock(bIdx, "restMin", Number(e.target.value))}
-                    style={{
-                      width: 80,
-                      padding: 8,
-                      borderRadius: 6,
-                      border: "1px solid #2a2620",
-                      background: "#0d0c0a",
-                      color: "#f3f0ea",
-                    }}
-                  />
+                  {block.timerMode === "emom" || block.timerMode === "amrap" ? (
+                    <>
+                      <div>
+                        <label style={{ fontSize: 11, color: "#a8a199", display: "block" }}>Min</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={block.restMin ?? 2}
+                          onChange={(e) => updateBlock(bIdx, "restMin", Number(e.target.value))}
+                          style={{
+                            width: 70,
+                            padding: 8,
+                            borderRadius: 6,
+                            border: "1px solid #2a2620",
+                            background: "#0d0c0a",
+                            color: "#f3f0ea",
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: "#a8a199", display: "block" }}>Sec</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="59"
+                          value={block.restSec ?? 0}
+                          onChange={(e) => updateBlock(bIdx, "restSec", Number(e.target.value))}
+                          style={{
+                            width: 70,
+                            padding: 8,
+                            borderRadius: 6,
+                            border: "1px solid #2a2620",
+                            background: "#0d0c0a",
+                            color: "#f3f0ea",
+                          }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={block.restMin ?? 2}
+                      onChange={(e) => updateBlock(bIdx, "restMin", Number(e.target.value))}
+                      style={{
+                        width: 80,
+                        padding: 8,
+                        borderRadius: 6,
+                        border: "1px solid #2a2620",
+                        background: "#0d0c0a",
+                        color: "#f3f0ea",
+                      }}
+                    />
+                  )}
                   {block.exercises.length > 1 && (
                     <span style={{ fontSize: 12, color: "#a8a199" }}>
                       Les {block.exercises.length} exercices s'enchaînent sans pause, puis ce repos s'applique une fois.
@@ -4505,18 +4546,41 @@ export default function Workout() {
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
-                            Départ toutes les (sec)
+                            Départ toutes les — Min
                           </label>
                           <input
                             type="number"
-                            min="5"
-                            step="5"
-                            value={block.timerIntervalSec ?? 60}
-                            onChange={(e) =>
-                              updateBlock(bIdx, "timerIntervalSec", Number(e.target.value))
-                            }
+                            min="0"
+                            value={Math.floor((block.timerIntervalSec ?? 60) / 60)}
+                            onChange={(e) => {
+                              const sec = (block.timerIntervalSec ?? 60) % 60;
+                              updateBlock(bIdx, "timerIntervalSec", Number(e.target.value) * 60 + sec);
+                            }}
                             style={{
-                              width: 90,
+                              width: 70,
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
+                            Sec
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={(block.timerIntervalSec ?? 60) % 60}
+                            onChange={(e) => {
+                              const min = Math.floor((block.timerIntervalSec ?? 60) / 60);
+                              updateBlock(bIdx, "timerIntervalSec", min * 60 + Number(e.target.value));
+                            }}
+                            style={{
+                              width: 70,
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #2a2620",
@@ -4559,18 +4623,41 @@ export default function Workout() {
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
-                            Durée totale (sec)
+                            Durée totale — Min
                           </label>
                           <input
                             type="number"
-                            min="10"
-                            step="10"
-                            value={block.timerIntervalSec ?? 600}
-                            onChange={(e) =>
-                              updateBlock(bIdx, "timerIntervalSec", Number(e.target.value))
-                            }
+                            min="0"
+                            value={Math.floor((block.timerIntervalSec ?? 600) / 60)}
+                            onChange={(e) => {
+                              const sec = (block.timerIntervalSec ?? 600) % 60;
+                              updateBlock(bIdx, "timerIntervalSec", Number(e.target.value) * 60 + sec);
+                            }}
                             style={{
-                              width: 90,
+                              width: 70,
+                              padding: 8,
+                              borderRadius: 6,
+                              border: "1px solid #2a2620",
+                              background: "#0d0c0a",
+                              color: "#f3f0ea",
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
+                            Sec
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            value={(block.timerIntervalSec ?? 600) % 60}
+                            onChange={(e) => {
+                              const min = Math.floor((block.timerIntervalSec ?? 600) / 60);
+                              updateBlock(bIdx, "timerIntervalSec", min * 60 + Number(e.target.value));
+                            }}
+                            style={{
+                              width: 70,
                               padding: 8,
                               borderRadius: 6,
                               border: "1px solid #2a2620",
@@ -4923,27 +5010,97 @@ export default function Workout() {
                   {/* FORMULAIRE MUSCU */}
                   {workoutType === "muscu" && (
                     <>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, 1fr)",
-                          gap: 10,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <div>
+                      {(() => {
+                        const isTimerBlock =
+                          block.timerMode === "emom" || block.timerMode === "amrap";
+                        return (
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: isTimerBlock ? "1fr" : "repeat(2, 1fr)",
+                              gap: 10,
+                              marginBottom: 10,
+                            }}
+                          >
+                            {/* Séries inutile en EMOM/AMRAP : c'est le chrono
+                                du bloc (tours/durée) qui impose le rythme,
+                                pas un nombre de séries par exercice. */}
+                            {!isTimerBlock && (
+                              <div>
+                                <label style={{ fontSize: 12, color: "#a8a199" }}>
+                                  Séries
+                                </label>
+                                <input
+                                  type="number"
+                                  value={ex.series}
+                                  onChange={(e) =>
+                                    updateExercise(
+                                      bIdx,
+                                      eIdx,
+                                      "series",
+                                      Number(e.target.value)
+                                    )
+                                  }
+                                  style={{
+                                    width: "100%",
+                                    padding: 8,
+                                    borderRadius: 6,
+                                    border: "1px solid #2a2620",
+                                    background: "#0d0c0a",
+                                    color: "#f3f0ea",
+                                  }}
+                                />
+                              </div>
+                            )}
+                            <div>
+                              <label style={{ fontSize: 12, color: "#a8a199" }}>
+                                Reps
+                              </label>
+                              <input
+                                type="number"
+                                value={ex.reps}
+                                onChange={(e) =>
+                                  updateExercise(
+                                    bIdx,
+                                    eIdx,
+                                    "reps",
+                                    Number(e.target.value)
+                                  )
+                                }
+                                style={{
+                                  width: "100%",
+                                  padding: 8,
+                                  borderRadius: 6,
+                                  border: "1px solid #2a2620",
+                                  background: "#0d0c0a",
+                                  color: "#f3f0ea",
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {/* Tempo inutile en EMOM/AMRAP : exécution rapide
+                          imposée par le chrono, pas de cadence à respecter. */}
+                      {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
+                        <div style={{ marginBottom: 10 }}>
+                          {/* Le repos n'est plus réglé par exercice : quand un
+                              bloc contient 2+ exercices, ils s'enchaînent sans
+                              pause entre eux, et le repos ne vient qu'une fois
+                              à la fin du bloc (réglé plus haut, au niveau du
+                              bloc). */}
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Séries
+                            Tempo
                           </label>
                           <input
-                            type="number"
-                            value={ex.series}
+                            type="text"
+                            value={ex.tempo}
                             onChange={(e) =>
                               updateExercise(
                                 bIdx,
                                 eIdx,
-                                "series",
-                                Number(e.target.value)
+                                "tempo",
+                                e.target.value
                               )
                             }
                             style={{
@@ -4956,62 +5113,7 @@ export default function Workout() {
                             }}
                           />
                         </div>
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Reps
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.reps}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "reps",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                      </div>
-                      <div style={{ marginBottom: 10 }}>
-                        {/* Le repos n'est plus réglé par exercice : quand un
-                            bloc contient 2+ exercices, ils s'enchaînent sans
-                            pause entre eux, et le repos ne vient qu'une fois
-                            à la fin du bloc (réglé plus haut, au niveau du
-                            bloc). */}
-                        <label style={{ fontSize: 12, color: "#a8a199" }}>
-                          Tempo
-                        </label>
-                        <input
-                          type="text"
-                          value={ex.tempo}
-                          onChange={(e) =>
-                            updateExercise(
-                              bIdx,
-                              eIdx,
-                              "tempo",
-                              e.target.value
-                            )
-                          }
-                          style={{
-                            width: "100%",
-                            padding: 8,
-                            borderRadius: 6,
-                            border: "1px solid #2a2620",
-                            background: "#0d0c0a",
-                            color: "#f3f0ea",
-                          }}
-                        />
-                      </div>
+                      )}
                       <div style={{ marginBottom: 10 }}>
                         {/* Le champ "Nom RM" a été retiré : le RM utilisé
                             pour calculer le poids cible est désormais
@@ -6200,7 +6302,10 @@ export default function Workout() {
                             marginBottom: 10,
                           }}
                         >
-                          {ex.series} × {ex.reps} @{" "}
+                          {block.timerMode === "emom" || block.timerMode === "amrap"
+                            ? ex.reps
+                            : `${ex.series} × ${ex.reps}`}{" "}
+                          @{" "}
                           {ex.rmPercent === "PDC" ? (
                             <strong style={{ color: "#e0a13d" }}>PDC</strong>
                           ) : (
@@ -6208,8 +6313,12 @@ export default function Workout() {
                               {ex.rmPercent}% ({calculateWeight(ex.rmName || ex.name, ex.rmPercent)} kg)
                             </>
                           )}
-                          {" • "}
-                          Tempo: {ex.tempo}
+                          {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
+                            <>
+                              {" • "}
+                              Tempo: {ex.tempo}
+                            </>
+                          )}
                         </div>
                         {fb && (() => {
                           const normalized = normalizeFeedback(fb);
