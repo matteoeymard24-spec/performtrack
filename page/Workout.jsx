@@ -166,11 +166,23 @@ const estimateSessionDurationSeconds = (type, blocks) => {
 // Bip du chrono EMOM/AMRAP, généré à la volée (Web Audio API) — pas de
 // fichier audio à charger. "accent" = bip plus aigu et plus long, utilisé
 // au départ d'un nouveau tour (vs. un simple tic pour le décompte final).
+//
+// BUG CORRIGÉ : un AudioContext était créé (puis fermé) à CHAQUE bip. Les
+// bips des tours suivants sont déclenchés depuis le setInterval du chrono,
+// donc hors de toute interaction utilisateur directe — et un navigateur crée
+// alors ce nouveau contexte à l'état "suspended" (politique anti-autoplay),
+// si bien qu'aucun son n'était audible après le tout premier bip (déclenché
+// par le clic sur "Démarrer"). On garde maintenant UN SEUL AudioContext
+// partagé, créé/débloqué lors du premier bip (toujours déclenché par un clic
+// — "Démarrer"), puis réutilisé et "resume()" à chaque bip suivant.
+let sharedBeepAudioCtx = null;
 const playBeep = (accent = false) => {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
-    const ctx = new Ctx();
+    if (!sharedBeepAudioCtx) sharedBeepAudioCtx = new Ctx();
+    const ctx = sharedBeepAudioCtx;
+    if (ctx.state === "suspended") ctx.resume();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine";
@@ -180,7 +192,6 @@ const playBeep = (accent = false) => {
     gain.connect(ctx.destination);
     osc.start();
     osc.stop(ctx.currentTime + (accent ? 0.35 : 0.15));
-    osc.onended = () => ctx.close();
   } catch (e) {
     // Lecture audio indisponible (ex. navigateur qui bloque l'audio avant
     // une interaction) : on ignore, le chrono visuel reste fonctionnel.
@@ -792,10 +803,66 @@ export default function Workout() {
     setShowFeedbackModal(true);
   };
 
+  // Feedback au niveau du BLOC entier (pas par exercice) — utilisé pour les
+  // blocs EMOM/AMRAP : un seul RPE pour tout le bloc, puisque l'athlète
+  // enchaîne les exercices sans vraie pause entre eux (demander un RPE par
+  // exercice n'a pas de sens dans un circuit continu).
+  const openBlockFeedbackModal = (blockIndex, block, sessionType) => {
+    const key = `block-${blockIndex}`;
+    const userFeedback = getUserFeedback(selectedSession);
+    const existing = sessionFeedback[key] || userFeedback?.[key] || {};
+
+    // Endurance EMOM : objectif = le temps que l'athlète a RÉELLEMENT mis à
+    // chaque répétition, comparé au temps visé par le % VMA réglé sur
+    // l'exercice. Ça permet d'ajuster le % VMA proposé à la séance suivante.
+    const refExercise = block?.exercises?.[0] || null;
+    const targetEffortTime =
+      sessionType === "endurance" ? refExercise?.effortTime || null : null;
+    const targetVmaPercentage =
+      sessionType === "endurance" ? refExercise?.vmaPercentage || null : null;
+
+    setCurrentExerciseFeedback({
+      key,
+      blockIndex,
+      exerciseIndex: null,
+      exercise: null,
+      blockName: block?.name || "Bloc",
+      sessionType,
+      isBlockLevel: true,
+      blockTimerMode: block?.timerMode || null,
+      rpe: existing.rpe ?? 5,
+      actualRepTimeSec: existing.actualRepTimeSec ?? targetEffortTime ?? 0,
+      targetEffortTime,
+      targetVmaPercentage,
+      actualRounds: existing.actualRounds ?? 0,
+      notes: existing.notes || "",
+    });
+
+    setShowFeedbackModal(true);
+  };
+
   const saveFeedback = () => {
     if (!currentExerciseFeedback) return;
 
-    if (currentExerciseFeedback.sessionType === "muscu") {
+    if (currentExerciseFeedback.isBlockLevel) {
+      const isEmom = currentExerciseFeedback.blockTimerMode === "emom";
+      const isAmrap = currentExerciseFeedback.blockTimerMode === "amrap";
+      setSessionFeedback({
+        ...sessionFeedback,
+        [currentExerciseFeedback.key]: {
+          rpe: Number(currentExerciseFeedback.rpe),
+          ...(isEmom && {
+            actualRepTimeSec: Number(currentExerciseFeedback.actualRepTimeSec) || 0,
+            targetEffortTime: currentExerciseFeedback.targetEffortTime || null,
+            targetVmaPercentage: currentExerciseFeedback.targetVmaPercentage || null,
+          }),
+          ...(isAmrap && {
+            actualRounds: Number(currentExerciseFeedback.actualRounds) || 0,
+          }),
+          notes: currentExerciseFeedback.notes || "",
+        },
+      });
+    } else if (currentExerciseFeedback.sessionType === "muscu") {
       setSessionFeedback({
         ...sessionFeedback,
         [currentExerciseFeedback.key]: {
@@ -1041,6 +1108,15 @@ export default function Workout() {
       const missing = [];
       workoutSession.blocks.forEach((block, bIdx) => {
         if (/échauffement|echauffement|warm.?up|activation/i.test(block?.name || "")) {
+          return;
+        }
+        // Blocs EMOM/AMRAP : un seul RPE pour tout le bloc (pas de feedback
+        // par exercice), donc on vérifie la clé de bloc, pas une clé par
+        // exercice.
+        if (block.timerMode === "emom" || block.timerMode === "amrap") {
+          if (!sessionFeedback[`block-${bIdx}`]) {
+            missing.push(`${block.name || "Bloc"} (RPE du bloc)`);
+          }
           return;
         }
         (block.exercises || []).forEach((exercise, eIdx) => {
@@ -5444,12 +5520,15 @@ export default function Workout() {
                   )}
 
                   {/* FORMULAIRE ENDURANCE */}
-                  {workoutType === "endurance" && (
+                  {workoutType === "endurance" && (() => {
+                    const isTimerBlock =
+                      block.timerMode === "emom" || block.timerMode === "amrap";
+                    return (
                     <>
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(3, 1fr)",
+                          gridTemplateColumns: isTimerBlock ? "repeat(2, 1fr)" : "repeat(3, 1fr)",
                           gap: 10,
                           marginBottom: 10,
                         }}
@@ -5504,6 +5583,7 @@ export default function Workout() {
                             }}
                           />
                         </div>
+                        {!isTimerBlock && (
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup (min)
@@ -5529,6 +5609,8 @@ export default function Workout() {
                             }}
                           />
                         </div>
+                        )}
+                        {!isTimerBlock && (
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup (sec)
@@ -5554,15 +5636,17 @@ export default function Workout() {
                             }}
                           />
                         </div>
+                        )}
                       </div>
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 1fr auto",
+                          gridTemplateColumns: isTimerBlock ? "1fr 1fr" : "1fr 1fr auto",
                           gap: 10,
                           marginBottom: 10,
                         }}
                       >
+                        {!isTimerBlock && (
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Reps
@@ -5588,6 +5672,7 @@ export default function Workout() {
                             }}
                           />
                         </div>
+                        )}
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup blocs (min)
@@ -5742,7 +5827,8 @@ export default function Workout() {
                         </div>
                       )}
                     </>
-                  )}
+                    );
+                  })()}
                 </div>
               ))}
               <button
@@ -6180,6 +6266,75 @@ export default function Workout() {
                   );
                 })()}
 
+              {(block.timerMode === "emom" || block.timerMode === "amrap") &&
+                (() => {
+                  const blockKey = `block-${bIdx}`;
+                  const userFeedback = getUserFeedback(selectedSession);
+                  const blockFb = sessionFeedback[blockKey] || userFeedback?.[blockKey];
+                  return (
+                    <div style={{ marginBottom: 14 }}>
+                      {blockFb && (
+                        <div
+                          style={{
+                            padding: 10,
+                            background: "rgba(79,174,125,0.14)",
+                            borderRadius: 8,
+                            marginBottom: 10,
+                            border: "1px solid #4fae7d",
+                            fontSize: 13,
+                          }}
+                        >
+                          <strong>RPE du bloc :</strong> {blockFb.rpe}/10
+                          {blockFb.actualRepTimeSec > 0 && (
+                            <div style={{ marginTop: 5 }}>
+                              <strong>Temps réel/rep :</strong> {blockFb.actualRepTimeSec}s
+                              {blockFb.targetEffortTime &&
+                                ` (objectif : ${blockFb.targetEffortTime}s${
+                                  blockFb.targetVmaPercentage ? ` à ${blockFb.targetVmaPercentage}% VMA` : ""
+                                })`}
+                            </div>
+                          )}
+                          {blockFb.actualRounds > 0 && (
+                            <div style={{ marginTop: 5 }}>
+                              <strong>Tours effectués :</strong> {blockFb.actualRounds}
+                            </div>
+                          )}
+                          {blockFb.notes && (
+                            <div style={{ marginTop: 5, color: "#9fd4b0" }}>
+                              {blockFb.notes}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <button
+                        onClick={() => openBlockFeedbackModal(bIdx, block, sessionType)}
+                        disabled={
+                          !isUserSessionInProgress(selectedSession) && !isUserSessionCompleted(selectedSession)
+                        }
+                        style={{
+                          width: "100%",
+                          padding: "10px 16px",
+                          background: blockFb ? "#e0a13d" : "#4fae7d",
+                          color: "white",
+                          border: "none",
+                          borderRadius: 8,
+                          cursor:
+                            isUserSessionInProgress(selectedSession) || isUserSessionCompleted(selectedSession)
+                              ? "pointer"
+                              : "not-allowed",
+                          opacity:
+                            isUserSessionInProgress(selectedSession) || isUserSessionCompleted(selectedSession)
+                              ? 1
+                              : 0.5,
+                          fontSize: 14,
+                        }}
+                      >
+                        {blockFb ? "✏️ Modifier le RPE du bloc" : "➕ Donner le RPE du bloc"}
+                      </button>
+                    </div>
+                  );
+                })()}
+
               {block.exercises.map((ex, eIdx) => {
                 const key = `${bIdx}-${eIdx}`;
                 const userFeedback = getUserFeedback(selectedSession);
@@ -6320,7 +6475,7 @@ export default function Workout() {
                             </>
                           )}
                         </div>
-                        {fb && (() => {
+                        {fb && block.timerMode !== "emom" && block.timerMode !== "amrap" && (() => {
                           const normalized = normalizeFeedback(fb);
                           const isCMJEx = isCMJ(ex.name);
                           return (
@@ -6425,35 +6580,40 @@ export default function Workout() {
                                   >
                                     {ex.vmaPercentage}% VMA →{" "}
                                     <strong>{metrics.paceKmh} km/h</strong> (
-                                    {metrics.paceDisplay}) •{ex.effortTime}s/
-                                    {(() => {
-                                      const min = ex.recoveryMin || 0;
-                                      const sec = ex.recoverySec || 0;
-                                      if (min > 0 && sec > 0) return `${min}min${sec}`;
-                                      if (min > 0) return `${min}min`;
-                                      if (sec > 0) return `${sec}sec`;
-                                      return "0sec";
-                                    })()} × {ex.reps} reps
-                                    {(ex.blockRecoveryMin > 0 || ex.blockRecoverySec > 0) && (
-                                      <span>
-                                        {" "}
-                                        • Récup blocs:{" "}
-                                        <strong>
-                                          {(() => {
-                                            const min = ex.blockRecoveryMin || 0;
-                                            const sec = ex.blockRecoverySec || 0;
-                                            if (min > 0 && sec > 0) return `${min}min${sec}`;
-                                            if (min > 0) return `${min}min`;
-                                            if (sec > 0) return `${sec}sec`;
-                                            return "0sec";
-                                          })()}
-                                        </strong>
-                                      </span>
-                                    )}{" "}
-                                    • Distance/rep:{" "}
-                                    <strong>{metrics.distancePerRep}m</strong>
-                                    {" "}• Distance totale:{" "}
-                                    <strong>{metrics.totalDistance}m</strong>
+                                    {metrics.paceDisplay}) •{ex.effortTime}s
+                                    {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
+                                      <>
+                                        /
+                                        {(() => {
+                                          const min = ex.recoveryMin || 0;
+                                          const sec = ex.recoverySec || 0;
+                                          if (min > 0 && sec > 0) return `${min}min${sec}`;
+                                          if (min > 0) return `${min}min`;
+                                          if (sec > 0) return `${sec}sec`;
+                                          return "0sec";
+                                        })()} × {ex.reps} reps
+                                        {(ex.blockRecoveryMin > 0 || ex.blockRecoverySec > 0) && (
+                                          <span>
+                                            {" "}
+                                            • Récup blocs:{" "}
+                                            <strong>
+                                              {(() => {
+                                                const min = ex.blockRecoveryMin || 0;
+                                                const sec = ex.blockRecoverySec || 0;
+                                                if (min > 0 && sec > 0) return `${min}min${sec}`;
+                                                if (min > 0) return `${min}min`;
+                                                if (sec > 0) return `${sec}sec`;
+                                                return "0sec";
+                                              })()}
+                                            </strong>
+                                          </span>
+                                        )}{" "}
+                                        • Distance/rep:{" "}
+                                        <strong>{metrics.distancePerRep}m</strong>
+                                        {" "}• Distance totale:{" "}
+                                        <strong>{metrics.totalDistance}m</strong>
+                                      </>
+                                    )}
                                     {ex.groundWork && (
                                       <span style={{ color: "#d9a441" }}>
                                         {" "}
@@ -6508,8 +6668,11 @@ export default function Workout() {
                       </>
                     )}
 
-                    {/* Bouton feedback - Pour tous (athlètes ET admins) */}
-                    {(
+                    {/* Bouton feedback - Pour tous (athlètes ET admins). Masqué
+                        pour EMOM/AMRAP : le RPE est saisi une seule fois pour
+                        tout le bloc (bouton au-dessus, avant la liste des
+                        exercices), pas exercice par exercice. */}
+                    {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
                       <button
                         onClick={() =>
                           openFeedbackModal(bIdx, eIdx, ex, sessionType)
@@ -6950,11 +7113,207 @@ export default function Workout() {
             }}
           >
             <h3 style={{ margin: "0 0 18px 0", fontSize: 18 }}>
-              {currentExerciseFeedback.exercise.name}
+              {currentExerciseFeedback.isBlockLevel
+                ? `${currentExerciseFeedback.blockName} — RPE du bloc`
+                : currentExerciseFeedback.exercise.name}
             </h3>
 
+            {/* FEEDBACK BLOC ENTIER (EMOM/AMRAP) — un seul RPE + notes */}
+            {currentExerciseFeedback.isBlockLevel && (
+              <>
+                <div style={{ marginBottom: 22 }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: 6,
+                      fontSize: 14,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    RPE – Échelle Foster (0–10)
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    value={currentExerciseFeedback.rpe}
+                    onChange={(e) =>
+                      setCurrentExerciseFeedback({
+                        ...currentExerciseFeedback,
+                        rpe: Number(e.target.value),
+                      })
+                    }
+                    style={{
+                      width: "100%",
+                      height: 8,
+                      borderRadius: 5,
+                      outline: "none",
+                      background:
+                        "linear-gradient(to right, #4fae7d, #d9a441, #d9695a)",
+                      WebkitAppearance: "none",
+                      appearance: "none",
+                      cursor: "pointer",
+                    }}
+                  />
+                  <div style={{ textAlign: "center", marginTop: 10 }}>
+                    <span
+                      style={{
+                        fontSize: 48,
+                        fontWeight: "bold",
+                        color:
+                          currentExerciseFeedback.rpe <= 4
+                            ? "#4fae7d"
+                            : currentExerciseFeedback.rpe <= 6
+                            ? "#e0a13d"
+                            : currentExerciseFeedback.rpe <= 8
+                            ? "#d9a441"
+                            : "#d9695a",
+                      }}
+                    >
+                      {currentExerciseFeedback.rpe}/10
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      textAlign: "center",
+                      fontSize: 15,
+                      color: "#a8a199",
+                      marginTop: 4,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {getFosterDescription(currentExerciseFeedback.rpe)}
+                  </div>
+                </div>
+
+                {/* Temps réel par répétition — tout bloc EMOM (muscu ou
+                    endurance). Pour l'endurance, ça sert d'objectif pour
+                    ajuster le % VMA à la séance suivante (comparaison au
+                    temps visé ci-dessous) ; pour la muscu, c'est juste
+                    informatif (pas de % VMA à ajuster). */}
+                {currentExerciseFeedback.blockTimerMode === "emom" && (
+                  <div style={{ marginBottom: 18 }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: 6,
+                        fontSize: 14,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Temps réalisé par répétition (sec)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={currentExerciseFeedback.actualRepTimeSec}
+                      onChange={(e) =>
+                        setCurrentExerciseFeedback({
+                          ...currentExerciseFeedback,
+                          actualRepTimeSec: e.target.value === "" ? "" : Number(e.target.value),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        padding: 12,
+                        borderRadius: 8,
+                        border: "1px solid #2a2620",
+                        background: "#0d0c0a",
+                        color: "#f3f0ea",
+                        fontSize: 16,
+                      }}
+                    />
+                    {currentExerciseFeedback.targetEffortTime && (
+                      <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
+                        Objectif visé : {currentExerciseFeedback.targetEffortTime}s
+                        {currentExerciseFeedback.targetVmaPercentage &&
+                          ` (${currentExerciseFeedback.targetVmaPercentage}% VMA)`}
+                        {" — "}
+                        utilisé pour ajuster le % VMA proposé à la prochaine séance.
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Nombre de tours effectués — tout bloc AMRAP (muscu ou
+                    endurance) : l'app ne peut pas le mesurer automatiquement
+                    (pas de nombre de tours fixé à l'avance en AMRAP), donc
+                    l'athlète le déclare lui-même. */}
+                {currentExerciseFeedback.blockTimerMode === "amrap" && (
+                  <div style={{ marginBottom: 18 }}>
+                    <label
+                      style={{
+                        display: "block",
+                        marginBottom: 6,
+                        fontSize: 14,
+                        fontWeight: "bold",
+                      }}
+                    >
+                      Nombre de tours effectués
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={currentExerciseFeedback.actualRounds}
+                      onChange={(e) =>
+                        setCurrentExerciseFeedback({
+                          ...currentExerciseFeedback,
+                          actualRounds: e.target.value === "" ? "" : Number(e.target.value),
+                        })
+                      }
+                      style={{
+                        width: "100%",
+                        padding: 12,
+                        borderRadius: 8,
+                        border: "1px solid #2a2620",
+                        background: "#0d0c0a",
+                        color: "#f3f0ea",
+                        fontSize: 16,
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div style={{ marginBottom: 18 }}>
+                  <label
+                    style={{
+                      display: "block",
+                      marginBottom: 6,
+                      fontSize: 14,
+                      fontWeight: "bold",
+                    }}
+                  >
+                    Notes
+                  </label>
+                  <textarea
+                    value={currentExerciseFeedback.notes || ""}
+                    onChange={(e) =>
+                      setCurrentExerciseFeedback({
+                        ...currentExerciseFeedback,
+                        notes: e.target.value,
+                      })
+                    }
+                    placeholder="Observations sur le bloc..."
+                    rows={3}
+                    style={{
+                      width: "100%",
+                      padding: 12,
+                      borderRadius: 8,
+                      border: "1px solid #2a2620",
+                      background: "#0d0c0a",
+                      color: "#f3f0ea",
+                      fontSize: 14,
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+              </>
+            )}
+
             {/* FEEDBACK MUSCU */}
-            {currentExerciseFeedback.sessionType === "muscu" && (
+            {!currentExerciseFeedback.isBlockLevel && currentExerciseFeedback.sessionType === "muscu" && (
               <>
                 {currentExerciseFeedback.series && currentExerciseFeedback.series.map((serie, idx) => (
                   <div
@@ -7165,7 +7524,8 @@ export default function Workout() {
             )}
 
             {/* FEEDBACK SPRINT/ENDURANCE */}
-            {(currentExerciseFeedback.sessionType === "sprint" ||
+            {!currentExerciseFeedback.isBlockLevel &&
+              (currentExerciseFeedback.sessionType === "sprint" ||
               currentExerciseFeedback.sessionType === "endurance") && (
               <>
                 <div style={{ marginBottom: 18 }}>
@@ -7237,7 +7597,8 @@ export default function Workout() {
             )}
 
             {/* RPE (pour sprint/endurance seulement, muscu a RPE par série) */}
-            {(currentExerciseFeedback.sessionType === "sprint" ||
+            {!currentExerciseFeedback.isBlockLevel &&
+              (currentExerciseFeedback.sessionType === "sprint" ||
               currentExerciseFeedback.sessionType === "endurance") && (
               <div style={{ marginBottom: 22 }}>
                 <label
