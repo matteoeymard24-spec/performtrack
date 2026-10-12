@@ -216,8 +216,13 @@ const findTargetSubGroup = (groupValue, customGroups) => {
   return (g?.subGroups || []).find((s) => s.id === sid) || null;
 };
 
+// AMRAP : timerIntervalSec = durée TOTALE (un seul "tour" de chrono), on
+// ignore timerRounds (d'anciennes séances en gardent une valeur > 1 qui
+// multipliait la durée affichée). EMOM : intervalle × nombre de rounds.
 const blockTimerDurationSeconds = (b) =>
-  (b.timerIntervalSec || 60) * (b.timerRounds || 10);
+  b.timerMode === "amrap"
+    ? b.timerIntervalSec || 60
+    : (b.timerIntervalSec || 60) * (b.timerRounds || 10);
 
 const estimateSessionDurationSeconds = (type, blocks) => {
   if (!Array.isArray(blocks)) return 0;
@@ -374,6 +379,12 @@ export default function Workout() {
 
   const [sessionInProgress, setSessionInProgress] = useState(null);
   const [sessionStartTime, setSessionStartTime] = useState(null);
+  // Horloge qui rafraîchit l'affichage "En cours – X min" toutes les 30 s.
+  const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
   /* ===================== CHRONO EMOM / AMRAP =====================
      Un seul chrono actif à la fois (un athlète ne fait qu'un bloc à la
      fois) : blockKey identifie le bloc en cours ("bIdx"), remainingSec
@@ -3124,6 +3135,32 @@ export default function Workout() {
         Planifie et suis tes séances
       </p>
 
+      {/* Bouton flottant "Annuler la suppression" : toujours visible en bas de
+          l'écran tant qu'il reste une suppression à annuler. */}
+      {userRole === "admin" && deletedStack.length > 0 && (
+        <button
+          onClick={undoLastDelete}
+          title="Restaure la dernière suppression"
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: 16,
+            zIndex: 9999,
+            padding: "12px 20px",
+            background: "#d9695a",
+            color: "white",
+            border: "none",
+            borderRadius: 24,
+            fontSize: 15,
+            fontWeight: "bold",
+            cursor: "pointer",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+          }}
+        >
+          ↩️ Annuler la suppression ({deletedStack[deletedStack.length - 1].length})
+        </button>
+      )}
+
       {/* Boutons Admin */}
       {userRole === "admin" && !showForm && !selectedSession && (
         <div
@@ -3233,24 +3270,6 @@ export default function Workout() {
           >
             🔤 Noms d'exercices
           </button>
-          {deletedStack.length > 0 && (
-            <button
-              onClick={undoLastDelete}
-              title="Restaure la dernière suppression"
-              style={{
-                padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-                background: "#d9695a",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                fontSize: window.innerWidth <= 768 ? 13 : 15,
-                fontWeight: "bold",
-                cursor: "pointer",
-              }}
-            >
-              ↩️ Annuler la suppression ({deletedStack[deletedStack.length - 1].length})
-            </button>
-          )}
           {isSuperAdmin && (
             <label
               style={{
@@ -6721,11 +6740,37 @@ export default function Workout() {
                       marginBottom: 10,
                     }}
                   >
-                    ⏱️ En cours –{" "}
-                    {Math.floor(
-                      (new Date() - new Date(sessionStartTime)) / 60000
-                    )}{" "}
-                    min
+                    {(() => {
+                      // Heure de début : celle enregistrée dans la séance (fiable
+                      // même après rechargement), sinon l'état local.
+                      const startIso =
+                        getUserProgress(selectedSession)?.startedAt ||
+                        sessionStartTime;
+                      const startMs = startIso ? new Date(startIso).getTime() : NaN;
+                      if (!Number.isFinite(startMs)) return "⏱️ En cours";
+                      const mins = Math.max(
+                        0,
+                        Math.floor((nowTick - startMs) / 60000)
+                      );
+                      // Séance restée ouverte depuis très longtemps (oubli de
+                      // la terminer) : on affiche la date plutôt qu'un nombre
+                      // de minutes absurde.
+                      if (mins > 12 * 60) {
+                        return `⏱️ En cours – démarrée le ${new Date(
+                          startMs
+                        ).toLocaleString("fr-FR", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}`;
+                      }
+                      return mins >= 60
+                        ? `⏱️ En cours – ${Math.floor(mins / 60)} h ${String(
+                            mins % 60
+                          ).padStart(2, "0")}`
+                        : `⏱️ En cours – ${mins} min`;
+                    })()}
                   </div>
                   <button
                     onClick={endSession}
