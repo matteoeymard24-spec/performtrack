@@ -113,7 +113,25 @@ const formatExerciseDisplayName = (name) => {
 const blockTimerDurationSeconds = (b) =>
   (b.timerIntervalSec || 60) * (b.timerRounds || 10);
 
+// Séance avec sous-groupes : les sous-groupes s'entraînent EN PARALLÈLE, donc
+// durée = blocs communs + la durée du sous-groupe le plus long (pas la somme).
 const estimateSessionDurationSeconds = (type, blocks) => {
+  if (!Array.isArray(blocks)) return 0;
+  const common = blocks.filter((b) => !b.subGroupId);
+  const bySub = {};
+  blocks.forEach((b) => {
+    if (b.subGroupId) (bySub[b.subGroupId] = bySub[b.subGroupId] || []).push(b);
+  });
+  const subDurations = Object.values(bySub).map((bs) =>
+    estimateBlocksDurationSeconds(type, bs)
+  );
+  return (
+    estimateBlocksDurationSeconds(type, common) +
+    (subDurations.length ? Math.max(...subDurations) : 0)
+  );
+};
+
+const estimateBlocksDurationSeconds = (type, blocks) => {
   if (!Array.isArray(blocks)) return 0;
   if (type === "sprint") {
     return blocks.reduce(
@@ -221,6 +239,10 @@ export default function Workout() {
   const [targetUserId, setTargetUserId] = useState("");
   const [formDate, setFormDate] = useState(new Date());
   const [workoutType, setWorkoutType] = useState("muscu");
+  // Sous-groupes d'athlètes d'une même séance : [{ id, name, athleteIds }].
+  // Chaque bloc peut être rattaché à un sous-groupe via block.subGroupId
+  // (absent = bloc commun à tous). Les sous-groupes s'entraînent en parallèle.
+  const [subGroups, setSubGroups] = useState([]);
 
   const [athletes, setAthletes] = useState([]);
   // Filtres calendrier (admin) : filtrent le calendrier MENSUEL en place
@@ -1107,6 +1129,8 @@ export default function Workout() {
     if ((workoutSession.type || "muscu") === "muscu" && workoutSession.blocks) {
       const missing = [];
       workoutSession.blocks.forEach((block, bIdx) => {
+        // Bloc d'un autre sous-groupe : pas à faire par cet utilisateur.
+        if (!isBlockForMe(workoutSession, block, true)) return;
         if (/échauffement|echauffement|warm.?up|activation/i.test(block?.name || "")) {
           return;
         }
@@ -1273,6 +1297,7 @@ export default function Workout() {
           group: s.group,
           targetUserId: s.targetUserId || null,
           blocks: s.blocks,
+          subGroups: s.subGroups || [],
           type: s.type || "muscu",
           estimatedDuration: s.estimatedDuration,
           createdBy: currentUser.uid,
@@ -1351,6 +1376,7 @@ export default function Workout() {
           group: s.group,
           targetUserId: s.targetUserId || null,
           blocks: s.blocks,
+          subGroups: s.subGroups || [],
           type: s.type || "muscu",
           estimatedDuration: s.estimatedDuration,
           createdBy: currentUser.uid,
@@ -1395,6 +1421,7 @@ export default function Workout() {
         group: sessionToDuplicate.group,
         targetUserId: sessionToDuplicate.targetUserId || null,
         blocks: sessionToDuplicate.blocks,
+        subGroups: sessionToDuplicate.subGroups || [],
         type: sessionToDuplicate.type || "muscu",
         estimatedDuration: sessionToDuplicate.estimatedDuration,
         createdBy: currentUser.uid,
@@ -1441,6 +1468,7 @@ export default function Workout() {
       group,
       targetUserId: group === "individuel" ? targetUserId : null,
       blocks,
+      subGroups: subGroups.filter((g) => g.name.trim() || g.athleteIds.length),
       type: workoutType,
       estimatedDuration: Math.round(dur / 60),
       createdBy: currentUser.uid,
@@ -1477,6 +1505,7 @@ export default function Workout() {
     setGroup("total");
     setTargetUserId("");
     setWorkoutType("muscu");
+    setSubGroups([]);
     setBlocks([
       {
         name: "Bloc A",
@@ -1506,6 +1535,7 @@ export default function Workout() {
     setTargetUserId(session.targetUserId || "");
     setWorkoutType(session.type || "muscu");
     setBlocks(session.blocks || []);
+    setSubGroups(session.subGroups || []);
     setShowForm(true);
   };
 
@@ -1631,6 +1661,57 @@ export default function Workout() {
   };
 
   const removeBlock = (i) => setBlocks(blocks.filter((_, idx) => idx !== i));
+
+  /* ===================== SOUS-GROUPES D'ATHLÈTES ===================== */
+  const addSubGroup = () =>
+    setSubGroups((prev) => [
+      ...prev,
+      {
+        id: `sg_${Date.now()}_${prev.length}`,
+        name: `Groupe ${prev.length + 1}`,
+        athleteIds: [],
+      },
+    ]);
+
+  const updateSubGroup = (id, patch) =>
+    setSubGroups((prev) => prev.map((g) => (g.id === id ? { ...g, ...patch } : g)));
+
+  const toggleSubGroupAthlete = (id, athleteId) =>
+    setSubGroups((prev) =>
+      prev.map((g) => {
+        if (g.id === id) {
+          const has = g.athleteIds.includes(athleteId);
+          return {
+            ...g,
+            athleteIds: has
+              ? g.athleteIds.filter((a) => a !== athleteId)
+              : [...g.athleteIds, athleteId],
+          };
+        }
+        // Un athlète ne peut être que dans un seul sous-groupe à la fois.
+        return { ...g, athleteIds: g.athleteIds.filter((a) => a !== athleteId) };
+      })
+    );
+
+  const removeSubGroup = (id) => {
+    setSubGroups((prev) => prev.filter((g) => g.id !== id));
+    // Les blocs rattachés à ce sous-groupe redeviennent communs.
+    setBlocks((prev) =>
+      prev.map((b) => (b.subGroupId === id ? { ...b, subGroupId: null } : b))
+    );
+  };
+
+  // Visibilité d'un bloc pour l'utilisateur courant : un bloc sans sous-groupe
+  // est commun ; sinon il n'est visible que par les membres du sous-groupe
+  // (l'admin voit tout). `strict` = appartenance réelle (même pour l'admin),
+  // utilisé pour savoir quels blocs l'utilisateur doit RÉELLEMENT faire.
+  const isBlockForMe = (session, block, strict = false) => {
+    if (!block?.subGroupId) return true;
+    const sg = (session?.subGroups || []).find((g) => g.id === block.subGroupId);
+    if (!sg) return true;
+    if (!strict && userRole === "admin") return true;
+    return (sg.athleteIds || []).includes(currentUser?.uid);
+  };
 
   /* ===================== RÉORDONNER LES BLOCS PAR GLISSER-DÉPOSER =====================
      Poignée "⠿" sur chaque bloc : au clic maintenu (souris) ou au toucher
@@ -4397,6 +4478,136 @@ export default function Workout() {
             </div>
           )}
 
+          {/* Sous-groupes d'athlètes (entraînement en parallèle) */}
+          <div
+            style={{
+              background: "#0d0c0a",
+              padding: 16,
+              borderRadius: 10,
+              marginBottom: 18,
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: subGroups.length ? 12 : 0,
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: 14, fontWeight: "bold" }}>
+                  👥 Sous-groupes
+                </div>
+                <div style={{ fontSize: 12, color: "#a8a199" }}>
+                  Chaque sous-groupe fait ses propres blocs en parallèle
+                  (assigne ensuite chaque bloc à un sous-groupe plus bas).
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={addSubGroup}
+                style={{
+                  padding: "8px 14px",
+                  background: "#e0a13d",
+                  color: "#1a1306",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: "bold",
+                }}
+              >
+                ➕ Ajouter un sous-groupe
+              </button>
+            </div>
+            {subGroups.map((sg) => (
+              <div
+                key={sg.id}
+                style={{
+                  background: "#151310",
+                  padding: 12,
+                  borderRadius: 8,
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <input
+                    type="text"
+                    value={sg.name}
+                    onChange={(e) => updateSubGroup(sg.id, { name: e.target.value })}
+                    placeholder="Nom (ex : Groupe 1 – cheville / bassin)"
+                    style={{
+                      flex: 1,
+                      padding: 8,
+                      borderRadius: 6,
+                      border: "1px solid #2a2620",
+                      background: "#0d0c0a",
+                      color: "#f3f0ea",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeSubGroup(sg.id)}
+                    style={{
+                      padding: "8px 12px",
+                      background: "#d9695a",
+                      color: "white",
+                      border: "none",
+                      borderRadius: 6,
+                      cursor: "pointer",
+                    }}
+                  >
+                    🗑️
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {athletes.map((a) => {
+                    const checked = sg.athleteIds.includes(a.id);
+                    const takenBy = subGroups.find(
+                      (g) => g.id !== sg.id && g.athleteIds.includes(a.id)
+                    );
+                    return (
+                      <label
+                        key={a.id}
+                        title={takenBy ? `Actuellement dans « ${takenBy.name} »` : ""}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "5px 10px",
+                          borderRadius: 14,
+                          fontSize: 13,
+                          cursor: "pointer",
+                          background: checked
+                            ? "rgba(79,174,125,0.25)"
+                            : "#0d0c0a",
+                          border: checked
+                            ? "1px solid #4fae7d"
+                            : "1px solid #2a2620",
+                          opacity: takenBy ? 0.5 : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSubGroupAthlete(sg.id, a.id)}
+                          style={{ display: "none" }}
+                        />
+                        {a.firstName && a.lastName
+                          ? `${a.firstName} ${a.lastName}`
+                          : a.displayName || a.email}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
           {/* Blocs */}
           {blocks.map((block, bIdx) => (
             <div
@@ -4454,6 +4665,31 @@ export default function Workout() {
                     fontWeight: "bold",
                   }}
                 />
+                {subGroups.length > 0 && (
+                  <select
+                    value={block.subGroupId || ""}
+                    onChange={(e) =>
+                      updateBlock(bIdx, "subGroupId", e.target.value || null)
+                    }
+                    title="Sous-groupe qui fait ce bloc"
+                    style={{
+                      padding: "8px 6px",
+                      borderRadius: 6,
+                      border: "1px solid #2a2620",
+                      background: "#151310",
+                      color: block.subGroupId ? "#4fae7d" : "#a8a199",
+                      fontSize: 13,
+                      maxWidth: 150,
+                    }}
+                  >
+                    <option value="">👥 Commun</option>
+                    {subGroups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name || "Sans nom"}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button
                   onClick={() => toggleBlockCollapsed(bIdx)}
                   title={collapsedBlocks[bIdx] ? "Déplier ce bloc" : "Replier ce bloc"}
@@ -5638,15 +5874,15 @@ export default function Workout() {
                         </div>
                         )}
                       </div>
+                      {!isTimerBlock && (
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: isTimerBlock ? "1fr 1fr" : "1fr 1fr auto",
+                          gridTemplateColumns: "1fr 1fr auto",
                           gap: 10,
                           marginBottom: 10,
                         }}
                       >
-                        {!isTimerBlock && (
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Reps
@@ -5672,7 +5908,6 @@ export default function Workout() {
                             }}
                           />
                         </div>
-                        )}
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
                             Récup blocs (min)
@@ -5724,6 +5959,7 @@ export default function Workout() {
                           />
                         </div>
                       </div>
+                      )}
                       <div style={{ marginBottom: 10 }}>
                         <label
                           style={{
@@ -6131,7 +6367,8 @@ export default function Workout() {
           )}
 
           {/* Blocs exercices */}
-          {selectedSession.blocks?.map((block, bIdx) => (
+          {selectedSession.blocks?.map((block, bIdx) =>
+            !isBlockForMe(selectedSession, block) ? null : (
             <div
               key={bIdx}
               style={{
@@ -6152,6 +6389,37 @@ export default function Workout() {
                 }}
               >
                 {block.name}
+                {block.subGroupId &&
+                  (() => {
+                    const sg = (selectedSession.subGroups || []).find(
+                      (g) => g.id === block.subGroupId
+                    );
+                    if (!sg) return null;
+                    const names = (sg.athleteIds || [])
+                      .map((id) => athletes.find((a) => a.id === id))
+                      .filter(Boolean)
+                      .map((a) =>
+                        a.firstName ? a.firstName : a.displayName || a.email
+                      );
+                    return (
+                      <span
+                        title={names.join(", ")}
+                        style={{
+                          fontSize: 13,
+                          color: "#9fd4b0",
+                          fontWeight: "normal",
+                          background: "rgba(79,174,125,0.12)",
+                          padding: "2px 10px",
+                          borderRadius: 6,
+                        }}
+                      >
+                        👥 {sg.name}
+                        {userRole === "admin" && names.length > 0
+                          ? ` (${names.join(", ")})`
+                          : ""}
+                      </span>
+                    );
+                  })()}
                 {sessionType === "muscu" &&
                   !block.timerMode && (
                     <span style={{ fontSize: 13, color: "#e0a13d", fontWeight: "normal" }}>
