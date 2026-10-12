@@ -114,58 +114,95 @@ const formatExerciseDisplayName = (name) => {
 // `group` vaut alors "sg:<idGroupe>:<idSousGroupe>". Renvoie le sous-groupe
 // ciblé ({ id, name, athleteIds }) ou null si ce n'est pas ce format / s'il
 // n'existe plus.
-// Palette proposée pour colorer un groupe / sous-groupe dans le calendrier.
-const GROUP_COLORS = [
-  "#3498db",
-  "#e84393",
-  "#1abc9c",
-  "#f1c40f",
-  "#e67e22",
-  "#9b59b6",
-  "#2ecc71",
-  "#e74c3c",
-  "#95a5a6",
-];
-// Sélecteur de couleur par pastilles. `emptyLabel` = libellé de l'option
-// "pas de couleur propre" (couleur par type pour un groupe, couleur du groupe
-// pour un sous-groupe).
-const ColorSwatches = ({ value, onChange, emptyLabel }) => (
-  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-    <button
-      type="button"
-      onClick={() => onChange("")}
-      style={{
-        padding: "3px 8px",
-        borderRadius: 12,
-        fontSize: 11,
-        cursor: "pointer",
-        color: "#f3f0ea",
-        background: !value ? "#2a2620" : "transparent",
-        border: !value ? "1px solid #e0a13d" : "1px solid #2a2620",
-      }}
-    >
-      {emptyLabel}
-    </button>
-    {GROUP_COLORS.map((c) => (
-      <button
-        type="button"
-        key={c}
-        onClick={() => onChange(c)}
-        aria-label={`Couleur ${c}`}
+// Sélecteur de couleur : un bouton qui ouvre la palette du navigateur
+// (<input type="color">). `emptyLabel` = libellé du bouton "pas de couleur
+// propre" (couleur par type pour un groupe, couleur du groupe pour un
+// sous-groupe). onChange n'est appelé qu'à la validation de la palette
+// (événement natif "change"), pas à chaque déplacement du curseur : on évite
+// ainsi une écriture Firestore par pixel.
+const ColorSwatches = ({ value, onChange, emptyLabel }) => {
+  const inputRef = useRef(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const [tmp, setTmp] = useState(value || "");
+  useEffect(() => {
+    setTmp(value || "");
+  }, [value]);
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return undefined;
+    const handler = (e) => onChangeRef.current(e.target.value);
+    el.addEventListener("change", handler);
+    return () => el.removeEventListener("change", handler);
+  }, []);
+  const shown = tmp || value || "";
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+      <label
         style={{
-          width: 22,
-          height: 22,
-          borderRadius: "50%",
-          background: c,
+          position: "relative",
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "4px 10px 4px 6px",
+          borderRadius: 16,
+          border: "1px solid #2a2620",
+          background: "#151310",
+          color: "#f3f0ea",
+          fontSize: 12,
           cursor: "pointer",
-          border: value === c ? "2px solid #f3f0ea" : "2px solid transparent",
-          boxShadow: value === c ? "0 0 0 1px #0d0c0a" : "none",
-          padding: 0,
         }}
-      />
-    ))}
-  </div>
-);
+      >
+        <span
+          style={{
+            width: 20,
+            height: 20,
+            borderRadius: "50%",
+            background: shown || "transparent",
+            border: shown ? "2px solid #f3f0ea" : "2px dashed #6b645a",
+            boxSizing: "border-box",
+          }}
+        />
+        🎨 {shown ? "Changer la couleur" : "Choisir une couleur"}
+        <input
+          ref={inputRef}
+          type="color"
+          value={shown || "#3498db"}
+          onChange={(e) => setTmp(e.target.value)}
+          aria-label="Choisir une couleur"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            opacity: 0,
+            cursor: "pointer",
+          }}
+        />
+      </label>
+      {shown && (
+        <button
+          type="button"
+          onClick={() => {
+            setTmp("");
+            onChange("");
+          }}
+          style={{
+            padding: "4px 10px",
+            borderRadius: 16,
+            fontSize: 12,
+            cursor: "pointer",
+            color: "#a8a199",
+            background: "transparent",
+            border: "1px solid #2a2620",
+          }}
+        >
+          ✕ {emptyLabel}
+        </button>
+      )}
+    </div>
+  );
+};
 
 const SUBGROUP_PREFIX = "sg:";
 const makeSubGroupTarget = (groupId, subId) => `${SUBGROUP_PREFIX}${groupId}:${subId}`;
@@ -1611,7 +1648,24 @@ export default function Workout() {
     try {
       if (isEdit && editId) {
         await updateDoc(doc(db, "workout", editId), payload);
-        alert("Séance modifiée !");
+        // Copies pour les groupes cochés en plus (la séance modifiée reste
+        // sur son groupe d'origine).
+        const copyTargets = extraGroups.filter(
+          (t) => t !== group && t !== "individuel"
+        );
+        for (const t of copyTargets) {
+          await addDoc(collection(db, "workout"), {
+            ...payload,
+            group: t,
+            targetUserId: null,
+            userProgress: {},
+          });
+        }
+        alert(
+          copyTargets.length > 0
+            ? `Séance modifiée + copiée pour ${copyTargets.length} groupe(s) !`
+            : "Séance modifiée !"
+        );
       } else {
         // userProgress: {} est indispensable dès la création — sans ce
         // champ initial, la première tentative d'un athlète pour démarrer
@@ -4797,7 +4851,7 @@ export default function Workout() {
               )}
             </select>
 
-            {!isEdit && customGroups.length > 0 && (
+            {customGroups.length > 0 && (
               <div
                 style={{
                   marginTop: 10,
@@ -4808,7 +4862,9 @@ export default function Workout() {
                 }}
               >
                 <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
-                  ➕ Créer aussi la même séance pour :
+                  {isEdit
+                    ? "➕ Créer aussi une copie de cette séance pour :"
+                    : "➕ Créer aussi la même séance pour :"}
                 </div>
                 {customGroups.map((g) => {
                   const options = [
