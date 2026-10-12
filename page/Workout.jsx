@@ -606,6 +606,25 @@ export default function Workout() {
     }
   };
 
+  // Changement de couleur direct depuis la liste (sans ouvrir l'édition).
+  // subId = null → couleur du groupe ; sinon → couleur du sous-groupe.
+  const quickSetGroupColor = async (g, subId, color) => {
+    try {
+      if (subId) {
+        const newSubs = (g.subGroups || []).map((sg) =>
+          sg.id === subId ? { ...sg, color } : sg
+        );
+        await updateDoc(doc(db, "groups", g.id), { subGroups: newSubs });
+      } else {
+        await updateDoc(doc(db, "groups", g.id), { color });
+      }
+      await fetchGroupsList();
+    } catch (e) {
+      console.error("Erreur changement couleur:", e);
+      alert("❌ Erreur lors du changement de couleur : " + e.message);
+    }
+  };
+
   const deleteGroup = async (groupId) => {
     if (!window.confirm("Supprimer ce groupe ? Les séances déjà créées pour ce groupe resteront mais ne seront plus visibles par personne.")) return;
     try {
@@ -3780,8 +3799,25 @@ export default function Workout() {
                                 return a ? getAthleteDisplayName(a) : "?";
                               })
                               .join(", ") || "aucun athlète"}
+                            <div style={{ marginTop: 4 }}>
+                              <ColorSwatches
+                                value={sg.color || ""}
+                                onChange={(c) => quickSetGroupColor(g, sg.id, c)}
+                                emptyLabel="Comme le groupe"
+                              />
+                            </div>
                           </div>
                         ))}
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
+                            🎨 Couleur du groupe
+                          </div>
+                          <ColorSwatches
+                            value={g.color || ""}
+                            onChange={(c) => quickSetGroupColor(g, null, c)}
+                            emptyLabel="Par type"
+                          />
+                        </div>
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
