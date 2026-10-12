@@ -205,6 +205,9 @@ const ColorSwatches = ({ value, onChange, emptyLabel }) => {
   );
 };
 
+// Couleur unique des séances sans couleur de groupe (plus de couleur par type).
+const DEFAULT_SESSION_COLOR = "#8a8378";
+
 const SUBGROUP_PREFIX = "sg:";
 const makeSubGroupTarget = (groupId, subId) => `${SUBGROUP_PREFIX}${groupId}:${subId}`;
 const findTargetSubGroup = (groupValue, customGroups) => {
@@ -2920,11 +2923,9 @@ export default function Workout() {
       if (parent?.color) return parent.color;
     }
 
-    // Couleurs par type pour les autres groupes
-    const type = session.type || "muscu";
-    if (type === "sprint") return "#d9695a";
-    if (type === "endurance") return "#4fae7d";
-    return "#9b59b6";
+    // Plus de couleur par type de séance : une seule couleur neutre pour
+    // toutes les séances qui n'ont pas de couleur de groupe.
+    return DEFAULT_SESSION_COLOR;
   };
 
   /* ===================== FILTRE CALENDRIER PAR ATHLÈTE (ADMIN) =====================
@@ -4301,7 +4302,11 @@ export default function Workout() {
       )}
 
       {/* Légende couleurs */}
-      {!showForm && !selectedSession && (
+      {!showForm &&
+        !selectedSession &&
+        customGroups.some(
+          (g) => g.color || (g.subGroups || []).some((sg) => sg.color)
+        ) && (
         <div
           style={{
             background: "#151310",
@@ -4314,43 +4319,9 @@ export default function Workout() {
             flexWrap: "wrap",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 20,
-                height: 20,
-                background: "#e0a13d",
-                borderRadius: 4,
-              }}
-            ></div>
-            <span style={{ fontSize: 14 }}>💪 Musculation</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 20,
-                height: 20,
-                background: "#d9695a",
-                borderRadius: 4,
-              }}
-            ></div>
-            <span style={{ fontSize: 14 }}>⚡ Sprint</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div
-              style={{
-                width: 20,
-                height: 20,
-                background: "#4fae7d",
-                borderRadius: 4,
-              }}
-            ></div>
-            <span style={{ fontSize: 14 }}>🏃 Endurance</span>
-          </div>
           {customGroups
-            .filter((g) => g.color)
             .flatMap((g) => [
-              { key: g.id, name: g.name, color: g.color },
+              ...(g.color ? [{ key: g.id, name: g.name, color: g.color }] : []),
               ...(g.subGroups || [])
                 .filter((sg) => sg.color)
                 .map((sg) => ({
