@@ -286,6 +286,9 @@ export default function Workout() {
 
   const [title, setTitle] = useState("");
   const [group, setGroup] = useState("total");
+  // Cibles supplémentaires (groupes / sous-groupes) : la même séance est créée
+  // une fois pour chacune. Utilisé uniquement à la création.
+  const [extraGroups, setExtraGroups] = useState([]);
   const [targetUserId, setTargetUserId] = useState("");
   const [formDate, setFormDate] = useState(new Date());
   const [workoutType, setWorkoutType] = useState("muscu");
@@ -1616,8 +1619,25 @@ export default function Workout() {
         // par les règles Firestore qui comparent resource.data.userProgress
         // à l'ancienne valeur : si le champ n'existe pas du tout, cette
         // comparaison échoue et l'écriture est refusée.
-        await addDoc(collection(db, "workout"), { ...payload, userProgress: {} });
-        alert("Séance créée !");
+        // Une séance par cible : la principale + les cibles supplémentaires
+        // (doublons et "individuel" exclus).
+        const targets = [
+          group,
+          ...extraGroups.filter((t) => t !== group && t !== "individuel"),
+        ];
+        for (const t of targets) {
+          await addDoc(collection(db, "workout"), {
+            ...payload,
+            group: t,
+            targetUserId: t === "individuel" ? targetUserId : null,
+            userProgress: {},
+          });
+        }
+        alert(
+          targets.length > 1
+            ? `Séance créée pour ${targets.length} groupes !`
+            : "Séance créée !"
+        );
       }
       resetForm();
       await fetchSessions();
@@ -1633,6 +1653,7 @@ export default function Workout() {
     setEditId(null);
     setTitle("");
     setGroup("total");
+    setExtraGroups([]);
     setTargetUserId("");
     setWorkoutType("muscu");
     setBlocks([
@@ -1661,6 +1682,7 @@ export default function Workout() {
     setTitle(session.title);
     setFormDate(new Date(session.date + "T12:00:00"));
     setGroup(session.group || "total");
+    setExtraGroups([]);
     setTargetUserId(session.targetUserId || "");
     setWorkoutType(session.type || "muscu");
     setBlocks(session.blocks || []);
@@ -4774,6 +4796,59 @@ export default function Workout() {
                 </optgroup>
               )}
             </select>
+
+            {!isEdit && customGroups.length > 0 && (
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 8,
+                  background: "#0d0c0a",
+                  border: "1px solid rgba(255,255,255,0.16)",
+                }}
+              >
+                <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
+                  ➕ Créer aussi la même séance pour :
+                </div>
+                {customGroups.map((g) => {
+                  const options = [
+                    { value: g.id, label: `👥 ${g.name}` },
+                    ...(g.subGroups || []).map((sg) => ({
+                      value: makeSubGroupTarget(g.id, sg.id),
+                      label: `↳ ${g.name} – ${sg.name}`,
+                    })),
+                  ];
+                  return options.map((o) => (
+                    <label
+                      key={o.value}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 13,
+                        padding: "3px 0",
+                        opacity: o.value === group ? 0.4 : 1,
+                        cursor: o.value === group ? "default" : "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        disabled={o.value === group}
+                        checked={o.value === group || extraGroups.includes(o.value)}
+                        onChange={() =>
+                          setExtraGroups((prev) =>
+                            prev.includes(o.value)
+                              ? prev.filter((v) => v !== o.value)
+                              : [...prev, o.value]
+                          )
+                        }
+                      />
+                      {o.label}
+                    </label>
+                  ));
+                })}
+              </div>
+            )}
           </div>
 
           {group === "individuel" && (
