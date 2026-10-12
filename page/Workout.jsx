@@ -336,6 +336,11 @@ export default function Workout() {
   // groupe personnalisé donné. Mutuellement exclusifs — choisir l'un
   // réinitialise l'autre, pour ne pas avoir un filtrage ambigu des deux à
   // la fois. Laisser les deux vides redonne le calendrier complet.
+  // Pile des suppressions récentes (en mémoire, perdue au rechargement de la
+  // page) : chaque entrée = un lot [{ id, data }] restaurable via "Annuler".
+  const [deletedStack, setDeletedStack] = useState([]);
+  // Superadmin uniquement : afficher aussi les séances "🌟 Moi" des autres admins.
+  const [showAllMoi, setShowAllMoi] = useState(false);
   const [athleteFilterId, setAthleteFilterId] = useState("");
   const [groupFilterId, setGroupFilterId] = useState("");
   const [blocks, setBlocks] = useState([
@@ -458,8 +463,14 @@ export default function Workout() {
       let filtered;
       
       if (userRole === "admin") {
-        // Admin voit tout
-        filtered = allWorkouts;
+        // Admin voit tout, SAUF les séances perso "🌟 Moi" des autres admins.
+        // Le superadmin peut choisir de les afficher (case dédiée).
+        filtered = allWorkouts.filter(
+          (w) =>
+            w.group !== "moi" ||
+            w.createdBy === currentUser.uid ||
+            (isSuperAdmin && showAllMoi)
+        );
       } else {
         // Athlète voit :
         // 1. Séances "total" (pour tous)
@@ -495,7 +506,7 @@ export default function Workout() {
 
   useEffect(() => {
     fetchSessions();
-  }, [currentUser, userRole, userGroup, customGroups]);
+  }, [currentUser, userRole, userGroup, customGroups, showAllMoi, isSuperAdmin]);
 
   /* ===================== OUVERTURE DIRECTE DEPUIS LE DASHBOARD =====================
      Le Dashboard peut envoyer ici avec ?sessionId=xxx (et éventuellement
@@ -1743,11 +1754,39 @@ export default function Workout() {
     setShowForm(true);
   };
 
+  // Mémorise des séances avant suppression pour pouvoir les restaurer.
+  const rememberDeleted = (sessions) => {
+    const batch = sessions.map((s) => {
+      const { id, ...data } = s;
+      return { id, data };
+    });
+    if (batch.length > 0) setDeletedStack((prev) => [...prev, batch].slice(-10));
+  };
+
+  // Restaure le dernier lot supprimé (même identifiant, même contenu).
+  const undoLastDelete = async () => {
+    const batch = deletedStack[deletedStack.length - 1];
+    if (!batch) return;
+    try {
+      await Promise.all(
+        batch.map((s) => setDoc(doc(db, "workout", s.id), s.data))
+      );
+      setDeletedStack((prev) => prev.slice(0, -1));
+      await fetchSessions();
+      alert(`${batch.length} séance(s) restaurée(s) !`);
+    } catch (e) {
+      console.error(e);
+      alert("Erreur lors de la restauration : " + e.message);
+    }
+  };
+
   const deleteSession = async (id) => {
     if (!window.confirm("Supprimer cette séance ?")) return;
     try {
+      const toRemember = events.find((e) => e.id === id);
       await deleteDoc(doc(db, "workout", id));
-      alert("Supprimée !");
+      if (toRemember) rememberDeleted([toRemember]);
+      alert("Supprimée ! Tu peux l'annuler avec le bouton ↩️.");
       await fetchSessions();
       setSelectedSession(null);
     } catch (e) {
@@ -1771,7 +1810,8 @@ export default function Workout() {
       return;
     try {
       await Promise.all(dayEvents.map((e) => deleteDoc(doc(db, "workout", e.id))));
-      alert(`${dayEvents.length} séance(s) supprimée(s) !`);
+      rememberDeleted(dayEvents);
+      alert(`${dayEvents.length} séance(s) supprimée(s) ! Tu peux annuler avec le bouton ↩️.`);
       await fetchSessions();
       setSelectedSession(null);
     } catch (e) {
@@ -1806,7 +1846,8 @@ export default function Workout() {
       return;
     try {
       await Promise.all(weekEvents.map((e) => deleteDoc(doc(db, "workout", e.id))));
-      alert(`${weekEvents.length} séance(s) supprimée(s) !`);
+      rememberDeleted(weekEvents);
+      alert(`${weekEvents.length} séance(s) supprimée(s) ! Tu peux annuler avec le bouton ↩️.`);
       await fetchSessions();
       setSelectedSession(null);
     } catch (e) {
@@ -3192,6 +3233,43 @@ export default function Workout() {
           >
             🔤 Noms d'exercices
           </button>
+          {deletedStack.length > 0 && (
+            <button
+              onClick={undoLastDelete}
+              title="Restaure la dernière suppression"
+              style={{
+                padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
+                background: "#d9695a",
+                color: "white",
+                border: "none",
+                borderRadius: 8,
+                fontSize: window.innerWidth <= 768 ? 13 : 15,
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              ↩️ Annuler la suppression ({deletedStack[deletedStack.length - 1].length})
+            </button>
+          )}
+          {isSuperAdmin && (
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 13,
+                color: "#a8a199",
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={showAllMoi}
+                onChange={(e) => setShowAllMoi(e.target.checked)}
+              />
+              👁️ Voir aussi les séances 🌟 Moi des autres admins
+            </label>
+          )}
         </div>
       )}
 
