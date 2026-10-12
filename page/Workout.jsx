@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
+import { getWorkoutDocs } from "../component/workoutQueries";
 import {
   collection,
   query,
@@ -456,8 +457,7 @@ export default function Workout() {
     if (!currentUser) return;
     try {
       // SIMPLIFICATION : Charger TOUS les workouts (les règles Firestore autorisent la lecture)
-      const q = query(collection(db, "workout"));
-      const snap = await getDocs(q);
+      const snap = await getWorkoutDocs();
       const allWorkouts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       
       let filtered;
@@ -1456,7 +1456,7 @@ export default function Workout() {
           return getLocalDateStr(d);
         })
       );
-      const existingSnap = await getDocs(collection(db, "workout"));
+      const existingSnap = await getWorkoutDocs();
       const existingKeys = new Set(
         existingSnap.docs
           .map((d) => d.data())
@@ -1537,7 +1537,7 @@ export default function Workout() {
       // Même garde-fou anti-doublon que "Dupliquer semaine" : on relit
       // Firestore à cet instant pour ne pas recréer une séance déjà présente
       // à la date cible (si ce jour a déjà été dupliqué précédemment).
-      const existingSnap = await getDocs(collection(db, "workout"));
+      const existingSnap = await getWorkoutDocs();
       const existingKeys = new Set(
         existingSnap.docs
           .map((d) => d.data())
@@ -2339,7 +2339,7 @@ export default function Workout() {
       // était ouvert). Firestore ne permet pas de modifier un seul champ
       // imbriqué dans un tableau d'objets : on réécrit le tableau "blocks"
       // en entier pour chaque séance concernée.
-      const workoutSnap = await getDocs(collection(db, "workout"));
+      const workoutSnap = await getWorkoutDocs();
       const sessionsToUpdate = workoutSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((w) =>

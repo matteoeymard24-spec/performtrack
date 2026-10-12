@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
+import { getWorkoutDocs } from "../component/workoutQueries";
 import { collection, getDocs } from "firebase/firestore";
 import { Navigate } from "react-router-dom";
 import {
@@ -144,7 +145,7 @@ export default function ACWRMonitoring() {
     setLoadingAthlete(true);
 
     try {
-      const workoutsSnap = await getDocs(collection(db, "workout"));
+      const workoutsSnap = await getWorkoutDocs();
       const allWorkouts = workoutsSnap.docs.map((d) => ({
         id: d.id,
         ...d.data(),

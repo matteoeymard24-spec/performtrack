@@ -1,4 +1,5 @@
 import { db } from "../firebase";
+import { getWorkoutDocs } from "../component/workoutQueries";
 import { collection, getDocs, getDoc, setDoc, updateDoc, doc, query, where, deleteDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
@@ -282,9 +283,12 @@ export default function Athletes() {
       }
 
       // 2. Supprimer workouts individuels
-      const workoutSnap = await getDocs(
-        query(collection(db, "workout"), where("targetUserId", "==", userId))
-      );
+      const allWorkoutSnap = await getWorkoutDocs();
+      const workoutSnap = {
+        docs: allWorkoutSnap.docs.filter(
+          (d) => d.data().targetUserId === userId
+        ),
+      };
       console.log("[DeleteAthlete] Workouts à supprimer:", workoutSnap.docs.length);
       for (const d of workoutSnap.docs) {
         await deleteDoc(d.ref);

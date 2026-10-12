@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
+import { getWorkoutDocs } from "../component/workoutQueries";
 import {
   collection,
   getDocs,
@@ -215,7 +216,7 @@ export default function MyRM() {
   const loadSessionCmj = async () => {
     if (!currentUser) return;
     try {
-      const snap = await getDocs(collection(db, "workout"));
+      const snap = await getWorkoutDocs();
       const map = {};
       snap.docs.forEach((docSnap) => {
         const w = docSnap.data();

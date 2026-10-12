@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
+import { getWorkoutDocs } from "../component/workoutQueries";
 import {
   collection,
   getDocs,
@@ -435,7 +436,7 @@ export default function Dashboard() {
       const cutoffStr = getLocalDateStr(cutoff);
 
       const [workoutSnap, wellnessSnap] = await Promise.all([
-        getDocs(collection(db, "workout")),
+        getWorkoutDocs(),
         getDocs(collection(db, "wellness")),
       ]);
 
@@ -495,7 +496,7 @@ export default function Dashboard() {
       // --- Séances (séance du jour + stats globales) ---
       let userWorkouts = [];
       try {
-        const allWorkouts = (await getDocs(collection(db, "workout"))).docs.map(
+        const allWorkouts = (await getWorkoutDocs()).docs.map(
           (d) => ({ id: d.id, ...d.data() })
         );
         const userGrp = userProfile?.group || "total";
@@ -799,7 +800,7 @@ export default function Dashboard() {
         const allWellness = (
           await getDocs(collection(db, "wellness"))
         ).docs.map((d) => ({ id: d.id, ...d.data() }));
-        const allWorkouts = (await getDocs(collection(db, "workout"))).docs.map(
+        const allWorkouts = (await getWorkoutDocs()).docs.map(
           (d) => ({ id: d.id, ...d.data() })
         );
         const today = getLocalDateStr(new Date());
@@ -1000,7 +1001,7 @@ export default function Dashboard() {
         .map((d) => ({ weight: d.data().weight, date: d.data().date }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-      const allW = (await getDocs(collection(db, "workout"))).docs.map((d) => ({
+      const allW = (await getWorkoutDocs()).docs.map((d) => ({
         id: d.id,
         ...d.data(),
       }));
