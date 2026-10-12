@@ -114,6 +114,59 @@ const formatExerciseDisplayName = (name) => {
 // `group` vaut alors "sg:<idGroupe>:<idSousGroupe>". Renvoie le sous-groupe
 // ciblé ({ id, name, athleteIds }) ou null si ce n'est pas ce format / s'il
 // n'existe plus.
+// Palette proposée pour colorer un groupe / sous-groupe dans le calendrier.
+const GROUP_COLORS = [
+  "#3498db",
+  "#e84393",
+  "#1abc9c",
+  "#f1c40f",
+  "#e67e22",
+  "#9b59b6",
+  "#2ecc71",
+  "#e74c3c",
+  "#95a5a6",
+];
+// Sélecteur de couleur par pastilles. `emptyLabel` = libellé de l'option
+// "pas de couleur propre" (couleur par type pour un groupe, couleur du groupe
+// pour un sous-groupe).
+const ColorSwatches = ({ value, onChange, emptyLabel }) => (
+  <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+    <button
+      type="button"
+      onClick={() => onChange("")}
+      style={{
+        padding: "3px 8px",
+        borderRadius: 12,
+        fontSize: 11,
+        cursor: "pointer",
+        color: "#f3f0ea",
+        background: !value ? "#2a2620" : "transparent",
+        border: !value ? "1px solid #e0a13d" : "1px solid #2a2620",
+      }}
+    >
+      {emptyLabel}
+    </button>
+    {GROUP_COLORS.map((c) => (
+      <button
+        type="button"
+        key={c}
+        onClick={() => onChange(c)}
+        aria-label={`Couleur ${c}`}
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: "50%",
+          background: c,
+          cursor: "pointer",
+          border: value === c ? "2px solid #f3f0ea" : "2px solid transparent",
+          boxShadow: value === c ? "0 0 0 1px #0d0c0a" : "none",
+          padding: 0,
+        }}
+      />
+    ))}
+  </div>
+);
+
 const SUBGROUP_PREFIX = "sg:";
 const makeSubGroupTarget = (groupId, subId) => `${SUBGROUP_PREFIX}${groupId}:${subId}`;
 const findTargetSubGroup = (groupValue, customGroups) => {
@@ -314,6 +367,8 @@ export default function Workout() {
   // Sous-groupes du groupe en cours d'édition : [{ id, name, athleteIds }],
   // où athleteIds ⊆ athlètes du groupe (un athlète = un seul sous-groupe).
   const [groupSubGroups, setGroupSubGroups] = useState([]);
+  // Couleur du groupe dans le calendrier ("" = couleur par type de séance).
+  const [groupColorInput, setGroupColorInput] = useState("");
 
   /* ===================== RM + VMA ===================== */
   useEffect(() => {
@@ -443,6 +498,7 @@ export default function Workout() {
     setGroupNameInput("");
     setGroupAthleteIds([]);
     setGroupSubGroups([]);
+    setGroupColorInput("");
   };
 
   const startEditGroup = (g) => {
@@ -450,7 +506,13 @@ export default function Workout() {
     setGroupNameInput(g.name || "");
     setGroupAthleteIds(g.athleteIds || []);
     setGroupSubGroups(g.subGroups || []);
+    setGroupColorInput(g.color || "");
   };
+
+  const updateGroupSubGroupColor = (id, color) =>
+    setGroupSubGroups((prev) =>
+      prev.map((sg) => (sg.id === id ? { ...sg, color } : sg))
+    );
 
   const toggleNewGroupAthlete = (athleteId) => {
     setGroupAthleteIds((prev) =>
@@ -515,6 +577,7 @@ export default function Workout() {
       .map((sg) => ({
         id: sg.id,
         name: sg.name.trim(),
+        color: sg.color || "",
         athleteIds: sg.athleteIds.filter((id) => groupAthleteIds.includes(id)),
       }));
     try {
@@ -523,12 +586,14 @@ export default function Workout() {
           name: groupNameInput.trim(),
           athleteIds: groupAthleteIds,
           subGroups: cleanSubGroups,
+          color: groupColorInput || "",
         });
       } else {
         await addDoc(collection(db, "groups"), {
           name: groupNameInput.trim(),
           athleteIds: groupAthleteIds,
           subGroups: cleanSubGroups,
+          color: groupColorInput || "",
           createdBy: currentUser.uid,
           createdAt: serverTimestamp(),
         });
@@ -2694,7 +2759,20 @@ export default function Workout() {
     if (session.group === "moi") {
       return "#d9a441"; // Or/Doré pour les séances personnelles
     }
-    
+
+    // Couleur choisie pour le groupe personnalisé ciblé (ou, pour un
+    // sous-groupe : sa propre couleur, sinon celle de son groupe). Sans
+    // couleur définie, on retombe sur la couleur par type ci-dessous.
+    const directGroup = customGroups.find((g) => g.id === session.group);
+    if (directGroup?.color) return directGroup.color;
+    if (typeof session.group === "string" && session.group.startsWith(SUBGROUP_PREFIX)) {
+      const [gid] = session.group.slice(SUBGROUP_PREFIX.length).split(":");
+      const parent = customGroups.find((g) => g.id === gid);
+      const sub = findTargetSubGroup(session.group, customGroups);
+      if (sub?.color) return sub.color;
+      if (parent?.color) return parent.color;
+    }
+
     // Couleurs par type pour les autres groupes
     const type = session.type || "muscu";
     if (type === "sprint") return "#d9695a";
@@ -3665,6 +3743,18 @@ export default function Workout() {
                     >
                       <div>
                         <div style={{ fontWeight: "bold", fontSize: 14 }}>
+                          {g.color && (
+                            <span
+                              style={{
+                                display: "inline-block",
+                                width: 12,
+                                height: 12,
+                                borderRadius: "50%",
+                                background: g.color,
+                                marginRight: 6,
+                              }}
+                            />
+                          )}
                           {g.name}
                         </div>
                         <div style={{ fontSize: 12, color: "#a8a199" }}>
@@ -3776,6 +3866,16 @@ export default function Workout() {
                   marginBottom: 10,
                 }}
               />
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
+                  🎨 Couleur dans le calendrier
+                </div>
+                <ColorSwatches
+                  value={groupColorInput}
+                  onChange={setGroupColorInput}
+                  emptyLabel="Par type"
+                />
+              </div>
               <div
                 style={{
                   maxHeight: 200,
@@ -3901,6 +4001,13 @@ export default function Workout() {
                       >
                         🗑️
                       </button>
+                    </div>
+                    <div style={{ marginBottom: 8 }}>
+                      <ColorSwatches
+                        value={sg.color || ""}
+                        onChange={(c) => updateGroupSubGroupColor(sg.id, c)}
+                        emptyLabel="Comme le groupe"
+                      />
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {groupAthleteIds.length === 0 && (
@@ -4031,6 +4138,34 @@ export default function Workout() {
             ></div>
             <span style={{ fontSize: 14 }}>🏃 Endurance</span>
           </div>
+          {customGroups
+            .filter((g) => g.color)
+            .flatMap((g) => [
+              { key: g.id, name: g.name, color: g.color },
+              ...(g.subGroups || [])
+                .filter((sg) => sg.color)
+                .map((sg) => ({
+                  key: `${g.id}-${sg.id}`,
+                  name: `${g.name} – ${sg.name}`,
+                  color: sg.color,
+                })),
+            ])
+            .map((item) => (
+              <div
+                key={item.key}
+                style={{ display: "flex", alignItems: "center", gap: 8 }}
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    background: item.color,
+                    borderRadius: 4,
+                  }}
+                ></div>
+                <span style={{ fontSize: 14 }}>👥 {item.name}</span>
+              </div>
+            ))}
         </div>
       )}
 
