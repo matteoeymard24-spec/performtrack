@@ -3695,6 +3695,27 @@ export default function Workout() {
                       </div>
                       <div style={{ display: "flex", gap: 6 }}>
                         <button
+                          onClick={() => {
+                            // Ouvre ce groupe en édition avec un nouveau
+                            // sous-groupe vide prêt à être rempli.
+                            startEditGroup(g);
+                            addGroupSubGroup();
+                          }}
+                          title="Ajouter un sous-groupe à ce groupe"
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 6,
+                            border: "1px solid #4fae7d",
+                            background: "transparent",
+                            color: "#4fae7d",
+                            fontSize: 12,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          ➕ Sous-groupe
+                        </button>
+                        <button
                           onClick={() => startEditGroup(g)}
                           style={{
                             padding: "5px 10px",
