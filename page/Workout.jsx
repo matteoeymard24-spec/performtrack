@@ -29,6 +29,11 @@ const getLocalDateStr = (date) => {
 
 // Fonction de normalisation pour les noms d'exercices
 // Permet de matcher les exercices peu importe l'orthographe
+// Intensités "sans charge" : Poids du corps (PDC) et Élastique. Elles ne
+// reposent sur aucun RM : jamais de poids cible calculé, jamais de mise à jour
+// ni de création de fiche RM, et pas de retour obligatoire en fin de séance.
+const isNoRmIntensity = (v) => v === "PDC" || v === "ELASTIQUE";
+
 const normalizeExerciseName = (name) => {
   if (!name) return "";
   return name
@@ -740,7 +745,7 @@ export default function Workout() {
       
       session.blocks.forEach((block) => {
         block.exercises?.forEach((exercise) => {
-          if (exercise.rmName && exercise.rmPercent !== "PDC") {
+          if (exercise.rmName && !isNoRmIntensity(exercise.rmPercent)) {
             const normalized = normalizeExerciseName(exercise.rmName);
             if (normalized) {
               rmNames.add(normalized);
@@ -1131,7 +1136,7 @@ export default function Workout() {
         }
 
         // Poids du corps (PDC) : pas de charge externe pertinente pour un RM.
-        if (exercise.rmPercent === "PDC") continue;
+        if (isNoRmIntensity(exercise.rmPercent)) continue;
 
         // Nom utilisé pour la fiche RM : celui choisi explicitement par le
         // coach (rmName, quand l'exercice sert de référence pour calculer
@@ -1343,7 +1348,7 @@ export default function Workout() {
           return;
         }
         (block.exercises || []).forEach((exercise, eIdx) => {
-          if (exercise.rmPercent === "PDC") return;
+          if (isNoRmIntensity(exercise.rmPercent)) return;
           const key = `${bIdx}-${eIdx}`;
           if (!sessionFeedback[key]) {
             missing.push(exercise.name || "Exercice sans nom");
@@ -5854,14 +5859,14 @@ export default function Workout() {
                           Intensité
                         </label>
                         <select
-                          value={ex.rmPercent === "PDC" ? "PDC" : ex.rmPercent || 70}
+                          value={isNoRmIntensity(ex.rmPercent) ? ex.rmPercent : ex.rmPercent || 70}
                           onChange={(e) => {
                             const val = e.target.value;
                             updateExercise(
                               bIdx,
                               eIdx,
                               "rmPercent",
-                              val === "PDC" ? "PDC" : Number(val)
+                              isNoRmIntensity(val) ? val : Number(val)
                             );
                           }}
                           style={{
@@ -5874,6 +5879,7 @@ export default function Workout() {
                           }}
                         >
                           <option value="PDC">PDC (Poids du corps)</option>
+                          <option value="ELASTIQUE">Élastique</option>
                           {[...Array(19)].map((_, i) => {
                             const percent = (i + 1) * 5;
                             return (
@@ -5892,7 +5898,7 @@ export default function Workout() {
                       {/* CALCUL POIDS CIBLE — basé sur ex.rmName s'il existe
                           encore (anciennes séances), sinon directement sur
                           le nom de l'exercice. */}
-                      {ex.rmPercent !== "PDC" && (ex.rmName || ex.name) &&
+                      {!isNoRmIntensity(ex.rmPercent) && (ex.rmName || ex.name) &&
                         ex.rmPercent &&
                         (() => {
                           const lookupName = ex.rmName || ex.name;
@@ -5959,6 +5965,19 @@ export default function Workout() {
                           }}
                         >
                           💪 <strong>Poids du corps</strong> - Aucun poids additionnel
+                        </div>
+                      )}
+                      {ex.rmPercent === "ELASTIQUE" && (
+                        <div
+                          style={{
+                            padding: 12,
+                            background: "rgba(224,161,61,0.14)",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            color: "#f0c98a",
+                          }}
+                        >
+                          🎗️ <strong>Élastique</strong> - Aucune charge calculée, les RM ne sont pas modifiés
                         </div>
                       )}
                     </>
@@ -7138,6 +7157,8 @@ export default function Workout() {
                           @{" "}
                           {ex.rmPercent === "PDC" ? (
                             <strong style={{ color: "#e0a13d" }}>PDC</strong>
+                          ) : ex.rmPercent === "ELASTIQUE" ? (
+                            <strong style={{ color: "#e0a13d" }}>Élastique</strong>
                           ) : (
                             <>
                               {ex.rmPercent}% ({calculateWeight(ex.rmName || ex.name, ex.rmPercent)} kg)
@@ -7347,7 +7368,9 @@ export default function Workout() {
                         pour EMOM/AMRAP : le RPE est saisi une seule fois pour
                         tout le bloc (bouton au-dessus, avant la liste des
                         exercices), pas exercice par exercice. */}
-                    {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
+                    {block.timerMode !== "emom" &&
+                      block.timerMode !== "amrap" &&
+                      !isNoRmIntensity(ex.rmPercent) && (
                       <button
                         onClick={() =>
                           openFeedbackModal(bIdx, eIdx, ex, sessionType)
