@@ -53,10 +53,20 @@ const getLocalDateStr = (date) => {
 };
 
 // Retourne les ids des groupes personnalisés (collection "groups") dont fait partie un athlète
-const getAthleteGroupIds = (athleteId, customGroups) =>
-  (customGroups || [])
-    .filter((g) => (g.athleteIds || []).includes(athleteId))
-    .map((g) => g.id);
+// Inclut aussi les cibles de SOUS-GROUPES ("sg:<idGroupe>:<idSousGroupe>"),
+// valeur du champ "group" d'une séance qui cible un sous-groupe : sans elles,
+// ces séances n'étaient jamais rattachées à l'athlète (ni séance du jour,
+// ni feedbacks, ni charge/ACWR).
+const getAthleteGroupIds = (athleteId, customGroups) => {
+  const ids = [];
+  (customGroups || []).forEach((g) => {
+    if ((g.athleteIds || []).includes(athleteId)) ids.push(g.id);
+    (g.subGroups || []).forEach((sg) => {
+      if ((sg.athleteIds || []).includes(athleteId)) ids.push(`sg:${g.id}:${sg.id}`);
+    });
+  });
+  return ids;
+};
 
 // Même normalisation que Workout.jsx (voir normalizeExerciseName là-bas) —
 // utilisée ici uniquement pour rapprocher le "rmName" d'un exercice de

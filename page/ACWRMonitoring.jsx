@@ -152,9 +152,15 @@ export default function ACWRMonitoring() {
       }));
 
       const athleteGroup = athlete.group || "total";
-      const myGroupIds = customGroups
-        .filter((g) => (g.athleteIds || []).includes(athlete.id))
-        .map((g) => g.id);
+      // Groupes + sous-groupes ("sg:<idGroupe>:<idSousGroupe>") de l'athlète
+      const myGroupIds = [];
+      customGroups.forEach((g) => {
+        if ((g.athleteIds || []).includes(athlete.id)) myGroupIds.push(g.id);
+        (g.subGroups || []).forEach((sg) => {
+          if ((sg.athleteIds || []).includes(athlete.id))
+            myGroupIds.push(`sg:${g.id}:${sg.id}`);
+        });
+      });
       const relevantWorkouts = allWorkouts.filter(
         (w) =>
           w.group === "total" ||
