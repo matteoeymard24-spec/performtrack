@@ -2048,8 +2048,32 @@ export default function Workout() {
     setBlocks(nb);
   };
   const updateExercise = (bIdx, eIdx, field, val) => {
-    const nb = [...blocks];
-    nb[bIdx].exercises[eIdx][field] = val;
+    // Copie immutable (on ne modifie plus l'objet exercice partagé avec la
+    // séance affichée / la liste des séances).
+    const nb = blocks.map((b, i) =>
+      i !== bIdx
+        ? b
+        : {
+            ...b,
+            exercises: b.exercises.map((ex, j) => {
+              if (j !== eIdx) return ex;
+              const updated = { ...ex, [field]: val };
+              // Changement de NOM : l'image/vidéo doivent suivre le nouveau
+              // nom (fiche "exerciseMedia"). On retire l'ancienne copie
+              // d'image stockée directement sur l'exercice (anciennes
+              // séances), sinon elle restait affichée malgré le nouveau nom.
+              if (
+                field === "name" &&
+                normalizeExerciseName(ex.name) !== normalizeExerciseName(val)
+              ) {
+                delete updated.mediaUrl;
+                delete updated.mediaType;
+                delete updated.mediaZoom;
+              }
+              return updated;
+            }),
+          }
+    );
     setBlocks(nb);
   };
 
