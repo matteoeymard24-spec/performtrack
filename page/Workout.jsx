@@ -210,6 +210,9 @@ const ColorSwatches = ({ value, onChange, emptyLabel }) => {
   );
 };
 
+// Durée pendant laquelle le bouton "Annuler la suppression" reste disponible.
+const UNDO_WINDOW_MS = 30000;
+
 // Couleur unique des séances sans couleur de groupe (plus de couleur par type).
 const DEFAULT_SESSION_COLOR = "#8a8378";
 
@@ -351,8 +354,25 @@ export default function Workout() {
   // réinitialise l'autre, pour ne pas avoir un filtrage ambigu des deux à
   // la fois. Laisser les deux vides redonne le calendrier complet.
   // Pile des suppressions récentes (en mémoire, perdue au rechargement de la
-  // page) : chaque entrée = un lot [{ id, data }] restaurable via "Annuler".
+  // page) : chaque entrée = { items: [{ id, data }], at } restaurable via
+  // "Annuler" pendant UNDO_WINDOW_MS seulement (30 s), puis elle disparaît.
   const [deletedStack, setDeletedStack] = useState([]);
+  // Blocs / exercices supprimés dans le formulaire de séance (pour "Annuler").
+  const [removedItems, setRemovedItems] = useState([]);
+  const [undoNow, setUndoNow] = useState(Date.now());
+  useEffect(() => {
+    if (deletedStack.length === 0) return undefined;
+    setUndoNow(Date.now());
+    const id = setInterval(() => {
+      const now = Date.now();
+      setUndoNow(now);
+      setDeletedStack((prev) => {
+        const kept = prev.filter((e) => now - e.at < UNDO_WINDOW_MS);
+        return kept.length === prev.length ? prev : kept;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [deletedStack.length]);
   // Superadmin uniquement : afficher aussi les séances "🌟 Moi" des autres admins.
   const [showAllMoi, setShowAllMoi] = useState(false);
   const [athleteFilterId, setAthleteFilterId] = useState("");
@@ -1732,6 +1752,7 @@ export default function Workout() {
   };
 
   const resetForm = () => {
+    setRemovedItems([]);
     setShowForm(false);
     setIsEdit(false);
     setEditId(null);
@@ -1766,6 +1787,7 @@ export default function Workout() {
     setTitle(session.title);
     setFormDate(new Date(session.date + "T12:00:00"));
     setGroup(session.group || "total");
+    setRemovedItems([]);
     setExtraGroups([]);
     setTargetUserId(session.targetUserId || "");
     setWorkoutType(session.type || "muscu");
@@ -1779,13 +1801,18 @@ export default function Workout() {
       const { id, ...data } = s;
       return { id, data };
     });
-    if (batch.length > 0) setDeletedStack((prev) => [...prev, batch].slice(-10));
+    if (batch.length > 0) {
+      setDeletedStack((prev) =>
+        [...prev, { items: batch, at: Date.now() }].slice(-10)
+      );
+    }
   };
 
   // Restaure le dernier lot supprimé (même identifiant, même contenu).
   const undoLastDelete = async () => {
-    const batch = deletedStack[deletedStack.length - 1];
-    if (!batch) return;
+    const last = deletedStack[deletedStack.length - 1];
+    if (!last) return;
+    const batch = last.items;
     try {
       await Promise.all(
         batch.map((s) => setDoc(doc(db, "workout", s.id), s.data))
@@ -1804,8 +1831,9 @@ export default function Workout() {
     try {
       const toRemember = events.find((e) => e.id === id);
       await deleteDoc(doc(db, "workout", id));
+      alert("Supprimée ! Tu as 30 secondes pour l'annuler avec le bouton ↩️.");
+      // Le compte à rebours démarre APRÈS la fermeture de l'alerte.
       if (toRemember) rememberDeleted([toRemember]);
-      alert("Supprimée ! Tu peux l'annuler avec le bouton ↩️.");
       await fetchSessions();
       setSelectedSession(null);
     } catch (e) {
@@ -1829,8 +1857,8 @@ export default function Workout() {
       return;
     try {
       await Promise.all(dayEvents.map((e) => deleteDoc(doc(db, "workout", e.id))));
+      alert(`${dayEvents.length} séance(s) supprimée(s) ! Tu as 30 secondes pour annuler avec le bouton ↩️.`);
       rememberDeleted(dayEvents);
-      alert(`${dayEvents.length} séance(s) supprimée(s) ! Tu peux annuler avec le bouton ↩️.`);
       await fetchSessions();
       setSelectedSession(null);
     } catch (e) {
@@ -1865,8 +1893,8 @@ export default function Workout() {
       return;
     try {
       await Promise.all(weekEvents.map((e) => deleteDoc(doc(db, "workout", e.id))));
+      alert(`${weekEvents.length} séance(s) supprimée(s) ! Tu as 30 secondes pour annuler avec le bouton ↩️.`);
       rememberDeleted(weekEvents);
-      alert(`${weekEvents.length} séance(s) supprimée(s) ! Tu peux annuler avec le bouton ↩️.`);
       await fetchSessions();
       setSelectedSession(null);
     } catch (e) {
@@ -1924,7 +1952,43 @@ export default function Workout() {
     ]);
   };
 
-  const removeBlock = (i) => setBlocks(blocks.filter((_, idx) => idx !== i));
+  const removeBlock = (i) => {
+    const block = blocks[i];
+    if (block) {
+      setRemovedItems((prev) =>
+        [...prev, { kind: "block", index: i, block }].slice(-20)
+      );
+    }
+    setBlocks(blocks.filter((_, idx) => idx !== i));
+  };
+
+  // Remet le dernier bloc / exercice supprimé à sa place d'origine, sans
+  // toucher aux autres modifications faites depuis.
+  const undoRemoval = () => {
+    const last = removedItems[removedItems.length - 1];
+    if (!last) return;
+    setRemovedItems((prev) => prev.slice(0, -1));
+    if (last.kind === "block") {
+      setBlocks((prev) => {
+        const at = Math.min(last.index, prev.length);
+        return [...prev.slice(0, at), last.block, ...prev.slice(at)];
+      });
+    } else {
+      setBlocks((prev) => {
+        if (prev.length === 0) return prev;
+        const bi = Math.min(last.bIdx, prev.length - 1);
+        return prev.map((b, i) => {
+          if (i !== bi) return b;
+          const exs = b.exercises || [];
+          const at = Math.min(last.eIdx, exs.length);
+          return {
+            ...b,
+            exercises: [...exs.slice(0, at), last.exercise, ...exs.slice(at)],
+          };
+        });
+      });
+    }
+  };
 
   /* ===================== RÉORDONNER LES BLOCS PAR GLISSER-DÉPOSER =====================
      Poignée "⠿" sur chaque bloc : au clic maintenu (souris) ou au toucher
@@ -2043,6 +2107,12 @@ export default function Workout() {
   };
 
   const removeExercise = (bIdx, eIdx) => {
+    const removed = blocks[bIdx]?.exercises?.[eIdx];
+    if (removed) {
+      setRemovedItems((prev) =>
+        [...prev, { kind: "exercise", bIdx, eIdx, exercise: removed }].slice(-20)
+      );
+    }
     const nb = [...blocks];
     nb[bIdx].exercises = nb[bIdx].exercises.filter((_, i) => i !== eIdx);
     setBlocks(nb);
@@ -3187,7 +3257,14 @@ export default function Workout() {
             boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
           }}
         >
-          ↩️ Annuler la suppression ({deletedStack[deletedStack.length - 1].length})
+          ↩️ Annuler la suppression ({deletedStack[deletedStack.length - 1].items.length}) ·{" "}
+          {Math.max(
+            0,
+            Math.ceil(
+              (UNDO_WINDOW_MS - (undoNow - deletedStack[deletedStack.length - 1].at)) / 1000
+            )
+          )}
+          s
         </button>
       )}
 
@@ -4716,6 +4793,32 @@ export default function Workout() {
       )}
 
       {/* ============ FORMULAIRE CRÉATION/MODIFICATION ============ */}
+      {showForm && userRole === "admin" && removedItems.length > 0 && (
+        <button
+          onClick={undoRemoval}
+          title="Remettre le dernier bloc / exercice supprimé"
+          style={{
+            position: "fixed",
+            left: 16,
+            bottom: 16,
+            zIndex: 9999,
+            padding: "6px 12px",
+            background: "rgba(21,19,16,0.92)",
+            color: "#a8a199",
+            border: "1px solid #2a2620",
+            borderRadius: 16,
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          ↩️ Annuler (
+          {removedItems[removedItems.length - 1].kind === "block"
+            ? "bloc"
+            : "exercice"}
+          )
+        </button>
+      )}
+
       {showForm && userRole === "admin" && (
         <div
           style={{
