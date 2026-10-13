@@ -2057,6 +2057,71 @@ export default function Workout() {
     document.body.style.userSelect = "none";
   };
 
+  /* Réordonnancement des exercices À L'INTÉRIEUR d'un bloc (même principe que
+     les blocs : Pointer Events, refs, écouteurs stables). */
+  const exerciseRefs = useRef({});
+  const dragExInfoRef = useRef({ bIdx: null, from: null, over: null });
+  const [dragEx, setDragEx] = useState({ bIdx: null, from: null, over: null });
+
+  const onExDragMove = useCallback((e) => {
+    const y = e.clientY;
+    const { bIdx } = dragExInfoRef.current;
+    if (typeof y !== "number" || bIdx === null) return;
+    const refs = exerciseRefs.current[bIdx] || [];
+    let found = null;
+    let first = null;
+    let last = null;
+    for (let idx = 0; idx < refs.length; idx++) {
+      const el = refs[idx];
+      if (!el) continue;
+      if (first === null) first = idx;
+      last = idx;
+      const rect = el.getBoundingClientRect();
+      if (y >= rect.top && y <= rect.bottom) {
+        found = idx;
+        break;
+      }
+    }
+    if (found === null && first !== null) {
+      if (y < refs[first].getBoundingClientRect().top) found = first;
+      else if (y > refs[last].getBoundingClientRect().bottom) found = last;
+    }
+    if (found !== null && found !== dragExInfoRef.current.over) {
+      dragExInfoRef.current.over = found;
+      setDragEx({ bIdx, from: dragExInfoRef.current.from, over: found });
+    }
+  }, []);
+
+  const onExDragEnd = useCallback(() => {
+    window.removeEventListener("pointermove", onExDragMove);
+    window.removeEventListener("pointerup", onExDragEnd);
+    document.body.style.userSelect = "";
+    const { bIdx, from, over } = dragExInfoRef.current;
+    if (bIdx !== null && from !== null && over !== null && from !== over) {
+      setBlocks((prev) =>
+        prev.map((b, i) => {
+          if (i !== bIdx) return b;
+          const ex = [...b.exercises];
+          const [moved] = ex.splice(from, 1);
+          ex.splice(over, 0, moved);
+          return { ...b, exercises: ex };
+        })
+      );
+    }
+    dragExInfoRef.current = { bIdx: null, from: null, over: null };
+    setDragEx({ bIdx: null, from: null, over: null });
+  }, [onExDragMove]);
+
+  const startExDrag = (bIdx, eIdx) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragExInfoRef.current = { bIdx, from: eIdx, over: eIdx };
+    setDragEx({ bIdx, from: eIdx, over: eIdx });
+    window.addEventListener("pointermove", onExDragMove);
+    window.addEventListener("pointerup", onExDragEnd);
+    document.body.style.userSelect = "none";
+  };
+
   // Bascule replier/déplier les exercices d'un bloc, pour y voir plus clair
   // pendant la création d'une séance avec plusieurs blocs.
   const [collapsedBlocks, setCollapsedBlocks] = useState({});
@@ -5523,21 +5588,46 @@ export default function Workout() {
               {block.exercises.map((ex, eIdx) => (
                 <div
                   key={eIdx}
+                  ref={(el) => {
+                    if (!exerciseRefs.current[bIdx]) exerciseRefs.current[bIdx] = [];
+                    exerciseRefs.current[bIdx][eIdx] = el;
+                  }}
                   style={{
                     background: "#151310",
                     padding: 14,
                     borderRadius: 8,
                     marginBottom: 10,
+                    border:
+                      dragEx.bIdx === bIdx && dragEx.over === eIdx
+                        ? "2px solid #e0a13d"
+                        : "2px solid transparent",
+                    opacity: dragEx.bIdx === bIdx && dragEx.from === eIdx ? 0.5 : 1,
+                    transition: "opacity 0.15s ease, border-color 0.15s ease",
                   }}
                 >
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr auto",
+                      gridTemplateColumns: "auto 1fr auto",
                       gap: 10,
                       marginBottom: 10,
+                      alignItems: "center",
                     }}
                   >
+                    <span
+                      onPointerDown={startExDrag(bIdx, eIdx)}
+                      title="Glisser pour réordonner cet exercice"
+                      style={{
+                        cursor: "grab",
+                        fontSize: 20,
+                        color: "#a8a199",
+                        padding: "4px 6px",
+                        touchAction: "none",
+                        userSelect: "none",
+                      }}
+                    >
+                      ⠿
+                    </span>
                     <div style={{ position: "relative" }}>
                       <input
                         type="text"
