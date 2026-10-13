@@ -181,6 +181,9 @@ export default function Dashboard() {
   const [editingInjury, setEditingInjury] = useState(null);
   const [injuryEditDraft, setInjuryEditDraft] = useState(null);
   const [showRMEvolution, setShowRMEvolution] = useState(false);
+  // Détail athlète (coach) : séances dépliées dans la liste "Séances & feedbacks"
+  const [expandedSessionIds, setExpandedSessionIds] = useState({});
+  const [showAllAthleteSessions, setShowAllAthleteSessions] = useState(false);
   const TISSUE_LABELS = {
     muscle: "Muscle",
     tendon: "Tendon",
@@ -1019,6 +1022,8 @@ export default function Dashboard() {
       const acwrHist = calculateACWRHistory(uWorkouts, athlete.id);
 
       setShowAthleteDetail(athlete);
+      setExpandedSessionIds({});
+      setShowAllAthleteSessions(false);
       setShowInjuryHistory(false);
       setEditingInjury(null);
       setInjuryEditDraft(null);
@@ -1032,6 +1037,9 @@ export default function Dashboard() {
         weeklyAvg,
         weightHistory: weightData,
         todayWorkout: todayW,
+        sessions: [...uWorkouts].sort((a, b) =>
+          (b.date || "").localeCompare(a.date || "")
+        ),
         vma: athleteVma,
         cmj: athleteCmj,
       });
@@ -3100,6 +3108,171 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* Séances de l'athlète + feedbacks (RPE, charges, commentaires) */}
+            <div
+              style={{
+                background: "#151310",
+                padding: 20,
+                borderRadius: 10,
+                marginBottom: 25,
+              }}
+            >
+              <h3 style={{ margin: "0 0 12px 0", fontSize: 17 }}>
+                📋 Séances & feedbacks
+              </h3>
+              {(() => {
+                const all = athleteDetails.sessions || [];
+                if (all.length === 0) {
+                  return (
+                    <div style={{ color: "#a8a199", fontSize: 14 }}>
+                      Aucune séance pour cet athlète
+                    </div>
+                  );
+                }
+                const uid = showAthleteDetail.id;
+                const visible = showAllAthleteSessions ? all : all.slice(0, 15);
+                return (
+                  <>
+                    {visible.map((w) => {
+                      const done = isWorkoutCompleted(w, uid);
+                      const inProg = isWorkoutInProgress(w, uid);
+                      const fbAll = getUserFeedback(w, uid);
+                      const avg = calcSessionAvgRPE(w, uid);
+                      const open = !!expandedSessionIds[w.id];
+                      const status = done
+                        ? { t: "✅ Validée", c: "#4fae7d" }
+                        : inProg
+                        ? { t: "⏳ En cours", c: "#d9a441" }
+                        : { t: "Non faite", c: "#a8a199" };
+                      return (
+                        <div
+                          key={w.id}
+                          style={{
+                            background: "#0d0c0a",
+                            borderRadius: 8,
+                            marginBottom: 8,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <button
+                            onClick={() =>
+                              setExpandedSessionIds((p) => ({ ...p, [w.id]: !p[w.id] }))
+                            }
+                            style={{
+                              width: "100%",
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 8,
+                              padding: "10px 12px",
+                              background: "none",
+                              border: "none",
+                              color: "#f3f0ea",
+                              cursor: "pointer",
+                              textAlign: "left",
+                            }}
+                          >
+                            <span style={{ fontSize: 14 }}>
+                              <strong>{w.title || "Séance"}</strong>
+                              <span style={{ color: "#a8a199", marginLeft: 8, fontSize: 12 }}>
+                                {w.date
+                                  ? new Date(w.date + "T12:00:00").toLocaleDateString("fr-FR")
+                                  : ""}
+                              </span>
+                            </span>
+                            <span style={{ fontSize: 12, color: status.c, whiteSpace: "nowrap" }}>
+                              {status.t}
+                              {avg !== null && ` · RPE moy. ${avg.toFixed(1)}`}{" "}
+                              {open ? "▾" : "▸"}
+                            </span>
+                          </button>
+                          {open && (
+                            <div style={{ padding: "0 12px 12px 12px" }}>
+                              {Object.keys(fbAll).length === 0 ? (
+                                <div style={{ color: "#a8a199", fontSize: 13 }}>
+                                  Aucun feedback saisi
+                                </div>
+                              ) : (
+                                (w.blocks || []).map((block, bIdx) =>
+                                  (block.exercises || []).map((ex, eIdx) => {
+                                    const fb = fbAll[`${bIdx}-${eIdx}`];
+                                    if (!fb) return null;
+                                    const legacy =
+                                      fb.actualWeight !== undefined && !fb.series
+                                        ? [{ set: 1, actualWeight: fb.actualWeight, actualReps: fb.actualReps, rpe: fb.rpe }]
+                                        : null;
+                                    const series = fb.series || legacy;
+                                    const cmj = isCMJName(ex.name);
+                                    return (
+                                      <div
+                                        key={`${bIdx}-${eIdx}`}
+                                        style={{
+                                          padding: 10,
+                                          background: "#151310",
+                                          borderRadius: 6,
+                                          marginTop: 8,
+                                          fontSize: 13,
+                                        }}
+                                      >
+                                        <div style={{ fontWeight: "bold", color: "#e0a13d", marginBottom: 4 }}>
+                                          {ex.name || "Exercice"}
+                                        </div>
+                                        {series ? (
+                                          series.map((s, i) => (
+                                            <div key={i}>
+                                              Série {s.set || i + 1} :{" "}
+                                              {cmj
+                                                ? `${s.actualWeight} cm`
+                                                : `${s.actualWeight} kg × ${s.actualReps}`}
+                                              {" · "}RPE {s.rpe}/10
+                                            </div>
+                                          ))
+                                        ) : (
+                                          <div>
+                                            {fb.actualDistance !== undefined && `${fb.actualDistance} m · `}
+                                            {fb.actualRounds !== undefined && `${fb.actualRounds} tours · `}
+                                            RPE {fb.rpe}/10
+                                          </div>
+                                        )}
+                                        {fb.notes && (
+                                          <div style={{ marginTop: 6, color: "#9fd4b0", fontStyle: "italic" }}>
+                                            📝 {fb.notes}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })
+                                )
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {all.length > 15 && (
+                      <button
+                        onClick={() => setShowAllAthleteSessions((v) => !v)}
+                        style={{
+                          marginTop: 6,
+                          padding: "8px 14px",
+                          background: "#2a2620",
+                          color: "#f3f0ea",
+                          border: "none",
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          fontSize: 13,
+                        }}
+                      >
+                        {showAllAthleteSessions
+                          ? "Voir moins"
+                          : `Voir toutes les séances (${all.length})`}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+
             {showAthleteDetail.lastWellness &&
               showAthleteDetail.lastWellness.douleur > 0 && (
                 <div
@@ -3710,8 +3883,14 @@ export default function Dashboard() {
                   </span>
                 </button>
                 {showRMEvolution && EXERCISE_CATEGORIES.map((cat) => {
+                  // Une catégorie inconnue (ancienne fiche, valeur hors liste)
+                  // est rangée dans "Autre" au lieu de faire disparaître l'exo.
                   const exercisesInCat = Object.entries(detailedAthleteRMHistory).filter(
-                    ([ex]) => (detailedAthleteRMCategories[ex] || "autre") === cat.value
+                    ([ex]) => {
+                      const c = normalizeCategoryValue(detailedAthleteRMCategories[ex]);
+                      const known = EXERCISE_CATEGORIES.some((x) => x.value === c);
+                      return (known ? c : "autre") === cat.value;
+                    }
                   );
                   if (exercisesInCat.length === 0) return null;
                   return (
