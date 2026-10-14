@@ -1271,11 +1271,15 @@ export default function MyRM() {
                 const history = rmHistory[exercise];
                 const hasData = history.length > 0;
                 const latest = hasData ? history[history.length - 1] : null;
-                const first = hasData ? history[0] : null;
-                const progression = hasData ? latest.kg - first.kg : 0;
+                // Progression = dernier test vs test PRÉCÉDENT (pas vs le tout
+                // premier), kg arrondis à l'unité.
+                const previous = history.length > 1 ? history[history.length - 2] : null;
+                const progression = previous
+                  ? Math.round(latest.kg) - Math.round(previous.kg)
+                  : 0;
                 const progressionPercent =
-                  hasData && first.kg
-                    ? ((progression / first.kg) * 100).toFixed(1)
+                  previous && previous.kg
+                    ? (((latest.kg - previous.kg) / previous.kg) * 100).toFixed(1)
                     : "0";
 
                 return (
@@ -1341,7 +1345,7 @@ export default function MyRM() {
                               color: hasData ? "#e0a13d" : "#a8a199",
                             }}
                           >
-                            {hasData ? `${latest.kg} kg` : "En attente"}
+                            {hasData ? `${Math.round(latest.kg)} kg` : "En attente"}
                           </div>
                         </div>
 
@@ -1354,7 +1358,7 @@ export default function MyRM() {
                                 marginBottom: 3,
                               }}
                             >
-                              PROGRESSION
+                              VS PRÉCÉDENT
                             </div>
                             <div
                               style={{
@@ -1368,11 +1372,31 @@ export default function MyRM() {
                             </div>
                             <div
                               style={{
-                                fontSize: 11,
-                                color: progression >= 0 ? "#4fae7d" : "#d9695a",
+                                display: "inline-block",
+                                marginTop: 4,
+                                padding: "3px 10px",
+                                borderRadius: 999,
+                                fontSize: 15,
+                                fontWeight: "bold",
+                                color:
+                                  Number(progressionPercent) === 0
+                                    ? "#a8a199"
+                                    : progression >= 0
+                                    ? "#4fae7d"
+                                    : "#d9695a",
+                                background:
+                                  Number(progressionPercent) === 0
+                                    ? "rgba(168,161,153,0.16)"
+                                    : progression >= 0
+                                    ? "rgba(79,174,125,0.16)"
+                                    : "rgba(217,105,90,0.16)",
                               }}
                             >
-                              {progression >= 0 ? "+" : ""}
+                              {Number(progressionPercent) === 0
+                                ? "= "
+                                : Number(progressionPercent) > 0
+                                ? "▲ +"
+                                : "▼ "}
                               {progressionPercent}%
                             </div>
                           </div>
@@ -1493,7 +1517,7 @@ export default function MyRM() {
                         fontSize: 12,
                       }}
                       labelStyle={{ color: "#f3f0ea" }}
-                      formatter={(value) => [`${value} kg`, "1RM"]}
+                      formatter={(value) => [`${Math.round(value)} kg`, "1RM"]}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
                     <Line
@@ -1519,7 +1543,18 @@ export default function MyRM() {
                   {rmHistory[selectedExercise]
                     .slice()
                     .reverse()
-                    .map((entry, index) => (
+                    .map((entry, index, arr) => {
+                      // arr est inversé (plus récent d'abord) : le test
+                      // précédent dans le temps est l'élément suivant.
+                      const prevEntry = arr[index + 1];
+                      const pct =
+                        prevEntry && prevEntry.kg
+                          ? ((entry.kg - prevEntry.kg) / prevEntry.kg) * 100
+                          : null;
+                      const dKg = prevEntry
+                        ? Math.round(entry.kg) - Math.round(prevEntry.kg)
+                        : null;
+                      return (
                       <div
                         key={index}
                         style={{
@@ -1578,11 +1613,42 @@ export default function MyRM() {
                               color: "#e0a13d",
                             }}
                           >
-                            {entry.kg} kg
+                            {Math.round(entry.kg)} kg
+                            {pct !== null && (
+                              <span
+                                style={{
+                                  marginLeft: 10,
+                                  padding: "3px 10px",
+                                  borderRadius: 999,
+                                  fontSize: 14,
+                                  color:
+                                    pct.toFixed(1) === "0.0" || pct.toFixed(1) === "-0.0"
+                                      ? "#a8a199"
+                                      : pct > 0
+                                      ? "#4fae7d"
+                                      : "#d9695a",
+                                  background:
+                                    pct.toFixed(1) === "0.0" || pct.toFixed(1) === "-0.0"
+                                      ? "rgba(168,161,153,0.16)"
+                                      : pct > 0
+                                      ? "rgba(79,174,125,0.16)"
+                                      : "rgba(217,105,90,0.16)",
+                                }}
+                              >
+                                {pct.toFixed(1) === "0.0" || pct.toFixed(1) === "-0.0"
+                                  ? "= "
+                                  : pct > 0
+                                  ? "▲ +"
+                                  : "▼ "}
+                                {pct.toFixed(1)}%
+                                {dKg !== null && ` (${dKg >= 0 ? "+" : ""}${dKg} kg)`}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                 </div>
               </div>
             </div>
