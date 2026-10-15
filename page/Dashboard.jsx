@@ -194,6 +194,7 @@ export default function Dashboard() {
   // Détail athlète (coach) : recherche d'un exercice pour sa courbe d'évolution
   const [rmSearch, setRmSearch] = useState("");
   const [rmSelected, setRmSelected] = useState(null);
+  const [rmListOpen, setRmListOpen] = useState(true);
   // Détail athlète (coach) : séances dépliées dans la liste "Séances & feedbacks"
   const [expandedSessionIds, setExpandedSessionIds] = useState({});
   const [showAllAthleteSessions, setShowAllAthleteSessions] = useState(false);
@@ -1043,6 +1044,7 @@ export default function Dashboard() {
       setShowRMEvolution(false);
       setRmSearch("");
       setRmSelected(null);
+      setRmListOpen(true);
       setDetailedAthleteRMHistory(rmByEx);
       setDetailedAthleteRMCategories(rmCategories);
       setAcwrHistory(acwrHist);
@@ -4018,21 +4020,51 @@ export default function Dashboard() {
                     }}
                   />
 
-                  {q && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: "#a8a199" }}>
+                      {q
+                        ? `${matches.length} résultat${matches.length > 1 ? "s" : ""}`
+                        : `Exercices faits / suivis (${entries.length})`}
+                    </span>
+                    <button
+                      onClick={() => setRmListOpen((v) => !v)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: "1px solid #2a2620",
+                        background: "#0d0c0a",
+                        color: "#a8a199",
+                        fontSize: 12,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {rmListOpen ? "▾ Masquer la liste" : "▸ Afficher la liste"}
+                    </button>
+                  </div>
+
+                  {rmListOpen && (
                     <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {matches.length === 0 ? (
+                      {(q ? matches : entries).length === 0 ? (
                         <div style={{ color: "#a8a199", fontSize: 13 }}>
                           Aucun exercice ne correspond à « {rmSearch} »
                         </div>
                       ) : (
-                        matches.slice(0, 12).map((m) => {
+                        (q ? matches : entries).map((m) => {
                           const active = selected && selected.key === m.key;
                           return (
                             <button
                               key={m.key}
                               onClick={() => {
                                 setRmSelected(m.key);
-                                setRmSearch(m.label);
+                                setRmSearch("");
                               }}
                               style={{
                                 padding: "6px 12px",
@@ -4047,23 +4079,14 @@ export default function Dashboard() {
                             >
                               {m.label}
                               <span style={{ color: "#a8a199", marginLeft: 6, fontSize: 11 }}>
-                                {m.sessions.length > 0 ? `${m.sessions.length} séance${m.sessions.length > 1 ? "s" : ""}` : "RM seul"}
+                                {m.sessions.length > 0
+                                  ? `${m.sessions.length} séance${m.sessions.length > 1 ? "s" : ""}`
+                                  : "RM seul"}
                               </span>
                             </button>
                           );
                         })
                       )}
-                      {matches.length > 12 && (
-                        <div style={{ color: "#a8a199", fontSize: 12, alignSelf: "center" }}>
-                          … précise ta recherche ({matches.length} résultats)
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {!q && !selected && (
-                    <div style={{ marginTop: 12, color: "#a8a199", fontSize: 13 }}>
-                      Tape le nom d'un exercice pour afficher sa courbe.
                     </div>
                   )}
 
@@ -4098,6 +4121,21 @@ export default function Dashboard() {
                         </h4>
                         <span style={{ fontSize: 12, color: "#a8a199" }}>
                           {getExerciseCategoryLabel(selected.category)}
+                          <button
+                            onClick={() => setRmSelected(null)}
+                            style={{
+                              marginLeft: 10,
+                              padding: "2px 8px",
+                              borderRadius: 6,
+                              border: "1px solid #2a2620",
+                              background: "#151310",
+                              color: "#a8a199",
+                              fontSize: 12,
+                              cursor: "pointer",
+                            }}
+                          >
+                            ✕ Fermer
+                          </button>
                         </span>
                       </div>
 
