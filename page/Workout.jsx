@@ -537,6 +537,11 @@ export default function Workout() {
       // Trier par date
       filtered.sort((a, b) => a.date.localeCompare(b.date));
       setEvents(filtered);
+      // Garde la séance ouverte en détail synchronisée avec les données
+      // fraîches (titre, exercices, etc.) après un rechargement.
+      setSelectedSession((prev) =>
+        prev ? filtered.find((w) => w.id === prev.id) || prev : prev
+      );
     } catch (e) {
       console.error("Erreur séances:", e);
       alert("Erreur lors du chargement des séances : " + e.message);
@@ -1697,7 +1702,16 @@ export default function Workout() {
 
     try {
       if (isEdit && editId) {
-        await updateDoc(doc(db, "workout", editId), payload);
+        // En modification, on ne touche pas à createdBy / createdAt (l'auteur
+        // et la date de création d'origine restent ceux de la séance).
+        const { createdBy: _cb, createdAt: _ca, ...editPayload } = payload;
+        await updateDoc(doc(db, "workout", editId), editPayload);
+        // Si la séance modifiée est celle affichée en détail, on la met à
+        // jour tout de suite (sinon l'ancien titre / les anciens exercices
+        // restent affichés jusqu'à ce qu'on la rouvre).
+        setSelectedSession((prev) =>
+          prev && prev.id === editId ? { ...prev, ...editPayload } : prev
+        );
         // Copies pour les groupes cochés en plus (la séance modifiée reste
         // sur son groupe d'origine).
         const copyTargets = extraGroups.filter(
