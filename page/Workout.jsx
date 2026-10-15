@@ -6049,6 +6049,51 @@ export default function Workout() {
                               color: "#f3f0ea",
                             }}
                           />
+                          {/* Raccourcis : tempo spécial en un clic (ISO =
+                              maintien isométrique, EXPLO = intention vitesse
+                              maximale). Le champ reste modifiable à la main. */}
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 6,
+                              flexWrap: "wrap",
+                              marginTop: 6,
+                            }}
+                          >
+                            {["ISO", "EXPLO (VMAX)"].map((preset) => {
+                              const active = ex.tempo === preset;
+                              return (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  onClick={() =>
+                                    updateExercise(
+                                      bIdx,
+                                      eIdx,
+                                      "tempo",
+                                      preset
+                                    )
+                                  }
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: 999,
+                                    fontSize: 12,
+                                    fontWeight: 600,
+                                    cursor: "pointer",
+                                    border: active
+                                      ? "1px solid #e0a13d"
+                                      : "1px solid #2a2620",
+                                    background: active
+                                      ? "rgba(224,161,61,0.18)"
+                                      : "#0d0c0a",
+                                    color: active ? "#e0a13d" : "#a8a199",
+                                  }}
+                                >
+                                  {preset}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                       <div style={{ marginBottom: 10 }}>
