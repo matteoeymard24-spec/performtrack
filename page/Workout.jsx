@@ -8323,6 +8323,26 @@ export default function Workout() {
                           fontSize: 16,
                         }}
                       />
+                      {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
+                        // Exercices aux haltères : la charge saisie est le
+                        // TOTAL des deux haltères (30 kg par main = 60 kg).
+                        const isDb = /halt[eè]re|dumbbell|\bdb\b/i.test(
+                          currentExerciseFeedback.exercise.name || ""
+                        );
+                        return (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              fontSize: 12,
+                              color: isDb ? "#e0a13d" : "#a8a199",
+                              fontWeight: isDb ? 600 : 400,
+                            }}
+                          >
+                            💡 Haltères : indique le total des deux (ex. 30 kg
+                            par main = 60 kg).
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Répétitions */}
