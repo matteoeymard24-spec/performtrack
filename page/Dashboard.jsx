@@ -191,6 +191,9 @@ export default function Dashboard() {
   const [editingInjury, setEditingInjury] = useState(null);
   const [injuryEditDraft, setInjuryEditDraft] = useState(null);
   const [showRMEvolution, setShowRMEvolution] = useState(false);
+  // Détail athlète (coach) : recherche d'un exercice pour sa courbe d'évolution
+  const [rmSearch, setRmSearch] = useState("");
+  const [rmSelected, setRmSelected] = useState(null);
   // Détail athlète (coach) : séances dépliées dans la liste "Séances & feedbacks"
   const [expandedSessionIds, setExpandedSessionIds] = useState({});
   const [showAllAthleteSessions, setShowAllAthleteSessions] = useState(false);
@@ -1038,6 +1041,8 @@ export default function Dashboard() {
       setEditingInjury(null);
       setInjuryEditDraft(null);
       setShowRMEvolution(false);
+      setRmSearch("");
+      setRmSelected(null);
       setDetailedAthleteRMHistory(rmByEx);
       setDetailedAthleteRMCategories(rmCategories);
       setAcwrHistory(acwrHist);
@@ -3867,172 +3872,338 @@ export default function Dashboard() {
               </div>
             )}
 
-            {Object.keys(detailedAthleteRMHistory).length > 0 && (
-              <div
-                style={{ background: "#151310", padding: 20, borderRadius: 10 }}
-              >
-                <button
-                  onClick={() => setShowRMEvolution((v) => !v)}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                    marginBottom: showRMEvolution ? 15 : 0,
-                  }}
+            {(() => {
+              /* ===== Évolution des RM / charges : recherche par exercice =====
+                 Source 1 : l'historique de la fiche "Mes RM" de l'athlète.
+                 Source 2 : ses feedbacks de séance (meilleure série de chaque
+                 séance → 1RM estimé avec la formule d'Epley). Ça permet de voir
+                 une courbe même pour un exercice sans fiche RM, ou dont le RM
+                 n'a jamais été affiné automatiquement. */
+              const toDayKey = (d) => {
+                if (!d) return "";
+                if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+                const dt =
+                  d && typeof d.toDate === "function" ? d.toDate() : new Date(d);
+                return isNaN(dt.getTime()) ? "" : getLocalDateStr(dt);
+              };
+              const uid = showAthleteDetail.id;
+              const byKey = {};
+              const ensure = (name) => {
+                const k = normalizeExerciseNameLocal(name);
+                if (!k) return null;
+                if (!byKey[k]) {
+                  byKey[k] = { key: k, label: name, category: null, rm: [], sessions: [] };
+                }
+                return byKey[k];
+              };
+
+              Object.entries(detailedAthleteRMHistory).forEach(([name, history]) => {
+                const e = ensure(name);
+                if (!e) return;
+                e.label = name;
+                e.category = detailedAthleteRMCategories[name] || null;
+                e.rm = (history || [])
+                  .map((h) => ({
+                    day: toDayKey(h && h.date),
+                    kg: h ? Number(h.kg) : NaN,
+                    auto: !!(h && h.autoAdjusted),
+                  }))
+                  .filter((h) => h.day && !isNaN(h.kg) && h.kg > 0);
+              });
+
+              (athleteDetails.sessions || []).forEach((w) => {
+                const fbAll = getUserFeedback(w, uid);
+                if (!fbAll || Object.keys(fbAll).length === 0) return;
+                const day = toDayKey(w.date);
+                if (!day) return;
+                (w.blocks || []).forEach((block, bIdx) => {
+                  (block.exercises || []).forEach((ex, eIdx) => {
+                    const fb = fbAll[`${bIdx}-${eIdx}`];
+                    if (!fb || !ex.name || isCMJName(ex.name)) return;
+                    const series =
+                      fb.series ||
+                      (fb.actualWeight !== undefined
+                        ? [{ actualWeight: fb.actualWeight, actualReps: fb.actualReps, rpe: fb.rpe }]
+                        : null);
+                    if (!series) return;
+                    let best = null;
+                    series.forEach((s) => {
+                      const kg = parseFloat(s.actualWeight);
+                      const reps = parseInt(s.actualReps, 10);
+                      if (!(kg > 0) || !(reps > 0)) return;
+                      const e1 = reps === 1 ? kg : kg * (1 + reps / 30);
+                      if (!best || e1 > best.e1rm) best = { kg, reps, rpe: s.rpe, e1rm: e1 };
+                    });
+                    if (!best) return;
+                    const e = ensure(ex.name);
+                    if (!e) return;
+                    e.sessions.push({
+                      day,
+                      title: w.title || "Séance",
+                      kg: best.kg,
+                      reps: best.reps,
+                      rpe: best.rpe,
+                      e1rm: Math.round(best.e1rm * 10) / 10,
+                    });
+                  });
+                });
+              });
+
+              const entries = Object.values(byKey)
+                .filter((e) => e.rm.length > 0 || e.sessions.length > 0)
+                .sort((a, b) => a.label.localeCompare(b.label, "fr"));
+              if (entries.length === 0) return null;
+
+              const q = normalizeExerciseNameLocal(rmSearch);
+              const matches = q ? entries.filter((e) => e.key.includes(q)) : [];
+              const selected = rmSelected && byKey[rmSelected] ? byKey[rmSelected] : null;
+
+              let chartData = [];
+              if (selected) {
+                const map = {};
+                selected.rm.forEach((h) => {
+                  (map[h.day] = map[h.day] || { day: h.day }).rm = h.kg;
+                });
+                selected.sessions.forEach((s) => {
+                  const r = (map[s.day] = map[s.day] || { day: s.day });
+                  r.e1rm = r.e1rm === undefined ? s.e1rm : Math.max(r.e1rm, s.e1rm);
+                });
+                chartData = Object.values(map)
+                  .sort((a, b) => a.day.localeCompare(b.day))
+                  .map((r) => ({
+                    ...r,
+                    label: new Date(r.day + "T12:00:00").toLocaleDateString("fr-FR", {
+                      day: "2-digit",
+                      month: "2-digit",
+                      year: "2-digit",
+                    }),
+                  }));
+              }
+              const lastRM = selected && selected.rm.length > 0
+                ? selected.rm[selected.rm.length - 1]
+                : null;
+              const sessionsDesc = selected
+                ? [...selected.sessions].sort((a, b) => b.day.localeCompare(a.day))
+                : [];
+
+              return (
+                <div
+                  style={{ background: "#151310", padding: 20, borderRadius: 10 }}
                 >
-                  <h3 style={{ margin: 0, fontSize: 17, color: "#f3f0ea" }}>
-                    💪 Évolution des RM — exercices de muscu ({Object.keys(detailedAthleteRMHistory).length})
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: 17, color: "#f3f0ea" }}>
+                    💪 Évolution des RM / charges
                   </h3>
-                  <span style={{ fontSize: 13, color: "#a8a199" }}>
-                    {showRMEvolution ? "▾ Réduire" : "▸ Afficher"}
-                  </span>
-                </button>
-                {showRMEvolution && EXERCISE_CATEGORIES.map((cat) => {
-                  // Une catégorie inconnue (ancienne fiche, valeur hors liste)
-                  // est rangée dans "Autre" au lieu de faire disparaître l'exo.
-                  const exercisesInCat = Object.entries(detailedAthleteRMHistory).filter(
-                    ([ex]) => {
-                      const c = normalizeCategoryValue(detailedAthleteRMCategories[ex]);
-                      const known = EXERCISE_CATEGORIES.some((x) => x.value === c);
-                      return (known ? c : "autre") === cat.value;
-                    }
-                  );
-                  if (exercisesInCat.length === 0) return null;
-                  return (
-                    <div key={cat.value} style={{ marginBottom: 20 }}>
-                      <h4 style={{ fontSize: 14, color: "#a8a199", margin: "0 0 12px 0" }}>
-                        {cat.label} ({exercisesInCat.length})
-                      </h4>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit, minmax(350px, 1fr))",
-                          gap: 20,
-                        }}
-                      >
-                        {exercisesInCat.map(([exercise, history]) => (
-                          <div
-                            key={exercise}
-                            style={{
-                              background: "#0d0c0a",
-                              padding: 15,
-                              borderRadius: 8,
-                            }}
-                          >
-                            <h4
+                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 12 }}>
+                    {entries.length} exercice{entries.length > 1 ? "s" : ""} disponible
+                    {entries.length > 1 ? "s" : ""} pour cet athlète (fiche RM +
+                    feedbacks de séance)
+                  </div>
+                  <input
+                    type="text"
+                    value={rmSearch}
+                    onChange={(e) => {
+                      setRmSearch(e.target.value);
+                      if (!e.target.value.trim()) setRmSelected(null);
+                    }}
+                    placeholder="🔍 Tape le nom d'un exercice (ex : squat, développé…)"
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #2a2620",
+                      background: "#0d0c0a",
+                      color: "#f3f0ea",
+                      fontSize: 14,
+                    }}
+                  />
+
+                  {q && (
+                    <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {matches.length === 0 ? (
+                        <div style={{ color: "#a8a199", fontSize: 13 }}>
+                          Aucun exercice ne correspond à « {rmSearch} »
+                        </div>
+                      ) : (
+                        matches.slice(0, 12).map((m) => {
+                          const active = selected && selected.key === m.key;
+                          return (
+                            <button
+                              key={m.key}
+                              onClick={() => {
+                                setRmSelected(m.key);
+                                setRmSearch(m.label);
+                              }}
                               style={{
-                                margin: "0 0 12px 0",
-                                fontSize: 15,
+                                padding: "6px 12px",
+                                borderRadius: 999,
+                                fontSize: 13,
+                                cursor: "pointer",
+                                border: active ? "1px solid #e0a13d" : "1px solid #2a2620",
+                                background: active ? "rgba(224,161,61,0.18)" : "#0d0c0a",
+                                color: active ? "#e0a13d" : "#f3f0ea",
                                 textTransform: "capitalize",
-                                color: "#e0a13d",
                               }}
                             >
-                              {exercise}
-                            </h4>
-                            {history.length > 1 ? (
-                              <ResponsiveContainer width="100%" height={180}>
-                                <LineChart
-                                  data={history.map((item) => ({
-                                    ...item,
-                                    dateShort: new Date(
-                                      item.date
-                                    ).toLocaleDateString("fr-FR", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                    }),
-                                  }))}
-                                >
-                                  <CartesianGrid
-                                    strokeDasharray="3 3"
-                                    stroke="rgba(255,255,255,0.1)"
-                                  />
-                                  <XAxis
-                                    dataKey="dateShort"
-                                    stroke="#a8a199"
-                                    fontSize={10}
-                                  />
-                                  <YAxis
-                                    stroke="#a8a199"
-                                    fontSize={10}
-                                    domain={["dataMin - 2", "dataMax + 2"]}
-                                  />
-                                  <Tooltip
-                                    contentStyle={{
-                                      background: "#1a1815",
-                                      border: "1px solid rgba(255,255,255,0.16)",
-                                      borderRadius: 8,
-                                      fontSize: 12,
-                                    }}
-                                    labelStyle={{ color: "#f3f0ea" }}
-                                    formatter={(value) => [`${value} kg`, "1RM"]}
-                                  />
-                                  <Line
-                                    type="monotone"
-                                    dataKey="kg"
-                                    name="1RM (kg)"
-                                    stroke="#e0a13d"
-                                    strokeWidth={2.5}
-                                    dot={{ fill: "#e0a13d", r: 4 }}
-                                    activeDot={{ r: 6 }}
-                                  />
-                                </LineChart>
-                              </ResponsiveContainer>
-                            ) : history.length === 1 ? (
-                              <div
-                                style={{
-                                  textAlign: "center",
-                                  padding: 20,
-                                  color: "#a8a199",
-                                  fontSize: 14,
-                                }}
-                              >
-                                1 seul point
-                              </div>
-                            ) : (
-                              <div
-                                style={{
-                                  textAlign: "center",
-                                  padding: 20,
-                                  color: "#a8a199",
-                                  fontSize: 14,
-                                }}
-                              >
-                                ⏳ En attente de test
-                              </div>
-                            )}
-                            {history.length > 0 && (
-                              <div
-                                style={{
-                                  marginTop: 8,
-                                  fontSize: 13,
-                                  color: "#a8a199",
-                                  textAlign: "center",
-                                }}
-                              >
-                                RM actuel :{" "}
-                                <strong style={{ color: "#e0a13d" }}>
-                                  {history[history.length - 1].kg} kg
-                                </strong>
-                                {history[history.length - 1].autoAdjusted && (
-                                  <span style={{ marginLeft: 8, color: "#d9a441" }}>
-                                    ⚡
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                              {m.label}
+                              <span style={{ color: "#a8a199", marginLeft: 6, fontSize: 11 }}>
+                                {m.sessions.length > 0 ? `${m.sessions.length} séance${m.sessions.length > 1 ? "s" : ""}` : "RM seul"}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                      {matches.length > 12 && (
+                        <div style={{ color: "#a8a199", fontSize: 12, alignSelf: "center" }}>
+                          … précise ta recherche ({matches.length} résultats)
+                        </div>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+
+                  {!q && !selected && (
+                    <div style={{ marginTop: 12, color: "#a8a199", fontSize: 13 }}>
+                      Tape le nom d'un exercice pour afficher sa courbe.
+                    </div>
+                  )}
+
+                  {selected && (
+                    <div
+                      style={{
+                        marginTop: 16,
+                        background: "#0d0c0a",
+                        padding: 15,
+                        borderRadius: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "baseline",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          marginBottom: 10,
+                        }}
+                      >
+                        <h4
+                          style={{
+                            margin: 0,
+                            fontSize: 16,
+                            textTransform: "capitalize",
+                            color: "#e0a13d",
+                          }}
+                        >
+                          {selected.label}
+                        </h4>
+                        <span style={{ fontSize: 12, color: "#a8a199" }}>
+                          {getExerciseCategoryLabel(selected.category)}
+                        </span>
+                      </div>
+
+                      <ResponsiveContainer width="100%" height={220}>
+                        <LineChart data={chartData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis dataKey="label" stroke="#a8a199" fontSize={10} />
+                          <YAxis
+                            stroke="#a8a199"
+                            fontSize={10}
+                            domain={["dataMin - 5", "dataMax + 5"]}
+                            tickFormatter={(v) => Math.round(v)}
+                          />
+                          <Tooltip
+                            contentStyle={{
+                              background: "#1a1815",
+                              border: "1px solid rgba(255,255,255,0.16)",
+                              borderRadius: 8,
+                              fontSize: 12,
+                            }}
+                            labelStyle={{ color: "#f3f0ea" }}
+                            formatter={(value, name) => [`${value} kg`, name]}
+                          />
+                          <Legend wrapperStyle={{ fontSize: 12 }} />
+                          <Line
+                            type="monotone"
+                            dataKey="rm"
+                            name="RM enregistré"
+                            stroke="#e0a13d"
+                            strokeWidth={2.5}
+                            dot={{ fill: "#e0a13d", r: 4 }}
+                            activeDot={{ r: 6 }}
+                            connectNulls
+                          />
+                          <Line
+                            type="monotone"
+                            dataKey="e1rm"
+                            name="1RM estimé (séances)"
+                            stroke="#4fae7d"
+                            strokeWidth={2}
+                            strokeDasharray="5 3"
+                            dot={{ fill: "#4fae7d", r: 3 }}
+                            activeDot={{ r: 5 }}
+                            connectNulls
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+
+                      <div
+                        style={{
+                          marginTop: 8,
+                          fontSize: 13,
+                          color: "#a8a199",
+                          textAlign: "center",
+                        }}
+                      >
+                        {lastRM ? (
+                          <>
+                            RM actuel :{" "}
+                            <strong style={{ color: "#e0a13d" }}>{Math.round(lastRM.kg)} kg</strong>
+                            {lastRM.auto && <span style={{ marginLeft: 6, color: "#d9a441" }}>⚡</span>}
+                          </>
+                        ) : (
+                          "Pas encore de RM enregistré pour cet exercice"
+                        )}
+                        {" · "}
+                        {selected.sessions.length} séance
+                        {selected.sessions.length > 1 ? "s" : ""} avec feedback
+                      </div>
+
+                      {sessionsDesc.length > 0 && (
+                        <div style={{ marginTop: 12 }}>
+                          <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
+                            Meilleure série par séance (1RM estimé = formule d'Epley) :
+                          </div>
+                          {sessionsDesc.slice(0, 8).map((s, i) => (
+                            <div
+                              key={i}
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                                gap: 8,
+                                fontSize: 13,
+                                padding: "6px 0",
+                                borderTop: "1px solid #1d1a16",
+                              }}
+                            >
+                              <span style={{ color: "#a8a199" }}>
+                                {new Date(s.day + "T12:00:00").toLocaleDateString("fr-FR")} · {s.title}
+                              </span>
+                              <span style={{ color: "#f3f0ea", whiteSpace: "nowrap" }}>
+                                {s.kg} kg × {s.reps}
+                                {s.rpe ? ` · RPE ${s.rpe}` : ""}
+                                <span style={{ color: "#4fae7d", marginLeft: 8 }}>
+                                  ≈ {Math.round(s.e1rm)} kg
+                                </span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}
