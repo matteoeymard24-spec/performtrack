@@ -427,6 +427,10 @@ export default function Workout() {
   const [duplicateWeekStart, setDuplicateWeekStart] = useState(null);
   const [showDuplicateSessionModal, setShowDuplicateSessionModal] = useState(false);
   const [sessionToDuplicate, setSessionToDuplicate] = useState(null);
+  // Groupe (et athlète si "individuel") visé par la duplication : permet de
+  // copier une séance directement vers un autre groupe, sans la modifier après.
+  const [duplicateTargetGroup, setDuplicateTargetGroup] = useState("total");
+  const [duplicateTargetUser, setDuplicateTargetUser] = useState("");
   const [duplicateTargetDate, setDuplicateTargetDate] = useState(null);
   const [showDuplicateDayModal, setShowDuplicateDayModal] = useState(false);
   const [duplicateDaySource, setDuplicateDaySource] = useState(null);
@@ -1638,15 +1642,21 @@ export default function Workout() {
       alert("⚠️ Veuillez sélectionner une date");
       return;
     }
+    const targetGroup = duplicateTargetGroup || sessionToDuplicate.group || "total";
+    if (targetGroup === "individuel" && !duplicateTargetUser) {
+      alert("⚠️ Choisis l'athlète pour une séance individuelle");
+      return;
+    }
     duplicatingSessionLock.current = true;
     setIsDuplicatingSession(true);
     try {
-      // Créer la nouvelle séance dupliquée
-      await addDoc(collection(db, "workout"), {
+      // Créer la nouvelle séance dupliquée (dans le groupe choisi dans la
+      // fenêtre de duplication, par défaut celui de la séance d'origine).
+      const newData = {
         title: sessionToDuplicate.title,
         date: duplicateTargetDate,
-        group: sessionToDuplicate.group,
-        targetUserId: sessionToDuplicate.targetUserId || null,
+        group: targetGroup,
+        targetUserId: targetGroup === "individuel" ? duplicateTargetUser : null,
         blocks: sessionToDuplicate.blocks,
         type: sessionToDuplicate.type || "muscu",
         estimatedDuration: sessionToDuplicate.estimatedDuration,
@@ -1654,12 +1664,17 @@ export default function Workout() {
         createdAt: serverTimestamp(),
         duplicatedFrom: sessionToDuplicate.id,
         userProgress: {},
-      });
+      };
+      const newRef = await addDoc(collection(db, "workout"), newData);
 
       alert("✅ Séance dupliquée avec succès !");
       setShowDuplicateSessionModal(false);
       setSessionToDuplicate(null);
       setDuplicateTargetDate(null);
+      // On ouvre la COPIE : si on clique ensuite sur "Modifier", c'est elle
+      // qui est modifiée (avant, l'écran restait sur la séance d'origine et
+      // on modifiait l'original sans le voir).
+      setSelectedSession({ id: newRef.id, ...newData, createdAt: null });
       await fetchSessions();
     } catch (e) {
       console.error("[duplicateSession] Erreur:", e);
@@ -4801,6 +4816,78 @@ export default function Workout() {
                 fontWeight: "bold",
               }}
             >
+              👥 Groupe de la copie :
+            </label>
+            <select
+              value={duplicateTargetGroup}
+              onChange={(e) => setDuplicateTargetGroup(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 12,
+                borderRadius: 8,
+                border: "2px solid rgba(56, 239, 125, 0.3)",
+                background: "#151310",
+                color: "#f3f0ea",
+                fontSize: 16,
+                marginBottom: duplicateTargetGroup === "individuel" ? 10 : 20,
+                cursor: "pointer",
+              }}
+            >
+              <option value="total">Total (tous)</option>
+              <option value="moi">🌟 Moi (privé)</option>
+              <option value="individuel">Individuel</option>
+              {customGroups.length > 0 && (
+                <optgroup label="Groupes personnalisés">
+                  {customGroups.map((g) => (
+                    <React.Fragment key={g.id}>
+                      <option value={g.id}>👥 {g.name}</option>
+                      {(g.subGroups || []).map((sg) => (
+                        <option key={sg.id} value={makeSubGroupTarget(g.id, sg.id)}>
+                          {"  ↳ "}
+                          {g.name} – {sg.name}
+                        </option>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            {duplicateTargetGroup === "individuel" && (
+              <select
+                value={duplicateTargetUser}
+                onChange={(e) => setDuplicateTargetUser(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 12,
+                  borderRadius: 8,
+                  border: "2px solid rgba(56, 239, 125, 0.3)",
+                  background: "#151310",
+                  color: "#f3f0ea",
+                  fontSize: 16,
+                  marginBottom: 20,
+                  cursor: "pointer",
+                }}
+              >
+                <option value="">-- Choisir l'athlète --</option>
+                {athletes.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.firstName && a.lastName
+                      ? `${a.firstName} ${a.lastName}`
+                      : a.displayName || a.email}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <label
+              style={{
+                display: "block",
+                fontSize: 14,
+                color: "#a8a199",
+                marginBottom: 8,
+                fontWeight: "bold",
+              }}
+            >
               📅 Nouvelle date :
             </label>
             <input
@@ -5142,7 +5229,7 @@ export default function Workout() {
               >
                 <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
                   {isEdit
-                    ? "➕ Créer aussi une copie de cette séance pour :"
+                    ? "➕ EN PLUS de cette séance (qui reste dans le groupe choisi ci-dessus), créer une copie pour — ne coche rien si tu veux juste changer de groupe :"
                     : "➕ Créer aussi la même séance pour :"}
                 </div>
                 {customGroups.map((g) => {
@@ -6908,6 +6995,8 @@ export default function Workout() {
                     onClick={() => {
                       setSessionToDuplicate(selectedSession);
                       setDuplicateTargetDate(selectedSession.date);
+                      setDuplicateTargetGroup(selectedSession.group || "total");
+                      setDuplicateTargetUser(selectedSession.targetUserId || "");
                       setShowDuplicateSessionModal(true);
                     }}
                     style={{
