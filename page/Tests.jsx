@@ -833,7 +833,9 @@ export default function Tests() {
                     <MatchRefCard
                       poste={poste}
                       posteName={posteLabel(sport, poste)}
-                      data={getMatchRef(sport, poste)}
+                      level={level}
+                      levelName={level ? levelLabel(level) : ""}
+                      data={getMatchRef(sport, poste, level)}
                     />
                   </div>
 

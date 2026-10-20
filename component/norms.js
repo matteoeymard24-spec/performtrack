@@ -35,7 +35,14 @@ export const posteLabel = (sport, key) =>
 export const hasNorms = (sport, poste) =>
   !!(sport && poste && BAREMES[sport] && POSTES[sport]?.some((p) => p.key === poste));
 
-export const getMatchRef = (sport, poste) => BAREMES[sport]?.matchRef?.[poste] || null;
+/* Référence match (GPS SU Agen) : valable UNIQUEMENT pour le niveau Pro D2.
+   Ramenée à 38 min de ballon en jeu (BIP du Pro D2) ; plus bas le BIP est plus court
+   et les clubs n'ont pas de GPS ;
+   et la moyenne d'un poste cache des profils très différents (ex. 3e ligne athlétique
+   vs 3e ligne momentum) : on n'extrapole donc pas aux autres niveaux. */
+export const MATCH_REF_LEVEL = "prod2";
+export const getMatchRef = (sport, poste, level) =>
+  level === MATCH_REF_LEVEL ? BAREMES[sport]?.matchRef?.[poste] || null : null;
 
 /* Note /20 : plus haute note dont le seuil est atteint (sens auto : si les
    seuils baissent quand la note monte, c'est un temps → plus petit = mieux). */

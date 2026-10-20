@@ -4,6 +4,14 @@ import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc, writeBa
 import {
   CYCLE_LEVELS,
   PHASES,
+  MODELS,
+  modelOf,
+  phasesOfModel,
+  FIXTURE_KINDS,
+  kindOf,
+  fixtureEnd,
+  fixturesOnDay,
+  nextFixture,
   phaseOf,
   levelOf,
   cycleColor,
@@ -58,7 +66,7 @@ const typeIcon = (e) => (e.type === "sprint" ? "⚡" : e.type === "endurance" ? 
 /* ------------------------------------------------------------------ */
 /* Bandeau : bouton d'ouverture + cycle(s) en cours aujourd'hui        */
 /* ------------------------------------------------------------------ */
-export function CycleBanner({ cycles, scopes, todayStr, open, onToggle }) {
+export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle }) {
   const list = (cycles || []).filter((c) => cycleInScope(c, scopes));
   const now = cyclesOnDay(list, todayStr);
   const upcoming = list
@@ -96,6 +104,20 @@ export function CycleBanner({ cycles, scopes, todayStr, open, onToggle }) {
       {now.length === 0 && !upcoming && (
         <span style={{ color: MUTED, fontSize: 12 }}>Aucun cycle planifié</span>
       )}
+      {(() => {
+        const nf = nextFixture((fixtures || []).filter((f) => cycleInScope(f, scopes)), todayStr);
+        if (!nf) return null;
+        const k = kindOf(nf.kind);
+        const inDays = diffDays(todayStr, nf.date);
+        return (
+          <span
+            title={`${k.label} · ${fmtShort(nf.date)}`}
+            style={{ background: k.color + "26", border: `1px solid ${k.color}`, color: TEXT, padding: "4px 10px", borderRadius: 14, fontSize: 12 }}
+          >
+            {k.icon} <b>{nf.name}</b> · {inDays <= 0 ? "en cours" : inDays === 0 ? "aujourd'hui" : `J-${inDays}`}
+          </span>
+        );
+      })()}
     </div>
   );
 }
@@ -105,6 +127,7 @@ export function CycleBanner({ cycles, scopes, todayStr, open, onToggle }) {
 /* ------------------------------------------------------------------ */
 export default function PlanningPanel({
   cycles,
+  fixtures,
   events,
   customGroups,
   athletes,
@@ -112,6 +135,7 @@ export default function PlanningPanel({
   currentUser,
   scopes,
   onReload,
+  onReloadFixtures,
   onOpenSession,
 }) {
   const todayStr = dayStr(new Date());
@@ -133,12 +157,59 @@ export default function PlanningPanel({
   const [openId, setOpenId] = useState(null);
   const [form, setForm] = useState(null); // null = fermé ; {id?, ...}
   const [busy, setBusy] = useState(false);
+  const [fForm, setFForm] = useState(null); // formulaire match / compétition
+  const setFF = (patch) => setFForm((f) => ({ ...f, ...patch }));
 
   const visible = useMemo(
     () => (cycles || []).filter((c) => cycleInScope(c, scopes)).sort((a, b) => a.startDate.localeCompare(b.startDate)),
     [cycles, scopes]
   );
   const scopedEvents = useMemo(() => events || [], [events]);
+
+  const visibleFixtures = useMemo(
+    () => (fixtures || []).filter((f) => cycleInScope(f, scopes)).sort((a, b) => a.date.localeCompare(b.date)),
+    [fixtures, scopes]
+  );
+
+  const blankFixture = () => ({ name: "", kind: "match", date: todayStr, endDate: "", place: "", scope: "total", notes: "" });
+  const saveFixture = async () => {
+    const f = fForm;
+    if (!f.name.trim()) return alert("Donne un nom (ex. « Agen – Brive »).");
+    if (!f.date) return alert("La date est obligatoire.");
+    if (f.endDate && f.endDate < f.date) return alert("La fin doit être après le début.");
+    setBusy(true);
+    try {
+      const payload = {
+        name: f.name.trim(),
+        kind: f.kind,
+        date: f.date,
+        endDate: f.endDate || "",
+        place: (f.place || "").trim(),
+        scope: f.scope || "total",
+        notes: (f.notes || "").trim(),
+      };
+      if (f.id) await updateDoc(doc(db, "fixtures", f.id), payload);
+      else await addDoc(collection(db, "fixtures"), { ...payload, createdBy: currentUser?.uid || null, createdAt: serverTimestamp() });
+      setFForm(null);
+      if (onReloadFixtures) await onReloadFixtures();
+    } catch (e) {
+      alert("Erreur : " + e.message + "\n(Les règles Firestore autorisent-elles la collection « fixtures » ? Voir le fichier de règles.)");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const removeFixture = async (f) => {
+    if (!window.confirm(`Supprimer « ${f.name} » ?`)) return;
+    setBusy(true);
+    try {
+      await deleteDoc(doc(db, "fixtures", f.id));
+      if (onReloadFixtures) await onReloadFixtures();
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const shiftRange = (months) => {
     const d = parseDay(rangeStart);
@@ -200,6 +271,7 @@ export default function PlanningPanel({
   const blank = () => ({
     name: "",
     level: "meso",
+    model: "classique",
     phase: "prepa_gen",
     startDate: todayStr,
     endDate: addDays(todayStr, 27),
@@ -219,6 +291,7 @@ export default function PlanningPanel({
       const payload = {
         name: f.name.trim(),
         level: f.level,
+        model: f.model || "classique",
         phase: f.phase,
         startDate: f.startDate,
         endDate: f.endDate,
@@ -293,9 +366,14 @@ export default function PlanningPanel({
           </span>
           <button onClick={() => shiftRange(3)} style={btn("#2a2620")}>▶</button>
           {isAdmin && (
-            <button onClick={() => setForm(blank())} style={btn(GREEN)}>
-              ➕ Nouveau cycle
-            </button>
+            <>
+              <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
+                ➕ Nouveau cycle
+              </button>
+              <button onClick={() => { setForm(null); setFForm(blankFixture()); }} style={btn("#d9534f")}>
+                🏉 Match / compétition
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -357,6 +435,43 @@ export default function PlanningPanel({
             </div>
           ))}
 
+          {/* matchs et compétitions */}
+          <div style={{ position: "relative", height: 26, borderBottom: "1px dashed #1d1a16" }}>
+            <div style={{ position: "absolute", left: 0, top: 2, fontSize: 9, color: "#5e584f" }}>Matchs</div>
+            {visibleFixtures
+              .filter((f) => fixtureEnd(f) >= rangeStart && f.date <= rangeEnd)
+              .map((f) => {
+                const k = kindOf(f.kind);
+                const left = Math.max(0, pct(f.date));
+                const right = Math.min(100, pct(addDays(fixtureEnd(f), 1)));
+                return (
+                  <div
+                    key={f.id}
+                    onClick={() => isAdmin && setFForm({ ...f })}
+                    title={`${k.label} : ${f.name} · ${fmtShort(f.date)}${f.endDate ? " → " + fmtShort(f.endDate) : ""}${f.place ? " · " + f.place : ""}`}
+                    style={{
+                      position: "absolute",
+                      left: `${left}%`,
+                      width: `${Math.max(0.7, right - left)}%`,
+                      minWidth: 6,
+                      top: 4,
+                      height: 18,
+                      background: k.color,
+                      borderRadius: 3,
+                      cursor: isAdmin ? "pointer" : "default",
+                      fontSize: 10,
+                      lineHeight: "18px",
+                      textAlign: "center",
+                      overflow: "visible",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span style={{ position: "relative", top: -1 }}>{k.icon}</span>
+                  </div>
+                );
+              })}
+          </div>
+
           {/* charge par semaine */}
           <div style={{ position: "relative", height: 52, marginTop: 6 }}>
             <div style={{ position: "absolute", left: 0, top: 0, fontSize: 9, color: "#5e584f" }}>Charge / semaine (min de séances)</div>
@@ -389,7 +504,10 @@ export default function PlanningPanel({
 
       {/* légende des phases */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
-        {PHASES.map((p) => (
+        {(() => {
+          const used = PHASES.filter((p) => visible.some((c) => c.phase === p.id));
+          return used.length ? used : PHASES;
+        })().map((p) => (
           <span key={p.id} style={{ fontSize: 11, color: MUTED, display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: p.color, display: "inline-block" }} />
             {p.label}
@@ -408,18 +526,33 @@ export default function PlanningPanel({
             </div>
             <div>
               <label style={{ fontSize: 11, color: MUTED }}>Niveau</label>
-              <select style={inputStyle} value={form.level} onChange={(e) => setF({ level: e.target.value, phase: e.target.value === "micro" ? "charge" : form.phase })}>
+              <select style={inputStyle} value={form.level} onChange={(e) => setF({ level: e.target.value })}>
                 {CYCLE_LEVELS.map((l) => (
                   <option key={l.id} value={l.id}>{l.label}</option>
                 ))}
               </select>
             </div>
             <div>
+              <label style={{ fontSize: 11, color: MUTED }}>Modèle de planification</label>
+              <select
+                style={inputStyle}
+                value={form.model || "classique"}
+                onChange={(e) => setF({ model: e.target.value, phase: phasesOfModel(e.target.value)[0].id })}
+              >
+                {MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
               <label style={{ fontSize: 11, color: MUTED }}>Phase</label>
               <select style={inputStyle} value={form.phase} onChange={(e) => setF({ phase: e.target.value })}>
-                {PHASES.map((p) => (
+                {phasesOfModel(form.model).map((p) => (
                   <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
+                {!phasesOfModel(form.model).some((p) => p.id === form.phase) && (
+                  <option value={form.phase}>{phaseOf(form.phase).label}</option>
+                )}
               </select>
             </div>
             <div>
@@ -490,6 +623,9 @@ export default function PlanningPanel({
                   <span style={{ background: cycleColor(c) + "33", color: cycleColor(c), padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
                     {levelOf(c.level).short} · {phaseOf(c.phase).label}
                   </span>
+                  {c.model && c.model !== "classique" && (
+                    <span style={{ marginLeft: 6, color: MUTED, fontSize: 11 }}>({c.model === "bloc" ? "par blocs" : "ondulatoire"})</span>
+                  )}
                   {isNow && <span style={{ marginLeft: 6, color: GREEN, fontSize: 11, fontWeight: 700 }}>● en cours · S{w.idx}/{w.total}</span>}
                   <div style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
                     {fmtShort(c.startDate)} → {fmtShort(c.endDate)} · {groupName(c.scope)}
@@ -538,6 +674,115 @@ export default function PlanningPanel({
             </div>
           );
         })}
+      </div>
+
+      {/* matchs et jours de compétition */}
+      {fForm && (
+        <div style={{ background: DARK, borderRadius: 10, padding: 14, marginTop: 16, border: "1px solid #d9534f" }}>
+          <div style={{ fontWeight: 700, marginBottom: 10, color: TEXT }}>{fForm.id ? "✏️ Modifier" : "🏉 Nouveau match / compétition"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <div>
+              <label style={{ fontSize: 11, color: MUTED }}>Nom</label>
+              <input style={inputStyle} value={fForm.name} onChange={(e) => setFF({ name: e.target.value })} placeholder="Ex : Agen – Brive" />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: MUTED }}>Type</label>
+              <select style={inputStyle} value={fForm.kind} onChange={(e) => setFF({ kind: e.target.value })}>
+                {FIXTURE_KINDS.map((k) => (
+                  <option key={k.id} value={k.id}>{k.icon} {k.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: MUTED }}>Date</label>
+              <input type="date" style={inputStyle} value={fForm.date} onChange={(e) => setFF({ date: e.target.value })} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: MUTED }}>Fin (si plusieurs jours)</label>
+              <input type="date" style={inputStyle} value={fForm.endDate || ""} onChange={(e) => setFF({ endDate: e.target.value })} />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: MUTED }}>Lieu</label>
+              <input style={inputStyle} value={fForm.place || ""} onChange={(e) => setFF({ place: e.target.value })} placeholder="Domicile / extérieur…" />
+            </div>
+            <div>
+              <label style={{ fontSize: 11, color: MUTED }}>Pour qui</label>
+              <select style={inputStyle} value={fForm.scope} onChange={(e) => setFF({ scope: e.target.value })}>
+                <option value="total">Tous</option>
+                {(customGroups || []).length > 0 && (
+                  <optgroup label="Groupes">
+                    {(customGroups || []).map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {(athletes || []).length > 0 && (
+                  <optgroup label="Athlète seul">
+                    {(athletes || []).map((a) => (
+                      <option key={a.id} value={userScope(a.id)}>
+                        {a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète"}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <label style={{ fontSize: 11, color: MUTED }}>Notes</label>
+            <input style={inputStyle} value={fForm.notes || ""} onChange={(e) => setFF({ notes: e.target.value })} />
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button disabled={busy} onClick={saveFixture} style={btn(GREEN)}>{busy ? "…" : "Enregistrer"}</button>
+            <button onClick={() => setFForm(null)} style={btn("#2a2620")}>Annuler</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ marginTop: 16 }}>
+        <div style={{ fontWeight: 700, color: TEXT, marginBottom: 8 }}>🏉 Matchs et compétitions</div>
+        {visibleFixtures.length === 0 ? (
+          <div style={{ color: MUTED, fontSize: 13 }}>
+            Aucun match saisi.{isAdmin ? " Utilise « Match / compétition » pour les placer (pour tous, un groupe ou un athlète seul)." : ""}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 6 }}>
+            {visibleFixtures.map((f) => {
+              const k = kindOf(f.kind);
+              const past = fixtureEnd(f) < todayStr;
+              const inDays = diffDays(todayStr, f.date);
+              return (
+                <div
+                  key={f.id}
+                  style={{ background: DARK, borderRadius: 8, borderLeft: `5px solid ${k.color}`, padding: "8px 12px", opacity: past ? 0.55 : 1, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}
+                >
+                  <div>
+                    <span style={{ color: TEXT, fontWeight: 700 }}>{k.icon} {f.name}</span>{" "}
+                    <span style={{ color: MUTED, fontSize: 12 }}>
+                      {fmtShort(f.date)}
+                      {f.endDate && f.endDate !== f.date ? ` → ${fmtShort(f.endDate)}` : ""}
+                      {f.place ? ` · ${f.place}` : ""} · {groupName(f.scope)}
+                    </span>
+                    {f.notes && <div style={{ color: MUTED, fontSize: 12 }}>{f.notes}</div>}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {!past && (
+                      <span style={{ color: k.color, fontWeight: 700, fontSize: 12 }}>
+                        {inDays <= 0 ? "en cours" : `J-${inDays}`}
+                      </span>
+                    )}
+                    {isAdmin && (
+                      <>
+                        <button onClick={() => { setForm(null); setFForm({ ...f }); }} style={btn("#2a2620")}>✏️</button>
+                        <button disabled={busy} onClick={() => removeFixture(f)} style={btn("rgba(217,105,90,0.18)", "#d9695a")}>🗑️</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -169,5 +169,11 @@ service cloud.firestore {
       // Écriture : admins uniquement.
       allow write: if isAdmin();
     }
+    // ========== FIXTURES (matchs et jours de compétition, voir
+    // component/PlanningPanel.jsx) ==========
+    match /fixtures/{fixtureId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
   }
 }

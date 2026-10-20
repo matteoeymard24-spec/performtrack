@@ -176,8 +176,20 @@ export function NormList({ rows, compact }) {
 }
 
 /* Exigences d'un match pour le poste (GPS du club, ballon en jeu) */
-export function MatchRefCard({ poste, posteName, data }) {
-  if (!data) return null;
+export function MatchRefCard({ poste, posteName, data, level, levelName }) {
+  if (!data) {
+    return (
+      <div style={{ color: MUTED, fontSize: 12 }}>
+        <div style={{ fontWeight: 700, color: TEXT, marginBottom: 4 }}>📡 Ce que demande un match</div>
+        {level
+          ? `Pas de référence match pour le niveau « ${levelName || level} » : les données GPS viennent du SU Agen (Pro D2). `
+          : "Choisis le niveau de l'athlète pour voir la référence match. Elle n'existe que pour le niveau Pro D2 (GPS du SU Agen). "}
+        Cette référence est ramenée à 38 min de ballon en jeu (BIP), le temps effectif du Pro D2. En Fédérale ou en Régionale
+        le BIP est nettement plus court (et les clubs n'ont en général pas de GPS) : les distances, sprints et accélérations
+        ne se transposent pas, ce serait trop d'extrapolation.
+      </div>
+    );
+  }
   const cells = [
     ["Distance totale", `${Math.round(data.dist)} m`],
     ["Distance > 15 km/h", `${Math.round(data.hsr)} m`],
@@ -198,6 +210,10 @@ export function MatchRefCard({ poste, posteName, data }) {
             <div style={{ fontSize: 15, fontWeight: 700, color: "#e0a13d" }}>{v}</div>
           </div>
         ))}
+      </div>
+      <div style={{ color: MUTED, fontSize: 11, marginTop: 6 }}>
+        Niveau Pro D2 uniquement (BIP de 38 min). Moyenne du poste : elle varie selon le profil (ex. un 3e ligne athlétique court plus
+        qu'un 3e ligne momentum, plus fort dans les collisions), à lire comme un ordre de grandeur et non une cible individuelle.
       </div>
       {data.n < 6 && (
         <div style={{ color: "#d9a441", fontSize: 11, marginTop: 6 }}>

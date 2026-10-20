@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { getWorkoutDocs } from "../component/workoutQueries";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
-import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope } from "../component/cycles";
+import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
   collection,
   query,
@@ -335,6 +335,7 @@ export default function Workout() {
   const [events, setEvents] = useState([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [cycles, setCycles] = useState([]);
+  const [fixtures, setFixtures] = useState([]);
   const [showPlanning, setShowPlanning] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
 
@@ -576,6 +577,21 @@ export default function Workout() {
   useEffect(() => {
     fetchCycles();
   }, [fetchCycles]);
+
+  /* ===================== MATCHS / COMPÉTITIONS ===================== */
+  const fetchFixtures = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const snap = await getDocs(collection(db, "fixtures"));
+      setFixtures(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      console.warn("Matchs indisponibles :", e.code || e.message);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchFixtures();
+  }, [fetchFixtures]);
 
   /* ===================== OUVERTURE DIRECTE DEPUIS LE DASHBOARD =====================
      Le Dashboard peut envoyer ici avec ?sessionId=xxx (et éventuellement
@@ -3225,6 +3241,9 @@ export default function Workout() {
   const calendarCycles = cycles.filter((c) =>
     cycleScopes ? cycleInScope(c, cycleScopes) : !isIndividual(c)
   );
+  const calendarFixtures = fixtures.filter((f) =>
+    cycleScopes ? cycleInScope(f, cycleScopes) : !isIndividual(f)
+  );
 
   /* ===================== CALENDRIER MENSUEL ===================== */
   const renderCalendar = () => {
@@ -3259,11 +3278,17 @@ export default function Workout() {
       );
       const isMobile = window.innerWidth <= 768;
       const dayCycles = cyclesOnDay(calendarCycles, dateStr).slice(0, 3);
+      const dayFixtures = fixturesOnDay(calendarFixtures, dateStr);
 
       cells.push(
         <div
           key={day}
-          title={dayCycles.map((c) => `${levelOf(c.level).short} : ${c.name}`).join("\n") || undefined}
+          title={
+            [
+              ...dayCycles.map((c) => `${levelOf(c.level).short} : ${c.name}`),
+              ...dayFixtures.map((f) => `${kindOf(f.kind).icon} ${f.name}`),
+            ].join("\n") || undefined
+          }
           onClick={() => setSelectedDate(isSelected ? null : dateStr)}
           style={{
             background: isToday ? "rgba(79,174,125,0.14)" : "#1a1815",
@@ -3301,6 +3326,7 @@ export default function Workout() {
             }}
           >
             {day}
+            {isMobile && dayFixtures.length > 0 && <span> {kindOf(dayFixtures[0].kind).icon}</span>}
             {!isMobile &&
               dayCycles
                 .filter((c) => c.startDate === dateStr)
@@ -3320,7 +3346,27 @@ export default function Workout() {
               overflow: "hidden",  // Cache les événements qui dépassent
             }}
           >
-            {dayEvents.slice(0, isMobile ? 1 : 3).map((evt, i) => (
+            {!isMobile &&
+              dayFixtures.slice(0, 1).map((f) => (
+                <div
+                  key={f.id}
+                  style={{
+                    background: kindOf(f.kind).color,
+                    borderRadius: 2,
+                    padding: "1px 5px",
+                    fontSize: 10,
+                    fontWeight: "bold",
+                    color: "#fff",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    flexShrink: 0,
+                  }}
+                >
+                  {kindOf(f.kind).icon} {f.name}
+                </div>
+              ))}
+            {dayEvents.slice(0, isMobile ? 1 : dayFixtures.length > 0 ? 2 : 3).map((evt, i) => (
               <div
                 key={i}
                 onClick={(e) => {
@@ -3423,6 +3469,7 @@ export default function Workout() {
         <>
           <CycleBanner
             cycles={calendarCycles}
+            fixtures={calendarFixtures}
             scopes={cycleScopes}
             todayStr={getLocalDateStr(new Date())}
             open={showPlanning}
@@ -3431,6 +3478,7 @@ export default function Workout() {
           {showPlanning && (
             <PlanningPanel
               cycles={cycles}
+              fixtures={fixtures}
               events={events.filter(isEventVisibleToFilter)}
               customGroups={customGroups}
               athletes={athletes}
@@ -3438,6 +3486,7 @@ export default function Workout() {
               currentUser={currentUser}
               scopes={cycleScopes}
               onReload={fetchCycles}
+              onReloadFixtures={fetchFixtures}
               onOpenSession={(sess) => {
                 setSelectedDate(sess.date);
                 setSelectedSession(sess);

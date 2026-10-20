@@ -14,17 +14,38 @@ export const CYCLE_LEVELS = [
   { id: "micro", label: "Microcycle (semaine)", short: "Micro", rank: 2 },
 ];
 
-export const PHASES = [
-  { id: "prepa_gen", label: "Préparation générale", color: "#5b8def" },
-  { id: "prepa_spe", label: "Préparation spécifique", color: "#8e6bd8" },
-  { id: "pre_comp", label: "Pré-compétition", color: "#e0a13d" },
-  { id: "competition", label: "Compétition", color: "#d9534f" },
-  { id: "intersaison", label: "Intersaison", color: "#3aa6b9" },
-  { id: "transition", label: "Transition / récupération", color: "#4fae7d" },
-  { id: "charge", label: "Semaine de charge", color: "#c46a3a" },
-  { id: "decharge", label: "Semaine de décharge", color: "#7fb77e" },
-  { id: "autre", label: "Autre", color: "#8a8378" },
+/* Modèles de planification : on choisit le modèle d'un cycle, la liste des phases s'adapte.
+   - classique   : périodes (préparation générale / spécifique / compétition…)
+   - bloc        : périodisation par blocs (accumulation → transmutation → réalisation)
+   - ondulation  : ondulatoire (développement / maintien / affûtage / décharge) */
+export const MODELS = [
+  { id: "classique", label: "Classique (périodes)" },
+  { id: "bloc", label: "Par blocs : accumulation · transmutation · réalisation" },
+  { id: "ondulation", label: "Ondulatoire : développement · maintien · affûtage · décharge" },
 ];
+export const modelOf = (id) => MODELS.find((m) => m.id === id) || MODELS[0];
+
+export const PHASES = [
+  // classique
+  { id: "prepa_gen", label: "Préparation générale", color: "#5b8def", models: ["classique"] },
+  { id: "prepa_spe", label: "Préparation spécifique", color: "#8e6bd8", models: ["classique"] },
+  { id: "pre_comp", label: "Pré-compétition", color: "#e0a13d", models: ["classique"] },
+  { id: "competition", label: "Compétition", color: "#d9534f", models: ["classique"] },
+  { id: "intersaison", label: "Intersaison", color: "#3aa6b9", models: ["classique"] },
+  { id: "transition", label: "Transition / récupération", color: "#4fae7d", models: ["classique"] },
+  { id: "charge", label: "Semaine de charge", color: "#c46a3a", models: ["classique"] },
+  // blocs
+  { id: "accumulation", label: "Accumulation", color: "#3f7be0", models: ["bloc"] },
+  { id: "transmutation", label: "Transmutation", color: "#e08a3d", models: ["bloc"] },
+  { id: "realisation", label: "Réalisation", color: "#d9534f", models: ["bloc"] },
+  // ondulation
+  { id: "developpement", label: "Développement", color: "#8e6bd8", models: ["ondulation"] },
+  { id: "maintien", label: "Maintien", color: "#3aa6b9", models: ["ondulation"] },
+  { id: "affutage", label: "Affûtage", color: "#e0c13d", models: ["ondulation"] },
+  { id: "decharge", label: "Décharge", color: "#7fb77e", models: ["classique", "ondulation"] },
+  { id: "autre", label: "Autre", color: "#8a8378", models: ["classique", "bloc", "ondulation"] },
+];
+export const phasesOfModel = (m) => PHASES.filter((p) => p.models.includes(m || "classique"));
 
 export const phaseOf = (id) => PHASES.find((p) => p.id === id) || PHASES[PHASES.length - 1];
 export const levelOf = (id) => CYCLE_LEVELS.find((l) => l.id === id) || CYCLE_LEVELS[0];
@@ -123,6 +144,8 @@ export function packRows(list) {
 /* Microcycles hebdomadaires d'un cycle (pour le bouton "Générer les semaines") */
 export function buildWeeks(parent, { lastIsDeload }) {
   const n = Math.max(1, Math.ceil((diffDays(parent.startDate, parent.endDate) + 1) / 7));
+  const model = parent.model || "classique";
+  const basePhase = model === "classique" ? "charge" : parent.phase;
   const weeks = [];
   for (let i = 0; i < n; i++) {
     const start = addDays(parent.startDate, i * 7);
@@ -131,7 +154,8 @@ export function buildWeeks(parent, { lastIsDeload }) {
     weeks.push({
       name: `${parent.name} · S${i + 1}${deload ? " (décharge)" : ""}`,
       level: "micro",
-      phase: deload ? "decharge" : "charge",
+      model,
+      phase: deload ? "decharge" : basePhase,
       startDate: start,
       endDate: end,
       scope: parent.scope || "total",
@@ -142,3 +166,24 @@ export function buildWeeks(parent, { lastIsDeload }) {
   }
   return weeks;
 }
+
+/* ---------------------------------------------------------------------
+   Matchs et jours de compétition — collection Firestore "fixtures" :
+   { name, kind, date, endDate?, place?, scope, notes }
+   Contrairement aux cycles, rien ne "prime" : un athlète voit les matchs
+   de "Tous", de ses groupes ET les siens.
+   --------------------------------------------------------------------- */
+export const FIXTURE_KINDS = [
+  { id: "match", label: "Match officiel", icon: "🏉", color: "#d9534f" },
+  { id: "amical", label: "Match amical", icon: "🤝", color: "#e0a13d" },
+  { id: "tournoi", label: "Tournoi / compétition", icon: "🏆", color: "#c9a227" },
+  { id: "autre", label: "Autre échéance", icon: "📌", color: "#8a8378" },
+];
+export const kindOf = (id) => FIXTURE_KINDS.find((k) => k.id === id) || FIXTURE_KINDS[0];
+export const fixtureEnd = (f) => (f.endDate && f.endDate >= f.date ? f.endDate : f.date);
+export const fixturesOnDay = (fixtures, day) =>
+  (fixtures || []).filter((f) => f.date <= day && day <= fixtureEnd(f));
+export const nextFixture = (fixtures, today) =>
+  (fixtures || [])
+    .filter((f) => fixtureEnd(f) >= today)
+    .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
