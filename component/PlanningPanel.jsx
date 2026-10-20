@@ -145,6 +145,7 @@ export default function PlanningPanel({
   isAdmin,
   currentUser,
   scopes,
+  defaultScope = "total",
   onReload,
   onReloadFixtures,
   onOpenSession,
@@ -182,7 +183,7 @@ export default function PlanningPanel({
     [fixtures, scopes]
   );
 
-  const blankFixture = () => ({ name: "", kind: "match", date: todayStr, endDate: "", place: "", scope: "total", notes: "" });
+  const blankFixture = () => ({ name: "", kind: "match", date: todayStr, endDate: "", place: "", scope: defaultScope, notes: "" });
   const saveFixture = async () => {
     const f = fForm;
     if (!f.name.trim()) return alert("Donne un nom (ex. « Agen – Brive »).");
@@ -229,9 +230,9 @@ export default function PlanningPanel({
   };
 
   const athleteLabel = (uid) => {
-    if (currentUser && uid === currentUser.uid) return "Moi";
     const a = (athletes || []).find((x) => x.id === uid);
-    return a ? (a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète") : "Athlète";
+    if (a) return a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète";
+    return currentUser && uid === currentUser.uid ? "Moi" : "Athlète";
   };
   const groupName = (scope) =>
     !scope || scope === "total"
@@ -287,7 +288,7 @@ export default function PlanningPanel({
     startDate: todayStr,
     endDate: addDays(todayStr, 27),
     _dur: 27, // durée mémorisée (en jours) : quand on change le début, la fin suit
-    scope: "total",
+    scope: defaultScope,
     objective: "",
     notes: "",
   });

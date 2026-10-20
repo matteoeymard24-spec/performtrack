@@ -260,7 +260,7 @@ export default function Tests() {
         ]);
         const list = us.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((u) => u.role !== "admin")
+          .filter((u) => u.role !== "admin" || u.id === currentUser?.uid) // + moi-même (filtre « Moi »)
           .sort((a, b) => athleteName(a).localeCompare(athleteName(b), "fr"));
         setAthletes(list);
         setGroups(gs.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -512,6 +512,24 @@ export default function Tests() {
 
       {/* Choix de l'athlète */}
       <div style={cardStyle}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <button
+            type="button"
+            onClick={() => currentUser?.uid && setUid(currentUser.uid)}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: `1px solid ${uid && uid === currentUser?.uid ? "#e0a13d" : "#2a2620"}`,
+              background: uid && uid === currentUser?.uid ? "rgba(224,161,61,0.18)" : "transparent",
+              color: TEXT,
+              fontWeight: 700,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            🌟 Moi (mes propres tests)
+          </button>
+        </div>
         <input
           style={inputStyle}
           placeholder="🔍 Rechercher un athlète…"
@@ -526,7 +544,7 @@ export default function Tests() {
           <option value="">— Choisir un athlète —</option>
           {filteredAthletes.map((a) => (
             <option key={a.id} value={a.id}>
-              {athleteName(a)}
+              {a.id === currentUser?.uid ? `🌟 Moi — ${athleteName(a)}` : athleteName(a)}
             </option>
           ))}
         </select>

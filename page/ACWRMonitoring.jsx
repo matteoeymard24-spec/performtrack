@@ -35,7 +35,7 @@ import {
 } from "../component/loadMetrics";
 
 export default function ACWRMonitoring() {
-  const { userRole } = useAuth();
+  const { userRole, currentUser } = useAuth();
   const [athletes, setAthletes] = useState([]);
   const [selectedAthlete, setSelectedAthlete] = useState(null);
   const [rediData, setRediData] = useState([]);
@@ -55,7 +55,7 @@ export default function ACWRMonitoring() {
         const usersSnap = await getDocs(collection(db, "users"));
         const athletesData = usersSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((u) => u.superAdmin !== true && u.role !== "admin");
+          .filter((u) => u.id === currentUser?.uid || (u.superAdmin !== true && u.role !== "admin")); // + moi-même (filtre « Moi »)
 
         athletesData.sort((a, b) => {
           const nameA = a.firstName || a.email || "";
@@ -267,6 +267,29 @@ export default function ACWRMonitoring() {
         >
           Sélectionner un athlète :
         </label>
+        {currentUser?.uid && athletes.some((a) => a.id === currentUser.uid) && (
+          <div style={{ marginBottom: 10 }}>
+            <button
+              type="button"
+              onClick={() => {
+                const me = athletes.find((a) => a.id === currentUser.uid);
+                if (me) loadAthleteREDI(me);
+              }}
+              style={{
+                padding: "10px 18px",
+                borderRadius: 8,
+                border: `1px solid ${selectedAthlete?.id === currentUser.uid ? "#e0a13d" : "#2a2620"}`,
+                background: selectedAthlete?.id === currentUser.uid ? "rgba(224,161,61,0.18)" : "transparent",
+                color: "#f3f0ea",
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              🌟 Moi (mes propres graphiques)
+            </button>
+          </div>
+        )}
         <select
           value={selectedAthlete?.id || ""}
           onChange={(e) => {
@@ -286,9 +309,9 @@ export default function ACWRMonitoring() {
           <option value="">-- Choisir un athlète --</option>
           {athletes.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.firstName && a.lastName
-                ? `${a.firstName} ${a.lastName}`
-                : a.displayName || a.email}
+              {`${a.id === currentUser?.uid ? "🌟 Moi — " : ""}${
+                a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email
+              }`}
             </option>
           ))}
         </select>

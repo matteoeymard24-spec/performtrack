@@ -136,6 +136,47 @@ export default function Dashboard() {
   });
   const toggleSection = (key) =>
     setSectionVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // Vue "Moi" du coach : il voit SON propre dashboard, exactement comme un
+  // athlète le voit (mêmes blocs, mêmes réglages d'affichage).
+  const [meMode, setMeMode] = useState(false);
+  const viewRole = userRole === "admin" && meMode ? "athlete" : userRole;
+
+  // Blocs du dashboard athlète que chacun peut masquer (réglage mémorisé sur
+  // l'appareil, par utilisateur).
+  const DASH_SECTIONS = [
+    { key: "week", label: "🗓️ Ma semaine" },
+    { key: "wellness", label: "🧘 Wellness" },
+    { key: "pain", label: "🩹 Localisation de la douleur" },
+    { key: "injuries", label: "🚑 Blessures déclarées" },
+    { key: "rm", label: "🎯 RM en attente" },
+    { key: "tests", label: "🧪 Mes tests" },
+    { key: "progress", label: "📊 Progression des séances" },
+    { key: "today", label: "🏋️ Séance du jour" },
+    { key: "weight", label: "⚖️ Mon poids" },
+    { key: "vmacmj", label: "🏃 VMA & 🦘 CMJ" },
+    { key: "rmhist", label: "💪 Mes RM (historique)" },
+  ];
+  const hiddenStoreKey = `pt_dash_hidden_${currentUser?.uid || "anon"}`;
+  const [hiddenDash, setHiddenDash] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`pt_dash_hidden_${currentUser?.uid || "anon"}`) || "[]");
+    } catch (e) {
+      return [];
+    }
+  });
+  const [showDashSettings, setShowDashSettings] = useState(false);
+  const vis = (k) => !hiddenDash.includes(k);
+  const toggleDash = (k) =>
+    setHiddenDash((prev) => {
+      const next = prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k];
+      try {
+        localStorage.setItem(hiddenStoreKey, JSON.stringify(next));
+      } catch (e) {
+        /* stockage indisponible : réglage valable jusqu'au rechargement */
+      }
+      return next;
+    });
   const SectionToggleBtn = ({ sectionKey }) => (
     <button
       onClick={() => toggleSection(sectionKey)}
@@ -497,7 +538,7 @@ export default function Dashboard() {
   }, [userRole, currentUser]);
 
   useEffect(() => {
-    if (userRole !== "athlete" || !currentUser || !userProfile) return;
+    if (viewRole !== "athlete" || !currentUser || !userProfile) return;
 
     // IMPORTANT : chaque section ci-dessous a son propre try/catch, isolée
     // des autres. Avant, tout était dans UN SEUL bloc try/catch : si une
@@ -757,12 +798,12 @@ export default function Dashboard() {
       }
     };
     load();
-  }, [userRole, currentUser, userProfile, customGroups]);
+  }, [viewRole, currentUser, userProfile, customGroups]);
 
   useEffect(() => {
-    if (userRole === "athlete" && userProfile)
+    if (viewRole === "athlete" && userProfile)
       setAthleteWeight(userProfile.weight || "");
-  }, [userRole, userProfile]);
+  }, [viewRole, userProfile]);
 
   const saveWeight = async () => {
     if (!currentUser || !athleteWeight || !canUpdateWeight) return;
@@ -1151,7 +1192,7 @@ export default function Dashboard() {
     );
   }
 
-  if (userRole !== "admin") {
+  if (viewRole !== "admin") {
     const todayScore = todayWellness
       ? calculateWellnessScore(todayWellness)
       : null;
@@ -1246,6 +1287,35 @@ export default function Dashboard() {
         <h2 style={{ fontSize: 24, marginBottom: 5 }}>
           Bonjour {userProfile?.firstName || "Athlète"} ! 👋
         </h2>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          <button
+            onClick={() => setShowDashSettings((v) => !v)}
+            style={{ padding: "6px 12px", background: "#2a2620", color: "#f3f0ea", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
+          >
+            ⚙️ Personnaliser mon dashboard
+          </button>
+          {userRole === "admin" && meMode && (
+            <button
+              onClick={() => setMeMode(false)}
+              style={{ padding: "6px 12px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
+            >
+              ↩ Retour au dashboard admin
+            </button>
+          )}
+        </div>
+        {showDashSettings && (
+          <div style={{ background: "#151310", borderRadius: 12, padding: 14, marginBottom: 16, border: "1px solid rgba(255,255,255,0.12)" }}>
+            <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>Coche ce que tu veux voir :</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {DASH_SECTIONS.map((sec) => (
+                <label key={sec.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer" }}>
+                  <input type="checkbox" checked={vis(sec.key)} onChange={() => toggleDash(sec.key)} />
+                  {sec.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         <p style={{ color: "#a8a199", marginBottom: 20, fontSize: 14 }}>
           {new Date().toLocaleDateString("fr-FR", {
             weekday: "long",
@@ -1257,7 +1327,7 @@ export default function Dashboard() {
         {/* Mini-frise de la semaine : un coup d'œil sur les 7 jours (lundi
             → dimanche) sans avoir à ouvrir le calendrier. Un jour sans
             séance programmée reste un simple point neutre. */}
-        {weekOverview.length > 0 && (
+        {vis("week") && weekOverview.length > 0 && (
           <div
             style={{
               display: "flex",
@@ -1319,7 +1389,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {!todayWellness && (
+        {vis("wellness") && !todayWellness && (
           <div
             style={{
               background: "rgba(217,164,65,0.14)",
@@ -1340,7 +1410,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {sessionReminderDue && (
+        {vis("today") && sessionReminderDue && (
           <div
             style={{
               background: "rgba(217,105,90,0.14)",
@@ -1359,7 +1429,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {pendingRM.length > 0 && (
+        {vis("rm") && pendingRM.length > 0 && (
           <div
             style={{
               background: "rgba(224,161,61,0.14)",
@@ -1394,7 +1464,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {todayScore !== null && (
+        {vis("wellness") && todayScore !== null && (
           <div
             style={{
               background: "#151310",
@@ -1487,61 +1557,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {selfCrossStatus && (
-          <div
-            style={{
-              background: "#151310",
-              padding: 20,
-              borderRadius: 12,
-              border: `2px solid ${selfCrossStatus.color}`,
-              marginBottom: 20,
-            }}
-          >
-            <h3
-              style={{
-                margin: "0 0 8px 0",
-                fontSize: 16,
-                color: selfCrossStatus.color,
-              }}
-            >
-              🔀 {selfCrossStatus.label}
-            </h3>
-            <p style={{ margin: "0 0 12px 0", fontSize: 13, color: "#a8a199", lineHeight: 1.5 }}>
-              {selfCrossStatus.detail}
-            </p>
-            <div style={{ display: "flex", gap: 20, fontSize: 12, color: "#a8a199" }}>
-              {selfRediRatio !== null && (
-                <span>
-                  Ratio REDI : <strong style={{ color: "#f3f0ea" }}>{selfRediRatio.toFixed(2)}</strong>
-                </span>
-              )}
-              {selfWellnessZ !== null && (
-                <span>
-                  Z-score wellness : <strong style={{ color: "#f3f0ea" }}>{selfWellnessZ.toFixed(1)}</strong>
-                </span>
-              )}
-              {selfCmjStatus?.pctChange !== null && selfCmjStatus?.pctChange !== undefined && (
-                <span>
-                  CMJ vs baseline :{" "}
-                  <strong style={{ color: selfCmjStatus.color }}>
-                    {selfCmjStatus.pctChange > 0 ? "+" : ""}
-                    {selfCmjStatus.pctChange}%
-                  </strong>
-                </span>
-              )}
-              {selfRpeReliability?.sd !== null && selfRpeReliability?.sd !== undefined && (
-                <span>
-                  Écart-type RPE :{" "}
-                  <strong style={{ color: selfRpeReliability.flag ? "#d9a441" : "#f3f0ea" }}>
-                    {selfRpeReliability.sd}
-                  </strong>
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
-        {selfInjuries.length > 0 && (
+        {vis("injuries") && selfInjuries.length > 0 && (
           <div
             style={{
               background: "#151310",
@@ -1564,7 +1580,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {todayWellness?.painMap &&
+        {vis("pain") && todayWellness?.painMap &&
           Object.keys(todayWellness.painMap).length > 0 && (
             <div
               style={{
@@ -1587,12 +1603,13 @@ export default function Dashboard() {
             </div>
           )}
 
-        {currentUser?.uid && (
+        {vis("tests") && currentUser?.uid && (
           <div style={{ marginBottom: 20 }}>
             <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" />
           </div>
         )}
 
+        {vis("progress") && (
         <div
           style={{
             background: "#151310",
@@ -1689,7 +1706,9 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        )}
 
+        {vis("today") && (
         <div
           style={{
             background: "#151310",
@@ -1827,7 +1846,9 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        )}
 
+        {vis("weight") && (
         <div
           style={{
             background: "#151310",
@@ -1977,8 +1998,9 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+        )}
 
-        {(athleteVma || athleteCmj) && (
+        {vis("vmacmj") && (athleteVma || athleteCmj) && (
           <div
             style={{
               background: "#151310",
@@ -2057,7 +2079,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {Object.keys(athleteRMFullHistory).length > 0 && (
+        {vis("rmhist") && Object.keys(athleteRMFullHistory).length > 0 && (
           <div
             style={{
               background: "#151310",
@@ -2170,6 +2192,12 @@ export default function Dashboard() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={() => setMeMode(true)}
+            style={{ padding: "12px 20px", background: "#2a2620", color: "#f3f0ea", border: "1px solid #e0a13d", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: 14 }}
+          >
+            🌟 Moi (mon dashboard)
+          </button>
           {todayWorkout && (
             <button
               onClick={() => (window.location.href = "/workout")}

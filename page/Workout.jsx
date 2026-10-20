@@ -382,6 +382,10 @@ export default function Workout() {
   const [showAllMoi, setShowAllMoi] = useState(false);
   const [athleteFilterId, setAthleteFilterId] = useState("");
   const [groupFilterId, setGroupFilterId] = useState("");
+  // Vue du calendrier réservée au coach : "" = tout, "moi" = mes propres
+  // séances/planif, "admins" = les séances perso et la planif de chaque admin.
+  const [viewMode, setViewMode] = useState("");
+  const [adminUsers, setAdminUsers] = useState([]);
   const [blocks, setBlocks] = useState([
     {
       name: "Bloc A",
@@ -517,7 +521,7 @@ export default function Workout() {
           (w) =>
             w.group !== "moi" ||
             w.createdBy === currentUser.uid ||
-            (isSuperAdmin && showAllMoi)
+            (isSuperAdmin && (showAllMoi || viewMode === "admins"))
         );
       } else {
         // Athlète voit :
@@ -559,7 +563,7 @@ export default function Workout() {
 
   useEffect(() => {
     fetchSessions();
-  }, [currentUser, userRole, userGroup, customGroups, showAllMoi, isSuperAdmin]);
+  }, [currentUser, userRole, userGroup, customGroups, showAllMoi, isSuperAdmin, viewMode]);
 
   /* ===================== CYCLES (planification) ===================== */
   const fetchCycles = useCallback(async () => {
@@ -779,11 +783,9 @@ export default function Workout() {
     const fetch = async () => {
       try {
         const snap = await getDocs(collection(db, "users"));
-        setAthletes(
-          snap.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .filter((u) => u.role !== "admin")
-        );
+        const allUsers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setAthletes(allUsers.filter((u) => u.role !== "admin"));
+        setAdminUsers(allUsers.filter((u) => u.role === "admin" || u.superAdmin === true));
       } catch (e) {
         console.error(e);
       }
@@ -3137,6 +3139,10 @@ export default function Workout() {
   const getColor = (session) => {
     // Couleur spéciale pour le groupe "moi"
     if (session.group === "moi") {
+      if (viewMode === "admins") {
+        const i = adminUsers.findIndex((a) => a.id === session.createdBy);
+        return ADMIN_COLORS[(i < 0 ? 0 : i) % ADMIN_COLORS.length]; // une couleur par admin
+      }
       return "#d9a441"; // Or/Doré pour les séances personnelles
     }
 
@@ -3168,6 +3174,20 @@ export default function Workout() {
     a.firstName && a.lastName
       ? `${a.firstName} ${a.lastName}`
       : a.displayName || a.email || "Athlète";
+
+  // Nom de l'admin propriétaire d'une séance perso, pour savoir à qui elle est.
+  const adminNameOf = (uid) => {
+    const u = adminUsers.find((x) => x.id === uid);
+    return u ? getAthleteDisplayName(u) : "Admin";
+  };
+  const ADMIN_COLORS = ["#d9a441", "#5b8def", "#d9695a", "#8e6bd8", "#3aa6b9", "#4fae7d"];
+  // Séance perso : "🌟" si c'est la mienne, sinon le nom de l'admin ; en vue
+  // « Admins » on affiche toujours le nom (y compris le mien).
+  const moiPrefix = (evt) => {
+    if (evt.group !== "moi") return "";
+    if (viewMode !== "admins" && evt.createdBy === currentUser?.uid) return "🌟 ";
+    return `👤 ${adminNameOf(evt.createdBy)} · `;
+  };
 
   const isEventVisibleToAthlete = (evt, athlete) => {
     if (!athlete) return true;
@@ -3222,6 +3242,13 @@ export default function Workout() {
   const filterAthlete = athletes.find((a) => a.id === athleteFilterId) || null;
   const filterGroup = customGroups.find((g) => g.id === groupFilterId) || null;
   const isEventVisibleToFilter = (evt) => {
+    if (viewMode === "moi")
+      return (
+        (evt.group === "moi" && evt.createdBy === currentUser?.uid) ||
+        evt.targetUserId === currentUser?.uid
+      );
+    if (viewMode === "admins")
+      return evt.group === "moi" && adminUsers.some((a) => a.id === evt.createdBy);
     if (filterAthlete) return isEventVisibleToAthlete(evt, filterAthlete);
     if (filterGroup) return isEventVisibleToGroup(evt, filterGroup.id);
     return true;
@@ -3231,6 +3258,8 @@ export default function Workout() {
   const cycleScopes = (() => {
     const groupsOf = (uid) =>
       customGroups.filter((g) => (g.athleteIds || []).includes(uid)).map((g) => g.id);
+    if (viewMode === "moi") return [userScope(currentUser.uid)];
+    if (viewMode === "admins") return adminUsers.map((a) => userScope(a.id));
     if (filterAthlete) return ["total", ...groupsOf(filterAthlete.id), userScope(filterAthlete.id)];
     if (filterGroup) return ["total", filterGroup.id];
     if (isAdminLike) return null;
@@ -3388,7 +3417,7 @@ export default function Workout() {
                   flexShrink: 0,  // Les événements ne rétrécissent pas
                 }}
               >
-                {evt.group === "moi" && "🌟 "}{evt.title}
+                {moiPrefix(evt)}{evt.title}
               </div>
             ))}
             {isMobile && dayEvents.length > 1 && (
@@ -3481,7 +3510,8 @@ export default function Workout() {
               fixtures={fixtures}
               events={events.filter(isEventVisibleToFilter)}
               customGroups={customGroups}
-              athletes={athletes}
+              athletes={[...athletes, ...adminUsers.filter((a) => !athletes.some((x) => x.id === a.id))]}
+              defaultScope={viewMode === "moi" ? userScope(currentUser.uid) : "total"}
               isAdmin={isAdminLike}
               currentUser={currentUser}
               scopes={cycleScopes}
@@ -3520,6 +3550,9 @@ export default function Workout() {
                 // Un filtre groupe est actif : la séance créée cible ce
                 // groupe par défaut.
                 openCreateForGroup(filterGroup.id, date);
+              } else if (viewMode) {
+                // Vue « Moi » / « Admins » : on crée une séance perso (la mienne).
+                openCreateForGroup("moi", date);
               } else {
                 setShowForm(true);
                 setFormDate(date);
@@ -3540,6 +3573,8 @@ export default function Workout() {
               ? "➕ Créer séance pour cet athlète"
               : groupFilterId
               ? "➕ Créer séance pour ce groupe"
+              : viewMode
+              ? "➕ Créer ma séance perso"
               : "➕ Créer séance"}
           </button>
           <button
@@ -7094,7 +7129,9 @@ export default function Workout() {
                       marginLeft: 8,
                     }}
                   >
-                    🌟 PRIVÉ
+                    {selectedSession.createdBy === currentUser?.uid
+                      ? "🌟 PRIVÉ"
+                      : `👤 ${adminNameOf(selectedSession.createdBy)} · PRIVÉ`}
                   </span>
                 )}
               </div>
@@ -7898,6 +7935,47 @@ export default function Workout() {
             marginBottom: 16,
           }}
         >
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+            {[
+              { id: "", label: "📋 Tout" },
+              { id: "moi", label: "🌟 Moi" },
+              { id: "admins", label: "👥 Admins" },
+            ].map((m) => (
+              <button
+                key={m.id || "all"}
+                onClick={() => {
+                  setViewMode(m.id);
+                  if (m.id) {
+                    setAthleteFilterId("");
+                    setGroupFilterId("");
+                  }
+                }}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  border: `1px solid ${viewMode === m.id ? "#e0a13d" : "rgba(255,255,255,0.16)"}`,
+                  background: viewMode === m.id ? "rgba(224,161,61,0.2)" : "transparent",
+                  color: "#f3f0ea",
+                  fontWeight: "bold",
+                  fontSize: 14,
+                  cursor: "pointer",
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+            {viewMode === "moi" && (
+              <span style={{ fontSize: 12, color: "#a8a199" }}>Uniquement mes séances perso et ma planification.</span>
+            )}
+            {viewMode === "admins" && (
+              <span style={{ fontSize: 12, color: "#a8a199" }}>
+                {isSuperAdmin
+                  ? "Séances perso et planification de chaque admin, avec son nom."
+                  : "Seul le superadmin voit les séances perso des autres admins (tu vois les tiennes)."}
+              </span>
+            )}
+          </div>
+
           <div
             style={{
               display: "flex",
@@ -7914,7 +7992,7 @@ export default function Workout() {
               value={athleteFilterId}
               onChange={(e) => {
                 setAthleteFilterId(e.target.value);
-                if (e.target.value) setGroupFilterId("");
+                if (e.target.value) { setGroupFilterId(""); setViewMode(""); }
               }}
               style={{
                 flex: "1 1 220px",
@@ -7967,7 +8045,7 @@ export default function Workout() {
               value={groupFilterId}
               onChange={(e) => {
                 setGroupFilterId(e.target.value);
-                if (e.target.value) setAthleteFilterId("");
+                if (e.target.value) { setAthleteFilterId(""); setViewMode(""); }
               }}
               style={{
                 flex: "1 1 220px",
@@ -8144,7 +8222,7 @@ export default function Workout() {
                     { weekday: "long", day: "numeric", month: "long" }
                   )}
                 </h3>
-                {isAdminLike && (
+                {isAdminLike && !viewMode && (
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {events.filter((e) => e.date === selectedDate).length > 0 && (
                       <button
@@ -8210,7 +8288,7 @@ export default function Workout() {
                         }}
                       >
                         <h4 style={{ margin: "0 0 6px 0", fontSize: 16 }}>
-                          {session.title}
+                          {moiPrefix(session)}{session.title}
                         </h4>
                         <div style={{ fontSize: 13, color: "#a8a199" }}>
                           <span
