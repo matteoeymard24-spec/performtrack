@@ -31,7 +31,7 @@ import {
   LEVELS,
   levelLabel,
 } from "../component/norms";
-import { NormList, MatchRefCard, LevelTable } from "../component/NormsUI";
+import { NormList, MatchRefCard, LevelTable, PatternList } from "../component/NormsUI";
 
 const ACCENT = "#e0a13d";
 const SURFACE = "#151310";
@@ -822,7 +822,7 @@ export default function Tests() {
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>
                       Poste : {posteLabel(sport, poste)}. Le 1RM est repéré automatiquement par le nom de l'exercice.
                     </div>
-                    <NormList rows={strengthNorms} />
+                    <PatternList rows={strengthNorms} />
                   </div>
 
                   <div style={cardStyle}>

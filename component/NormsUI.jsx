@@ -1,5 +1,5 @@
 import React from "react";
-import { noteColor, noteLabel } from "./norms";
+import { noteColor, noteLabel, groupByPattern } from "./norms";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -153,9 +153,12 @@ export function NormRow({ r, compact = false }) {
         </div>
       )}
       <div style={{ color: MUTED, fontSize: 11, marginTop: 4 }}>
-        Repères du poste : 10/20 → {r.t10} · 15/20 → {r.t15} · 20/20 → {r.t20}
+        Repères {r.refLabel || "du poste"} : 10/20 → {r.t10} · 15/20 → {r.t15} · 20/20 → {r.t20}
         {r.tNext && r.note != null && r.note < 20 ? ` · prochain palier (${r.note + 1}/20) → ${r.tNext}` : ""}
       </div>
+      {r.estNote && (
+        <div style={{ color: "#d9a441", fontSize: 11 }}>⚠ {r.estNote}</div>
+      )}
       {r.matched && (
         <div style={{ color: MUTED, fontSize: 11 }}>RM utilisé : « {r.matched} »</div>
       )}
@@ -170,6 +173,31 @@ export function NormList({ rows, compact }) {
     <div>
       {rows.map((r, i) => (
         <NormRow key={i} r={r} compact={compact} />
+      ))}
+    </div>
+  );
+}
+
+/* Notes de force regroupées par schéma de mouvement (poussée / tirage, vertical / horizontal) */
+export function PatternList({ rows, compact }) {
+  const groups = groupByPattern(rows);
+  if (groups.length === 0) return null;
+  return (
+    <div>
+      {groups.map((g) => (
+        <div key={g.id} style={{ marginBottom: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", background: "#0d0c0a", padding: "6px 10px", borderRadius: 8 }}>
+            <span style={{ color: TEXT, fontWeight: 700, fontSize: 13 }}>{g.label}</span>
+            {g.avg != null && (
+              <span style={{ color: noteColor(g.avg), fontWeight: 800, fontSize: 13 }}>
+                {g.avg}/20 <span style={{ fontWeight: 500, fontSize: 11, color: MUTED }}>{g.rows.length > 1 ? "· moyenne" : ""}</span>
+              </span>
+            )}
+          </div>
+          {g.rows.map((r, i) => (
+            <NormRow key={i} r={r} compact={compact} />
+          ))}
+        </div>
       ))}
     </div>
   );

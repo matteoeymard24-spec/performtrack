@@ -38,6 +38,7 @@ export const SENS = {
   RDL: 1,
   "TRAP BARRE": 1,
   "TIRAGE PLANCHE": 1,
+  "HIP THRUST": 1,
   TRACTION: 1,
   "Cervicales Flexion": 1,
   "Cervicales extension": 1,

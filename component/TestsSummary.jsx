@@ -3,7 +3,7 @@ import { db } from "../firebase";
 import { collection, getDocs, getDoc, doc } from "firebase/firestore";
 import { getTest, STATUS, TEST_GROUPS } from "./testsCalc";
 import { hasNorms, posteLabel, evaluateTestNorms, evaluateStrength, levelLabel } from "./norms";
-import { NormList, LevelTable } from "./NormsUI";
+import { NormList, LevelTable, PatternList } from "./NormsUI";
 
 const ACCENT = "#e0a13d";
 const MUTED = "#a8a199";
@@ -186,7 +186,7 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests" }) {
           <div style={{ fontSize: 12, color: MUTED, margin: "6px 0" }}>
             💪 Force vs norme du poste ({posteLabel(profile.sport, profile.position)})
           </div>
-          <NormList rows={strengthRows} compact />
+          <PatternList rows={strengthRows} compact />
         </div>
       )}
       {normsOn && strengthAll.length > 0 && (

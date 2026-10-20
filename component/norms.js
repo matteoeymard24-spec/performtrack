@@ -7,7 +7,7 @@
    ===================================================================== */
 import { RUGBY_BAREME, RUGBY_MATCH_REF } from "./rugbyBareme";
 import { parseTime, num } from "./testsCalc";
-import { LEVELS, SENS, SOURCED, GROUP } from "./rugbyLevels";
+import { LEVELS, SENS, SOURCED, GROUP, levelLabel } from "./rugbyLevels";
 
 export { LEVELS, levelLabel } from "./rugbyLevels";
 
@@ -27,7 +27,19 @@ export const POSTES = {
   ],
 };
 
-const BAREMES = { rugby: { bareme: RUGBY_BAREME, matchRef: RUGBY_MATCH_REF } };
+/* Hip thrust : AUCUN barème Agen. Barème ESTIMÉ = barème du squat du même poste × HIP_THRUST_FACTOR
+   (le hip thrust se charge plus lourd que le squat). À ajuster ici si le staff a de vraies valeurs. */
+export const HIP_THRUST_FACTOR = 1.2;
+const hipThrustTable = () => {
+  const out = {};
+  Object.entries(RUGBY_BAREME["SQUAT"] || {}).forEach(([poste, arr]) => {
+    out[poste] = arr.map((v) => (v == null ? null : Math.round((v * HIP_THRUST_FACTOR) / 2.5) * 2.5));
+  });
+  return out;
+};
+const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable() };
+
+const BAREMES = { rugby: { bareme: RUGBY_BAREME_X, matchRef: RUGBY_MATCH_REF } };
 
 export const posteLabel = (sport, key) =>
   (POSTES[sport] || []).find((p) => p.key === key)?.label || key;
@@ -181,6 +193,48 @@ export function levelInfo(sport, normKey, poste, value, targetId, fmt) {
   return { items, reached, next, target, below: hasVal && reachedIdx === -1 };
 }
 
+/* Note /20 RELATIVE AU NIVEAU VISÉ.
+   Avant : la note comparait toujours à l'échelle Pro D2 du barème Agen, alors que
+   le tableau "Standards par niveau" disait qu'on avait atteint Fédérale 3 → notes
+   incohérentes (ex. squat au-dessus du standard Fédérale 3 mais 3/20).
+   Maintenant : 10/20 = le standard du niveau visé (même valeur que dans le tableau
+   des niveaux) ; l'échelle du barème est ramenée proportionnellement à ce niveau.
+   Sans niveau (ou Pro D2) : barème Agen tel quel. */
+export function levelRatio(sport, normKey, poste, levelId) {
+  if (!levelId || levelId === MATCH_REF_LEVEL) return null;
+  const L = buildLadder(sport, normKey, poste);
+  const row = L?.rows.find((r) => r.id === levelId);
+  const pr = L?.rows.find((r) => r.id === MATCH_REF_LEVEL);
+  if (!row || !pr) return null;
+  const a = L.cv(pr.thr);
+  const b = L.cv(row.thr);
+  if (!(a > 0) || !(b > 0)) return null;
+  const bronco = normKey === "Bronco";
+  return { ratio: a / b, cv: L.cv, back: bronco ? fromSec : (x) => x };
+}
+
+export function scoreForLevel(sport, normKey, poste, value, levelId) {
+  const lr = levelRatio(sport, normKey, poste, levelId);
+  if (!lr) {
+    const base = scoreNorm(sport, normKey, poste, value);
+    return base ? { ...base, adapted: false, refLabel: "du poste" } : null;
+  }
+  if (value == null || isNaN(value)) return null;
+  const eq = lr.back(lr.cv(value) * lr.ratio);
+  const sc = scoreNorm(sport, normKey, poste, eq);
+  if (!sc) return null;
+  const un = (x) => (x == null ? null : lr.back(lr.cv(x) / lr.ratio));
+  return {
+    ...sc,
+    thr10: un(sc.thr10),
+    thr15: un(sc.thr15),
+    thr20: un(sc.thr20),
+    next: un(sc.next),
+    adapted: true,
+    refLabel: `niveau ${levelLabel(levelId)}`,
+  };
+}
+
 export const noteColor = (n) =>
   n >= 15 ? "#4fae7d" : n >= 10 ? "#8cc36a" : n >= 5 ? "#e0a13d" : "#d9534f";
 export const noteLabel = (n) =>
@@ -233,7 +287,7 @@ export function evaluateTestNorms(testId, values, sport, poste, level) {
   defs.forEach((d) => {
     const value = d.get(values);
     if (value == null) return;
-    const sc = scoreNorm(sport, d.normKey, poste, value);
+    const sc = scoreForLevel(sport, d.normKey, poste, value, level);
     if (!sc) return;
     out.push({
       label: d.label,
@@ -253,14 +307,37 @@ export function evaluateTestNorms(testId, values, sport, poste, level) {
 
 /* Force : les 1RM de « Mes RM » face au barème (correspondance automatique par nom) */
 export const STRENGTH_NORMS = [
-  { normKey: "SQUAT", label: "Squat", all: ["squat"], none: ["bulgar", "split", "goblet", "front", "avant", "saut", "jump", "pistol", "cossack", "zercher", "overhead", "box"] },
-  { normKey: "DEVELOPPE COUCHE", label: "Développé couché", all: ["developpe", "couche"], none: ["incline", "haltere", "inclin"] },
-  { normKey: "DEVELOPPE MILITAIRE", label: "Développé militaire", all: ["developpe", "militaire"], none: ["haltere"] },
-  { normKey: "RDL", label: "Soulevé de terre roumain (RDL)", any: ["rdl", "souleve de terre roumain", "romanian"], none: ["unilat", "1 jambe"] },
-  { normKey: "TRAP BARRE", label: "Trap bar", all: ["trap"], none: [] },
-  { normKey: "TIRAGE PLANCHE", label: "Tirage planche", all: ["tirage", "planche"], none: [] },
-  { normKey: "TRACTION", label: "Traction (charge totale)", all: ["traction"], none: ["australienne", "elastique", "assist"] },
+  { normKey: "SQUAT", pattern: "push_v_lower", label: "Squat", all: ["squat"], none: ["bulgar", "split", "goblet", "front", "avant", "saut", "jump", "pistol", "cossack", "zercher", "overhead", "box"] },
+  { normKey: "DEVELOPPE COUCHE", pattern: "push_h_upper", label: "Développé couché", all: ["developpe", "couche"], none: ["incline", "haltere", "inclin"] },
+  { normKey: "DEVELOPPE MILITAIRE", pattern: "push_v_upper", label: "Développé militaire", all: ["developpe", "militaire"], none: ["haltere"] },
+  { normKey: "RDL", pattern: "push_h_lower", label: "Soulevé de terre roumain (RDL)", any: ["rdl", "souleve de terre roumain", "romanian"], none: ["unilat", "1 jambe"] },
+  { normKey: "HIP THRUST", pattern: "push_h_lower", label: "Hip thrust", any: ["hip thrust", "hip trust", "hipthrust", "poussee de hanche"], none: ["unilat", "1 jambe", "single"], estimated: `Barème estimé : squat du poste × ${HIP_THRUST_FACTOR} (pas de barème Agen pour le hip thrust)` },
+  { normKey: "TRAP BARRE", pattern: "push_v_lower", label: "Trap bar", all: ["trap"], none: [] },
+  { normKey: "TIRAGE PLANCHE", pattern: "pull_h", label: "Tirage planche", all: ["tirage", "planche"], none: [] },
+  { normKey: "TRACTION", pattern: "pull_v", label: "Traction (charge totale)", all: ["traction"], none: ["australienne", "elastique", "assist"] },
 ];
+
+/* Schémas de mouvement : les notes de force sont regroupées par pattern */
+export const STRENGTH_PATTERNS = [
+  { id: "push_v_upper", label: "Poussée verticale — haut du corps" },
+  { id: "push_v_lower", label: "Poussée verticale — bas du corps" },
+  { id: "push_h_upper", label: "Poussée horizontale — haut du corps" },
+  { id: "push_h_lower", label: "Poussée horizontale — bas du corps" },
+  { id: "pull_v", label: "Tirage vertical" },
+  { id: "pull_h", label: "Tirage horizontal" },
+];
+
+/* [{id,label,rows,avg}] — avg = moyenne des notes /20 du pattern (null si aucune) */
+export function groupByPattern(rows) {
+  const out = STRENGTH_PATTERNS.map((p) => {
+    const rs = (rows || []).filter((r) => r.pattern === p.id);
+    const notes = rs.filter((r) => r.note != null).map((r) => r.note);
+    return { ...p, rows: rs, avg: notes.length ? Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 10) / 10 : null };
+  }).filter((g) => g.rows.length > 0);
+  const rest = (rows || []).filter((r) => !STRENGTH_PATTERNS.some((p) => p.id === r.pattern));
+  if (rest.length) out.push({ id: "autre", label: "Autres", rows: rest, avg: null });
+  return out;
+}
 
 const strip = (s) =>
   String(s || "")
@@ -290,14 +367,18 @@ export function evaluateStrength(rmDocs, sport, poste, level) {
     const rm = findRM(rmDocs, spec);
     const table = BAREMES[sport].bareme[spec.normKey]?.[poste];
     if (!table) return null;
-    const sc = rm ? scoreNorm(sport, spec.normKey, poste, rm.kg) : null;
-    const t = (n) => (table[n] != null ? table[n] : null);
+    const sc = rm ? scoreForLevel(sport, spec.normKey, poste, rm.kg, level) : null;
+    const lr = levelRatio(sport, spec.normKey, poste, level);
+    const t = (n) => (table[n] != null ? (lr ? table[n] / lr.ratio : table[n]) : null);
     return {
       label: spec.label,
       matched: rm ? rm.name : null,
       value: rm ? rm.kg : null,
       display: rm ? fmtNum(rm.kg) : null,
       unit: "kg",
+      pattern: spec.pattern,
+      estNote: spec.estimated || null,
+      refLabel: lr ? `niveau ${levelLabel(level)}` : "du poste",
       ...(sc || {}),
       t10: fmtNum(t(10)),
       t15: fmtNum(t(15)),
