@@ -1605,7 +1605,7 @@ export default function Dashboard() {
 
         {vis("tests") && currentUser?.uid && (
           <div style={{ marginBottom: 20 }}>
-            <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" />
+            <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" simple />
           </div>
         )}
 
@@ -3910,7 +3910,7 @@ export default function Dashboard() {
             )}
 
             <div style={{ marginBottom: 16 }}>
-              <TestsSummary uid={showAthleteDetail.id} title="🧪 Tests de l'athlète" />
+              <TestsSummary uid={showAthleteDetail.id} title="🧪 Tests de l'athlète" simple />
             </div>
 
             {(() => {

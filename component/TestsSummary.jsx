@@ -99,64 +99,56 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = f
         : { ...MEDALS.bronze, v: tg.thr };
       return { medal: tg.medal ? MEDALS[tg.medal] : null, next, u };
     };
-    const SubRow = ({ row }) => {
-      const g = goalOf(row);
-      return (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "6px 0 0 0", fontSize: 12, color: MUTED }}>
-          <span>
-            {row.label} · <b style={{ color: TEXT }}>{row.display}{row.unit ? ` ${row.unit}` : ""}</b>
-            {g?.medal ? <span style={{ marginLeft: 6 }}>{g.medal.icon}</span> : null}
-          </span>
-          <span style={{ textAlign: "right" }}>
-            {g ? (g.next ? `Objectif ${g.next.icon} ${g.next.label} : ${g.next.v}${g.u}` : "🥇 Or atteint") : ""}
-          </span>
-        </div>
-      );
+    const noteBadge = (n) => (
+      <span style={{ fontSize: 20, fontWeight: 800, color: noteColor(n) }}>
+        {n}
+        <span style={{ fontSize: 11, color: MUTED }}> / 20</span>
+      </span>
+    );
+    const tidy = (v) => {
+      const x = Number(v);
+      if (v == null || v === "" || !isFinite(x) || !/^\d+(\.\d+)?$/.test(String(v))) return v;
+      return x >= 20 ? String(Math.round(x * 10) / 10) : String(Math.round(x * 100) / 100);
     };
-    const noteBadge = (n) =>
-      n != null ? (
-        <span style={{ fontSize: 20, fontWeight: 800, color: noteColor(n) }}>
-          {n}
-          <span style={{ fontSize: 11, color: MUTED }}> / 20</span>
-        </span>
-      ) : (
-        <span style={{ fontSize: 12, color: MUTED }}>pas de note</span>
-      );
+    /* une ligne par mesure : libellé (valeur + médaille) · note · prochain objectif */
+    const items = [];
+    list.forEach((t) => {
+      const def = getTest(t.testId);
+      const rows = normRowsOf(t).filter((r) => r.note != null);
+      if (rows.length) rows.forEach((r) => items.push({ label: r.label, row: r }));
+      else {
+        const n = noteOf(t);
+        if (n != null) items.push({ label: def?.name || t.testId, note: n });
+      }
+    });
+    strengthS.forEach((r) => items.push({ label: r.label, row: r }));
+
     return (
       <div style={{ background: "#151310", padding: 20, borderRadius: 10 }}>
-        <h3 style={{ margin: "0 0 12px 0", fontSize: 17, color: TEXT }}>{title}</h3>
-        {list.map((t) => {
-          const def = getTest(t.testId);
-          const rows = normRowsOf(t).filter((r) => r.note != null);
+        <h3 style={{ margin: "0 0 8px 0", fontSize: 17, color: TEXT }}>{title}</h3>
+        {items.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Aucune note pour le moment.</div>}
+        {items.map((it, i) => {
+          const r = it.row;
+          const g = r ? goalOf(r) : null;
+          const note = r ? r.note : it.note;
           return (
-            <div key={t.id} style={{ borderTop: "1px solid #1d1a16", padding: "10px 0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                <div>
-                  <div style={{ color: TEXT, fontSize: 14 }}>{def?.name || t.testId}</div>
-                  <div style={{ color: MUTED, fontSize: 11 }}>{t.date}</div>
+            <div key={i} style={{ borderTop: "1px solid #1d1a16", padding: "9px 0", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: TEXT, fontSize: 14 }}>
+                  {it.label}
+                  {r ? <span style={{ color: MUTED }}> · {tidy(r.display)}{r.unit ? ` ${r.unit}` : ""}</span> : null}
+                  {g?.medal ? <span style={{ marginLeft: 6 }}>{g.medal.icon}</span> : null}
                 </div>
-                <div style={{ whiteSpace: "nowrap" }}>{noteBadge(noteOf(t))}</div>
+                {g && (
+                  <div style={{ color: MUTED, fontSize: 11, marginTop: 1 }}>
+                    {g.next ? `Objectif ${g.next.icon} ${tidy(g.next.v)}${g.u}` : "🥇 Or atteint"}
+                  </div>
+                )}
               </div>
-              {rows.map((r, i) => (
-                <SubRow key={i} row={r} />
-              ))}
+              <div style={{ whiteSpace: "nowrap" }}>{noteBadge(note)}</div>
             </div>
           );
         })}
-        {strengthS.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, color: MUTED, margin: "6px 0" }}>💪 Force</div>
-            {strengthS.map((r, i) => (
-              <div key={i} style={{ borderTop: "1px solid #1d1a16", padding: "10px 0" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                  <div style={{ color: TEXT, fontSize: 14 }}>{r.label}</div>
-                  <div style={{ whiteSpace: "nowrap" }}>{noteBadge(r.note)}</div>
-                </div>
-                <SubRow row={{ ...r, label: "1RM" }} />
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     );
   }
