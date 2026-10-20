@@ -137,60 +137,6 @@ export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle
 }
 
 /* ------------------------------------------------------------------ */
-/* Graphique intensité / volume par semaine (microcycles)              */
-/* ------------------------------------------------------------------ */
-function LoadChart({ weeks, isAdmin, onPick, todayStr }) {
-  if (!weeks.length) return null;
-  const W = 34, H = 120, PAD_T = 18, PAD_B = 30;
-  const width = Math.max(320, weeks.length * W + 20);
-  const y = (v) => PAD_T + (H - PAD_T - PAD_B) * (1 - Math.min(10, Math.max(0, v)) / 10);
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ fontWeight: 700, color: TEXT, fontSize: 14, marginBottom: 4 }}>📈 Intensité & volume par semaine</div>
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11, color: MUTED, marginBottom: 6 }}>
-        <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#5b8def", borderRadius: 2 }} /> Volume</span>
-        <span><span style={{ display: "inline-block", width: 10, height: 10, background: "#e0a13d", borderRadius: 2 }} /> Intensité</span>
-        <span style={{ color: "#4fae7d" }}>● légère</span>
-        <span style={{ color: "#e0a13d" }}>● moyenne</span>
-        <span style={{ color: "#d9534f" }}>● dure</span>
-      </div>
-      <div style={{ overflowX: "auto" }}>
-        <svg viewBox={`0 0 ${width} ${H}`} width={width} height={H} style={{ display: "block" }}>
-          {[0, 5, 10].map((g) => (
-            <g key={g}>
-              <line x1="0" x2={width} y1={y(g)} y2={y(g)} stroke="#2a2620" strokeDasharray="2 3" />
-              <text x="2" y={y(g) - 2} fontSize="8" fill="#5e584f">{g}</text>
-            </g>
-          ))}
-          {weeks.map(({ c }, i) => {
-            const x0 = 14 + i * W;
-            const h = hardnessOf(c);
-            const isNow = c.startDate <= todayStr && todayStr <= c.endDate;
-            const vol = Number(c.volume), int = Number(c.intensity);
-            return (
-              <g key={c.id} style={{ cursor: isAdmin ? "pointer" : "default" }} onClick={() => isAdmin && onPick(c)}>
-                <title>{`${c.name} · ${fmtShort(c.startDate)}\nVolume ${c.volume ?? "–"}/10 · Intensité ${c.intensity ?? "–"}/10${h ? "\n" + h.label : ""}`}</title>
-                <rect x={x0 - 3} y={0} width={W - 4} height={H} fill={isNow ? "rgba(255,255,255,0.06)" : "transparent"} />
-                {h && <rect x={x0} y={2} width={W - 10} height={5} rx={2} fill={h.color} />}
-                {Number.isFinite(vol) && c.volume != null && (
-                  <rect x={x0} y={y(vol)} width={(W - 10) / 2 - 1} height={Math.max(1, y(0) - y(vol))} rx={2} fill="#5b8def" />
-                )}
-                {Number.isFinite(int) && c.intensity != null && (
-                  <rect x={x0 + (W - 10) / 2 + 1} y={y(int)} width={(W - 10) / 2 - 1} height={Math.max(1, y(0) - y(int))} rx={2} fill="#e0a13d" />
-                )}
-                <text x={x0 + (W - 10) / 2} y={H - 16} fontSize="8" fill={MUTED} textAnchor="middle">{fmtShort(c.startDate).replace(" ", "\u00a0")}</text>
-                {h && h.id === "dure" && <text x={x0 + (W - 10) / 2} y={H - 5} fontSize="9" textAnchor="middle">🔥</text>}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-      {isAdmin && <div style={{ fontSize: 11, color: "#5e584f", marginTop: 2 }}>Clique sur une semaine pour aller à sa fiche et la modifier.</div>}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /* Panneau complet                                                     */
 /* ------------------------------------------------------------------ */
 export default function PlanningPanel({
@@ -381,22 +327,7 @@ export default function PlanningPanel({
     return { lv, ...packRows(inRange) };
   });
 
-  /* ---------------- charge hebdomadaire ---------------- */
-  const weeks = useMemo(() => {
-    const out = [];
-    let w = mondayOf(rangeStart);
-    if (w < rangeStart) w = addDays(w, 7);
-    while (w < rangeEnd) {
-      const end = addDays(w, 6);
-      const ev = scopedEvents.filter((e) => e.date >= w && e.date <= end);
-      const mins = ev.reduce((s, e) => s + sessionMinutes(e), 0);
-      const cs = cyclesOnDay(scopes ? visible : visible.filter((c) => !isIndividual(c)), w);
-      const top = cs[cs.length - 1];
-      out.push({ w, n: ev.length, mins, color: top ? cycleColor(top) : "#4a453c" });
-      w = addDays(w, 7);
-    }
-    return out;
-  }, [scopedEvents, visible, scopes, rangeStart, rangeEnd]);
+  /* ---------------- volume / intensité par semaine ---------------- */
   const loadWeeks = useMemo(() => {
     const best = {};
     shown
@@ -411,7 +342,6 @@ export default function PlanningPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown, rangeStart, rangeEnd]);
   const anyLoadInfo = loadWeeks.some(({ c }) => hasLoadInfo(c));
-  const maxMins = Math.max(60, ...weeks.map((x) => x.mins));
 
   /* ---------------- formulaire ---------------- */
   const blank = () => ({
@@ -674,25 +604,40 @@ export default function PlanningPanel({
               })}
           </div>
 
-          {/* charge par semaine */}
-          <div style={{ position: "relative", height: 52, marginTop: 6 }}>
-            <div style={{ position: "absolute", left: 0, top: 0, fontSize: 9, color: "#5e584f" }}>Charge / semaine (min de séances)</div>
-            {weeks.map((w) => (
-              <div
-                key={w.w}
-                title={`Sem. du ${fmtShort(w.w)} : ${w.n} séance(s) · ${w.mins} min`}
-                style={{
-                  position: "absolute",
-                  left: `${pct(w.w)}%`,
-                  width: `${(7 / totalDays) * 100 - 0.25}%`,
-                  bottom: 0,
-                  height: Math.max(2, (w.mins / maxMins) * 38),
-                  background: w.color,
-                  opacity: w.mins ? 0.95 : 0.25,
-                  borderRadius: "2px 2px 0 0",
-                }}
-              />
-            ))}
+          {/* volume & intensité par semaine (microcycles) — remplace l'ancienne charge en minutes */}
+          <div style={{ position: "relative", height: 78, marginTop: 6 }}>
+            <div style={{ position: "absolute", left: 0, top: 0, fontSize: 9, color: "#5e584f", zIndex: 1 }}>
+              <span style={{ color: "#5b8def" }}>■</span> Volume · <span style={{ color: "#e0a13d" }}>■</span> Intensité (1-10) · trait du haut : légère / moyenne / dure
+            </div>
+            {loadWeeks
+              .filter(({ c }) => hasLoadInfo(c))
+              .map(({ c }) => {
+                const h = hardnessOf(c);
+                const wPct = (diffDays(c.startDate, addDays(c.endDate, 1)) / totalDays) * 100;
+                const left = pct(c.startDate);
+                const bar = (v) => (v == null ? 0 : Math.max(2, (Math.min(10, Number(v)) / 10) * 52));
+                return (
+                  <div
+                    key={c.id}
+                    onClick={() => goToCycle(c)}
+                    title={`${c.name} · ${fmtShort(c.startDate)} → ${fmtShort(c.endDate)}\nVolume ${c.volume ?? "–"}/10 · Intensité ${c.intensity ?? "–"}/10${h ? "\n" + h.label : ""}`}
+                    style={{ position: "absolute", left: `${left}%`, width: `${Math.max(0.8, wPct - 0.25)}%`, top: 14, bottom: 0, cursor: "pointer" }}
+                  >
+                    {h && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, borderRadius: 2, background: h.color }} />}
+                    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: 6, display: "flex", alignItems: "flex-end", gap: 1 }}>
+                      <div style={{ flex: 1, height: bar(c.volume), background: "#5b8def", borderRadius: "2px 2px 0 0", opacity: c.volume == null ? 0 : 1 }} />
+                      <div style={{ flex: 1, height: bar(c.intensity), background: "#e0a13d", borderRadius: "2px 2px 0 0", opacity: c.intensity == null ? 0 : 1 }} />
+                    </div>
+                  </div>
+                );
+              })}
+            {!anyLoadInfo && (
+              <div style={{ position: "absolute", left: 0, right: 0, top: 24, textAlign: "center", fontSize: 11, color: MUTED }}>
+                {isAdmin
+                  ? "Ouvre une semaine (✏️ Modifier) et règle son volume et son intensité pour les voir ici."
+                  : "Volume et intensité des semaines : pas encore renseignés."}
+              </div>
+            )}
           </div>
 
           {/* aujourd'hui */}
@@ -716,20 +661,6 @@ export default function PlanningPanel({
           </span>
         ))}
       </div>
-
-      {(anyLoadInfo || isAdmin) && loadWeeks.length > 0 && (
-        <LoadChart
-          weeks={anyLoadInfo ? loadWeeks : []}
-          isAdmin={isAdmin}
-          todayStr={todayStr}
-          onPick={(c) => goToCycle(c)}
-        />
-      )}
-      {isAdmin && !anyLoadInfo && loadWeeks.length > 0 && (
-        <div style={{ marginTop: 12, fontSize: 12, color: MUTED }}>
-          📈 Pour afficher le graphique intensité / volume, ouvre une semaine (✏️ Modifier) et règle son volume et son intensité.
-        </div>
-      )}
 
       {/* formulaire */}
       {form && (
