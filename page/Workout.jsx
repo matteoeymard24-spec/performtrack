@@ -3274,6 +3274,20 @@ export default function Workout() {
   // cohérent entre ce que montre chaque jour et ce que montre le panneau.
   const filterAthlete = athletes.find((a) => a.id === athleteFilterId) || null;
   const filterGroup = customGroups.find((g) => g.id === groupFilterId) || null;
+  // Style commun des listes de filtre (flèche personnalisée, bordure ambrée quand actif)
+  const selBox = (active) => ({
+    width: "100%",
+    padding: "11px 36px 11px 12px",
+    borderRadius: 10,
+    border: `1px solid ${active ? "#e0a13d" : "rgba(255,255,255,0.14)"}`,
+    background:
+      "#0d0c0a url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' fill='none' stroke='%23a8a199' stroke-width='2'/></svg>\") no-repeat right 12px center",
+    color: "#f3f0ea",
+    fontSize: 14,
+    appearance: "none",
+    WebkitAppearance: "none",
+    cursor: "pointer",
+  });
   const filterSub = filterGroup && subFilterId ? (filterGroup.subGroups || []).find((s) => s.id === subFilterId) || null : null;
   const isEventVisibleToFilter = (evt) => {
     if (viewMode === "moi")
@@ -3588,8 +3602,8 @@ export default function Workout() {
                   setAdminFilterId("");
                 }}
                 style={{
-                  padding: "8px 16px",
-                  borderRadius: 8,
+                  padding: "8px 18px",
+                  borderRadius: 999,
                   border: `1px solid ${viewMode === m.id ? "#e0a13d" : "rgba(255,255,255,0.16)"}`,
                   background: viewMode === m.id ? "rgba(224,161,61,0.2)" : "transparent",
                   color: "#f3f0ea",
@@ -3614,92 +3628,82 @@ export default function Workout() {
           </div>
 
           {viewMode === "" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-              <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>👤 Athlète ou groupe</label>
-              <select
-                value={
-                  athleteFilterId
-                    ? `a:${athleteFilterId}`
-                    : groupFilterId && subFilterId
-                    ? `s:${groupFilterId}:${subFilterId}`
-                    : groupFilterId
-                    ? `g:${groupFilterId}`
-                    : ""
-                }
-                onChange={(e) => {
-                  const v = e.target.value;
-                  setAthleteFilterId("");
-                  setGroupFilterId("");
-                  setSubFilterId("");
-                  if (v.startsWith("a:")) setAthleteFilterId(v.slice(2));
-                  else if (v.startsWith("g:")) setGroupFilterId(v.slice(2));
-                  else if (v.startsWith("s:")) {
-                    const [, gid, sid] = v.split(":");
-                    setGroupFilterId(gid);
-                    setSubFilterId(sid);
-                  }
-                }}
-                style={{
-                flex: "1 1 260px",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid rgba(255,255,255,0.16)",
-                background: "#0d0c0a",
-                color: "#f3f0ea",
-                fontSize: 14,
-              }}
-              >
-                <option value="">Tous les athlètes et groupes</option>
-                {customGroups.length > 0 && (
-                  <optgroup label="Groupes et sous-groupes">
-                    {customGroups.map((g) => [
-                      <option key={g.id} value={`g:${g.id}`}>{g.name}</option>,
-                      ...(g.subGroups || []).map((sg) => (
-                        <option key={g.id + sg.id} value={`s:${g.id}:${sg.id}`}>
-                          {"\u00a0\u00a0↳ "}{g.name} › {sg.name}
-                        </option>
-                      )),
-                    ])}
-                  </optgroup>
-                )}
-                <optgroup label="Athlètes">
-                  {athletes.map((a) => (
-                    <option key={a.id} value={`a:${a.id}`}>{getAthleteDisplayName(a)}</option>
-                  ))}
-                </optgroup>
-              </select>
-              {(athleteFilterId || groupFilterId) && (
-                <button
-                  onClick={() => { setAthleteFilterId(""); setGroupFilterId(""); setSubFilterId(""); }}
-                  style={{
-                  padding: "8px 14px",
-                  background: "rgba(255,255,255,0.1)",
-                  color: "white",
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  whiteSpace: "nowrap",
-                }}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+              {/* Barre 1 : groupes et sous-groupes */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700 }}>🏷️ Groupe / sous-groupe</span>
+                  {groupFilterId && (
+                    <button onClick={() => { setGroupFilterId(""); setSubFilterId(""); }} style={{ background: "none", border: "none", color: "#e0a13d", fontSize: 11, cursor: "pointer", padding: 0 }}>✕ effacer</button>
+                  )}
+                </div>
+                <select
+                  value={groupFilterId && subFilterId ? `s:${groupFilterId}:${subFilterId}` : groupFilterId ? `g:${groupFilterId}` : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setAthleteFilterId("");
+                    setGroupFilterId("");
+                    setSubFilterId("");
+                    if (v.startsWith("g:")) setGroupFilterId(v.slice(2));
+                    else if (v.startsWith("s:")) {
+                      const [, gid, sid] = v.split(":");
+                      setGroupFilterId(gid);
+                      setSubFilterId(sid);
+                    }
+                  }}
+                  style={selBox(!!groupFilterId)}
                 >
-                  ✕
-                </button>
-              )}
+                  <option value="">Tous les groupes</option>
+                  {customGroups.map((g) =>
+                    (g.subGroups || []).length === 0 ? (
+                      <option key={g.id} value={`g:${g.id}`}>{g.name}</option>
+                    ) : (
+                      <optgroup key={g.id} label={g.name}>
+                        <option value={`g:${g.id}`}>Tout le groupe {g.name}</option>
+                        {(g.subGroups || []).map((sg) => (
+                          <option key={sg.id} value={`s:${g.id}:${sg.id}`}>↳ {sg.name}</option>
+                        ))}
+                      </optgroup>
+                    )
+                  )}
+                </select>
+              </div>
+
+              {/* Barre 2 : athlètes */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                  <span style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700 }}>👤 Athlète</span>
+                  {athleteFilterId && (
+                    <button onClick={() => setAthleteFilterId("")} style={{ background: "none", border: "none", color: "#e0a13d", fontSize: 11, cursor: "pointer", padding: 0 }}>✕ effacer</button>
+                  )}
+                </div>
+                <select
+                  value={athleteFilterId}
+                  onChange={(e) => {
+                    setAthleteFilterId(e.target.value);
+                    setGroupFilterId("");
+                    setSubFilterId("");
+                  }}
+                  style={selBox(!!athleteFilterId)}
+                >
+                  <option value="">Tous les athlètes</option>
+                  {athletes.map((a) => (
+                    <option key={a.id} value={a.id}>{getAthleteDisplayName(a)}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
 
           {viewMode === "admins" && isSuperAdmin && (
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-              <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>👥 Admin</label>
-              <select value={adminFilterId} onChange={(e) => setAdminFilterId(e.target.value)} style={{
-                flex: "1 1 260px",
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid rgba(255,255,255,0.16)",
-                background: "#0d0c0a",
-                color: "#f3f0ea",
-                fontSize: 14,
-              }}>
+            <div style={{ maxWidth: 420 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                <span style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700 }}>👥 Admin</span>
+                {adminFilterId && (
+                  <button onClick={() => setAdminFilterId("")} style={{ background: "none", border: "none", color: "#e0a13d", fontSize: 11, cursor: "pointer", padding: 0 }}>✕ effacer</button>
+                )}
+              </div>
+              <select value={adminFilterId} onChange={(e) => setAdminFilterId(e.target.value)} style={selBox(!!adminFilterId)}>
                 <option value="">Tous les admins</option>
                 {adminUsers
                   .filter((a) => a.id !== currentUser?.uid)
@@ -3707,18 +3711,6 @@ export default function Workout() {
                     <option key={a.id} value={a.id}>👤 {getAthleteDisplayName(a)}</option>
                   ))}
               </select>
-              {adminFilterId && (
-                <button onClick={() => setAdminFilterId("")} style={{
-                  padding: "8px 14px",
-                  background: "rgba(255,255,255,0.1)",
-                  color: "white",
-                  border: "1px solid rgba(255,255,255,0.2)",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  whiteSpace: "nowrap",
-                }}>✕</button>
-              )}
             </div>
           )}
 
