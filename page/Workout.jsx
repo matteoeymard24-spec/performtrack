@@ -3285,6 +3285,19 @@ export default function Workout() {
     return true;
   };
 
+  // Confidentialité : la planification perso d'un admin ("user:<uid admin>")
+  // n'est visible que par cet admin (et par le superadmin). Les autres admins
+  // ne la voient plus, ni dans le panneau ni dans le calendrier.
+  const adminIdSet = new Set(adminUsers.map((x) => x.id));
+  const adminScopeVisible = (c) => {
+    if (!isIndividual(c)) return true;
+    const uid = String(c.scope).slice(5);
+    if (!adminIdSet.has(uid)) return true;
+    return uid === currentUser?.uid || isSuperAdmin;
+  };
+  const visibleCycles = cycles.filter(adminScopeVisible);
+  const visibleFixtures = fixtures.filter(adminScopeVisible);
+
   // Cycles visibles : tout pour un admin sans filtre ; sinon "Tous" + groupes concernés
   const cycleScopes = (() => {
     const groupsOf = (uid) =>
@@ -3298,10 +3311,10 @@ export default function Workout() {
   })();
   // Calendrier / bandeau : en vue d'ensemble (admin sans filtre) on n'affiche pas
   // les cycles individuels, qui ne concernent qu'un athlète.
-  const calendarCycles = cycles.filter((c) =>
+  const calendarCycles = visibleCycles.filter((c) =>
     cycleScopes ? cycleInScope(c, cycleScopes) : !isIndividual(c)
   );
-  const calendarFixtures = fixtures.filter((f) =>
+  const calendarFixtures = visibleFixtures.filter((f) =>
     cycleScopes ? cycleInScope(f, cycleScopes) : !isIndividual(f)
   );
 
@@ -3716,8 +3729,8 @@ export default function Workout() {
           />
           {showPlanning && (
             <PlanningPanel
-              cycles={cycles}
-              fixtures={fixtures}
+              cycles={visibleCycles}
+              fixtures={visibleFixtures}
               events={events.filter(isEventVisibleToFilter)}
               customGroups={customGroups}
               athletes={[...athletes, ...adminUsers.filter((a) => !athletes.some((x) => x.id === a.id))]}

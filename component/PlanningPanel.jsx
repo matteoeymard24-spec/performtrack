@@ -160,6 +160,16 @@ export default function PlanningPanel({
   const [form, setForm] = useState(null); // null = fermé ; {id?, ...}
   const [busy, setBusy] = useState(false);
   const [dup, setDup] = useState(null); // {src, start, name, parentId}
+  // Vue "graphique seul" : masque la liste des cycles/semaines (et les boutons de
+  // modification) pour ne garder que la frise. Mémorisé par utilisateur.
+  const graphKey = `pt_plan_graph_only_${currentUser?.uid || "x"}`;
+  const [graphOnly, setGraphOnlyState] = useState(() => {
+    try { return localStorage.getItem(graphKey) === "1"; } catch (e) { return false; }
+  });
+  const setGraphOnly = (v) => {
+    setGraphOnlyState(v);
+    try { localStorage.setItem(graphKey, v ? "1" : "0"); } catch (e) { /* ignore */ }
+  };
   const [fForm, setFForm] = useState(null); // formulaire match / compétition
   const setFF = (patch) => setFForm((f) => ({ ...f, ...patch }));
 
@@ -205,12 +215,13 @@ export default function PlanningPanel({
   // dans la liste, ouverte et surlignée, avec ses boutons « Modifier » etc.
   const goToCycle = (c) => {
     if (isAdmin && isHiddenCycle(c)) setShowHidden(true);
+    if (graphOnly) setGraphOnly(false);
     setOpenId(c.id);
     setFlashId(c.id);
     setTimeout(() => {
       const el = cardRefs.current[c.id];
       if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 80);
+    }, graphOnly ? 250 : 80);
     setTimeout(() => setFlashId((f) => (f === c.id ? null : f)), 2200);
   };
   const revealHidden = isAdmin && showHidden;
@@ -296,6 +307,10 @@ export default function PlanningPanel({
     }
   };
 
+  const personName = (a) => (a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète");
+  const isAdminUser = (a) => a.role === "admin" || a.superAdmin === true;
+  const athletesOnly = (athletes || []).filter((a) => !isAdminUser(a));
+  const adminsOnly = (athletes || []).filter(isAdminUser);
   const athleteLabel = (uid) => {
     const a = (athletes || []).find((x) => x.id === uid);
     if (a) return a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète";
@@ -573,6 +588,13 @@ export default function PlanningPanel({
               Masquer les mois vides
             </button>
           )}
+          <button
+            onClick={() => setGraphOnly(!graphOnly)}
+            style={{ ...btn(graphOnly ? AMBER : "#2a2620", graphOnly ? "#1a1814" : "#fff"), fontWeight: 600, fontSize: 12 }}
+            title="Afficher seulement le graphique, ou le détail des cycles et semaines"
+          >
+            {graphOnly ? "📋 Voir le détail" : "📊 Graphique seul"}
+          </button>
           {isAdmin && (
             <>
               <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
@@ -860,12 +882,17 @@ export default function PlanningPanel({
                     ))}
                   </optgroup>
                 )}
-                {(athletes || []).length > 0 && (
+                {athletesOnly.length > 0 && (
                   <optgroup label="Athlète seul (individuel, prime sur le groupe)">
-                    {(athletes || []).map((a) => (
-                      <option key={a.id} value={userScope(a.id)}>
-                        {a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète"}
-                      </option>
+                    {athletesOnly.map((a) => (
+                      <option key={a.id} value={userScope(a.id)}>{personName(a)}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {adminsOnly.length > 0 && (
+                  <optgroup label="Admins (planification perso)">
+                    {adminsOnly.map((a) => (
+                      <option key={a.id} value={userScope(a.id)}>👤 {personName(a)}{currentUser && a.id === currentUser.uid ? " (moi)" : ""}</option>
                     ))}
                   </optgroup>
                 )}
@@ -935,6 +962,8 @@ export default function PlanningPanel({
         </Modal>
       )}
 
+      {!graphOnly && (
+      <>
       <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap" }}>
         <button onClick={() => setAllSess(true)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
           🏋️ Afficher toutes les séances
@@ -1066,6 +1095,9 @@ export default function PlanningPanel({
         })}
       </div>
 
+      </>
+      )}
+
       {/* matchs et jours de compétition */}
       {fForm && (
         <Modal>
@@ -1107,12 +1139,17 @@ export default function PlanningPanel({
                     ))}
                   </optgroup>
                 )}
-                {(athletes || []).length > 0 && (
+                {athletesOnly.length > 0 && (
                   <optgroup label="Athlète seul">
-                    {(athletes || []).map((a) => (
-                      <option key={a.id} value={userScope(a.id)}>
-                        {a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète"}
-                      </option>
+                    {athletesOnly.map((a) => (
+                      <option key={a.id} value={userScope(a.id)}>{personName(a)}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {adminsOnly.length > 0 && (
+                  <optgroup label="Admins (planification perso)">
+                    {adminsOnly.map((a) => (
+                      <option key={a.id} value={userScope(a.id)}>👤 {personName(a)}{currentUser && a.id === currentUser.uid ? " (moi)" : ""}</option>
                     ))}
                   </optgroup>
                 )}
