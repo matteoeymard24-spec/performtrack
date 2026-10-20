@@ -236,7 +236,10 @@ function ResultPreview({ res }) {
 }
 
 export default function Tests() {
-  const { currentUser } = useAuth();
+  const { currentUser, userRole, isSuperAdmin } = useAuth();
+  // Coach (admin / superadmin) = saisie + gestion ; athlète = consultation de ses propres tests uniquement.
+  const isCoach = userRole === "admin" || isSuperAdmin === true;
+  const [showParams, setShowParams] = useState(true);
   const [athletes, setAthletes] = useState([]);
   const [groups, setGroups] = useState([]);
   const [uid, setUid] = useState("");
@@ -273,11 +276,29 @@ export default function Tests() {
   const [newSubName, setNewSubName] = useState("");
 
   const test = getTest(testId);
+  const effTab = !isCoach && tab === "saisie" ? "resultats" : tab;
 
   /* ---- chargements ---- */
   useEffect(() => {
+    if (!currentUser) return;
     (async () => {
       try {
+        if (!isCoach) {
+          // Athlète : il ne peut lire que son propre profil (règles Firestore).
+          const [me, gs, ms] = await Promise.all([
+            getDoc(doc(db, "users", currentUser.uid)),
+            getDocs(collection(db, "groups")),
+            getDocs(collection(db, "exerciseMedia")),
+          ]);
+          setAthletes(me.exists() ? [{ id: me.id, ...me.data() }] : [{ id: currentUser.uid }]);
+          setGroups(gs.docs.map((d) => ({ id: d.id, ...d.data() })));
+          const mm0 = {};
+          ms.docs.forEach((d) => {
+            if (d.id.startsWith("test_")) mm0[d.id.slice(5)] = d.data();
+          });
+          setMedia(mm0);
+          return;
+        }
         const [us, gs, ms] = await Promise.all([
           getDocs(collection(db, "users")),
           getDocs(collection(db, "groups")),
@@ -297,7 +318,12 @@ export default function Tests() {
         console.error("Tests: chargement", e);
       }
     })();
-  }, []);
+  }, [isCoach, currentUser?.uid]);
+
+  // Athlète : la page est toujours sur ses propres tests.
+  useEffect(() => {
+    if (!isCoach && currentUser?.uid) setUid(currentUser.uid);
+  }, [isCoach, currentUser?.uid]);
 
   const loadTests = async (id) => {
     if (!id) return;
@@ -759,11 +785,37 @@ export default function Tests() {
     <div style={{ maxWidth: 900, margin: "0 auto", color: TEXT }}>
       <h2 style={{ margin: "0 0 4px 0" }}>🧪 Tests</h2>
       <div style={{ color: MUTED, fontSize: 13, marginBottom: 14 }}>
-        Saisis les tests d'endurance, de mobilité, de force isométrique et de saut. Les séances énergétiques s'appuient sur le test de référence choisi pour chaque athlète.
+        {isCoach
+          ? "Saisis les tests d'endurance, de mobilité, de force isométrique et de saut. Les séances énergétiques s'appuient sur le test de référence choisi pour chaque athlète."
+          : "Consulte tes résultats, tes normes et ton bilan. La saisie des tests est faite par ton coach."}
       </div>
 
-      {/* Choix de l'athlète */}
+      {/* Choix de l'athlète + paramètres (repliables, l'onglet reste visible) */}
       <div style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 13, color: MUTED }}>
+            {selectedAthlete ? (
+              <>
+                {isCoach ? "Athlète : " : "Mes paramètres : "}
+                <b style={{ color: TEXT }}>{athleteName(selectedAthlete)}</b>
+                {sport ? ` · ${(SPORTS.find((x) => x.id === sport) || {}).label || sport}` : ""}
+                {poste ? ` · ${posteLabel(sport, poste)}` : ""}
+                {level ? ` · ${levelLabel(level)}` : ""}
+              </>
+            ) : (
+              isCoach ? "Choisis un athlète" : "Mes paramètres"
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowParams((v) => !v)}
+            style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: MUTED, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            {showParams ? "▾ Masquer" : "▸ Afficher"}
+          </button>
+        </div>
+        {showParams && isCoach && (
+          <div style={{ marginTop: 10 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           {[
             { id: "athletes", label: "🏉 Athlètes" },
@@ -863,20 +915,39 @@ export default function Tests() {
             </select>
           </div>
         )}
+          </div>
+        )}
+        {showParams && !isCoach && (
+          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[
+              ["Sport", sport ? (SPORTS.find((x) => x.id === sport) || {}).label || sport : "non défini"],
+              ["Poste", poste ? posteLabel(sport, poste) : "non défini"],
+              ["Niveau visé", level ? levelLabel(level) : "non défini"],
+            ].map(([l, v]) => (
+              <div key={l} style={{ background: "#151310", padding: "8px 12px", borderRadius: 8 }}>
+                <div style={{ fontSize: 11, color: MUTED }}>{l}</div>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{v}</div>
+              </div>
+            ))}
+            <div style={{ fontSize: 12, color: MUTED, alignSelf: "center" }}>
+              Ces paramètres sont définis par ton coach.
+            </div>
+          </div>
+        )}
       </div>
 
       {!uid ? (
-        <div style={{ color: MUTED, textAlign: "center", padding: 30 }}>Choisis un athlète pour saisir ou consulter ses tests.</div>
+        <div style={{ color: MUTED, textAlign: "center", padding: 30 }}>{isCoach ? "Choisis un athlète pour saisir ou consulter ses tests." : "Chargement…"}</div>
       ) : (
         <>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
             {[
-              ["saisie", "➕ Saisir un test"],
+              ...(isCoach ? [["saisie", "➕ Saisir un test"]] : []),
               ["resultats", `📋 Résultats (${tests.length})`],
               ["normes", "📐 Normes"],
-              ["bilan", "🧭 Bilan mobilité / groupes"],
+              ["bilan", isCoach ? "🧭 Bilan mobilité / groupes" : "🧭 Bilan"],
             ].map(([k, l]) => (
-              <button key={k} onClick={() => setTab(k)} style={pill(tab === k)}>
+              <button key={k} onClick={() => setTab(k)} style={pill(effTab === k)}>
                 {l}
               </button>
             ))}
@@ -885,7 +956,7 @@ export default function Tests() {
           {msg && <div style={{ ...cardStyle, padding: 10, color: TEXT, fontSize: 13 }}>{msg}</div>}
 
           {/* ------------ SAISIE ------------ */}
-          {tab === "saisie" && (
+          {effTab === "saisie" && (
             <>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
                 {TEST_GROUPS.map((g) => (
@@ -1006,7 +1077,7 @@ export default function Tests() {
           )}
 
           {/* ------------ RÉSULTATS ------------ */}
-          {tab === "resultats" && (
+          {effTab === "resultats" && (
             <>
               <div style={cardStyle}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>⭐ Références pour les séances énergétiques</div>
@@ -1023,12 +1094,14 @@ export default function Tests() {
                     {ref[k] && <span style={{ color: MUTED }}> · {ref[k].testName} ({ref[k].date})</span>}
                   </div>
                 ))}
-                <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
-                  Clique sur « Définir comme référence » sous un résultat pour que les séances utilisent ce test.
-                </div>
+                {isCoach && (
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
+                    Clique sur « Définir comme référence » sous un résultat pour que les séances utilisent ce test.
+                  </div>
+                )}
               </div>
 
-              {tests.length === 0 && <div style={{ color: MUTED, textAlign: "center", padding: 20 }}>Aucun test enregistré pour cet athlète.</div>}
+              {tests.length === 0 && <div style={{ color: MUTED, textAlign: "center", padding: 20 }}>{isCoach ? "Aucun test enregistré pour cet athlète." : "Aucun test enregistré pour le moment."}</div>}
               {tests.map((t) => {
                 const def = getTest(t.testId);
                 return (
@@ -1096,6 +1169,7 @@ export default function Tests() {
                       );
                     })()}
                     {normsOn && <NormList rows={evaluateTestNorms(t.testId, t.values, sport, poste, level)} compact />}
+                    {isCoach && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                       {[["vma", "VMA"], ["vmi", "VMI"], ["cs", "Vitesse critique"]].map(
                         ([k, l]) =>
@@ -1109,6 +1183,7 @@ export default function Tests() {
                         🗑 Supprimer
                       </button>
                     </div>
+                    )}
                   </div>
                 );
               })}
@@ -1116,7 +1191,7 @@ export default function Tests() {
           )}
 
           {/* ------------ NORMES ------------ */}
-          {tab === "normes" && (
+          {effTab === "normes" && (
             <>
               {!normsOn ? (
                 <div style={cardStyle}>
@@ -1181,7 +1256,7 @@ export default function Tests() {
           )}
 
           {/* ------------ BILAN ------------ */}
-          {tab === "bilan" && (
+          {effTab === "bilan" && (
             <>
               <div style={cardStyle}>
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>🏅 Notes /20 par domaine</div>
@@ -1220,7 +1295,7 @@ export default function Tests() {
                             {(r.sub || []).map((x, j) => (
                               <span key={j} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, color: "#706a61", marginTop: 3 }}>
                                 <span>
-                                  ↳ {x.label} · {x.kg} kg{x.estNote ? " (barème estimé)" : ""}
+                                  ↳ {x.label} · {x.kg} kg{x.matched ? ` — fiche RM « ${x.matched} »` : ""}{x.estNote ? " (barème estimé)" : ""}
                                 </span>
                                 <span style={{ color: noteColor(x.note), fontWeight: 700 }}>{x.note}/20</span>
                               </span>
@@ -1261,6 +1336,7 @@ export default function Tests() {
               <div style={{ ...cardStyle, border: "1px solid rgba(217,105,90,0.4)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
                   <div style={{ fontWeight: 700, color: "#d9695a" }}>🚑 Historique de blessures ({injuries.length})</div>
+                  {isCoach && (
                   <button
                     disabled={!uid}
                     onClick={() => {
@@ -1275,12 +1351,15 @@ export default function Tests() {
                   >
                     {showInjuryForm ? "Annuler" : "+ Ajouter une blessure"}
                   </button>
+                  )}
                 </div>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
-                  Même journal que dans le Dashboard : à croiser avec les zones à travailler pour choisir le groupe d'individualisation.
+                  {isCoach
+                    ? "Même journal que dans le Dashboard : à croiser avec les zones à travailler pour choisir le groupe d'individualisation."
+                    : "Historique renseigné par ton coach (consultation uniquement)."}
                 </div>
 
-                {showInjuryForm && (
+                {isCoach && showInjuryForm && (
                   <div style={{ marginBottom: 14, padding: 12, background: "#151310", borderRadius: 10 }}>
                     <label style={{ fontSize: 12, color: MUTED }}>Date</label>
                     <input type="date" value={injuryDate} onChange={(e) => setInjuryDate(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
@@ -1329,17 +1408,35 @@ export default function Tests() {
                         </span>
                         {inj.notes && <div style={{ color: "#706a61", fontSize: 12, marginTop: 2 }}>{inj.notes}</div>}
                       </div>
+                      {isCoach && (
                       <div style={{ display: "flex", gap: 6 }}>
                         <button onClick={() => startEditInjury(inj)} style={{ ...pill(false), color: ACCENT, padding: "6px 10px", fontSize: 12 }}>Modifier</button>
                         <button onClick={() => removeInjury(inj.id)} style={{ ...pill(false), color: "#d9534f", padding: "6px 10px", fontSize: 12 }}>Supprimer</button>
                       </div>
+                      )}
                     </div>
                   ))
                 ) : (
-                  <div style={{ fontSize: 13, color: MUTED }}>Aucune blessure enregistrée pour cet athlète.</div>
+                  <div style={{ fontSize: 13, color: MUTED }}>{isCoach ? "Aucune blessure enregistrée pour cet athlète." : "Aucune blessure enregistrée."}</div>
                 )}
               </div>
 
+              {!isCoach && (
+                <div style={cardStyle}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>👥 Mon groupe d'individualisation</div>
+                  <div style={{ fontSize: 13, color: MUTED }}>
+                    {inGroups.length
+                      ? inGroups
+                          .map((g) => {
+                            const sg = (g.subGroups || []).find((x) => (x.athleteIds || []).includes(uid));
+                            return sg ? `${g.name} › ${sg.name}` : g.name;
+                          })
+                          .join(", ")
+                      : "Pas encore placé dans un groupe par ton coach."}
+                  </div>
+                </div>
+              )}
+              {isCoach && (<>
               <div style={cardStyle}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>👥 Placer dans un groupe d'individualisation</div>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
@@ -1427,6 +1524,7 @@ export default function Tests() {
                   </button>
                 </div>
               </div>
+              </>)}
             </>
           )}
         </>
