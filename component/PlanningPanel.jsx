@@ -172,6 +172,12 @@ export default function PlanningPanel({
      Un microcycle (semaine) s'affiche TOUJOURS sous son mésocycle, même si sa
      date est antérieure. Masquer un cycle masque aussi tout ce qu'il contient. */
   const [showHidden, setShowHidden] = useState(false);
+  // Séances affichées dans chaque cycle : par défaut visibles dans les semaines
+  // (microcycles), repliées dans les mésocycles/macrocycles (bouton pour tout voir).
+  const [sessShow, setSessShow] = useState({});
+  const showSess = (c) => sessShow[c.id] ?? c.level === "micro";
+  const toggleSess = (c) => setSessShow((m) => ({ ...m, [c.id]: !showSess(c) }));
+  const setAllSess = (on) => setSessShow(Object.fromEntries((cycles || []).map((c) => [c.id, on])));
   const byId = useMemo(() => Object.fromEntries(visible.map((c) => [c.id, c])), [visible]);
   const parentOfCycle = (c) => {
     if (c.parentId && byId[c.parentId]) return byId[c.parentId];
@@ -735,6 +741,17 @@ export default function PlanningPanel({
         </Modal>
       )}
 
+      <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap" }}>
+        <button onClick={() => setAllSess(true)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
+          🏋️ Afficher toutes les séances
+        </button>
+        <button onClick={() => setAllSess(false)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
+          Masquer toutes les séances
+        </button>
+        <button onClick={() => setSessShow({})} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
+          Par défaut (semaines seulement)
+        </button>
+      </div>
       {isAdmin && hiddenCount > 0 && (
         <div style={{ marginTop: 14 }}>
           <button onClick={() => setShowHidden((v) => !v)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
@@ -780,9 +797,16 @@ export default function PlanningPanel({
                 </div>
               </div>
               {c.objective && <div style={{ color: TEXT, fontSize: 12, marginTop: 6 }}>🎯 {c.objective}</div>}
-              {open && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  onClick={() => toggleSess(c)}
+                  style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12, padding: "4px 10px" }}
+                >
+                  🏋️ Séances ({ss.length}) {showSess(c) ? "▾" : "▸"}
+                </button>
+              </div>
+              {showSess(c) && (
                 <div style={{ marginTop: 8 }}>
-                  {c.notes && <div style={{ color: MUTED, fontSize: 12, whiteSpace: "pre-wrap", marginBottom: 8 }}>{c.notes}</div>}
                   {ss.length === 0 ? (
                     <div style={{ color: MUTED, fontSize: 12 }}>Aucune séance sur cette période.</div>
                   ) : (
@@ -801,6 +825,11 @@ export default function PlanningPanel({
                       ))}
                     </div>
                   )}
+                </div>
+              )}
+              {open && (
+                <div style={{ marginTop: 8 }}>
+                  {c.notes && <div style={{ color: MUTED, fontSize: 12, whiteSpace: "pre-wrap", marginBottom: 8 }}>{c.notes}</div>}
                   {isAdmin && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                       <button onClick={() => { setFForm(null); setForm({ ...c, model: c.model || "bloc", _dur: Math.max(0, diffDays(c.startDate, c.endDate)) }); }} style={btn("#2a2620")}>✏️ Modifier</button>
