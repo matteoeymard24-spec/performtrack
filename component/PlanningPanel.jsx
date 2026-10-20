@@ -168,6 +168,49 @@ export default function PlanningPanel({
     [fixtures, scopes]
   );
 
+  /* ---------------- hiérarchie, ordre d'affichage et masquage ----------------
+     Un microcycle (semaine) s'affiche TOUJOURS sous son mésocycle, même si sa
+     date est antérieure. Masquer un cycle masque aussi tout ce qu'il contient. */
+  const [showHidden, setShowHidden] = useState(false);
+  const byId = useMemo(() => Object.fromEntries(visible.map((c) => [c.id, c])), [visible]);
+  const parentOfCycle = (c) => {
+    if (c.parentId && byId[c.parentId]) return byId[c.parentId];
+    if (c.level !== "micro") return null;
+    const cands = visible.filter(
+      (p) =>
+        p.level !== "micro" &&
+        p.id !== c.id &&
+        (p.scope || "total") === (c.scope || "total") &&
+        p.startDate <= c.startDate &&
+        p.endDate >= c.startDate
+    );
+    return cands.find((p) => p.level === "meso") || cands[0] || null;
+  };
+  const isHiddenCycle = (c, depth = 0) =>
+    !!c.hidden || (depth < 4 && (() => { const p = parentOfCycle(c); return p ? isHiddenCycle(p, depth + 1) : false; })());
+  const hiddenCount = visible.filter((c) => isHiddenCycle(c)).length;
+  const revealHidden = isAdmin && showHidden;
+  const shown = visible.filter((c) => revealHidden || !isHiddenCycle(c));
+  const ordered = useMemo(() => {
+    const ids = new Set(shown.map((c) => c.id));
+    const kids = {};
+    const tops = [];
+    shown.forEach((c) => {
+      const p = parentOfCycle(c);
+      if (p && ids.has(p.id)) (kids[p.id] = kids[p.id] || []).push(c);
+      else tops.push(c);
+    });
+    const byStart = (a, b) => a.startDate.localeCompare(b.startDate);
+    const out = [];
+    const walk = (c, depth) => {
+      out.push({ c, depth });
+      (kids[c.id] || []).sort(byStart).forEach((k) => walk(k, depth + 1));
+    };
+    tops.sort(byStart).forEach((c) => walk(c, 0));
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, showHidden, isAdmin]);
+
   /* ---------------- période affichée : année civile (janv. → déc.) ----------------
      Les mois vides AVANT le début de la planification sont masqués, pour que
      l'athlète voie réellement où elle commence. */
@@ -177,11 +220,11 @@ export default function PlanningPanel({
   const yearEnd = `${year + 1}-01-01`;
   const firstPlanned = useMemo(() => {
     const starts = [
-      ...visible.filter((c) => c.endDate >= yearStart && c.startDate < yearEnd).map((c) => c.startDate),
+      ...shown.filter((c) => c.endDate >= yearStart && c.startDate < yearEnd).map((c) => c.startDate),
       ...visibleFixtures.filter((f) => fixtureEnd(f) >= yearStart && f.date < yearEnd).map((f) => f.date),
     ].map((d) => (d < yearStart ? yearStart : d));
     return starts.length ? starts.sort()[0] : null;
-  }, [visible, visibleFixtures, yearStart, yearEnd]);
+  }, [visible, showHidden, visibleFixtures, yearStart, yearEnd]); // eslint-disable-line react-hooks/exhaustive-deps
   const rangeStart = !showWholeYear && firstPlanned ? `${firstPlanned.slice(0, 7)}-01` : yearStart;
   const rangeEnd = yearEnd;
   const SPAN_MONTHS = 12 - (Number(rangeStart.slice(5, 7)) - 1);
@@ -255,7 +298,7 @@ export default function PlanningPanel({
   }, [rangeStart]);
 
   const lanes = CYCLE_LEVELS.map((lv) => {
-    const inRange = visible.filter(
+    const inRange = shown.filter(
       (c) => c.level === lv.id && c.endDate >= rangeStart && c.startDate <= rangeEnd
     );
     return { lv, ...packRows(inRange) };
@@ -333,6 +376,7 @@ export default function PlanningPanel({
         scope: f.scope || "total",
         objective: (f.objective || "").trim(),
         notes: (f.notes || "").trim(),
+        hidden: !!f.hidden,
       };
       if (f.id) await updateDoc(doc(db, "cycles", f.id), payload);
       else await addDoc(collection(db, "cycles"), { ...payload, createdBy: currentUser?.uid || null, createdAt: serverTimestamp() });
@@ -340,6 +384,18 @@ export default function PlanningPanel({
       await onReload();
     } catch (e) {
       alert("Erreur : " + e.message + "\n(Les règles Firestore autorisent-elles la collection « cycles » ? Voir le fichier de règles.)");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleHidden = async (c) => {
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, "cycles", c.id), { hidden: !c.hidden });
+      await onReload();
+    } catch (e) {
+      alert("Erreur : " + e.message);
     } finally {
       setBusy(false);
     }
@@ -653,6 +709,10 @@ export default function PlanningPanel({
             <label style={{ fontSize: 11, color: MUTED }}>Objectif du cycle</label>
             <input style={inputStyle} value={form.objective} onChange={(e) => setF({ objective: e.target.value })} placeholder="Ex : +5 % sur le squat, base aérobie…" />
           </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, color: TEXT, cursor: "pointer" }}>
+            <input type="checkbox" checked={!!form.hidden} onChange={(e) => setF({ hidden: e.target.checked })} />
+            🙈 Masquer ce cycle (terminé) — masque aussi tous les cycles qu'il contient
+          </label>
           <div style={{ marginTop: 10 }}>
             <label style={{ fontSize: 11, color: MUTED }}>Notes</label>
             <textarea style={{ ...inputStyle, minHeight: 60 }} value={form.notes} onChange={(e) => setF({ notes: e.target.value })} />
@@ -665,14 +725,22 @@ export default function PlanningPanel({
         </Modal>
       )}
 
+      {isAdmin && hiddenCount > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <button onClick={() => setShowHidden((v) => !v)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
+            {showHidden ? "Cacher les cycles masqués" : `👁 Afficher les cycles masqués (${hiddenCount})`}
+          </button>
+        </div>
+      )}
+
       {/* liste des cycles */}
       <div style={{ marginTop: 16, display: "grid", gap: 8 }}>
-        {visible.length === 0 && (
+        {ordered.length === 0 && (
           <div style={{ color: MUTED, fontSize: 13 }}>
             Aucun cycle pour l'instant.{isAdmin ? " Clique sur « Nouveau cycle » pour poser ta planification (ex. un macrocycle de saison, puis des mésocycles, puis les semaines)." : ""}
           </div>
         )}
-        {visible.map((c) => {
+        {ordered.map(({ c, depth }) => {
           const ss = sessionsOfCycle(c, scopedEvents, groupsOfUser).sort((a, b) => a.date.localeCompare(b.date));
           const mins = ss.reduce((s, e) => s + sessionMinutes(e), 0);
           const isNow = c.startDate <= todayStr && todayStr <= c.endDate;
@@ -680,7 +748,7 @@ export default function PlanningPanel({
           const parent = c.parentId ? (cycles || []).find((x) => x.id === c.parentId) : null;
           const open = openId === c.id;
           return (
-            <div key={c.id} style={{ background: DARK, borderRadius: 8, borderLeft: `5px solid ${cycleColor(c)}`, padding: 12 }}>
+            <div key={c.id} style={{ background: DARK, borderRadius: 8, borderLeft: `5px solid ${cycleColor(c)}`, padding: 12, marginLeft: depth * 18, opacity: isHiddenCycle(c) ? 0.55 : 1 }}>
               <div onClick={() => setOpenId(open ? null : c.id)} style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                 <div>
                   <span style={{ color: TEXT, fontWeight: 700 }}>{c.name}</span>{" "}
@@ -690,6 +758,7 @@ export default function PlanningPanel({
                   {(c.model === "bloc" || c.model === "ondulation") && (
                     <span style={{ marginLeft: 6, color: MUTED, fontSize: 11 }}>({c.model === "bloc" ? "par blocs" : "ondulatoire"})</span>
                   )}
+                  {isHiddenCycle(c) && <span style={{ marginLeft: 6, color: MUTED, fontSize: 11 }}>🙈 masqué</span>}
                   {isNow && <span style={{ marginLeft: 6, color: GREEN, fontSize: 11, fontWeight: 700 }}>● en cours · S{w.idx}/{w.total}</span>}
                   <div style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
                     {fmtShort(c.startDate)} → {fmtShort(c.endDate)} · {groupName(c.scope)}
@@ -730,6 +799,9 @@ export default function PlanningPanel({
                           ➕ Générer les semaines
                         </button>
                       )}
+                      <button disabled={busy} onClick={() => toggleHidden(c)} style={btn("#2a2620")}>
+                        {c.hidden ? "👁 Réafficher" : "🙈 Masquer (terminé)"}
+                      </button>
                       <button disabled={busy} onClick={() => remove(c)} style={btn("rgba(217,105,90,0.18)", "#d9695a")}>🗑️ Supprimer</button>
                     </div>
                   )}
