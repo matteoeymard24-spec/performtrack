@@ -8,8 +8,10 @@ import {
   getDoc,
   doc,
   setDoc,
+  addDoc,
   deleteDoc,
 } from "firebase/firestore";
+import { getTest, computeResult, toStoredResult } from "../component/testsCalc";
 import {
   LineChart,
   Line,
@@ -66,6 +68,15 @@ export default function MyRM() {
   const [loading, setLoading] = useState(true);
   const [rmSearchQuery, setRmSearchQuery] = useState("");
   const [rmCategoryFilter, setRmCategoryFilter] = useState("all");
+  // Temps de sprint saisis ici (enregistrés comme un test « sprint » : visibles dans Tests, Dashboard et normes)
+  const todayIso = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  const [sprintVals, setSprintVals] = useState({ t10: "", t20: "", t60: "" });
+  const [sprintDate, setSprintDate] = useState(todayIso());
+  const [sprintHist, setSprintHist] = useState([]);
+  const [savingSprint, setSavingSprint] = useState(false);
 
   // Pour amener le graphique juste sous l'exercice cliqué (plutôt que de
   // laisser l'utilisateur scroller jusqu'en bas de la page pour le voir).
@@ -321,6 +332,68 @@ export default function MyRM() {
     } catch (e) {
       console.error("Erreur suppression VMA:", e);
       alert("Erreur: " + e.message);
+    }
+  };
+
+  /* ===================== SPRINT (10 / 20 / 60 m) ===================== */
+  const loadSprints = async () => {
+    if (!currentUser) return;
+    try {
+      const snap = await getDocs(collection(db, "users", currentUser.uid, "tests"));
+      const all = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((t) => t.testId === "sprint")
+        .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || ""));
+      setSprintHist(all);
+    } catch (e) {
+      console.error("Erreur chargement sprints:", e);
+    }
+  };
+  useEffect(() => {
+    loadSprints();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser]);
+
+  const saveSprint = async () => {
+    if (!currentUser) return;
+    const clean = {};
+    ["t10", "t20", "t60"].forEach((k) => {
+      const v = String(sprintVals[k] ?? "").trim().replace(",", ".");
+      if (v !== "" && Number(v) > 0) clean[k] = v;
+    });
+    if (Object.keys(clean).length === 0) return alert("Saisis au moins un temps (10 m, 20 m ou 60 m), en secondes.");
+    setSavingSprint(true);
+    try {
+      const test = getTest("sprint");
+      const result = computeResult(test, clean);
+      await addDoc(collection(db, "users", currentUser.uid, "tests"), {
+        testId: "sprint",
+        group: test.group,
+        date: sprintDate || todayIso(),
+        values: clean,
+        result: toStoredResult(result),
+        notes: "",
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser.uid,
+      });
+      setSprintVals({ t10: "", t20: "", t60: "" });
+      await loadSprints();
+      alert("✅ Temps de sprint enregistrés !");
+    } catch (e) {
+      console.error("Erreur save sprint:", e);
+      alert("❌ Erreur : " + e.message);
+    } finally {
+      setSavingSprint(false);
+    }
+  };
+
+  const deleteSprint = async (id) => {
+    if (!window.confirm("Supprimer cette saisie de sprint ?")) return;
+    try {
+      await deleteDoc(doc(db, "users", currentUser.uid, "tests", id));
+      await loadSprints();
+    } catch (e) {
+      alert("❌ Erreur : " + e.message);
     }
   };
 
@@ -586,6 +659,70 @@ export default function MyRM() {
           par ton coach lors des tests. Retrouve tous tes résultats dans ton
           <strong> Dashboard</strong> (bloc « Mes tests »).
         </div>
+      </div>
+
+      {/* ==================== SPRINT : 10 / 20 / 60 m ==================== */}
+      <div
+        style={{
+          background: "#1a1815",
+          padding: 20,
+          borderRadius: 12,
+          border: "1px solid #2a2620",
+          marginBottom: 30,
+        }}
+      >
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>⚡ Mes temps de sprint</div>
+        <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 12 }}>
+          Temps en secondes, au centième (ex : 1.72). Ils sont comparés aux normes de ton poste et de ton niveau dans l'onglet Tests.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10 }}>
+          {[["t10", "10 m", "ex : 1.72"], ["t20", "20 m", "ex : 3.05"], ["t60", "60 m", "ex : 7.90"]].map(([k, l, ph]) => (
+            <div key={k}>
+              <label style={{ fontSize: 11, color: "#a8a199" }}>{l} (s)</label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={sprintVals[k]}
+                placeholder={ph}
+                onChange={(e) => setSprintVals((v) => ({ ...v, [k]: e.target.value }))}
+                style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid rgba(255,255,255,0.16)", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
+              />
+            </div>
+          ))}
+          <div>
+            <label style={{ fontSize: 11, color: "#a8a199" }}>Date</label>
+            <input
+              type="date"
+              value={sprintDate}
+              onChange={(e) => setSprintDate(e.target.value)}
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid rgba(255,255,255,0.16)", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
+            />
+          </div>
+        </div>
+        <button
+          onClick={saveSprint}
+          disabled={savingSprint}
+          style={{ marginTop: 12, padding: "10px 18px", background: "#4fae7d", color: "white", border: "none", borderRadius: 8, fontWeight: "bold", cursor: "pointer" }}
+        >
+          {savingSprint ? "…" : "💾 Enregistrer mes temps"}
+        </button>
+        {sprintHist.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>Historique</div>
+            {sprintHist.slice(0, 8).map((t) => (
+              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #1d1a16", fontSize: 13 }}>
+                <span>
+                  <span style={{ color: "#a8a199" }}>{t.date}</span> ·{" "}
+                  {["t10", "t20", "t60"]
+                    .filter((k) => t.values?.[k])
+                    .map((k) => `${k.slice(1)} m : ${t.values[k]} s`)
+                    .join(" · ") || "—"}
+                </span>
+                <button onClick={() => deleteSprint(t.id)} style={{ background: "none", border: "none", color: "#d9695a", cursor: "pointer", fontSize: 12 }}>🗑️</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ==================== BOUTON AJOUTER RM ==================== */}

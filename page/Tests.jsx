@@ -19,6 +19,8 @@ import {
   getTest,
   computeResult,
   toStoredResult,
+  evaluateMeasures,
+  score20,
 } from "../component/testsCalc";
 import {
   SPORTS,
@@ -31,6 +33,7 @@ import {
   evaluateStrength,
   LEVELS,
   levelLabel,
+  noteColor,
 } from "../component/norms";
 import { NormList, MatchRefCard, LevelTable, PatternList } from "../component/NormsUI";
 
@@ -431,6 +434,20 @@ export default function Tests() {
     setMedia((m) => ({ ...m, [tid]: data }));
   };
 
+  /* ---- note globale /20 : moyenne des derniers tests mobilité / force iso ---- */
+  const globalNote = useMemo(() => {
+    const latest = {};
+    tests.forEach((t) => {
+      if (!["mobilite", "force_iso"].includes(t.group)) return;
+      if (!latest[t.testId]) latest[t.testId] = t;
+    });
+    const notes = Object.values(latest)
+      .map((t) => score20(getTest(t.testId), t.values))
+      .filter((n) => n != null);
+    if (!notes.length) return null;
+    return Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 10) / 10;
+  }, [tests]);
+
   /* ---- bilan mobilité par zone (dernier résultat de chaque test mobilité / force iso) ---- */
   const zoneBilan = useMemo(() => {
     const latest = {};
@@ -452,11 +469,24 @@ export default function Tests() {
 
   const addToGroup = async () => {
     if (!targetGroup || !uid) return;
+    // targetGroup : "g:<idGroupe>" ou "s:<idGroupe>:<idSousGroupe>"
+    const [kind, gid, sid] = targetGroup.split(":");
+    const g = groups.find((x) => x.id === gid);
+    if (!g) return;
     try {
-      await updateDoc(doc(db, "groups", targetGroup), { athleteIds: arrayUnion(uid) });
-      const g = groups.find((x) => x.id === targetGroup);
-      setMsg(`✅ Athlète ajouté au groupe « ${g?.name || ""} ».`);
-      setGroups((gs) => gs.map((x) => (x.id === targetGroup ? { ...x, athleteIds: [...new Set([...(x.athleteIds || []), uid])] } : x)));
+      const patch = { athleteIds: [...new Set([...(g.athleteIds || []), uid])] };
+      if (kind === "s") {
+        // Un athlète = un seul sous-groupe : on le retire des autres.
+        patch.subGroups = (g.subGroups || []).map((s) => {
+          const rest = (s.athleteIds || []).filter((a) => a !== uid);
+          return s.id === sid ? { ...s, athleteIds: [...rest, uid] } : { ...s, athleteIds: rest };
+        });
+      }
+      await updateDoc(doc(db, "groups", gid), patch);
+      const sg = kind === "s" ? (g.subGroups || []).find((s) => s.id === sid) : null;
+      setMsg(`✅ Athlète placé dans « ${g.name}${sg ? " › " + sg.name : ""} ».`);
+      setGroups((gs) => gs.map((x) => (x.id === gid ? { ...x, ...patch } : x)));
+      setTargetGroup("");
     } catch (e) {
       alert("Erreur : " + e.message);
     }
@@ -771,11 +801,58 @@ export default function Tests() {
                           {t.result?.main?.value} <span style={{ fontSize: 12, color: MUTED }}>{t.result?.main?.unit}</span>
                         </span>
                         {t.result?.status && <div><StatusChip status={t.result.status} /></div>}
+                        {(() => {
+                          const n = score20(def, t.values);
+                          return n != null ? (
+                            <div style={{ marginTop: 4, fontWeight: 800, color: noteColor(n) }}>
+                              {n}
+                              <span style={{ fontSize: 12, color: MUTED }}> / 20</span>
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                     </div>
                     {(t.result?.lines || []).map((l, i) => (
                       <div key={i} style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{l}</div>
                     ))}
+                    {/* Détail mouvement par mouvement (FMS, mobilité, force iso) */}
+                    {def && !def.compute && (() => {
+                      const ev = evaluateMeasures(def, t.values || {});
+                      if (!ev.items.length) return null;
+                      const rows = [];
+                      ev.items.forEach((i) => {
+                        let r = rows.find((x) => x.key === i.key);
+                        if (!r) {
+                          r = { key: i.key, label: i.label, unit: i.unit, sides: {} };
+                          rows.push(r);
+                        }
+                        r.sides[i.side || "—"] = i;
+                      });
+                      return (
+                        <div style={{ marginTop: 8, borderTop: `1px solid ${BORDER}` }}>
+                          {rows.map((r) => (
+                            <div key={r.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: `1px solid ${BORDER}`, flexWrap: "wrap" }}>
+                              <span style={{ fontSize: 13 }}>{r.label}</span>
+                              <span style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                {["G", "D", "—"].filter((s) => r.sides[s]).map((s) => (
+                                  <span key={s} style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                                    {s !== "—" && <span style={{ color: MUTED }}>{s}</span>}
+                                    <strong>{r.sides[s].value}</strong>
+                                    <span style={{ color: MUTED, fontSize: 11 }}>{r.unit}</span>
+                                    <StatusChip status={r.sides[s].status} />
+                                  </span>
+                                ))}
+                              </span>
+                            </div>
+                          ))}
+                          {ev.asym.map((a) => (
+                            <div key={a.key} style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+                              Asymétrie G/D — {a.label} : {a.pct}{a.scoreOnly ? " pt" : " %"} · {STATUS[a.status].label}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                     {normsOn && <NormList rows={evaluateTestNorms(t.testId, t.values, sport, poste, level)} compact />}
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                       {[["vma", "VMA"], ["vmi", "VMI"], ["cs", "Vitesse critique"]].map(
@@ -821,7 +898,7 @@ export default function Tests() {
                   <div style={cardStyle}>
                     <div style={{ fontWeight: 700 }}>⚡ Standards de vitesse par niveau — {posteLabel(sport, poste)}</div>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
-                      Sprint 5 / 10 / 15 / 20 / 60 m, vitesse max et Prowler face à chaque niveau
+                      Sprint 10 / 15 / 20 / 60 m, vitesse max et Prowler face à chaque niveau
                       {level ? ` (objectif : ${levelLabel(level)})` : ""}. Tes derniers temps saisis sont comparés automatiquement.
                     </div>
                     {(() => {
@@ -891,6 +968,18 @@ export default function Tests() {
           {/* ------------ BILAN ------------ */}
           {tab === "bilan" && (
             <>
+              {globalNote != null && (
+                <div style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 700 }}>🏅 Note globale mobilité / force iso</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>Moyenne des derniers tests (FMS, mobilité, force iso), chacun noté /20</div>
+                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 800, color: noteColor(globalNote) }}>
+                    {globalNote}
+                    <span style={{ fontSize: 13, color: MUTED }}> / 20</span>
+                  </div>
+                </div>
+              )}
               <div style={cardStyle}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>🧭 Zones à travailler (derniers tests mobilité / force iso)</div>
                 {zoneBilan.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Pas encore de test de mobilité ou de force isométrique.</div>}
@@ -912,18 +1001,40 @@ export default function Tests() {
               <div style={cardStyle}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>👥 Placer dans un groupe d'individualisation</div>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
-                  Groupes actuels : {inGroups.length ? inGroups.map((g) => g.name).join(", ") : "aucun"}
+                  Groupes actuels :{" "}
+                  {inGroups.length
+                    ? inGroups
+                        .map((g) => {
+                          const sg = (g.subGroups || []).find((s) => (s.athleteIds || []).includes(uid));
+                          return sg ? `${g.name} › ${sg.name}` : g.name;
+                        })
+                        .join(", ")
+                    : "aucun"}
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <select style={{ ...inputStyle, flex: 1, minWidth: 180 }} value={targetGroup} onChange={(e) => setTargetGroup(e.target.value)}>
-                    <option value="">— Choisir un groupe —</option>
-                    {groups
-                      .filter((g) => !(g.athleteIds || []).includes(uid))
-                      .map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                        </option>
-                      ))}
+                    <option value="">— Choisir un groupe / sous-groupe —</option>
+                    {groups.map((g) =>
+                      (g.subGroups || []).length > 0 ? (
+                        <optgroup key={g.id} label={g.name}>
+                          {(g.subGroups || []).map((s) => {
+                            const here = (s.athleteIds || []).includes(uid);
+                            return (
+                              <option key={s.id} value={`s:${g.id}:${s.id}`} disabled={here}>
+                                {s.name}
+                                {here ? " (déjà placé)" : ""}
+                              </option>
+                            );
+                          })}
+                        </optgroup>
+                      ) : (
+                        !(g.athleteIds || []).includes(uid) && (
+                          <option key={g.id} value={`g:${g.id}`}>
+                            {g.name}
+                          </option>
+                        )
+                      )
+                    )}
                   </select>
                   <button onClick={addToGroup} disabled={!targetGroup} style={pill(!!targetGroup)}>
                     Ajouter au groupe

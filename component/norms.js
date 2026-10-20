@@ -332,7 +332,6 @@ export const TEST_NORMS = {
   ],
   cmj: [{ normKey: "CMJ", label: "CMJ", unit: "cm", get: (v) => num(v.height), fmt: fmtNum }],
   sprint: [
-    { normKey: "5m", label: "Sprint 5 m", unit: "s", get: (v) => num(v.t5), fmt: fmtNum },
     { normKey: "10m", label: "Sprint 10 m", unit: "s", get: (v) => num(v.t10), fmt: fmtNum },
     { normKey: "15m", label: "Sprint 15 m", unit: "s", get: (v) => num(v.t15), fmt: fmtNum },
     { normKey: "20m", label: "Sprint 20 m", unit: "s", get: (v) => num(v.t20), fmt: fmtNum },

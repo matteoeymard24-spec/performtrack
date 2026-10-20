@@ -737,3 +737,43 @@ export function toStoredResult(res) {
   if (res.zones) out.zones = res.zones;
   return out;
 }
+
+/* ---------------------------------------------------------------------
+   Note /20 d'un test à mesures (mobilité, FMS, force iso).
+   - tests « scoreOnly » (FMS) : valeur / score max × 20 (3/3 = 20, 2/3 = 13,3)
+   - autres : seuil OK = 16/20, seuil « à surveiller » = 10/20, 0 = 0/20,
+     bien au-delà du seuil OK → jusqu'à 20/20
+   - pénalité d'asymétrie G/D : -2 (à surveiller) ou -4 (déficitaire)
+   --------------------------------------------------------------------- */
+const clamp20 = (x) => Math.max(0, Math.min(20, x));
+
+export function itemScore20(m, v, scoreOnly) {
+  if (v == null || m.ok == null) return null;
+  if (scoreOnly) return clamp20((v / m.ok) * 20);
+  const watch = m.watch != null ? m.watch : m.ok * (m.dir === "low" ? 1.25 : 0.8);
+  if (m.dir === "low") {
+    if (v <= m.ok) return clamp20(16 + 4 * Math.min(1, (m.ok - v) / (m.ok * 0.2 || 1)));
+    if (v <= watch) return 10 + (6 * (watch - v)) / (watch - m.ok || 1);
+    const lim = watch * 1.5;
+    return clamp20((10 * (lim - v)) / (lim - watch || 1));
+  }
+  if (v >= m.ok) return clamp20(16 + 4 * Math.min(1, (v - m.ok) / (m.ok * 0.25 || 1)));
+  if (v >= watch) return 10 + (6 * (v - watch)) / (m.ok - watch || 1);
+  return clamp20((10 * v) / (watch || 1));
+}
+
+export function score20(test, values) {
+  if (!test || test.compute || !values) return null;
+  const ev = evaluateMeasures(test, values);
+  const s = ev.items.map((i) => itemScore20(i, i.value, !!test.scoreOnly)).filter((x) => x != null);
+  if (!s.length) return null;
+  let avg = s.reduce((a, b) => a + b, 0) / s.length;
+  if (!test.scoreOnly) {
+    let pen = 0;
+    ev.asym.forEach((a) => {
+      pen = Math.max(pen, a.status === "deficit" ? 4 : a.status === "watch" ? 2 : 0);
+    });
+    avg -= pen;
+  }
+  return Math.round(clamp20(avg) * 10) / 10;
+}
