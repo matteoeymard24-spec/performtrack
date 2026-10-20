@@ -40,7 +40,7 @@ export const PHASES = [
   { id: "developpement", label: "Développement", color: "#8e6bd8", models: ["ondulation"] },
   { id: "maintien", label: "Maintien", color: "#3aa6b9", models: ["ondulation"] },
   { id: "affutage", label: "Affûtage", color: "#e0c13d", models: ["ondulation"] },
-  { id: "charge", label: "Charge", color: "#c46a3a", models: ["bloc", "ondulation"] },
+  { id: "charge", label: "Semaine de charge", color: "#c46a3a", models: [] }, // ancienne phase, plus proposée
   { id: "decharge", label: "Décharge", color: "#7fb77e", models: ["bloc", "ondulation"] },
   { id: "transition", label: "Transition", color: "#4fae7d", models: ["bloc", "ondulation"] },
   { id: "autre", label: "Autre", color: "#8a8378", models: ["bloc", "ondulation"] },
@@ -188,25 +188,24 @@ export function buildPlan(parent, { lastIsTransition }) {
 export function buildWeeks(parent, { lastIsDeload }) {
   const n = Math.max(1, Math.ceil((diffDays(parent.startDate, parent.endDate) + 1) / 7));
   const model = parent.model || "bloc";
-  // Les semaines générées s'appellent « Charge » (ou « Décharge » si le cycle
-  // parent est une transition / une décharge, et pour la dernière semaine
-  // quand on le demande). Tout reste modifiable ensuite.
-  const parentIsLight = parent.phase === "transition" || parent.phase === "decharge";
+  const basePhase = parent.phase;
   const weeks = [];
   for (let i = 0; i < n; i++) {
     const start = addDays(parent.startDate, i * 7);
     const end = addDays(start, 6) > parent.endDate ? parent.endDate : addDays(start, 6);
     const deload = lastIsDeload && n >= 3 && i === n - 1;
     weeks.push({
-      name: `${deload || parentIsLight ? "Décharge" : "Charge"} · S${i + 1}`,
+      name: `${parent.name} · S${i + 1}${deload ? " (décharge)" : ""}`,
       level: "micro",
       model,
-      phase: deload || parentIsLight ? "decharge" : "charge",
+      phase: deload ? "decharge" : basePhase,
       startDate: start,
       endDate: end,
       scope: parent.scope || "total",
       objective: "",
       notes: "",
+      intensity: null,
+      volume: null,
       parentId: parent.id,
     });
   }
@@ -233,3 +232,16 @@ export const nextFixture = (fixtures, today) =>
   (fixtures || [])
     .filter((f) => fixtureEnd(f) >= today)
     .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+
+/* ---------------- intensité / volume d'une semaine (1 à 10) ----------------
+   Servent au graphique : l'athlète voit d'un coup d'œil si la semaine est dure. */
+export const hasLoadInfo = (c) => c && (c.intensity != null || c.volume != null);
+export function hardnessOf(c) {
+  const i = Number(c.intensity), v = Number(c.volume);
+  const vals = [i, v].filter((x) => Number.isFinite(x) && x > 0);
+  if (vals.length === 0) return null;
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+  if (avg >= 7) return { id: "dure", label: "Semaine dure", color: "#d9534f", score: avg };
+  if (avg >= 4.5) return { id: "moyenne", label: "Semaine moyenne", color: "#e0a13d", score: avg };
+  return { id: "legere", label: "Semaine légère", color: "#4fae7d", score: avg };
+}
