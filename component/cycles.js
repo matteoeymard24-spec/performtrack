@@ -90,16 +90,32 @@ export const cycleInScope = (c, scopes) => !scopes || scopes.includes(c.scope ||
 
 /* Les séances comptées dans un cycle (par date + groupe / athlète).
    groupsOfUser(uid) -> ids des groupes de l'athlète (pour un cycle individuel). */
-export function sessionsOfCycle(c, events, groupsOfUser) {
+export function sessionsOfCycle(c, events, groupsOfUser, ctx = {}) {
+  const customGroups = ctx.customGroups || [];
+  const athletes = ctx.athletes || [];
+  // Séance ciblant un sous-groupe : group = "sg:<idGroupe>:<idSousGroupe>"
+  const subOf = (g) => (typeof g === "string" && g.startsWith("sg:") ? g.slice(3).split(":") : null);
   return (events || []).filter((e) => {
-    if (e.date < c.startDate || e.date > c.endDate) return false;
+    if (!e.date || e.date < c.startDate || e.date > c.endDate) return false;
     if (!c.scope || c.scope === "total") return true;
+    const sub = subOf(e.group);
     if (isIndividual(c)) {
       const uid = scopeUid(c.scope);
       const gs = groupsOfUser ? groupsOfUser(uid) : [];
-      return e.targetUserId === uid || e.group === "total" || gs.includes(e.group) || (e.group === "moi" && e.createdBy === uid);
+      if (e.targetUserId === uid || e.group === "total" || gs.includes(e.group)) return true;
+      if (e.group === "moi" && e.createdBy === uid) return true;
+      const me = athletes.find((a) => a.id === uid);
+      if (me?.group && e.group === me.group) return true;
+      if (sub) {
+        const sg = customGroups.find((g) => g.id === sub[0])?.subGroups?.find((x) => x.id === sub[1]);
+        if (sg && (sg.athleteIds || []).includes(uid)) return true;
+      }
+      return false;
     }
-    return e.group === c.scope || e.group === "total";
+    if (e.group === c.scope || e.group === "total") return true;
+    if (sub && sub[0] === c.scope) return true;
+    const grp = customGroups.find((g) => g.id === c.scope);
+    return !!(grp && e.targetUserId && (grp.athleteIds || []).includes(e.targetUserId));
   });
 }
 

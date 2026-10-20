@@ -768,7 +768,7 @@ export default function PlanningPanel({
           </div>
         )}
         {ordered.map(({ c, depth }) => {
-          const ss = sessionsOfCycle(c, scopedEvents, groupsOfUser).sort((a, b) => a.date.localeCompare(b.date));
+          const ss = sessionsOfCycle(c, scopedEvents, groupsOfUser, { customGroups, athletes }).sort((a, b) => a.date.localeCompare(b.date));
           const mins = ss.reduce((s, e) => s + sessionMinutes(e), 0);
           const isNow = c.startDate <= todayStr && todayStr <= c.endDate;
           const w = isNow ? weekInCycle(c, todayStr) : null;
@@ -808,7 +808,15 @@ export default function PlanningPanel({
               {showSess(c) && (
                 <div style={{ marginTop: 8 }}>
                   {ss.length === 0 ? (
-                    <div style={{ color: MUTED, fontSize: 12 }}>Aucune séance sur cette période.</div>
+                    <div style={{ color: MUTED, fontSize: 12 }}>
+                      Aucune séance pour cette cible sur cette période.
+                      {(() => {
+                        const other = scopedEvents.filter((e) => e.date >= c.startDate && e.date <= c.endDate).length;
+                        return other > 0
+                          ? ` (${other} séance(s) existent à ces dates mais pour une autre cible : vérifie « Pour qui » de ce cycle.)`
+                          : "";
+                      })()}
+                    </div>
                   ) : (
                     <div style={{ display: "grid", gap: 4 }}>
                       {ss.map((e) => (
