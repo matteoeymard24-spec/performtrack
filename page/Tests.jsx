@@ -1336,7 +1336,7 @@ export default function Tests() {
               <div style={{ ...cardStyle, border: "1px solid rgba(217,105,90,0.4)" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
                   <div style={{ fontWeight: 700, color: "#d9695a" }}>🚑 Historique de blessures ({injuries.length})</div>
-                  {isCoach && (
+                  {uid && (
                   <button
                     disabled={!uid}
                     onClick={() => {
@@ -1356,10 +1356,10 @@ export default function Tests() {
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                   {isCoach
                     ? "Même journal que dans le Dashboard : à croiser avec les zones à travailler pour choisir le groupe d'individualisation."
-                    : "Historique renseigné par ton coach (consultation uniquement)."}
+                    : "Renseigne ici tes blessures passées et en cours : ton coach les voit et s'en sert pour adapter tes séances."}
                 </div>
 
-                {isCoach && showInjuryForm && (
+                {showInjuryForm && (
                   <div style={{ marginBottom: 14, padding: 12, background: "#151310", borderRadius: 10 }}>
                     <label style={{ fontSize: 12, color: MUTED }}>Date</label>
                     <input type="date" value={injuryDate} onChange={(e) => setInjuryDate(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
@@ -1408,7 +1408,7 @@ export default function Tests() {
                         </span>
                         {inj.notes && <div style={{ color: "#706a61", fontSize: 12, marginTop: 2 }}>{inj.notes}</div>}
                       </div>
-                      {isCoach && (
+                      {uid && (
                       <div style={{ display: "flex", gap: 6 }}>
                         <button onClick={() => startEditInjury(inj)} style={{ ...pill(false), color: ACCENT, padding: "6px 10px", fontSize: 12 }}>Modifier</button>
                         <button onClick={() => removeInjury(inj.id)} style={{ ...pill(false), color: "#d9534f", padding: "6px 10px", fontSize: 12 }}>Supprimer</button>
@@ -1417,7 +1417,7 @@ export default function Tests() {
                     </div>
                   ))
                 ) : (
-                  <div style={{ fontSize: 13, color: MUTED }}>{isCoach ? "Aucune blessure enregistrée pour cet athlète." : "Aucune blessure enregistrée."}</div>
+                  <div style={{ fontSize: 13, color: MUTED }}>{isCoach ? "Aucune blessure enregistrée pour cet athlète." : "Aucune blessure enregistrée pour le moment."}</div>
                 )}
               </div>
 

@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { collection, getDocs, getDoc, doc } from "firebase/firestore";
-import { getTest, STATUS, TEST_GROUPS } from "./testsCalc";
-import { hasNorms, posteLabel, evaluateTestNorms, evaluateStrength, evaluateLadderRows, levelLabel } from "./norms";
+import { getTest, STATUS, TEST_GROUPS, score20 } from "./testsCalc";
+import { hasNorms, posteLabel, evaluateTestNorms, evaluateStrength, evaluateLadderRows, levelLabel, noteColor, MEDALS } from "./norms";
 import { NormList, LevelTable, PatternList } from "./NormsUI";
 
 const ACCENT = "#e0a13d";
@@ -11,7 +11,7 @@ const TEXT = "#f3f0ea";
 
 /* Résumé des tests d'un athlète : références, dernier résultat de chaque test,
    zones de mobilité à travailler. Lecture seule (la saisie se fait dans l'onglet Tests). */
-export default function TestsSummary({ uid, title = "🧪 Mes tests" }) {
+export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = false }) {
   const [tests, setTests] = useState([]);
   const [ref, setRef] = useState({});
   const [open, setOpen] = useState(null);
@@ -70,6 +70,97 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests" }) {
   tests.forEach((t) => {
     if (!latest[t.testId]) latest[t.testId] = t;
   });
+  /* Mode simple (dashboard athlète) : tests passés + note /20, médaille atteinte et prochain objectif */
+  if (simple) {
+    const normsOnS = hasNorms(profile.sport, profile.position);
+    const normRowsOf = (t) =>
+      normsOnS ? evaluateTestNorms(t.testId, t.values, profile.sport, profile.position, profile.level) : [];
+    const noteOf = (t) => {
+      const def = getTest(t.testId);
+      const n = def ? score20(def, t.values) : null;
+      if (n != null) return n;
+      const rows = normRowsOf(t).filter((r) => r.note != null);
+      return rows.length ? Math.round((rows.reduce((a, r) => a + r.note, 0) / rows.length) * 10) / 10 : null;
+    };
+    const list = Object.values(latest).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    const strengthS = normsOnS
+      ? evaluateStrength(rmDocs, profile.sport, profile.position, profile.level).filter((r) => r.value != null)
+      : [];
+
+    /* médaille atteinte (pour le niveau visé) + prochain objectif chiffré */
+    const goalOf = (row) => {
+      const tg = row.lv?.target;
+      if (!tg) return null;
+      const u = row.unit ? ` ${row.unit}` : "";
+      const next =
+        tg.medal === "gold" ? null
+        : tg.medal === "silver" ? { ...MEDALS.gold, v: tg.gold }
+        : tg.medal === "bronze" ? { ...MEDALS.silver, v: tg.silver }
+        : { ...MEDALS.bronze, v: tg.thr };
+      return { medal: tg.medal ? MEDALS[tg.medal] : null, next, u };
+    };
+    const SubRow = ({ row }) => {
+      const g = goalOf(row);
+      return (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "6px 0 0 0", fontSize: 12, color: MUTED }}>
+          <span>
+            {row.label} · <b style={{ color: TEXT }}>{row.display}{row.unit ? ` ${row.unit}` : ""}</b>
+            {g?.medal ? <span style={{ marginLeft: 6 }}>{g.medal.icon}</span> : null}
+          </span>
+          <span style={{ textAlign: "right" }}>
+            {g ? (g.next ? `Objectif ${g.next.icon} ${g.next.label} : ${g.next.v}${g.u}` : "🥇 Or atteint") : ""}
+          </span>
+        </div>
+      );
+    };
+    const noteBadge = (n) =>
+      n != null ? (
+        <span style={{ fontSize: 20, fontWeight: 800, color: noteColor(n) }}>
+          {n}
+          <span style={{ fontSize: 11, color: MUTED }}> / 20</span>
+        </span>
+      ) : (
+        <span style={{ fontSize: 12, color: MUTED }}>pas de note</span>
+      );
+    return (
+      <div style={{ background: "#151310", padding: 20, borderRadius: 10 }}>
+        <h3 style={{ margin: "0 0 12px 0", fontSize: 17, color: TEXT }}>{title}</h3>
+        {list.map((t) => {
+          const def = getTest(t.testId);
+          const rows = normRowsOf(t).filter((r) => r.note != null);
+          return (
+            <div key={t.id} style={{ borderTop: "1px solid #1d1a16", padding: "10px 0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div>
+                  <div style={{ color: TEXT, fontSize: 14 }}>{def?.name || t.testId}</div>
+                  <div style={{ color: MUTED, fontSize: 11 }}>{t.date}</div>
+                </div>
+                <div style={{ whiteSpace: "nowrap" }}>{noteBadge(noteOf(t))}</div>
+              </div>
+              {rows.map((r, i) => (
+                <SubRow key={i} row={r} />
+              ))}
+            </div>
+          );
+        })}
+        {strengthS.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 12, color: MUTED, margin: "6px 0" }}>💪 Force</div>
+            {strengthS.map((r, i) => (
+              <div key={i} style={{ borderTop: "1px solid #1d1a16", padding: "10px 0" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                  <div style={{ color: TEXT, fontSize: 14 }}>{r.label}</div>
+                  <div style={{ whiteSpace: "nowrap" }}>{noteBadge(r.note)}</div>
+                </div>
+                <SubRow row={{ ...r, label: "1RM" }} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const zones = {};
   Object.values(latest).forEach((t) => {
     if (!["mobilite", "force_iso"].includes(t.group)) return;
