@@ -719,7 +719,14 @@ export default function Tests() {
       out.force = {
         title: "💪 Force — par pattern de mouvement",
         avg: avg(pats.map((g) => g.avg)),
-        rows: pats.map((g) => ({ label: g.label, note: g.avg, extra: g.avg == null ? "pas de 1RM trouvé" : "" })),
+        rows: pats.map((g) => ({
+          label: g.label,
+          note: g.avg,
+          extra: g.avg == null ? "pas de 1RM trouvé" : "",
+          sub: g.rows
+            .filter((x) => x.note != null)
+            .map((x) => ({ label: x.label, kg: x.display, note: x.note, matched: x.matched, estNote: x.estNote })),
+        })),
       };
       const sRows = normRows("sprint", mergedSprint, "");
       out.vitesse = { title: "⚡ Vitesse", avg: avg(sRows.map((r) => r.note)), rows: sRows };
@@ -1210,6 +1217,14 @@ export default function Tests() {
                           <span style={{ lineHeight: 1.35 }}>
                             {r.label}
                             {r.extra ? <span style={{ display: "block", fontSize: 11, color: "#706a61" }}>{r.extra}</span> : null}
+                            {(r.sub || []).map((x, j) => (
+                              <span key={j} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 11, color: "#706a61", marginTop: 3 }}>
+                                <span>
+                                  ↳ {x.label} · {x.kg} kg{x.estNote ? " (barème estimé)" : ""}
+                                </span>
+                                <span style={{ color: noteColor(x.note), fontWeight: 700 }}>{x.note}/20</span>
+                              </span>
+                            ))}
                           </span>
                           {r.note != null && (
                             <span style={{ color: noteColor(r.note), fontWeight: 700, whiteSpace: "nowrap" }}>{r.note} / 20</span>
