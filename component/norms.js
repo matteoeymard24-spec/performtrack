@@ -37,7 +37,23 @@ const hipThrustTable = () => {
   });
   return out;
 };
-const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable() };
+/* Sprint 60 m : AUCUN barème Agen. Barème ESTIMÉ à partir du 20 m et de la Vmax GPS du même poste :
+   t60 = t20 + 40 m / (97 % de la Vmax). Valeurs indicatives, à remplacer par des vraies si le staff en a. */
+export const SPRINT60_NOTE = "Barème estimé : 20 m + 40 m à 97 % de la Vmax du poste (pas de barème Agen pour le 60 m)";
+const sprint60Table = () => {
+  const out = {};
+  Object.entries(RUGBY_BAREME["20m"] || {}).forEach(([poste, t20]) => {
+    const vg = RUGBY_BAREME["Vitesse GPS"]?.[poste];
+    if (!vg) return;
+    out[poste] = t20.map((t, i) => {
+      const v = vg[i];
+      if (t == null || v == null) return null;
+      return Math.round((t + 40 / ((0.97 * v) / 3.6)) * 100) / 100;
+    });
+  });
+  return out;
+};
+const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable(), "60m": sprint60Table() };
 
 const BAREMES = { rugby: { bareme: RUGBY_BAREME_X, matchRef: RUGBY_MATCH_REF } };
 
@@ -163,6 +179,18 @@ export function buildLadder(sport, normKey, poste) {
   });
   // sécurité : jamais plus facile en montant
   for (let k = rows.length - 2; k >= 0; k--) if (rows[k].w < rows[k + 1].w) rows[k].w = rows[k + 1].w, (rows[k].thr = real(rows[k].w));
+  // Médailles : bronze = moyenne du niveau (déjà dans row.thr) ; argent / or = écart du barème
+  // entre la note 10 et les notes 15 / 20, ramené au niveau (réduit pour les niveaux plus bas,
+  // jamais gonflé pour les niveaux plus hauts).
+  const prodRow = rows.find((r) => r.id === "prod2");
+  const aCv = prodRow ? cv(prodRow.thr) : null;
+  rows.forEach((r) => {
+    const bCv = cv(r.thr);
+    const s = aCv > 0 && bCv > 0 ? Math.min(1, bCv / aCv) : 1;
+    const med = (nNote) => back(bCv + (at(nNote) - at(10)) * s);
+    r.silver = med(15);
+    r.gold = med(20);
+  });
   return { dir, rows, cv, W };
 }
 
@@ -175,16 +203,31 @@ export function levelInfo(sport, normKey, poste, value, targetId, fmt) {
   const w = hasVal ? L.W(L.cv(value)) : null;
   let reachedIdx = -1;
   if (hasVal) reachedIdx = L.rows.findIndex((r) => w >= r.w - 1e-9);
-  const items = L.rows.map((r, k) => ({
-    id: r.id,
-    label: r.label,
-    jeunes: r.jeunes,
-    tag: r.tag,
-    src: r.src,
-    thr: f(r.thr),
-    met: hasVal ? reachedIdx !== -1 && k >= reachedIdx : null,
-    isTarget: r.id === targetId,
-  }));
+  const reachesAt = (real, k) => hasVal && w >= L.W(L.cv(real)) - 1e-9;
+  const items = L.rows.map((r, k) => {
+    const medal = !hasVal
+      ? null
+      : reachesAt(r.gold, k)
+      ? "gold"
+      : reachesAt(r.silver, k)
+      ? "silver"
+      : w >= r.w - 1e-9
+      ? "bronze"
+      : null;
+    return {
+      id: r.id,
+      label: r.label,
+      jeunes: r.jeunes,
+      tag: r.tag,
+      src: r.src,
+      thr: f(r.thr),
+      silver: f(r.silver),
+      gold: f(r.gold),
+      medal,
+      met: hasVal ? reachedIdx !== -1 && k >= reachedIdx : null,
+      isTarget: r.id === targetId,
+    };
+  });
   const reached = reachedIdx >= 0 ? items[reachedIdx] : null;
   const nextIdx = hasVal ? (reachedIdx === -1 ? items.length - 1 : reachedIdx - 1) : -1;
   const next = nextIdx >= 0 ? items[nextIdx] : null;
@@ -235,6 +278,11 @@ export function scoreForLevel(sport, normKey, poste, value, levelId) {
   };
 }
 
+export const MEDALS = {
+  gold: { icon: "🥇", label: "Or", color: "#e0c13d" },
+  silver: { icon: "🥈", label: "Argent", color: "#c4c9d1" },
+  bronze: { icon: "🥉", label: "Bronze", color: "#cd8a4b" },
+};
 export const noteColor = (n) =>
   n >= 15 ? "#4fae7d" : n >= 10 ? "#8cc36a" : n >= 5 ? "#e0a13d" : "#d9534f";
 export const noteLabel = (n) =>
@@ -270,6 +318,7 @@ export const TEST_NORMS = {
     { normKey: "10m", label: "Sprint 10 m", unit: "s", get: (v) => num(v.t10), fmt: fmtNum },
     { normKey: "15m", label: "Sprint 15 m", unit: "s", get: (v) => num(v.t15), fmt: fmtNum },
     { normKey: "20m", label: "Sprint 20 m", unit: "s", get: (v) => num(v.t20), fmt: fmtNum },
+    { normKey: "60m", label: "Sprint 60 m", unit: "s", get: (v) => num(v.t60), fmt: fmtNum, estimated: SPRINT60_NOTE },
     { normKey: "Vitesse GPS", label: "Vitesse max (GPS)", unit: "km/h", get: (v) => num(v.vmax), fmt: fmtNum },
     { normKey: "Prowler 85Kg 10m", label: "Prowler 85 kg · 10 m", unit: "s", get: (v) => num(v.prowler), fmt: fmtNum },
   ],
@@ -292,6 +341,7 @@ export function evaluateTestNorms(testId, values, sport, poste, level) {
     out.push({
       label: d.label,
       unit: d.unit,
+      estNote: d.estimated || null,
       value,
       display: d.fmt(value),
       ...sc,

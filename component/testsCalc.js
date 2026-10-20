@@ -479,17 +479,18 @@ export const TESTS = [
   {
     id: "sprint",
     group: "vitesse",
-    name: "Sprint 5-10-15-20 m, Vmax, Prowler",
+    name: "Sprint 5-10-15-20-60 m, Vmax, Prowler",
     sports: "Rugby, sports collectifs",
     equipment: "Cellules photoélectriques (ou radar), plots, GPS pour la Vmax, Prowler 85 kg",
     howTo:
-      "Départ debout, pied avant 30-50 cm derrière la 1re cellule, sprint maximal. Noter les temps intermédiaires à 5, 10, 15 et 20 m (secondes, au centième). Vmax : pic de vitesse (km/h) relevé au GPS ou au radar. Prowler : temps sur 10 m avec 85 kg. Tous les champs sont optionnels.",
+      "Départ debout, pied avant 30-50 cm derrière la 1re cellule, sprint maximal. Noter les temps intermédiaires à 5, 10, 15, 20 et 60 m (secondes, au centième). Vmax : pic de vitesse (km/h) relevé au GPS ou au radar. Prowler : temps sur 10 m avec 85 kg. Tous les champs sont optionnels.",
     ...ytSearch("test sprint 20 m cellules photoélectriques départ debout rugby"),
     fields: [
       { key: "t5", label: "Temps 5 m", unit: "s", placeholder: "ex : 1.02" },
       { key: "t10", label: "Temps 10 m", unit: "s", placeholder: "ex : 1.75" },
       { key: "t15", label: "Temps 15 m", unit: "s", placeholder: "ex : 2.40" },
       { key: "t20", label: "Temps 20 m", unit: "s", placeholder: "ex : 3.05" },
+      { key: "t60", label: "Temps 60 m", unit: "s", placeholder: "ex : 7.90" },
       { key: "vmax", label: "Vitesse max (GPS / radar)", unit: "km/h", placeholder: "ex : 31.5" },
       { key: "prowler", label: "Prowler 85 kg — 10 m", unit: "s", placeholder: "ex : 2.9" },
     ],

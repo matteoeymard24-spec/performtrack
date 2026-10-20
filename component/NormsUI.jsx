@@ -1,5 +1,5 @@
 import React from "react";
-import { noteColor, noteLabel, groupByPattern } from "./norms";
+import { noteColor, noteLabel, groupByPattern, MEDALS } from "./norms";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -17,6 +17,7 @@ function LevelBlock({ lv }) {
         {reached ? (
           <span style={{ background: "#16243a", color: ACCENT, padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>
             Niveau {reached.label}
+            {reached.medal ? ` · ${MEDALS[reached.medal].icon} ${MEDALS[reached.medal].label}` : ""}
           </span>
         ) : below ? (
           <span style={{ background: "#2a1a1a", color: "#d9534f", padding: "2px 8px", borderRadius: 10, fontWeight: 700 }}>
@@ -31,7 +32,12 @@ function LevelBlock({ lv }) {
         )}
         {target && (
           <span style={{ color: target.ok ? "#4fae7d" : "#e0a13d", fontWeight: 600 }}>
-            Objectif {target.label} : {target.ok ? "atteint ✓" : `à atteindre ${target.thr}${target.tag === "estimé" ? " ~" : ""}`}
+            Objectif {target.label} :{" "}
+            {target.medal
+              ? `${MEDALS[target.medal].icon} ${MEDALS[target.medal].label}${
+                  target.medal === "gold" ? "" : target.medal === "silver" ? ` · or à ${target.gold}` : ` · argent à ${target.silver}`
+                }`
+              : `hors standard · bronze à ${target.thr}${target.tag === "estimé" ? " ~" : ""}`}
           </span>
         )}
       </div>
@@ -54,15 +60,19 @@ function LevelBlock({ lv }) {
                 {it.met ? "✓ " : ""}
                 {it.label}
               </div>
-              <div style={{ color: it.met ? "#4fae7d" : TEXT, fontWeight: 700, fontSize: 13 }}>
-                {it.thr}
-                <span style={{ color: MUTED, fontWeight: 400 }}>{it.tag === "estimé" ? " ~" : it.tag === "doc" ? " *" : ""}</span>
+              <div style={{ color: MUTED, fontWeight: 400, lineHeight: 1.5 }}>
+                <div style={{ color: it.medal === "gold" ? MEDALS.gold.color : MUTED }}>🥇 {it.gold}</div>
+                <div style={{ color: it.medal === "silver" ? MEDALS.silver.color : MUTED }}>🥈 {it.silver}</div>
+                <div style={{ color: it.medal === "bronze" ? MEDALS.bronze.color : TEXT, fontWeight: 700 }}>
+                  🥉 {it.thr}
+                  <span style={{ color: MUTED, fontWeight: 400 }}>{it.tag === "estimé" ? " ~" : it.tag === "doc" ? " *" : ""}</span>
+                </div>
               </div>
             </div>
           ))}
         </div>
         <div style={{ color: MUTED, fontSize: 10, marginTop: 4 }}>
-          * valeur du référentiel (FFR, World Class, Top 14) · ~ estimation (aucune donnée publiée pour ce niveau) · sans signe : barème Agen
+          🥉 bronze = moyenne du niveau · 🥈 argent · 🥇 or · en dessous du bronze = hors standard · * valeur du référentiel (FFR, World Class, Top 14) · ~ estimation (aucune donnée publiée pour ce niveau) · sans signe : barème Agen
         </div>
       </details>
     </div>
@@ -106,6 +116,7 @@ export function LevelTable({ rows, targetId }) {
                 >
                   {it.thr}
                   <span style={{ color: MUTED }}>{it.tag === "estimé" ? "~" : it.tag === "doc" ? "*" : ""}</span>
+                  {it.medal ? ` ${MEDALS[it.medal].icon}` : ""}
                 </td>
               ))}
               <td style={{ padding: "6px 8px", textAlign: "right", color: ACCENT, fontWeight: 700 }}>
@@ -144,6 +155,11 @@ export function NormRow({ r, compact = false }) {
         ) : (
           <span style={{ color: col, fontWeight: 800, fontSize: 14, whiteSpace: "nowrap" }}>
             {r.note}/20 <span style={{ fontWeight: 600, fontSize: 11 }}>· {noteLabel(r.note)}</span>
+            {r.lv?.target && (
+              <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: r.lv.target.medal ? MEDALS[r.lv.target.medal].color : "#d9534f" }}>
+                {r.lv.target.medal ? `${MEDALS[r.lv.target.medal].icon} ${MEDALS[r.lv.target.medal].label}` : "Hors standard"}
+              </span>
+            )}
           </span>
         )}
       </div>

@@ -54,6 +54,7 @@ export const SENS = {
   "10m": 0.3,
   "15m": 0.3,
   "20m": 0.3,
+  "60m": 0.3,
 };
 
 /* Colonnes du référentiel : Pilier, Talonneur, 2e ligne, 3e ligne, 9, 10, Centre, Ailier/Arrière */
