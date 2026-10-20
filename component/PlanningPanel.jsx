@@ -159,6 +159,7 @@ export default function PlanningPanel({
   const cardRefs = useRef({});
   const [form, setForm] = useState(null); // null = fermé ; {id?, ...}
   const [busy, setBusy] = useState(false);
+  const [dup, setDup] = useState(null); // {src, start, name, parentId}
   const [fForm, setFForm] = useState(null); // formulaire match / compétition
   const setFF = (patch) => setFForm((f) => ({ ...f, ...patch }));
 
@@ -344,6 +345,13 @@ export default function PlanningPanel({
   const anyLoadInfo = loadWeeks.some(({ c }) => hasLoadInfo(c));
 
   /* ---------------- formulaire ---------------- */
+  // Ondulatoire : le nom suit la phase (Développement, Maintien, Affûtage…)
+  // tant qu'il est vide ou qu'il porte encore un nom de phase automatique.
+  const autoNamePatch = (f, model, phase) => {
+    if (model !== "ondulation") return {};
+    const isAuto = !f.name || !f.name.trim() || PHASES.some((x) => x.label === f.name.trim());
+    return isAuto ? { name: phaseOf(phase).label } : {};
+  };
   const blank = () => ({
     name: "",
     level: "meso",
@@ -381,7 +389,8 @@ export default function PlanningPanel({
     setForm((f) => (okDay(f.startDate) ? { ...f, startDate: mondayOf(f.startDate), endDate: addDays(mondayOf(f.startDate), f._dur ?? 27) } : f));
 
   const save = async () => {
-    const f = form;
+    let f = form;
+    if (!f.name.trim() && f.model === "ondulation") f = { ...f, name: phaseOf(f.phase).label };
     if (!f.name.trim()) return alert("Donne un nom au cycle.");
     if (!f.startDate || !f.endDate) return alert("Dates de début et de fin obligatoires.");
     if (f.endDate < f.startDate) return alert("La fin doit être après le début.");
@@ -407,6 +416,73 @@ export default function PlanningPanel({
       await onReload();
     } catch (e) {
       alert("Erreur : " + e.message + "\n(Les règles Firestore autorisent-elles la collection « cycles » ? Voir le fichier de règles.)");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /* ---------------- duplication d'un cycle ---------------- */
+  const descendantsOf = (id) => {
+    const out = [];
+    const walk = (pid) => (cycles || []).filter((x) => x.parentId === pid).forEach((k) => { out.push(k); walk(k.id); });
+    walk(id);
+    return out;
+  };
+  const containerAt = (src, day) =>
+    (cycles || []).find((x) => x.id !== src.id && x.level !== "micro" && (x.level === "macro" ? src.level !== "macro" : src.level === "micro") && x.startDate <= day && day <= x.endDate && (x.scope || "total") === (src.scope || "total"));
+  const openDup = (c) => {
+    const start = addDays(c.endDate, 1);
+    setForm(null);
+    setDup({ src: c, start, name: c.name, parentId: (containerAt(c, start) || {}).id || (c.level === "micro" ? c.parentId || "" : c.parentId || "") });
+  };
+  const doDuplicate = async () => {
+    const { src, start, name, parentId } = dup;
+    if (!(typeof start === "string" && start.length === 10 && start >= "2000-01-01")) return alert("Date de début invalide.");
+    if (!name.trim()) return alert("Donne un nom à la copie.");
+    const shift = diffDays(src.startDate, start);
+    const kids = descendantsOf(src.id);
+    setBusy(true);
+    try {
+      const b = writeBatch(db);
+      const strip = (x) => {
+        const { id, createdAt, createdBy, ...rest } = x;
+        return rest;
+      };
+      const newRef = doc(collection(db, "cycles"));
+      b.set(newRef, {
+        ...strip(src),
+        name: name.trim(),
+        startDate: addDays(src.startDate, shift),
+        endDate: addDays(src.endDate, shift),
+        parentId: parentId || null,
+        hidden: false,
+        createdBy: currentUser?.uid || null,
+        createdAt: serverTimestamp(),
+      });
+      const idMap = { [src.id]: newRef.id };
+      // parents avant enfants
+      const queue = [...kids];
+      let guard = 0;
+      while (queue.length && guard++ < 1000) {
+        const k = queue.shift();
+        if (!idMap[k.parentId]) { queue.push(k); continue; }
+        const r = doc(collection(db, "cycles"));
+        idMap[k.id] = r.id;
+        b.set(r, {
+          ...strip(k),
+          startDate: addDays(k.startDate, shift),
+          endDate: addDays(k.endDate, shift),
+          parentId: idMap[k.parentId],
+          hidden: false,
+          createdBy: currentUser?.uid || null,
+          createdAt: serverTimestamp(),
+        });
+      }
+      await b.commit();
+      setDup(null);
+      await onReload();
+    } catch (e) {
+      alert("Erreur : " + e.message);
     } finally {
       setBusy(false);
     }
@@ -662,6 +738,65 @@ export default function PlanningPanel({
         ))}
       </div>
 
+      {/* duplication */}
+      {dup && (
+        <Modal>
+          <div style={{ background: DARK, borderRadius: 10, padding: 14, border: `1px solid ${AMBER}` }}>
+            <div style={{ fontWeight: 700, marginBottom: 6, color: TEXT }}>📋 Dupliquer « {dup.src.name} »</div>
+            <div style={{ color: MUTED, fontSize: 12, marginBottom: 10 }}>
+              {dup.src.level === "micro"
+                ? "Copie cette semaine à la date choisie."
+                : `Copie ce cycle${descendantsOf(dup.src.id).length ? ` + ses ${descendantsOf(dup.src.id).length} cycle(s) enfant(s) (semaines…)` : ""}, décalé à la nouvelle date. Les séances ne sont pas copiées.`}
+            </div>
+            <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))" }}>
+              <div>
+                <label style={{ fontSize: 11, color: MUTED }}>Nom de la copie</label>
+                <input style={inputStyle} value={dup.name} onChange={(e) => setDup((d) => ({ ...d, name: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, color: MUTED }}>Nouveau début (durée identique)</label>
+                <input
+                  type="date"
+                  style={inputStyle}
+                  value={dup.start}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setDup((d) => {
+                      const ok = typeof v === "string" && v.length === 10 && v >= "2000-01-01";
+                      const cont = ok ? containerAt(d.src, v) : null;
+                      return { ...d, start: v, parentId: cont ? cont.id : d.parentId };
+                    });
+                  }}
+                />
+                {dup.start >= "2000-01-01" && (
+                  <div style={{ color: MUTED, fontSize: 11, marginTop: 3 }}>
+                    → {fmtShort(dup.start)} au {fmtShort(addDays(dup.start, diffDays(dup.src.startDate, dup.src.endDate)))}
+                  </div>
+                )}
+              </div>
+              {dup.src.level !== "macro" && (
+                <div>
+                  <label style={{ fontSize: 11, color: MUTED }}>Rattacher à</label>
+                  <select style={inputStyle} value={dup.parentId || ""} onChange={(e) => setDup((d) => ({ ...d, parentId: e.target.value }))}>
+                    <option value="">(aucun)</option>
+                    {(cycles || [])
+                      .filter((x) => (dup.src.level === "micro" ? x.level !== "micro" : x.level === "macro"))
+                      .sort((a, b) => (a.startDate < b.startDate ? -1 : 1))
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>{x.name} ({fmtShort(x.startDate)} → {fmtShort(x.endDate)})</option>
+                      ))}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button disabled={busy} onClick={doDuplicate} style={btn(AMBER, "#1a1814")}>📋 Créer la copie</button>
+              <button onClick={() => setDup(null)} style={btn("#2a2620")}>Annuler</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
       {/* formulaire */}
       {form && (
         <Modal>
@@ -685,7 +820,7 @@ export default function PlanningPanel({
               <select
                 style={inputStyle}
                 value={form.model || "bloc"}
-                onChange={(e) => setF({ model: e.target.value, phase: phasesOfModel(e.target.value)[0].id })}
+                onChange={(e) => { const ph = phasesOfModel(e.target.value)[0].id; setF({ model: e.target.value, phase: ph, ...autoNamePatch(form, e.target.value, ph) }); }}
               >
                 {MODELS.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
@@ -697,7 +832,7 @@ export default function PlanningPanel({
             </div>
             <div>
               <label style={{ fontSize: 11, color: MUTED }}>Phase</label>
-              <select style={inputStyle} value={form.phase} onChange={(e) => setF({ phase: e.target.value })}>
+              <select style={inputStyle} value={form.phase} onChange={(e) => setF({ phase: e.target.value, ...autoNamePatch(form, form.model, e.target.value) })}>
                 {phasesOfModel(form.model).map((p) => (
                   <option key={p.id} value={p.id}>{p.label}</option>
                 ))}
@@ -917,6 +1052,7 @@ export default function PlanningPanel({
                           ➕ Générer les semaines
                         </button>
                       )}
+                      <button disabled={busy} onClick={() => openDup(c)} style={btn("#2a2620")} title="Copier ce cycle (et ses semaines) à une autre date">📋 Dupliquer</button>
                       <button disabled={busy} onClick={() => toggleHidden(c)} style={btn("#2a2620")}>
                         {c.hidden ? "👁 Réafficher" : "🙈 Masquer (terminé)"}
                       </button>
