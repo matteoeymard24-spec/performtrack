@@ -430,6 +430,12 @@ export default function Workout() {
      voir le useEffect juste après le composant. */
   const [emomTimer, setEmomTimer] = useState(null);
   const [sessionFeedback, setSessionFeedback] = useState({});
+  // Restaure les feedbacks déjà saisis d'une séance en cours (après rechargement / retour dans l'app)
+  useEffect(() => {
+    const uid = currentUser?.uid;
+    const p = selectedSession?.userProgress?.[uid];
+    setSessionFeedback(p?.inProgress && !p?.completedAt && p?.feedback ? p.feedback : {});
+  }, [selectedSession?.id, currentUser?.uid]);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [currentExerciseFeedback, setCurrentExerciseFeedback] = useState(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -1137,45 +1143,70 @@ export default function Workout() {
     setShowFeedbackModal(true);
   };
 
+  // Sauvegarde immédiate du feedback dans Firestore (brouillon) : si l'athlète
+  // quitte l'app avant "Terminer la séance", rien n'est perdu.
+  const persistDraftFeedback = async (nextFeedback) => {
+    try {
+      const sess = sessionInProgress || selectedSession;
+      if (!sess?.id || !currentUser?.uid) return;
+      const prog = sess.userProgress?.[currentUser.uid];
+      if (!prog?.startedAt || prog?.completedAt) return;
+      await updateDoc(doc(db, "workout", sess.id), {
+        [`userProgress.${currentUser.uid}.feedback`]: nextFeedback,
+      });
+      const patch = (x) =>
+        x && x.id === sess.id
+          ? {
+              ...x,
+              userProgress: {
+                ...(x.userProgress || {}),
+                [currentUser.uid]: { ...(x.userProgress?.[currentUser.uid] || {}), feedback: nextFeedback },
+              },
+            }
+          : x;
+      setSelectedSession((x) => patch(x));
+      setSessionInProgress((x) => patch(x));
+    } catch (e) {
+      console.warn("[saveFeedback] brouillon non enregistré:", e);
+    }
+  };
+
   const saveFeedback = () => {
     if (!currentExerciseFeedback) return;
+    let entry;
 
     if (currentExerciseFeedback.isBlockLevel) {
       const isEmom = currentExerciseFeedback.blockTimerMode === "emom";
       const isAmrap = currentExerciseFeedback.blockTimerMode === "amrap";
-      setSessionFeedback({
-        ...sessionFeedback,
-        [currentExerciseFeedback.key]: {
-          rpe: Number(currentExerciseFeedback.rpe),
-          ...(isEmom && {
-            actualRepTimeSec: Number(currentExerciseFeedback.actualRepTimeSec) || 0,
-            targetEffortTime: currentExerciseFeedback.targetEffortTime || null,
-            targetVmaPercentage: currentExerciseFeedback.targetVmaPercentage || null,
-          }),
-          ...(isAmrap && {
-            actualRounds: Number(currentExerciseFeedback.actualRounds) || 0,
-          }),
-          notes: currentExerciseFeedback.notes || "",
-        },
-      });
+      entry = {
+        rpe: Number(currentExerciseFeedback.rpe),
+        ...(isEmom && {
+          actualRepTimeSec: Number(currentExerciseFeedback.actualRepTimeSec) || 0,
+          targetEffortTime: currentExerciseFeedback.targetEffortTime || null,
+          targetVmaPercentage: currentExerciseFeedback.targetVmaPercentage || null,
+        }),
+        ...(isAmrap && {
+          actualRounds: Number(currentExerciseFeedback.actualRounds) || 0,
+        }),
+        notes: currentExerciseFeedback.notes || "",
+      };
     } else if (currentExerciseFeedback.sessionType === "muscu") {
-      setSessionFeedback({
-        ...sessionFeedback,
-        [currentExerciseFeedback.key]: {
-          series: currentExerciseFeedback.series,
-          notes: currentExerciseFeedback.notes || ""
-        },
-      });
+      entry = {
+        series: currentExerciseFeedback.series,
+        notes: currentExerciseFeedback.notes || "",
+      };
     } else {
-      setSessionFeedback({
-        ...sessionFeedback,
-        [currentExerciseFeedback.key]: {
-          actualDistance: Number(currentExerciseFeedback.actualDistance),
-          rpe: Number(currentExerciseFeedback.rpe),
-          notes: currentExerciseFeedback.notes || "",
-        },
-      });
+      entry = {
+        actualDistance: Number(currentExerciseFeedback.actualDistance),
+        rpe: Number(currentExerciseFeedback.rpe),
+        notes: currentExerciseFeedback.notes || "",
+      };
     }
+
+    const base = { ...getUserFeedback(selectedSession), ...sessionFeedback };
+    const next = { ...base, [currentExerciseFeedback.key]: entry };
+    setSessionFeedback(next);
+    persistDraftFeedback(next);
 
     setShowFeedbackModal(false);
     setCurrentExerciseFeedback(null);
@@ -1469,7 +1500,7 @@ export default function Workout() {
         ...userProgressData,
         completedAt: endTime,
         actualDuration: duration,
-        feedback: sessionFeedback,
+        feedback: { ...(userProgressData.feedback || {}), ...sessionFeedback },
         inProgress: false,
       };
       
