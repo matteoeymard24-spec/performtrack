@@ -72,9 +72,15 @@ export const SOURCED = {
   "TRAP BARRE": {
     international: { v: [305, 297.5, 285, 285, 250, 257.5, 277.5, 277.5], src: "Objectif FFR 2020 (trap bar deadlift)" },
   },
+  /* Bronco : ÉTUDE PUBLIÉE — Weakley et al. (2026), J Strength Cond Res, « A 10-Year Analysis of the Bronco
+     Fitness Test in Male and Female Super Rugby Athletes » : 303 hommes, 1 376 mesures, centiles par groupe
+     de poste (tableau 4). International = 10e centile (les 10 % les plus rapides), Top 14 = 30e centile.
+     Groupes de l'étude : 1re ligne (pilier, talonneur), 2e ligne, 3e ligne, charnière (9-10), centres, trois-quarts
+     aile/arrière. Recoupement : les objectifs FFR 2020 (4.36 à 5.04) sont du même ordre que ce 10e centile.
+     Corroboré par Hamlin et al. (pros NZ, n = 133) : 3e ligne/avants 5:11, arrières 4:54. */
   Bronco: {
-    international: { v: [5.04, 4.46, 4.5, 4.42, 4.24, 4.38, 4.42, 4.36], src: "Objectif FFR 2020" },
-    top14: { v: [5.05, 4.48, 4.43, 4.46, 4.15, 4.27, 4.37, 4.26], src: "Meilleure perf Top 14 2021-22" },
+    international: { v: [5.05, 5.05, 4.55, 4.43, 4.31, 4.31, 4.44, 4.38], src: "Étude Weakley et al. 2026 (Super Rugby, 10e centile)" },
+    top14: { v: [5.22, 5.22, 5.06, 4.56, 4.39, 4.39, 4.56, 4.51], src: "Étude Weakley et al. 2026 (Super Rugby, 30e centile)" },
   },
   CMJ: {
     international: { v: [50, 55, 55, 55, 55, 55, 60, 62], src: "Références physiques V3 World Class" },

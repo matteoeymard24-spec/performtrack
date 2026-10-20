@@ -127,7 +127,7 @@ export function LevelTable({ rows, targetId, labelHeader = "Exercice", valueHead
         </tbody>
       </table>
       <div style={{ color: MUTED, fontSize: 10, marginTop: 6 }}>
-        * référentiel (FFR 2020, World Class, Top 14) · ~ estimé (le référentiel ne contient rien pour ce niveau) · sinon barème Agen · vert = niveau atteint · valeur affichée = 🥉 bronze (moyenne du niveau)
+        * référentiel / étude publiée (FFR 2020, World Class, Top 14, Super Rugby 2026) · ~ estimé (le référentiel ne contient rien pour ce niveau) · sinon barème Agen · vert = niveau atteint · valeur affichée = 🥉 bronze (moyenne du niveau)
         {(rows || []).filter((r) => r.estNote).map((r) => (
           <div key={r.label} style={{ color: "#d9a441" }}>⚠ {r.label} : {r.estNote}</div>
         ))}
