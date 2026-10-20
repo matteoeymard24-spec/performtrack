@@ -151,21 +151,6 @@ export default function PlanningPanel({
   onOpenSession,
 }) {
   const todayStr = dayStr(new Date());
-  const [rangeStart, setRangeStart] = useState(() => {
-    const d = new Date();
-    d.setDate(1);
-    d.setMonth(d.getMonth() - 1);
-    return dayStr(d);
-  });
-  const SPAN_MONTHS = 12;
-  const rangeEnd = useMemo(() => {
-    const d = parseDay(rangeStart);
-    d.setMonth(d.getMonth() + SPAN_MONTHS);
-    return dayStr(d);
-  }, [rangeStart]);
-  const totalDays = Math.max(1, diffDays(rangeStart, rangeEnd));
-  const pct = (day) => (diffDays(rangeStart, day) / totalDays) * 100;
-
   const [openId, setOpenId] = useState(null);
   const [form, setForm] = useState(null); // null = fermé ; {id?, ...}
   const [busy, setBusy] = useState(false);
@@ -182,6 +167,27 @@ export default function PlanningPanel({
     () => (fixtures || []).filter((f) => cycleInScope(f, scopes)).sort((a, b) => a.date.localeCompare(b.date)),
     [fixtures, scopes]
   );
+
+  /* ---------------- période affichée : année civile (janv. → déc.) ----------------
+     Les mois vides AVANT le début de la planification sont masqués, pour que
+     l'athlète voie réellement où elle commence. */
+  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [showWholeYear, setShowWholeYear] = useState(false);
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year + 1}-01-01`;
+  const firstPlanned = useMemo(() => {
+    const starts = [
+      ...visible.filter((c) => c.endDate >= yearStart && c.startDate < yearEnd).map((c) => c.startDate),
+      ...visibleFixtures.filter((f) => fixtureEnd(f) >= yearStart && f.date < yearEnd).map((f) => f.date),
+    ].map((d) => (d < yearStart ? yearStart : d));
+    return starts.length ? starts.sort()[0] : null;
+  }, [visible, visibleFixtures, yearStart, yearEnd]);
+  const rangeStart = !showWholeYear && firstPlanned ? `${firstPlanned.slice(0, 7)}-01` : yearStart;
+  const rangeEnd = yearEnd;
+  const SPAN_MONTHS = 12 - (Number(rangeStart.slice(5, 7)) - 1);
+  const hiddenMonths = Number(rangeStart.slice(5, 7)) - 1;
+  const totalDays = Math.max(1, diffDays(rangeStart, rangeEnd));
+  const pct = (day) => (diffDays(rangeStart, day) / totalDays) * 100;
 
   const blankFixture = () => ({ name: "", kind: "match", date: todayStr, endDate: "", place: "", scope: defaultScope, notes: "" });
   const saveFixture = async () => {
@@ -221,12 +227,6 @@ export default function PlanningPanel({
     } finally {
       setBusy(false);
     }
-  };
-
-  const shiftRange = (months) => {
-    const d = parseDay(rangeStart);
-    d.setMonth(d.getMonth() + months);
-    setRangeStart(dayStr(d));
   };
 
   const athleteLabel = (uid) => {
@@ -395,11 +395,19 @@ export default function PlanningPanel({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 18, color: TEXT }}>🗂️ Planification</h3>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => shiftRange(-3)} style={btn("#2a2620")}>◀</button>
-          <span style={{ color: MUTED, fontSize: 12 }}>
-            {fmtShort(rangeStart)} → {fmtLong(addDays(rangeEnd, -1))}
-          </span>
-          <button onClick={() => shiftRange(3)} style={btn("#2a2620")}>▶</button>
+          <button onClick={() => setYear((y) => y - 1)} style={btn("#2a2620")}>◀</button>
+          <span style={{ color: TEXT, fontSize: 14, fontWeight: 700, minWidth: 44, textAlign: "center" }}>{year}</span>
+          <button onClick={() => setYear((y) => y + 1)} style={btn("#2a2620")}>▶</button>
+          {hiddenMonths > 0 && (
+            <button onClick={() => setShowWholeYear(true)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }} title="Afficher aussi les mois sans planification">
+              + {hiddenMonths} mois masqué{hiddenMonths > 1 ? "s" : ""}
+            </button>
+          )}
+          {showWholeYear && firstPlanned && (
+            <button onClick={() => setShowWholeYear(false)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
+              Masquer les mois vides
+            </button>
+          )}
           {isAdmin && (
             <>
               <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
@@ -424,7 +432,7 @@ export default function PlanningPanel({
                 style={{ position: "absolute", left: `${pct(m.day)}%`, fontSize: 10, color: MUTED, borderLeft: "1px solid #2a2620", paddingLeft: 3, height: 20 }}
               >
                 {m.label}
-                {m.day.endsWith("-01-01") || m === months[0] ? ` ${m.year}` : ""}
+                {m === months[0] ? ` ${m.year}` : ""}
               </div>
             ))}
           </div>
