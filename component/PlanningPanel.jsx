@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebase";
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import {
@@ -80,7 +80,33 @@ const typeIcon = (e) => (e.type === "sprint" ? "⚡" : e.type === "endurance" ? 
 /* ------------------------------------------------------------------ */
 /* Bandeau : bouton d'ouverture + cycle(s) en cours aujourd'hui        */
 /* ------------------------------------------------------------------ */
-export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle, label = "Planification" }) {
+/* Préférence "masquer les matchs / échéances" : mémorisée par utilisateur et
+   partagée entre le bandeau et le panneau (même onglet, via un événement). */
+export function useHideFixtures(uid) {
+  const key = `pt_hide_fixtures_${uid || "x"}`;
+  const read = () => {
+    try { return localStorage.getItem(key) === "1"; } catch (e) { return false; }
+  };
+  const [hidden, setHidden] = useState(read);
+  useEffect(() => {
+    const sync = () => setHidden(read());
+    window.addEventListener("pt-fixtures-pref", sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener("pt-fixtures-pref", sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const set = (v) => {
+    setHidden(v);
+    try { localStorage.setItem(key, v ? "1" : "0"); } catch (e) { /* ignore */ }
+    window.dispatchEvent(new Event("pt-fixtures-pref"));
+  };
+  return [hidden, set];
+}
+
+export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle, label = "Planification", uid }) {
+  const [hideFix] = useHideFixtures(uid);
   const list = (cycles || []).filter((c) => cycleInScope(c, scopes));
   const now = cyclesOnDay(list, todayStr);
   const upcoming = list
@@ -119,6 +145,7 @@ export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle
         <span style={{ color: MUTED, fontSize: 12 }}>Aucun cycle planifié</span>
       )}
       {(() => {
+        if (hideFix) return null;
         const nf = nextFixture((fixtures || []).filter((f) => cycleInScope(f, scopes)), todayStr);
         if (!nf) return null;
         const k = kindOf(nf.kind);
@@ -160,12 +187,15 @@ export default function PlanningPanel({
   const [form, setForm] = useState(null); // null = fermé ; {id?, ...}
   const [busy, setBusy] = useState(false);
   const [dup, setDup] = useState(null); // {src, start, name, parentId}
+  const [hideFix, setHideFix] = useHideFixtures(currentUser?.uid);
   // Vue "graphique seul" : masque la liste des cycles/semaines (et les boutons de
   // modification) pour ne garder que la frise. Mémorisé par utilisateur.
   const graphKey = `pt_plan_graph_only_${currentUser?.uid || "x"}`;
-  const [graphOnly, setGraphOnlyState] = useState(() => {
+  const [graphOnlyPref, setGraphOnlyState] = useState(() => {
     try { return localStorage.getItem(graphKey) === "1"; } catch (e) { return false; }
   });
+  // Les athlètes ont toujours la vue graphique seul (pas de détail à modifier).
+  const graphOnly = !isAdmin || graphOnlyPref;
   const setGraphOnly = (v) => {
     setGraphOnlyState(v);
     try { localStorage.setItem(graphKey, v ? "1" : "0"); } catch (e) { /* ignore */ }
@@ -215,6 +245,7 @@ export default function PlanningPanel({
   // dans la liste, ouverte et surlignée, avec ses boutons « Modifier » etc.
   const goToCycle = (c) => {
     if (isAdmin && isHiddenCycle(c)) setShowHidden(true);
+    if (!isAdmin) return;
     if (graphOnly) setGraphOnly(false);
     setOpenId(c.id);
     setFlashId(c.id);
@@ -589,12 +620,19 @@ export default function PlanningPanel({
             </button>
           )}
           <button
+            onClick={() => setHideFix(!hideFix)}
+            style={{ ...btn(hideFix ? AMBER : "#2a2620", hideFix ? "#1a1814" : "#fff"), fontWeight: 600, fontSize: 12 }}
+            title="Afficher ou masquer les matchs et échéances de compétition"
+          >
+            {hideFix ? "🏉 Afficher les matchs" : "🏉 Masquer les matchs"}
+          </button>
+          {isAdmin && <button
             onClick={() => setGraphOnly(!graphOnly)}
             style={{ ...btn(graphOnly ? AMBER : "#2a2620", graphOnly ? "#1a1814" : "#fff"), fontWeight: 600, fontSize: 12 }}
             title="Afficher seulement le graphique, ou le détail des cycles et semaines"
           >
             {graphOnly ? "📋 Voir le détail" : "📊 Graphique seul"}
-          </button>
+          </button>}
           {isAdmin && (
             <>
               <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
@@ -666,6 +704,7 @@ export default function PlanningPanel({
           ))}
 
           {/* matchs et compétitions */}
+          {!hideFix && (
           <div style={{ position: "relative", height: 26, borderBottom: "1px dashed #1d1a16" }}>
             <div style={{ position: "absolute", left: 0, top: 2, fontSize: 9, color: "#5e584f" }}>Matchs</div>
             {visibleFixtures
@@ -701,6 +740,7 @@ export default function PlanningPanel({
                 );
               })}
           </div>
+          )}
 
           {/* volume & intensité par semaine (microcycles) — remplace l'ancienne charge en minutes */}
           <div style={{ position: "relative", height: 78, marginTop: 6 }}>
@@ -1168,6 +1208,7 @@ export default function PlanningPanel({
         </Modal>
       )}
 
+      {!graphOnly && !hideFix && (
       <div style={{ marginTop: 16 }}>
         <div style={{ fontWeight: 700, color: TEXT, marginBottom: 8 }}>🏉 Matchs et compétitions</div>
         {visibleFixtures.length === 0 ? (
@@ -1213,6 +1254,7 @@ export default function PlanningPanel({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

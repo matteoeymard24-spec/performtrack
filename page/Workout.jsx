@@ -3279,7 +3279,7 @@ export default function Workout() {
         evt.targetUserId === currentUser?.uid
       );
     if (viewMode === "admins")
-      return evt.group === "moi" && adminUsers.some((a) => a.id === evt.createdBy);
+      return evt.group === "moi" && evt.createdBy !== currentUser?.uid && adminUsers.some((a) => a.id === evt.createdBy);
     if (filterAthlete) return isEventVisibleToAthlete(evt, filterAthlete);
     if (filterGroup) return isEventVisibleToGroup(evt, filterGroup.id);
     return true;
@@ -3303,7 +3303,8 @@ export default function Workout() {
     const groupsOf = (uid) =>
       customGroups.filter((g) => (g.athleteIds || []).includes(uid)).map((g) => g.id);
     if (viewMode === "moi") return [userScope(currentUser.uid)];
-    if (viewMode === "admins") return adminUsers.map((a) => userScope(a.id));
+    if (viewMode === "admins")
+      return adminUsers.filter((a) => a.id !== currentUser.uid && (isSuperAdmin)).map((a) => userScope(a.id));
     if (filterAthlete) return ["total", ...groupsOf(filterAthlete.id), userScope(filterAthlete.id)];
     if (filterGroup) return ["total", filterGroup.id];
     if (isAdminLike) return null;
@@ -3725,6 +3726,7 @@ export default function Workout() {
             todayStr={getLocalDateStr(new Date())}
             open={showPlanning}
             label={isAdminLike ? "Planification" : "Ma planification"}
+            uid={currentUser?.uid}
             onToggle={() => setShowPlanning((v) => !v)}
           />
           {showPlanning && (
@@ -5270,13 +5272,18 @@ export default function Workout() {
                 }}
               >
                 <option value="">-- Choisir l'athlète --</option>
-                {athletes.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.firstName && a.lastName
-                      ? `${a.firstName} ${a.lastName}`
-                      : a.displayName || a.email}
-                  </option>
-                ))}
+                <optgroup label="Athlètes">
+                  {athletes.map((a) => (
+                    <option key={a.id} value={a.id}>{getAthleteDisplayName(a)}</option>
+                  ))}
+                </optgroup>
+                {adminUsers.length > 0 && (
+                  <optgroup label="Admins">
+                    {adminUsers.map((a) => (
+                      <option key={a.id} value={a.id}>👤 {getAthleteDisplayName(a)}{a.id === currentUser?.uid ? " (moi)" : ""}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             )}
 
@@ -5710,13 +5717,18 @@ export default function Workout() {
                 }}
               >
                 <option value="">-- Choisir --</option>
-                {athletes.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.firstName && a.lastName
-                      ? `${a.firstName} ${a.lastName}`
-                      : a.displayName || a.email}
-                  </option>
-                ))}
+                <optgroup label="Athlètes">
+                  {athletes.map((a) => (
+                    <option key={a.id} value={a.id}>{getAthleteDisplayName(a)}</option>
+                  ))}
+                </optgroup>
+                {adminUsers.length > 0 && (
+                  <optgroup label="Admins">
+                    {adminUsers.map((a) => (
+                      <option key={a.id} value={a.id}>👤 {getAthleteDisplayName(a)}{a.id === currentUser?.uid ? " (moi)" : ""}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
           )}
