@@ -32,7 +32,6 @@ export const PHASES = [
   { id: "pre_comp", label: "Pré-compétition", color: "#e0a13d", models: [] },
   { id: "competition", label: "Compétition", color: "#d9534f", models: [] },
   { id: "intersaison", label: "Intersaison", color: "#3aa6b9", models: [] },
-  { id: "charge", label: "Semaine de charge", color: "#c46a3a", models: [] },
   // blocs
   { id: "accumulation", label: "Accumulation", color: "#3f7be0", models: ["bloc"] },
   { id: "transmutation", label: "Transmutation", color: "#e08a3d", models: ["bloc"] },
@@ -41,6 +40,7 @@ export const PHASES = [
   { id: "developpement", label: "Développement", color: "#8e6bd8", models: ["ondulation"] },
   { id: "maintien", label: "Maintien", color: "#3aa6b9", models: ["ondulation"] },
   { id: "affutage", label: "Affûtage", color: "#e0c13d", models: ["ondulation"] },
+  { id: "charge", label: "Charge", color: "#c46a3a", models: ["bloc", "ondulation"] },
   { id: "decharge", label: "Décharge", color: "#7fb77e", models: ["bloc", "ondulation"] },
   { id: "transition", label: "Transition", color: "#4fae7d", models: ["bloc", "ondulation"] },
   { id: "autre", label: "Autre", color: "#8a8378", models: ["bloc", "ondulation"] },
@@ -188,17 +188,20 @@ export function buildPlan(parent, { lastIsTransition }) {
 export function buildWeeks(parent, { lastIsDeload }) {
   const n = Math.max(1, Math.ceil((diffDays(parent.startDate, parent.endDate) + 1) / 7));
   const model = parent.model || "bloc";
-  const basePhase = parent.phase;
+  // Les semaines générées s'appellent « Charge » (ou « Décharge » si le cycle
+  // parent est une transition / une décharge, et pour la dernière semaine
+  // quand on le demande). Tout reste modifiable ensuite.
+  const parentIsLight = parent.phase === "transition" || parent.phase === "decharge";
   const weeks = [];
   for (let i = 0; i < n; i++) {
     const start = addDays(parent.startDate, i * 7);
     const end = addDays(start, 6) > parent.endDate ? parent.endDate : addDays(start, 6);
     const deload = lastIsDeload && n >= 3 && i === n - 1;
     weeks.push({
-      name: `${parent.name} · S${i + 1}${deload ? " (décharge)" : ""}`,
+      name: `${deload || parentIsLight ? "Décharge" : "Charge"} · S${i + 1}`,
       level: "micro",
       model,
-      phase: deload ? "decharge" : basePhase,
+      phase: deload || parentIsLight ? "decharge" : "charge",
       startDate: start,
       endDate: end,
       scope: parent.scope || "total",
