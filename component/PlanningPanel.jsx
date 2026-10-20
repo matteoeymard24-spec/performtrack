@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { db } from "../firebase";
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import {
@@ -185,7 +185,7 @@ function LoadChart({ weeks, isAdmin, onPick, todayStr }) {
           })}
         </svg>
       </div>
-      {isAdmin && <div style={{ fontSize: 11, color: "#5e584f", marginTop: 2 }}>Clique sur une semaine pour régler son volume et son intensité.</div>}
+      {isAdmin && <div style={{ fontSize: 11, color: "#5e584f", marginTop: 2 }}>Clique sur une semaine pour aller à sa fiche et la modifier.</div>}
     </div>
   );
 }
@@ -209,6 +209,8 @@ export default function PlanningPanel({
 }) {
   const todayStr = dayStr(new Date());
   const [openId, setOpenId] = useState(null);
+  const [flashId, setFlashId] = useState(null);
+  const cardRefs = useRef({});
   const [form, setForm] = useState(null); // null = fermé ; {id?, ...}
   const [busy, setBusy] = useState(false);
   const [fForm, setFForm] = useState(null); // formulaire match / compétition
@@ -252,6 +254,18 @@ export default function PlanningPanel({
   const isHiddenCycle = (c, depth = 0) =>
     !!c.hidden || (depth < 4 && (() => { const p = parentOfCycle(c); return p ? isHiddenCycle(p, depth + 1) : false; })());
   const hiddenCount = visible.filter((c) => isHiddenCycle(c)).length;
+  // Clic sur un cycle (frise ou graphique) : on saute directement à sa fiche
+  // dans la liste, ouverte et surlignée, avec ses boutons « Modifier » etc.
+  const goToCycle = (c) => {
+    if (isAdmin && isHiddenCycle(c)) setShowHidden(true);
+    setOpenId(c.id);
+    setFlashId(c.id);
+    setTimeout(() => {
+      const el = cardRefs.current[c.id];
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 80);
+    setTimeout(() => setFlashId((f) => (f === c.id ? null : f)), 2200);
+  };
   const revealHidden = isAdmin && showHidden;
   const shown = visible.filter((c) => revealHidden || !isHiddenCycle(c));
   const ordered = useMemo(() => {
@@ -592,7 +606,7 @@ export default function PlanningPanel({
                 return (
                   <div
                     key={c.id}
-                    onClick={() => setOpenId(openId === c.id ? null : c.id)}
+                    onClick={() => goToCycle(c)}
                     title={`${c.name} · ${phaseOf(c.phase).label} · ${fmtShort(c.startDate)} → ${fmtShort(c.endDate)}`}
                     style={{
                       position: "absolute",
@@ -708,7 +722,7 @@ export default function PlanningPanel({
           weeks={anyLoadInfo ? loadWeeks : []}
           isAdmin={isAdmin}
           todayStr={todayStr}
-          onPick={(c) => { setFForm(null); setForm({ ...c, model: c.model || "bloc", _dur: Math.max(0, diffDays(c.startDate, c.endDate)) }); }}
+          onPick={(c) => goToCycle(c)}
         />
       )}
       {isAdmin && !anyLoadInfo && loadWeeks.length > 0 && (
@@ -889,7 +903,11 @@ export default function PlanningPanel({
           const parent = c.parentId ? (cycles || []).find((x) => x.id === c.parentId) : null;
           const open = openId === c.id;
           return (
-            <div key={c.id} style={{ background: DARK, borderRadius: 8, borderLeft: `5px solid ${cycleColor(c)}`, padding: 12, marginLeft: depth * 18, opacity: isHiddenCycle(c) ? 0.55 : 1 }}>
+            <div
+              key={c.id}
+              ref={(el) => { cardRefs.current[c.id] = el; }}
+              style={{ background: DARK, borderRadius: 8, borderLeft: `5px solid ${cycleColor(c)}`, padding: 12, marginLeft: depth * 18, opacity: isHiddenCycle(c) ? 0.55 : 1, boxShadow: flashId === c.id ? `0 0 0 2px ${AMBER}` : "none", transition: "box-shadow 0.3s" }}
+            >
               <div onClick={() => setOpenId(open ? null : c.id)} style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                 <div>
                   <span style={{ color: TEXT, fontWeight: 700 }}>{c.name}</span>{" "}
