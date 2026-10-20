@@ -195,7 +195,7 @@ export function buildWeeks(parent, { lastIsDeload }) {
     const end = addDays(start, 6) > parent.endDate ? parent.endDate : addDays(start, 6);
     const deload = lastIsDeload && n >= 3 && i === n - 1;
     weeks.push({
-      name: `${parent.name} · S${i + 1}${deload ? " (décharge)" : ""}`,
+      name: `Semaine ${i + 1}${deload ? " (décharge)" : ""}`,
       level: "micro",
       model,
       phase: deload ? "decharge" : basePhase,

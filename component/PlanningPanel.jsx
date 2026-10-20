@@ -912,7 +912,7 @@ export default function PlanningPanel({
                   {isAdmin && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                       <button onClick={() => { setFForm(null); setForm({ ...c, model: c.model || "bloc", _dur: Math.max(0, diffDays(c.startDate, c.endDate)) }); }} style={btn("#2a2620")}>✏️ Modifier</button>
-                      {c.level !== "micro" && (
+                      {c.level !== "micro" && c.model !== "ondulation" && (
                         <button disabled={busy} onClick={() => generateWeeks(c)} style={btn("#5b8def")}>
                           ➕ Générer les semaines
                         </button>
