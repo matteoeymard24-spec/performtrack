@@ -92,3 +92,12 @@ export const SOURCED = {
     international: { v: [2.69, 2.82, 2.67, 2.67, 3.06, 2.82, 2.82, 2.7], src: "Objectif FFR 2020 (Prowler 0-10 m)" },
   },
 };
+
+/* Bronco : PLANCHER RÉALISTE de la médaille d'or. Les médailles argent/or sont déduites de l'écart du barème
+   (notes 10 → 15 → 20), ce qui donnait des temps impossibles (ex. 3'46" pour un demi de mêlée).
+   On borne donc l'or par le meilleur temps connu : record 4'08" (248 s, demandé par le coach ; Barrett a
+   publiquement réalisé 4'12" avec les Blues en 2020), ramené à chaque poste avec le rapport des 10e centiles
+   publiés (Weakley et al. 2026) : charnière = 1, 3e ligne 1.044, 2e ligne 1.089, 1re ligne 1.125, etc.
+   Ordre des colonnes = GROUP (pilier, talonneur, 2L, 3L, 9, 10, centre, ailier/arrière). */
+export const BRONCO_RECORD_S = 248;
+export const BRONCO_POSTE_RATIO = [1.1255, 1.1255, 1.0886, 1.0443, 1, 1, 1.048, 1.0258];

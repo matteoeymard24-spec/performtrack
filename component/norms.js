@@ -7,7 +7,7 @@
    ===================================================================== */
 import { RUGBY_BAREME, RUGBY_MATCH_REF } from "./rugbyBareme";
 import { parseTime, num } from "./testsCalc";
-import { LEVELS, SENS, SOURCED, GROUP, levelLabel } from "./rugbyLevels";
+import { LEVELS, SENS, SOURCED, GROUP, levelLabel, BRONCO_RECORD_S, BRONCO_POSTE_RATIO } from "./rugbyLevels";
 
 export { LEVELS, levelLabel } from "./rugbyLevels";
 
@@ -209,6 +209,24 @@ export function buildLadder(sport, normKey, poste) {
     r.silver = med(15);
     r.gold = med(20);
   });
+  // Bronco : l'or ne peut pas être plus rapide que le meilleur temps connu (record ramené au poste), un peu
+  // moins exigeant quand le niveau baisse ; l'argent est recalé proportionnellement.
+  if (bronco && gi != null && BRONCO_POSTE_RATIO[gi]) {
+    const floor = BRONCO_RECORD_S * BRONCO_POSTE_RATIO[gi];
+    const intl = rows.find((r) => r.id === "international");
+    const bIntl = intl ? cv(intl.thr) : floor;
+    rows.forEach((r) => {
+      const b = cv(r.thr);
+      const fl = floor + 0.5 * Math.max(0, b - bIntl);
+      const sd = cv(r.silver);
+      const gd = cv(r.gold);
+      if (gd < fl && b > fl) {
+        const frac = b - gd > 0 ? (b - sd) / (b - gd) : 0.5;
+        r.gold = back(fl);
+        r.silver = back(b - (b - fl) * frac);
+      }
+    });
+  }
   return { dir, rows, cv, W };
 }
 
