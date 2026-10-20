@@ -31,7 +31,7 @@ import {
   cyclesOnDay,
   weekInCycle,
   packRows,
-  buildWeeks,
+  buildPlan,
 } from "./cycles";
 
 const CARD = "#151310";
@@ -423,19 +423,29 @@ export default function PlanningPanel({
 
   const generateWeeks = async (c) => {
     const exists = (cycles || []).filter((x) => x.parentId === c.id && x.level === "micro");
-    const n = Math.max(1, Math.ceil((diffDays(c.startDate, c.endDate) + 1) / 7));
-    if (!window.confirm(`Créer ${n} microcycle(s) d'une semaine dans « ${c.name} » ?`)) return;
-    const deload = n >= 3 && window.confirm("Dernière semaine = semaine de décharge ?");
-    const weeksToMake = buildWeeks(c, { lastIsDeload: deload }).filter(
-      (w) => !exists.some((x) => x.startDate === w.startDate)
-    );
-    if (weeksToMake.length === 0) return alert("Toutes les semaines existent déjà.");
+    const total = Math.max(1, Math.ceil((diffDays(c.startDate, c.endDate) + 1) / 7));
+    if (!window.confirm(`Créer ${total} semaine(s) (microcycles) dans « ${c.name} » ?`)) return;
+    const withTransition =
+      total >= 2 &&
+      window.confirm(
+        "Dernière semaine = TRANSITION ?\n\nOK : la dernière semaine devient un mini-mésocycle « Transition » d'une semaine (le cycle se termine la veille).\nAnnuler : toutes les semaines restent dans le cycle."
+      );
+    const plan = buildPlan(c, { lastIsTransition: withTransition });
+    const weeksToMake = plan.weeks.filter((w) => !exists.some((x) => x.startDate === w.startDate));
+    const transitionExists =
+      plan.transition &&
+      (cycles || []).some((x) => x.level === "meso" && x.phase === "transition" && x.startDate === plan.transition.startDate && (x.scope || "total") === (c.scope || "total"));
+    if (weeksToMake.length === 0 && (!plan.transition || transitionExists)) return alert("Tout existe déjà.");
     setBusy(true);
     try {
       const b = writeBatch(db);
       weeksToMake.forEach((w) =>
         b.set(doc(collection(db, "cycles")), { ...w, createdBy: currentUser?.uid || null, createdAt: serverTimestamp() })
       );
+      if (plan.transition && !transitionExists) {
+        b.set(doc(collection(db, "cycles")), { ...plan.transition, createdBy: currentUser?.uid || null, createdAt: serverTimestamp() });
+        b.update(doc(db, "cycles", c.id), { endDate: plan.newParentEnd });
+      }
       await b.commit();
       await onReload();
     } catch (e) {

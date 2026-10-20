@@ -32,7 +32,6 @@ export const PHASES = [
   { id: "pre_comp", label: "Pré-compétition", color: "#e0a13d", models: [] },
   { id: "competition", label: "Compétition", color: "#d9534f", models: [] },
   { id: "intersaison", label: "Intersaison", color: "#3aa6b9", models: [] },
-  { id: "transition", label: "Transition / récupération", color: "#4fae7d", models: [] },
   { id: "charge", label: "Semaine de charge", color: "#c46a3a", models: [] },
   // blocs
   { id: "accumulation", label: "Accumulation", color: "#3f7be0", models: ["bloc"] },
@@ -43,6 +42,7 @@ export const PHASES = [
   { id: "maintien", label: "Maintien", color: "#3aa6b9", models: ["ondulation"] },
   { id: "affutage", label: "Affûtage", color: "#e0c13d", models: ["ondulation"] },
   { id: "decharge", label: "Décharge", color: "#7fb77e", models: ["bloc", "ondulation"] },
+  { id: "transition", label: "Transition", color: "#4fae7d", models: ["bloc", "ondulation"] },
   { id: "autre", label: "Autre", color: "#8a8378", models: ["bloc", "ondulation"] },
 ];
 export const phasesOfModel = (m) => PHASES.filter((p) => p.models.includes(m || "bloc"));
@@ -141,7 +141,34 @@ export function packRows(list) {
   return { items: out, rowCount: Math.max(1, rows.length) };
 }
 
-/* Microcycles hebdomadaires d'un cycle (pour le bouton "Générer les semaines") */
+/* Microcycles hebdomadaires d'un cycle (pour le bouton "Générer les semaines").
+   Si lastIsTransition : la dernière semaine n'est PAS un microcycle mais un mini-
+   mésocycle d'une semaine « Transition » ; le cycle d'origine se termine alors
+   la veille (newParentEnd). */
+export function buildPlan(parent, { lastIsTransition }) {
+  const total = Math.max(1, Math.ceil((diffDays(parent.startDate, parent.endDate) + 1) / 7));
+  const withTransition = !!lastIsTransition && total >= 2;
+  const n = withTransition ? total - 1 : total;
+  const weeks = buildWeeks({ ...parent, endDate: withTransition ? addDays(parent.startDate, n * 7 - 1) : parent.endDate }, { lastIsDeload: false });
+  if (!withTransition) return { weeks, transition: null, newParentEnd: null };
+  const tStart = addDays(parent.startDate, n * 7);
+  return {
+    weeks,
+    newParentEnd: addDays(tStart, -1),
+    transition: {
+      name: "Transition",
+      level: "meso",
+      model: parent.model || "bloc",
+      phase: "transition",
+      startDate: tStart,
+      endDate: parent.endDate,
+      scope: parent.scope || "total",
+      objective: "",
+      notes: "",
+    },
+  };
+}
+
 export function buildWeeks(parent, { lastIsDeload }) {
   const n = Math.max(1, Math.ceil((diffDays(parent.startDate, parent.endDate) + 1) / 7));
   const model = parent.model || "bloc";
