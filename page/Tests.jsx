@@ -1007,7 +1007,7 @@ export default function Tests() {
                   <div style={{ fontWeight: 700, marginBottom: 6 }}>📐 Comparaison aux normes</div>
                   <div style={{ fontSize: 13, color: MUTED }}>
                     Choisis le sport et le poste de l'athlète en haut de la page. Les normes viennent de ton barème
-                    (rugby : barème SU Agen, note de 0 à 20 par poste).
+                    (rugby : barème SU Agen, par poste).
                   </div>
                 </div>
               ) : (
@@ -1055,50 +1055,9 @@ export default function Tests() {
                     />
                   </div>
 
-                  <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>💪 Force (1RM de « Mes RM »)</div>
-                    <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>
-                      Poste : {posteLabel(sport, poste)}. Le 1RM est repéré automatiquement par le nom de l'exercice.
-                    </div>
-                    <PatternList rows={strengthNorms} />
-                  </div>
-
-                  <div style={cardStyle}>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>⚡ Derniers tests comparés</div>
-                    {(() => {
-                      const seen = new Set();
-                      const rows = [];
-                      tests.forEach((t) => {
-                        evaluateTestNorms(t.testId, t.values, sport, poste, level).forEach((r) => {
-                          if (seen.has(r.label)) return;
-                          seen.add(r.label);
-                          rows.push({ ...r, label: `${r.label} (${t.date})` });
-                        });
-                      });
-                      return rows.length ? (
-                        <NormList rows={rows} />
-                      ) : (
-                        <div style={{ fontSize: 13, color: MUTED }}>
-                          Aucun test comparable enregistré (Bronco, CMJ, sprint, cervicales).
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  <div style={cardStyle}>
-                    <MatchRefCard
-                      poste={poste}
-                      posteName={posteLabel(sport, poste)}
-                      level={level}
-                      levelName={level ? levelLabel(level) : ""}
-                      data={getMatchRef(sport, poste, level)}
-                    />
-                  </div>
-
                   <div style={{ ...cardStyle, fontSize: 12, color: MUTED }}>
                     Pas de norme dans ton projet pour la VMA, le Yo-Yo, le 30-15, la mobilité et la force isométrique
-                    (hors cervicales) : ces tests ne sont donc pas notés. Seuils de couleur : 15+ très bon niveau,
-                    10-14 dans la norme, 5-9 sous la norme, 0-4 à développer. Les niveaux Nationale, Fédérale, Régionale, Espoirs et U18 sont des estimations (~) tant que tu n'as pas tes propres valeurs : ajuste les coefficients dans rugbyLevels.js.
+                    (hors cervicales). Médailles : 🥉 bronze = moyenne du niveau, 🥈 argent et 🥇 or = au-dessus ; sous la moyenne = hors standard. Les niveaux Nationale, Fédérale, Régionale, Espoirs et U18 sont des estimations (~) tant que tu n'as pas tes propres valeurs : ajuste les coefficients dans rugbyLevels.js.
                   </div>
                 </>
               )}
