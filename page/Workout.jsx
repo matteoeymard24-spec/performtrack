@@ -379,9 +379,11 @@ export default function Workout() {
     return () => clearInterval(id);
   }, [deletedStack.length]);
   // Superadmin uniquement : afficher aussi les séances "🌟 Moi" des autres admins.
-  const [showAllMoi, setShowAllMoi] = useState(false);
+  const showAllMoi = false; // option retirée (la vue Admins sert à ça)
   const [athleteFilterId, setAthleteFilterId] = useState("");
   const [groupFilterId, setGroupFilterId] = useState("");
+  const [subFilterId, setSubFilterId] = useState(""); // sous-groupe du groupe filtré
+  const [adminFilterId, setAdminFilterId] = useState(""); // vue Admins : un admin précis
   // Vue du calendrier réservée au coach : "" = tout, "moi" = mes propres
   // séances/planif, "admins" = les séances perso et la planif de chaque admin.
   const [viewMode, setViewMode] = useState("");
@@ -3272,15 +3274,28 @@ export default function Workout() {
   // cohérent entre ce que montre chaque jour et ce que montre le panneau.
   const filterAthlete = athletes.find((a) => a.id === athleteFilterId) || null;
   const filterGroup = customGroups.find((g) => g.id === groupFilterId) || null;
+  const filterSub = filterGroup && subFilterId ? (filterGroup.subGroups || []).find((s) => s.id === subFilterId) || null : null;
   const isEventVisibleToFilter = (evt) => {
     if (viewMode === "moi")
       return (
         (evt.group === "moi" && evt.createdBy === currentUser?.uid) ||
         evt.targetUserId === currentUser?.uid
       );
-    if (viewMode === "admins")
+    if (viewMode === "admins") {
+      if (adminFilterId)
+        return (
+          (evt.group === "moi" && evt.createdBy === adminFilterId) ||
+          evt.targetUserId === adminFilterId
+        );
       return evt.group === "moi" && evt.createdBy !== currentUser?.uid && adminUsers.some((a) => a.id === evt.createdBy);
+    }
     if (filterAthlete) return isEventVisibleToAthlete(evt, filterAthlete);
+    if (filterSub)
+      return (
+        evt.group === "total" ||
+        evt.group === filterGroup.id ||
+        evt.group === `${SUBGROUP_PREFIX}${filterGroup.id}:${filterSub.id}`
+      );
     if (filterGroup) return isEventVisibleToGroup(evt, filterGroup.id);
     return true;
   };
@@ -3303,6 +3318,7 @@ export default function Workout() {
     const groupsOf = (uid) =>
       customGroups.filter((g) => (g.athleteIds || []).includes(uid)).map((g) => g.id);
     if (viewMode === "moi") return [userScope(currentUser.uid)];
+    if (viewMode === "admins" && adminFilterId) return isSuperAdmin ? [userScope(adminFilterId)] : [];
     if (viewMode === "admins")
       return adminUsers.filter((a) => a.id !== currentUser.uid && (isSuperAdmin)).map((a) => userScope(a.id));
     if (filterAthlete) return ["total", ...groupsOf(filterAthlete.id), userScope(filterAthlete.id)];
@@ -3558,18 +3574,18 @@ export default function Workout() {
         >
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
             {[
-              { id: "", label: "📋 Tout" },
+              { id: "", label: "🏉 Athlètes" },
               { id: "moi", label: "🌟 Moi" },
-              { id: "admins", label: "👥 Admins" },
+              ...(isSuperAdmin ? [{ id: "admins", label: "👥 Admins" }] : []),
             ].map((m) => (
               <button
                 key={m.id || "all"}
                 onClick={() => {
                   setViewMode(m.id);
-                  if (m.id) {
-                    setAthleteFilterId("");
-                    setGroupFilterId("");
-                  }
+                  setAthleteFilterId("");
+                  setGroupFilterId("");
+                  setSubFilterId("");
+                  setAdminFilterId("");
                 }}
                 style={{
                   padding: "8px 16px",
@@ -3597,26 +3613,34 @@ export default function Workout() {
             )}
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-              marginBottom: 10,
-            }}
-          >
-            <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>
-              👤 Filtrer par athlète
-            </label>
-            <select
-              value={athleteFilterId}
-              onChange={(e) => {
-                setAthleteFilterId(e.target.value);
-                if (e.target.value) { setGroupFilterId(""); setViewMode(""); }
-              }}
-              style={{
-                flex: "1 1 220px",
+          {viewMode === "" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>👤 Athlète ou groupe</label>
+              <select
+                value={
+                  athleteFilterId
+                    ? `a:${athleteFilterId}`
+                    : groupFilterId && subFilterId
+                    ? `s:${groupFilterId}:${subFilterId}`
+                    : groupFilterId
+                    ? `g:${groupFilterId}`
+                    : ""
+                }
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setAthleteFilterId("");
+                  setGroupFilterId("");
+                  setSubFilterId("");
+                  if (v.startsWith("a:")) setAthleteFilterId(v.slice(2));
+                  else if (v.startsWith("g:")) setGroupFilterId(v.slice(2));
+                  else if (v.startsWith("s:")) {
+                    const [, gid, sid] = v.split(":");
+                    setGroupFilterId(gid);
+                    setSubFilterId(sid);
+                  }
+                }}
+                style={{
+                flex: "1 1 260px",
                 padding: 10,
                 borderRadius: 8,
                 border: "1px solid rgba(255,255,255,0.16)",
@@ -3624,18 +3648,30 @@ export default function Workout() {
                 color: "#f3f0ea",
                 fontSize: 14,
               }}
-            >
-              <option value="">Tous les athlètes</option>
-              {athletes.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {getAthleteDisplayName(a)}
-                </option>
-              ))}
-            </select>
-            {athleteFilterId && (
-              <button
-                onClick={() => setAthleteFilterId("")}
-                style={{
+              >
+                <option value="">Tous les athlètes et groupes</option>
+                {customGroups.length > 0 && (
+                  <optgroup label="Groupes et sous-groupes">
+                    {customGroups.map((g) => [
+                      <option key={g.id} value={`g:${g.id}`}>{g.name}</option>,
+                      ...(g.subGroups || []).map((sg) => (
+                        <option key={g.id + sg.id} value={`s:${g.id}:${sg.id}`}>
+                          {"\u00a0\u00a0↳ "}{g.name} › {sg.name}
+                        </option>
+                      )),
+                    ])}
+                  </optgroup>
+                )}
+                <optgroup label="Athlètes">
+                  {athletes.map((a) => (
+                    <option key={a.id} value={`a:${a.id}`}>{getAthleteDisplayName(a)}</option>
+                  ))}
+                </optgroup>
+              </select>
+              {(athleteFilterId || groupFilterId) && (
+                <button
+                  onClick={() => { setAthleteFilterId(""); setGroupFilterId(""); setSubFilterId(""); }}
+                  style={{
                   padding: "8px 14px",
                   background: "rgba(255,255,255,0.1)",
                   color: "white",
@@ -3645,50 +3681,34 @@ export default function Workout() {
                   fontSize: 13,
                   whiteSpace: "nowrap",
                 }}
-              >
-                ✕
-              </button>
-            )}
-          </div>
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
-            <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>
-              🏷️ Filtrer par groupe
-            </label>
-            <select
-              value={groupFilterId}
-              onChange={(e) => {
-                setGroupFilterId(e.target.value);
-                if (e.target.value) { setAthleteFilterId(""); setViewMode(""); }
-              }}
-              style={{
-                flex: "1 1 220px",
+          {viewMode === "admins" && isSuperAdmin && (
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+              <label style={{ fontSize: 14, fontWeight: "bold", whiteSpace: "nowrap" }}>👥 Admin</label>
+              <select value={adminFilterId} onChange={(e) => setAdminFilterId(e.target.value)} style={{
+                flex: "1 1 260px",
                 padding: 10,
                 borderRadius: 8,
                 border: "1px solid rgba(255,255,255,0.16)",
                 background: "#0d0c0a",
                 color: "#f3f0ea",
                 fontSize: 14,
-              }}
-            >
-              <option value="">Tous les groupes</option>
-              {customGroups.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-            {groupFilterId && (
-              <button
-                onClick={() => setGroupFilterId("")}
-                style={{
+              }}>
+                <option value="">Tous les admins</option>
+                {adminUsers
+                  .filter((a) => a.id !== currentUser?.uid)
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>👤 {getAthleteDisplayName(a)}</option>
+                  ))}
+              </select>
+              {adminFilterId && (
+                <button onClick={() => setAdminFilterId("")} style={{
                   padding: "8px 14px",
                   background: "rgba(255,255,255,0.1)",
                   color: "white",
@@ -3697,12 +3717,10 @@ export default function Workout() {
                   cursor: "pointer",
                   fontSize: 13,
                   whiteSpace: "nowrap",
-                }}
-              >
-                ✕
-              </button>
-            )}
-          </div>
+                }}>✕</button>
+              )}
+            </div>
+          )}
 
           {(athleteFilterId || groupFilterId) && (
             <p style={{ fontSize: 12, color: "#6f685f", margin: "10px 0 0 0" }}>
@@ -3779,10 +3797,15 @@ export default function Workout() {
                 // calendrier est individualisée pour lui par défaut (le
                 // formulaire permet ensuite de viser son groupe à la place).
                 openCreateForAthlete(filterAthlete, date);
+              } else if (filterSub) {
+                openCreateForGroup(`${SUBGROUP_PREFIX}${filterGroup.id}:${filterSub.id}`, date);
               } else if (filterGroup) {
                 // Un filtre groupe est actif : la séance créée cible ce
                 // groupe par défaut.
                 openCreateForGroup(filterGroup.id, date);
+              } else if (viewMode === "admins" && adminFilterId) {
+                const adm = adminUsers.find((x) => x.id === adminFilterId);
+                if (adm) openCreateForAthlete(adm, date);
               } else if (viewMode) {
                 // Vue « Moi » / « Admins » : on crée une séance perso (la mienne).
                 openCreateForGroup("moi", date);
@@ -3806,6 +3829,8 @@ export default function Workout() {
               ? "➕ Créer séance pour cet athlète"
               : groupFilterId
               ? "➕ Créer séance pour ce groupe"
+              : viewMode === "admins" && adminFilterId
+              ? "➕ Créer séance pour cet admin"
               : viewMode
               ? "➕ Créer ma séance perso"
               : "➕ Créer séance"}
@@ -3873,25 +3898,6 @@ export default function Workout() {
           >
             🔤 Noms d'exercices
           </button>
-          {isSuperAdmin && (
-            <label
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 13,
-                color: "#a8a199",
-                cursor: "pointer",
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={showAllMoi}
-                onChange={(e) => setShowAllMoi(e.target.checked)}
-              />
-              👁️ Voir aussi les séances 🌟 Moi des autres admins
-            </label>
-          )}
         </div>
       )}
 
