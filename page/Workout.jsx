@@ -3502,6 +3502,7 @@ export default function Workout() {
             scopes={cycleScopes}
             todayStr={getLocalDateStr(new Date())}
             open={showPlanning}
+            label={isAdminLike ? "Planification" : "Ma planification"}
             onToggle={() => setShowPlanning((v) => !v)}
           />
           {showPlanning && (
@@ -4671,7 +4672,8 @@ export default function Workout() {
       )}
 
       {/* Légende couleurs */}
-      {!showForm &&
+      {isAdminLike &&
+        !showForm &&
         !selectedSession &&
         customGroups.some(
           (g) => g.color || (g.subGroups || []).some((sg) => sg.color)

@@ -77,7 +77,7 @@ const typeIcon = (e) => (e.type === "sprint" ? "⚡" : e.type === "endurance" ? 
 /* ------------------------------------------------------------------ */
 /* Bandeau : bouton d'ouverture + cycle(s) en cours aujourd'hui        */
 /* ------------------------------------------------------------------ */
-export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle }) {
+export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle, label = "Planification" }) {
   const list = (cycles || []).filter((c) => cycleInScope(c, scopes));
   const now = cyclesOnDay(list, todayStr);
   const upcoming = list
@@ -86,7 +86,7 @@ export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
       <button onClick={onToggle} style={btn(open ? "#2a2620" : "#5b8def")}>
-        🗂️ Planification {open ? "▲" : "▼"}
+        🗂️ {label} {open ? "▲" : "▼"}
       </button>
       {now.map((c) => {
         const w = weekInCycle(c, todayStr);
