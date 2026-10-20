@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { getWorkoutDocs } from "../component/workoutQueries";
+import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
+import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope } from "../component/cycles";
 import {
   collection,
   query,
@@ -332,6 +334,8 @@ export default function Workout() {
 
   const [events, setEvents] = useState([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [cycles, setCycles] = useState([]);
+  const [showPlanning, setShowPlanning] = useState(false);
   const [selectedDate, setSelectedDate] = useState(null);
 
   const [showForm, setShowForm] = useState(false);
@@ -555,6 +559,23 @@ export default function Workout() {
   useEffect(() => {
     fetchSessions();
   }, [currentUser, userRole, userGroup, customGroups, showAllMoi, isSuperAdmin]);
+
+  /* ===================== CYCLES (planification) ===================== */
+  const fetchCycles = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const snap = await getDocs(collection(db, "cycles"));
+      setCycles(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      // Règles Firestore pas encore publiées pour "cycles" : on ignore, le
+      // calendrier reste utilisable sans la planification.
+      console.warn("Cycles indisponibles :", e.code || e.message);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    fetchCycles();
+  }, [fetchCycles]);
 
   /* ===================== OUVERTURE DIRECTE DEPUIS LE DASHBOARD =====================
      Le Dashboard peut envoyer ici avec ?sessionId=xxx (et éventuellement
@@ -3190,6 +3211,21 @@ export default function Workout() {
     return true;
   };
 
+  // Cycles visibles : tout pour un admin sans filtre ; sinon "Tous" + groupes concernés
+  const cycleScopes = (() => {
+    const groupsOf = (uid) =>
+      customGroups.filter((g) => (g.athleteIds || []).includes(uid)).map((g) => g.id);
+    if (filterAthlete) return ["total", ...groupsOf(filterAthlete.id), userScope(filterAthlete.id)];
+    if (filterGroup) return ["total", filterGroup.id];
+    if (isAdminLike) return null;
+    return ["total", userGroup, ...groupsOf(currentUser.uid), userScope(currentUser.uid)].filter(Boolean);
+  })();
+  // Calendrier / bandeau : en vue d'ensemble (admin sans filtre) on n'affiche pas
+  // les cycles individuels, qui ne concernent qu'un athlète.
+  const calendarCycles = cycles.filter((c) =>
+    cycleScopes ? cycleInScope(c, cycleScopes) : !isIndividual(c)
+  );
+
   /* ===================== CALENDRIER MENSUEL ===================== */
   const renderCalendar = () => {
     const year = currentMonth.getFullYear();
@@ -3222,10 +3258,12 @@ export default function Workout() {
         (e) => e.date === dateStr && isEventVisibleToFilter(e)
       );
       const isMobile = window.innerWidth <= 768;
+      const dayCycles = cyclesOnDay(calendarCycles, dateStr).slice(0, 3);
 
       cells.push(
         <div
           key={day}
+          title={dayCycles.map((c) => `${levelOf(c.level).short} : ${c.name}`).join("\n") || undefined}
           onClick={() => setSelectedDate(isSelected ? null : dateStr)}
           style={{
             background: isToday ? "rgba(79,174,125,0.14)" : "#1a1815",
@@ -3244,6 +3282,13 @@ export default function Workout() {
             overflow: "hidden",  // Empêcher le débordement
           }}
         >
+          {dayCycles.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: isMobile ? 1 : 3, flexShrink: 0 }}>
+              {dayCycles.map((c) => (
+                <div key={c.id} style={{ height: isMobile ? 2 : 3, background: cycleColor(c), borderRadius: 2 }} />
+              ))}
+            </div>
+          )}
           <div
             style={{
               fontSize: isMobile ? 10 : 13,
@@ -3251,9 +3296,20 @@ export default function Workout() {
               color: isToday ? "#4fae7d" : "#a8a199",
               marginBottom: isMobile ? 1 : 4,
               flexShrink: 0,  // Le numéro ne rétrécit pas
+              whiteSpace: "nowrap",
+              overflow: "hidden",
             }}
           >
             {day}
+            {!isMobile &&
+              dayCycles
+                .filter((c) => c.startDate === dateStr)
+                .slice(-1)
+                .map((c) => (
+                  <span key={c.id} style={{ fontSize: 8, marginLeft: 4, color: cycleColor(c), fontWeight: 700 }}>
+                    ▶ {c.name}
+                  </span>
+                ))}
           </div>
           <div
             style={{
@@ -3360,6 +3416,35 @@ export default function Workout() {
           )}
           s
         </button>
+      )}
+
+      {/* Planification : cycle en cours + panneau macro / méso / micro */}
+      {!showForm && !selectedSession && (
+        <>
+          <CycleBanner
+            cycles={calendarCycles}
+            scopes={cycleScopes}
+            todayStr={getLocalDateStr(new Date())}
+            open={showPlanning}
+            onToggle={() => setShowPlanning((v) => !v)}
+          />
+          {showPlanning && (
+            <PlanningPanel
+              cycles={cycles}
+              events={events.filter(isEventVisibleToFilter)}
+              customGroups={customGroups}
+              athletes={athletes}
+              isAdmin={isAdminLike}
+              currentUser={currentUser}
+              scopes={cycleScopes}
+              onReload={fetchCycles}
+              onOpenSession={(sess) => {
+                setSelectedDate(sess.date);
+                setSelectedSession(sess);
+              }}
+            />
+          )}
+        </>
       )}
 
       {/* Boutons Admin */}
@@ -6829,8 +6914,8 @@ export default function Workout() {
                             color: "#f0c98a",
                           }}
                         >
-                          ⚠️ <strong>Renseigne ta VMA</strong> dans "My RM" pour
-                          voir les calculs de distance automatiques
+                          ⚠️ <strong>VMA non renseignée</strong> : ton coach doit faire un
+                          test (onglet Tests) pour activer les calculs de distance automatiques
                         </div>
                       )}
                     </>
@@ -7056,8 +7141,8 @@ export default function Workout() {
               }}
             >
               <div style={{ fontSize: 13, color: "#f0c98a" }}>
-                ⚠️ <strong>VMA non renseignée.</strong> Rends-toi dans "My RM"
-                pour ajouter ta VMA.
+                ⚠️ <strong>VMA non renseignée.</strong> Ton coach doit faire un
+                test d'endurance (onglet Tests) pour la définir.
               </div>
             </div>
           )}

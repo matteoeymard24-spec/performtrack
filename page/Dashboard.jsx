@@ -29,6 +29,7 @@ import {
   Bar,
 } from "recharts";
 import BodyScan from "../component/BodyScan";
+import TestsSummary from "../component/TestsSummary";
 import {
   rediRatio,
   rediRatioHistory,
@@ -1585,6 +1586,12 @@ export default function Dashboard() {
               />
             </div>
           )}
+
+        {currentUser?.uid && (
+          <div style={{ marginBottom: 20 }}>
+            <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" />
+          </div>
+        )}
 
         <div
           style={{
@@ -3873,6 +3880,10 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+
+            <div style={{ marginBottom: 16 }}>
+              <TestsSummary uid={showAthleteDetail.id} title="🧪 Tests de l'athlète" />
+            </div>
 
             {(() => {
               /* ===== Évolution des RM / charges : recherche par exercice =====

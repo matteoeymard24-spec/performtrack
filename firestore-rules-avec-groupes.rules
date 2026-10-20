@@ -159,5 +159,15 @@ service cloud.firestore {
       // était recopiée dans chaque séance.
       allow write: if isAdmin();
     }
+    // ========== CYCLES (planification macro / méso / micro, voir
+    // component/PlanningPanel.jsx) ==========
+    match /cycles/{cycleId} {
+      // Lecture : tout utilisateur authentifié (les athlètes voient le
+      // cycle en cours sur leur calendrier).
+      allow read: if isSignedIn();
+
+      // Écriture : admins uniquement.
+      allow write: if isAdmin();
+    }
   }
 }

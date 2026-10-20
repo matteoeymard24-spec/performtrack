@@ -1,0 +1,898 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../auth/AuthProvider";
+import { db } from "../firebase";
+import {
+  collection,
+  getDocs,
+  getDoc,
+  doc,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  arrayUnion,
+} from "firebase/firestore";
+import {
+  TEST_GROUPS,
+  TESTS,
+  STATUS,
+  getTest,
+  computeResult,
+  toStoredResult,
+} from "../component/testsCalc";
+import {
+  SPORTS,
+  POSTES,
+  posteLabel,
+  hasNorms,
+  getMatchRef,
+  evaluateTestNorms,
+  evaluateStrength,
+  LEVELS,
+  levelLabel,
+} from "../component/norms";
+import { NormList, MatchRefCard, LevelTable } from "../component/NormsUI";
+
+const ACCENT = "#e0a13d";
+const SURFACE = "#151310";
+const INPUT_BG = "#0d0c0a";
+const BORDER = "#2a2620";
+const MUTED = "#a8a199";
+const TEXT = "#f3f0ea";
+
+const todayStr = () => {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+};
+const ytId = (url) => {
+  const m = String(url || "").match(/(?:v=|youtu\.be\/|embed\/)([\w-]{11})/);
+  return m ? m[1] : null;
+};
+const athleteName = (u) =>
+  `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.displayName || u.email || u.id;
+
+const inputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "10px 12px",
+  borderRadius: 8,
+  border: `1px solid ${BORDER}`,
+  background: INPUT_BG,
+  color: TEXT,
+  fontSize: 14,
+};
+const cardStyle = { background: SURFACE, padding: 16, borderRadius: 10, marginBottom: 14 };
+const pill = (active) => ({
+  padding: "8px 14px",
+  borderRadius: 999,
+  fontSize: 13,
+  cursor: "pointer",
+  border: active ? `1px solid ${ACCENT}` : `1px solid ${BORDER}`,
+  background: active ? "rgba(224,161,61,0.18)" : INPUT_BG,
+  color: active ? ACCENT : TEXT,
+});
+const StatusChip = ({ status }) =>
+  status ? (
+    <span
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        padding: "2px 8px",
+        borderRadius: 999,
+        background: STATUS[status].color + "26",
+        color: STATUS[status].color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {STATUS[status].label}
+    </span>
+  ) : null;
+
+/* ---------- Bloc explication d'un test : photo + vidéo + texte ---------- */
+function TestInfo({ test, media, onSaveMedia }) {
+  const [editing, setEditing] = useState(false);
+  const [video, setVideo] = useState("");
+  const [photo, setPhoto] = useState("");
+  const videoUrl = media?.videoUrl || test.video;
+  const id = ytId(videoUrl);
+  const photoUrl =
+    media?.photoUrl || (id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : test.thumb);
+  const isSearch = !media?.videoUrl && test.isSearch;
+
+  return (
+    <div style={{ ...cardStyle, background: INPUT_BG, border: `1px solid ${BORDER}` }}>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        <a
+          href={videoUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            position: "relative",
+            width: 200,
+            maxWidth: "100%",
+            height: 112,
+            borderRadius: 8,
+            overflow: "hidden",
+            background: "#1d1a16",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textDecoration: "none",
+            flexShrink: 0,
+          }}
+        >
+          {photoUrl ? (
+            <img src={photoUrl} alt={test.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          ) : (
+            <span style={{ fontSize: 34 }}>🎥</span>
+          )}
+          <span
+            style={{
+              position: "absolute",
+              inset: "auto 0 0 0",
+              background: "rgba(0,0,0,0.65)",
+              color: TEXT,
+              fontSize: 12,
+              padding: "4px 8px",
+              textAlign: "center",
+            }}
+          >
+            ▶ {isSearch ? "Chercher une vidéo" : "Voir la vidéo"}
+          </span>
+        </a>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>
+            {test.sports ? `🏅 ${test.sports} · ` : ""}🧰 {test.equipment}
+          </div>
+          <div style={{ fontSize: 14, color: TEXT, lineHeight: 1.5 }}>{test.howTo}</div>
+          <button
+            onClick={() => {
+              setVideo(media?.videoUrl || "");
+              setPhoto(media?.photoUrl || "");
+              setEditing(!editing);
+            }}
+            style={{ marginTop: 8, background: "transparent", border: "none", color: ACCENT, fontSize: 12, cursor: "pointer", padding: 0 }}
+          >
+            ✏️ {editing ? "Fermer" : "Mettre ma propre vidéo / photo"}
+          </button>
+        </div>
+      </div>
+      {editing && (
+        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+          <input style={inputStyle} placeholder="Lien de la vidéo (YouTube…)" value={video} onChange={(e) => setVideo(e.target.value)} />
+          <input style={inputStyle} placeholder="Lien d'une photo (optionnel, sinon miniature YouTube)" value={photo} onChange={(e) => setPhoto(e.target.value)} />
+          <button
+            onClick={async () => {
+              await onSaveMedia({ videoUrl: video.trim(), photoUrl: photo.trim() });
+              setEditing(false);
+            }}
+            style={{ ...pill(true), justifySelf: "start" }}
+          >
+            Enregistrer
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Aperçu du résultat calculé ---------- */
+function ResultPreview({ res }) {
+  if (!res) return <div style={{ color: MUTED, fontSize: 13 }}>Remplis les champs pour voir le résultat.</div>;
+  const ev = res.eval;
+  return (
+    <div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: ACCENT }}>
+        {res.main.value} <span style={{ fontSize: 14, color: MUTED }}>{res.main.unit}</span>
+        <span style={{ fontSize: 12, color: MUTED, marginLeft: 8 }}>{res.main.label}</span>
+      </div>
+      {res.lines?.map((l, i) => (
+        <div key={i} style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>{l}</div>
+      ))}
+      {ev && (
+        <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+          {ev.items.map((i, k) => (
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+              <span style={{ color: TEXT }}>
+                {i.label}
+                {i.side ? ` (${i.side})` : ""} — {i.value}
+                {i.unit}
+              </span>
+              <StatusChip status={i.status} />
+            </div>
+          ))}
+          {ev.asym.map((a, k) => (
+            <div key={"a" + k} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+              <span style={{ color: MUTED }}>
+                Asymétrie G/D — {a.label} : {a.pct}
+                {a.scoreOnly ? " pt" : "%"}
+              </span>
+              <StatusChip status={a.status} />
+            </div>
+          ))}
+          {ev.ratios.map((r, k) => (
+            <div key={"r" + k} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
+              <span style={{ color: MUTED }}>
+                {r.label} ({r.side}) : {r.value}
+              </span>
+              <StatusChip status={r.status} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function Tests() {
+  const { currentUser } = useAuth();
+  const [athletes, setAthletes] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [uid, setUid] = useState("");
+  const [search, setSearch] = useState("");
+  const [tab, setTab] = useState("saisie");
+  const [group, setGroup] = useState("endurance");
+  const [testId, setTestId] = useState("leger");
+  const [values, setValues] = useState({});
+  const [fmsSel, setFmsSel] = useState(null);
+  const [date, setDate] = useState(todayStr());
+  const [notes, setNotes] = useState("");
+  const [tests, setTests] = useState([]);
+  const [ref, setRef] = useState({});
+  const [media, setMedia] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [targetGroup, setTargetGroup] = useState("");
+  const [rmDocs, setRmDocs] = useState([]);
+
+  const test = getTest(testId);
+
+  /* ---- chargements ---- */
+  useEffect(() => {
+    (async () => {
+      try {
+        const [us, gs, ms] = await Promise.all([
+          getDocs(collection(db, "users")),
+          getDocs(collection(db, "groups")),
+          getDocs(collection(db, "exerciseMedia")),
+        ]);
+        const list = us.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((u) => u.role !== "admin")
+          .sort((a, b) => athleteName(a).localeCompare(athleteName(b), "fr"));
+        setAthletes(list);
+        setGroups(gs.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const mm = {};
+        ms.docs.forEach((d) => {
+          if (d.id.startsWith("test_")) mm[d.id.slice(5)] = d.data();
+        });
+        setMedia(mm);
+      } catch (e) {
+        console.error("Tests: chargement", e);
+      }
+    })();
+  }, []);
+
+  const loadTests = async (id) => {
+    if (!id) return;
+    try {
+      const rs = await getDocs(collection(db, "users", id, "rm"));
+      setRmDocs(
+        rs.docs
+          .filter((d) => !["VMA", "CMJ"].includes(d.id))
+          .map((d) => ({ name: d.data().exerciseName || d.id, kg: Number(d.data().kg) }))
+      );
+    } catch (e) {
+      setRmDocs([]);
+    }
+    try {
+      const snap = await getDocs(collection(db, "users", id, "tests"));
+      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setRef(all.find((t) => t.id === "_reference") || {});
+      setTests(
+        all
+          .filter((t) => t.id !== "_reference")
+          .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || ""))
+      );
+    } catch (e) {
+      console.error("Tests: lecture", e);
+      setTests([]);
+      setRef({});
+    }
+  };
+  useEffect(() => {
+    loadTests(uid);
+    setValues({});
+    setMsg("");
+  }, [uid]);
+
+  useEffect(() => {
+    setValues({});
+    setFmsSel(null);
+  }, [testId]);
+
+  const filteredAthletes = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? athletes.filter((a) => athleteName(a).toLowerCase().includes(q)) : athletes;
+  }, [athletes, search]);
+
+  const result = useMemo(() => {
+    if (!test) return null;
+    if (test.selectable && fmsSel) {
+      const sel = new Set(fmsSel);
+      const sub = { ...test, measures: test.measures.filter((m) => sel.has(m.key)) };
+      return computeResult(sub, values);
+    }
+    return computeResult(test, values);
+  }, [test, values, fmsSel]);
+
+  const activeMeasures = test?.measures
+    ? test.selectable
+      ? test.measures.filter((m) => (fmsSel || test.measures.map((x) => x.key)).includes(m.key))
+      : test.measures
+    : [];
+
+  /* ---- enregistrement ---- */
+  const saveTest = async () => {
+    if (!uid || !test || !result) return;
+    setSaving(true);
+    setMsg("");
+    try {
+      const stored = toStoredResult(result);
+      const clean = {};
+      Object.entries(values).forEach(([k, v]) => {
+        if (v !== "" && v != null) clean[k] = v;
+      });
+      await addDoc(collection(db, "users", uid, "tests"), {
+        testId: test.id,
+        group: test.group,
+        date,
+        values: clean,
+        result: stored,
+        notes: notes.trim(),
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser?.uid || null,
+      });
+      if (test.id === "cmj" && result.cmj) {
+        const ref2 = doc(db, "users", uid, "rm", "CMJ");
+        const cur = await getDoc(ref2);
+        const history = cur.exists() ? cur.data().history || [] : [];
+        history.push({ date: new Date(date + "T12:00:00").toISOString(), kg: result.cmj });
+        await setDoc(ref2, {
+          kg: result.cmj,
+          exerciseName: "CMJ",
+          updatedAt: new Date().toISOString(),
+          autoAdjusted: false,
+          history: history.slice(-20),
+        });
+      }
+      setValues({});
+      setNotes("");
+      setMsg("✅ Test enregistré.");
+      await loadTests(uid);
+    } catch (e) {
+      console.error(e);
+      setMsg("❌ Erreur : " + e.message);
+    }
+    setSaving(false);
+  };
+
+  const deleteTest = async (t) => {
+    if (!window.confirm("Supprimer ce résultat de test ?")) return;
+    try {
+      await deleteDoc(doc(db, "users", uid, "tests", t.id));
+      await loadTests(uid);
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
+  };
+
+  /* ---- test de référence pour les séances énergétiques ---- */
+  const setReference = async (kind, t) => {
+    const value = t.result?.[kind];
+    if (value == null) return;
+    const def = getTest(t.testId);
+    try {
+      await setDoc(
+        doc(db, "users", uid, "tests", "_reference"),
+        {
+          [kind]: { value, testId: t.testId, testName: def?.name || t.testId, testDocId: t.id, date: t.date },
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      if (kind === "vma") {
+        const r = doc(db, "users", uid, "rm", "VMA");
+        const cur = await getDoc(r);
+        const history = cur.exists() ? cur.data().history || [] : [];
+        history.push({ date: new Date().toISOString(), kg: value });
+        await setDoc(r, {
+          kg: value,
+          exerciseName: "VMA",
+          updatedAt: new Date().toISOString(),
+          autoAdjusted: false,
+          source: "test",
+          sourceTest: def?.name || t.testId,
+          history: history.slice(-20),
+        });
+      }
+      setMsg(`✅ ${kind.toUpperCase()} de référence : ${value} km/h (${def?.name || t.testId})`);
+      await loadTests(uid);
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
+  };
+
+  const saveMedia = async (tid, data) => {
+    await setDoc(doc(db, "exerciseMedia", "test_" + tid), { ...data, updatedAt: new Date().toISOString() });
+    setMedia((m) => ({ ...m, [tid]: data }));
+  };
+
+  /* ---- bilan mobilité par zone (dernier résultat de chaque test mobilité / force iso) ---- */
+  const zoneBilan = useMemo(() => {
+    const latest = {};
+    tests.forEach((t) => {
+      if (!["mobilite", "force_iso"].includes(t.group)) return;
+      if (!latest[t.testId]) latest[t.testId] = t;
+    });
+    const zones = {};
+    Object.values(latest).forEach((t) => {
+      Object.entries(t.result?.zones || {}).forEach(([z, st]) => {
+        const cur = zones[z] || { status: "ok", tests: [] };
+        if (STATUS[st].rank > STATUS[cur.status].rank) cur.status = st;
+        cur.tests.push({ name: getTest(t.testId)?.name || t.testId, status: st, date: t.date });
+        zones[z] = cur;
+      });
+    });
+    return Object.entries(zones).sort((a, b) => STATUS[b[1].status].rank - STATUS[a[1].status].rank);
+  }, [tests]);
+
+  const addToGroup = async () => {
+    if (!targetGroup || !uid) return;
+    try {
+      await updateDoc(doc(db, "groups", targetGroup), { athleteIds: arrayUnion(uid) });
+      const g = groups.find((x) => x.id === targetGroup);
+      setMsg(`✅ Athlète ajouté au groupe « ${g?.name || ""} ».`);
+      setGroups((gs) => gs.map((x) => (x.id === targetGroup ? { ...x, athleteIds: [...new Set([...(x.athleteIds || []), uid])] } : x)));
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
+  };
+
+  const testsOfGroup = TESTS.filter((t) => t.group === group);
+  const selectedAthlete = athletes.find((a) => a.id === uid);
+  const sport = selectedAthlete?.sport || "";
+  const poste = selectedAthlete?.position || "";
+  const level = selectedAthlete?.level || "";
+  const normsOn = hasNorms(sport, poste);
+
+  const saveProfile = async (patch) => {
+    if (!uid) return;
+    try {
+      await updateDoc(doc(db, "users", uid), patch);
+      setAthletes((as) => as.map((a) => (a.id === uid ? { ...a, ...patch } : a)));
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
+  };
+
+  const liveNorms = useMemo(
+    () => (test && normsOn ? evaluateTestNorms(test.id, values, sport, poste, level) : []),
+    [test, values, sport, poste, level, normsOn]
+  );
+  const strengthNorms = useMemo(
+    () => (normsOn ? evaluateStrength(rmDocs, sport, poste, level) : []),
+    [rmDocs, sport, poste, level, normsOn]
+  );
+  const inGroups = groups.filter((g) => (g.athleteIds || []).includes(uid));
+
+  const field = (key, label, unit, ph) => (
+    <div key={key}>
+      <label style={{ fontSize: 12, color: MUTED }}>
+        {label} {unit && <span>({unit})</span>}
+      </label>
+      <input
+        style={inputStyle}
+        inputMode="decimal"
+        placeholder={ph || ""}
+        value={values[key] ?? ""}
+        onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+      />
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto", color: TEXT }}>
+      <h2 style={{ margin: "0 0 4px 0" }}>🧪 Tests</h2>
+      <div style={{ color: MUTED, fontSize: 13, marginBottom: 14 }}>
+        Saisis les tests d'endurance, de mobilité, de force isométrique et de saut. Les séances énergétiques s'appuient sur le test de référence choisi pour chaque athlète.
+      </div>
+
+      {/* Choix de l'athlète */}
+      <div style={cardStyle}>
+        <input
+          style={inputStyle}
+          placeholder="🔍 Rechercher un athlète…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select
+          style={{ ...inputStyle, marginTop: 8 }}
+          value={uid}
+          onChange={(e) => setUid(e.target.value)}
+        >
+          <option value="">— Choisir un athlète —</option>
+          {filteredAthletes.map((a) => (
+            <option key={a.id} value={a.id}>
+              {athleteName(a)}
+            </option>
+          ))}
+        </select>
+        {uid && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+            <select
+              style={{ ...inputStyle, flex: 1, minWidth: 140 }}
+              value={sport}
+              onChange={(e) => saveProfile({ sport: e.target.value, position: "" })}
+            >
+              <option value="">Sport…</option>
+              {SPORTS.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <select
+              style={{ ...inputStyle, flex: 2, minWidth: 180 }}
+              value={poste}
+              disabled={!sport}
+              onChange={(e) => saveProfile({ position: e.target.value })}
+            >
+              <option value="">Poste (pour comparer aux normes)…</option>
+              {(POSTES[sport] || []).map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <select
+              style={{ ...inputStyle, flex: 1, minWidth: 160 }}
+              value={level}
+              disabled={!sport}
+              onChange={(e) => saveProfile({ level: e.target.value })}
+            >
+              <option value="">Niveau visé…</option>
+              {LEVELS.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {!uid ? (
+        <div style={{ color: MUTED, textAlign: "center", padding: 30 }}>Choisis un athlète pour saisir ou consulter ses tests.</div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+            {[
+              ["saisie", "➕ Saisir un test"],
+              ["resultats", `📋 Résultats (${tests.length})`],
+              ["normes", "📐 Normes"],
+              ["bilan", "🧭 Bilan mobilité / groupes"],
+            ].map(([k, l]) => (
+              <button key={k} onClick={() => setTab(k)} style={pill(tab === k)}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {msg && <div style={{ ...cardStyle, padding: 10, color: TEXT, fontSize: 13 }}>{msg}</div>}
+
+          {/* ------------ SAISIE ------------ */}
+          {tab === "saisie" && (
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                {TEST_GROUPS.map((g) => (
+                  <button
+                    key={g.id}
+                    onClick={() => {
+                      setGroup(g.id);
+                      const first = TESTS.find((t) => t.group === g.id);
+                      if (first) setTestId(first.id);
+                    }}
+                    style={pill(group === g.id)}
+                  >
+                    {g.label}
+                  </button>
+                ))}
+              </div>
+              <select style={{ ...inputStyle, marginBottom: 12 }} value={testId} onChange={(e) => setTestId(e.target.value)}>
+                {testsOfGroup.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+
+              {test && (
+                <>
+                  <TestInfo test={test} media={media[test.id]} onSaveMedia={(d) => saveMedia(test.id, d)} />
+
+                  <div style={cardStyle}>
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: 12, color: MUTED }}>Date du test</label>
+                      <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+                    </div>
+
+                    {test.selectable && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Mouvements testés :</div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {test.measures.map((m) => {
+                            const sel = (fmsSel || test.measures.map((x) => x.key)).includes(m.key);
+                            return (
+                              <button
+                                key={m.key}
+                                onClick={() => {
+                                  const cur = fmsSel || test.measures.map((x) => x.key);
+                                  setFmsSel(sel ? cur.filter((k) => k !== m.key) : [...cur, m.key]);
+                                }}
+                                style={pill(sel)}
+                              >
+                                {m.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+                      {test.fields &&
+                        test.fields.map((f) => field(f.key, f.label, f.unit, f.placeholder))}
+                      {test.measures &&
+                        activeMeasures.map((m) =>
+                          m.sided ? (
+                            <React.Fragment key={m.key}>
+                              {field(`${m.key}_L`, `${m.label} — Gauche`, m.unit)}
+                              {field(`${m.key}_R`, `${m.label} — Droite`, m.unit)}
+                            </React.Fragment>
+                          ) : (
+                            field(m.key, m.label, m.unit)
+                          )
+                        )}
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <label style={{ fontSize: 12, color: MUTED }}>Remarques (optionnel)</label>
+                      <input style={inputStyle} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Conditions, douleur, météo…" />
+                    </div>
+
+                    <div style={{ marginTop: 14, padding: 12, background: INPUT_BG, borderRadius: 8 }}>
+                      <ResultPreview res={result} />
+                      {liveNorms.length > 0 && (
+                        <div style={{ marginTop: 12 }}>
+                          <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700 }}>
+                            📐 Comparaison — {posteLabel(sport, poste)}
+                          </div>
+                          <NormList rows={liveNorms} compact />
+                        </div>
+                      )}
+                      {!normsOn && selectedAthlete && (
+                        <div style={{ marginTop: 10, fontSize: 12, color: MUTED }}>
+                          Choisis le sport et le poste de l'athlète (en haut) pour comparer ce résultat aux normes.
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      disabled={!result || saving}
+                      onClick={saveTest}
+                      style={{
+                        marginTop: 14,
+                        width: "100%",
+                        padding: "12px 16px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: result ? ACCENT : "#3a352d",
+                        color: "#1a1306",
+                        fontWeight: 700,
+                        fontSize: 15,
+                        cursor: result ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      {saving ? "Enregistrement…" : `Enregistrer pour ${selectedAthlete ? athleteName(selectedAthlete) : ""}`}
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ------------ RÉSULTATS ------------ */}
+          {tab === "resultats" && (
+            <>
+              <div style={cardStyle}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>⭐ Références pour les séances énergétiques</div>
+                {["vma", "vmi", "cs"].map((k) => (
+                  <div key={k} style={{ fontSize: 13, color: ref[k] ? TEXT : MUTED, padding: "3px 0" }}>
+                    {k === "vma" ? "VMA" : k === "vmi" ? "VMI (30-15)" : "Vitesse critique"} :{" "}
+                    {ref[k] ? (
+                      <strong style={{ color: ACCENT }}>
+                        {ref[k].value} km/h
+                      </strong>
+                    ) : (
+                      "non définie"
+                    )}
+                    {ref[k] && <span style={{ color: MUTED }}> · {ref[k].testName} ({ref[k].date})</span>}
+                  </div>
+                ))}
+                <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
+                  Clique sur « Définir comme référence » sous un résultat pour que les séances utilisent ce test.
+                </div>
+              </div>
+
+              {tests.length === 0 && <div style={{ color: MUTED, textAlign: "center", padding: 20 }}>Aucun test enregistré pour cet athlète.</div>}
+              {tests.map((t) => {
+                const def = getTest(t.testId);
+                return (
+                  <div key={t.id} style={cardStyle}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                      <div>
+                        <div style={{ fontWeight: 700 }}>{def?.name || t.testId}</div>
+                        <div style={{ fontSize: 12, color: MUTED }}>{t.date}{t.notes ? ` · ${t.notes}` : ""}</div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: ACCENT }}>
+                          {t.result?.main?.value} <span style={{ fontSize: 12, color: MUTED }}>{t.result?.main?.unit}</span>
+                        </span>
+                        {t.result?.status && <div><StatusChip status={t.result.status} /></div>}
+                      </div>
+                    </div>
+                    {(t.result?.lines || []).map((l, i) => (
+                      <div key={i} style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{l}</div>
+                    ))}
+                    {normsOn && <NormList rows={evaluateTestNorms(t.testId, t.values, sport, poste, level)} compact />}
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                      {[["vma", "VMA"], ["vmi", "VMI"], ["cs", "Vitesse critique"]].map(
+                        ([k, l]) =>
+                          t.result?.[k] != null && (
+                            <button key={k} onClick={() => setReference(k, t)} style={pill(ref[k]?.testDocId === t.id)}>
+                              {ref[k]?.testDocId === t.id ? "⭐ " : ""}Définir comme référence {l}
+                            </button>
+                          )
+                      )}
+                      <button onClick={() => deleteTest(t)} style={{ ...pill(false), color: "#d9534f" }}>
+                        🗑 Supprimer
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {/* ------------ NORMES ------------ */}
+          {tab === "normes" && (
+            <>
+              {!normsOn ? (
+                <div style={cardStyle}>
+                  <div style={{ fontWeight: 700, marginBottom: 6 }}>📐 Comparaison aux normes</div>
+                  <div style={{ fontSize: 13, color: MUTED }}>
+                    Choisis le sport et le poste de l'athlète en haut de la page. Les normes viennent de ton barème
+                    (rugby : barème SU Agen, note de 0 à 20 par poste).
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={cardStyle}>
+                    <div style={{ fontWeight: 700 }}>🏅 Standards de force par niveau — {posteLabel(sport, poste)}</div>
+                    <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                      Tes 1RM de « Mes RM » face à chaque niveau du rugby français
+                      {level ? ` (objectif : ${levelLabel(level)})` : " (choisis un niveau visé en haut pour le surligner)"}.
+                    </div>
+                    <LevelTable rows={strengthNorms} targetId={level} />
+                  </div>
+
+                  <div style={cardStyle}>
+                    <div style={{ fontWeight: 700 }}>💪 Force (1RM de « Mes RM »)</div>
+                    <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>
+                      Poste : {posteLabel(sport, poste)}. Le 1RM est repéré automatiquement par le nom de l'exercice.
+                    </div>
+                    <NormList rows={strengthNorms} />
+                  </div>
+
+                  <div style={cardStyle}>
+                    <div style={{ fontWeight: 700, marginBottom: 6 }}>⚡ Derniers tests comparés</div>
+                    {(() => {
+                      const seen = new Set();
+                      const rows = [];
+                      tests.forEach((t) => {
+                        evaluateTestNorms(t.testId, t.values, sport, poste, level).forEach((r) => {
+                          if (seen.has(r.label)) return;
+                          seen.add(r.label);
+                          rows.push({ ...r, label: `${r.label} (${t.date})` });
+                        });
+                      });
+                      return rows.length ? (
+                        <NormList rows={rows} />
+                      ) : (
+                        <div style={{ fontSize: 13, color: MUTED }}>
+                          Aucun test comparable enregistré (Bronco, CMJ, sprint, cervicales).
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  <div style={cardStyle}>
+                    <MatchRefCard
+                      poste={poste}
+                      posteName={posteLabel(sport, poste)}
+                      data={getMatchRef(sport, poste)}
+                    />
+                  </div>
+
+                  <div style={{ ...cardStyle, fontSize: 12, color: MUTED }}>
+                    Pas de norme dans ton projet pour la VMA, le Yo-Yo, le 30-15, la mobilité et la force isométrique
+                    (hors cervicales) : ces tests ne sont donc pas notés. Seuils de couleur : 15+ très bon niveau,
+                    10-14 dans la norme, 5-9 sous la norme, 0-4 à développer. Les niveaux Nationale, Fédérale, Régionale, Espoirs et U18 sont des estimations (~) tant que tu n'as pas tes propres valeurs : ajuste les coefficients dans rugbyLevels.js.
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ------------ BILAN ------------ */}
+          {tab === "bilan" && (
+            <>
+              <div style={cardStyle}>
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>🧭 Zones à travailler (derniers tests mobilité / force iso)</div>
+                {zoneBilan.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Pas encore de test de mobilité ou de force isométrique.</div>}
+                {zoneBilan.map(([zone, z]) => (
+                  <div key={zone} style={{ padding: "8px 0", borderTop: `1px solid ${BORDER}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                      <strong>{zone}</strong>
+                      <StatusChip status={z.status} />
+                    </div>
+                    {z.tests.map((t, i) => (
+                      <div key={i} style={{ fontSize: 12, color: MUTED }}>
+                        {t.name} · {t.date} · {STATUS[t.status].label}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+
+              <div style={cardStyle}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>👥 Placer dans un groupe d'individualisation</div>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                  Groupes actuels : {inGroups.length ? inGroups.map((g) => g.name).join(", ") : "aucun"}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <select style={{ ...inputStyle, flex: 1, minWidth: 180 }} value={targetGroup} onChange={(e) => setTargetGroup(e.target.value)}>
+                    <option value="">— Choisir un groupe —</option>
+                    {groups
+                      .filter((g) => !(g.athleteIds || []).includes(uid))
+                      .map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                        </option>
+                      ))}
+                  </select>
+                  <button onClick={addToGroup} disabled={!targetGroup} style={pill(!!targetGroup)}>
+                    Ajouter au groupe
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

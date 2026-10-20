@@ -13,6 +13,7 @@ import Athletes from "./page/Athletes";
 import Profile from "./page/MyProfile";
 import MyRM from "./page/MyRM";
 import ACWRMonitoring from "./page/ACWRMonitoring";
+import Tests from "./page/Tests";
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
           <Route path="/acwr" element={<ACWRMonitoring />} />
           <Route path="/MyProfile" element={<Profile />} />
           <Route path="/myrm" element={<MyRM />} />
+          <Route path="/tests" element={<Tests />} />
         </Route>
       </Route>
     </Routes>
