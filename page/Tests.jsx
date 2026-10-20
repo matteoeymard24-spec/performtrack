@@ -240,7 +240,7 @@ export default function Tests() {
   const [athletes, setAthletes] = useState([]);
   const [groups, setGroups] = useState([]);
   const [uid, setUid] = useState("");
-  const [search, setSearch] = useState("");
+  const [pickMode, setPickMode] = useState(""); // "" | "athletes" | "admins" (carrés de choix, comme Workout)
   const [tab, setTab] = useState("saisie");
   const [group, setGroup] = useState("endurance");
   const [testId, setTestId] = useState("leger");
@@ -285,7 +285,6 @@ export default function Tests() {
         ]);
         const list = us.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((u) => u.role !== "admin" || u.id === currentUser?.uid) // + moi-même (filtre « Moi »)
           .sort((a, b) => athleteName(a).localeCompare(athleteName(b), "fr"));
         setAthletes(list);
         setGroups(gs.docs.map((d) => ({ id: d.id, ...d.data() })));
@@ -338,10 +337,9 @@ export default function Tests() {
     setFmsSel(null);
   }, [testId]);
 
-  const filteredAthletes = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return q ? athletes.filter((a) => athleteName(a).toLowerCase().includes(q)) : athletes;
-  }, [athletes, search]);
+  const isAdminUser = (u) => u.role === "admin" || u.superAdmin === true;
+  const athleteOnly = useMemo(() => athletes.filter((a) => !isAdminUser(a)), [athletes]);
+  const adminOnly = useMemo(() => athletes.filter((a) => isAdminUser(a) && a.id !== currentUser?.uid), [athletes, currentUser]);
 
   const result = useMemo(() => {
     if (!test) return null;
@@ -759,42 +757,63 @@ export default function Tests() {
 
       {/* Choix de l'athlète */}
       <div style={cardStyle}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-          <button
-            type="button"
-            onClick={() => currentUser?.uid && setUid(currentUser.uid)}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              border: `1px solid ${uid && uid === currentUser?.uid ? "#e0a13d" : "#2a2620"}`,
-              background: uid && uid === currentUser?.uid ? "rgba(224,161,61,0.18)" : "transparent",
-              color: TEXT,
-              fontWeight: 700,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            🌟 Moi (mes propres tests)
-          </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {[
+            { id: "athletes", label: "🏉 Athlètes" },
+            { id: "moi", label: "🌟 Moi" },
+            { id: "admins", label: "👥 Admins" },
+          ].map((m) => {
+            const active =
+              m.id === "moi" ? !!uid && uid === currentUser?.uid : pickMode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  if (m.id === "moi") {
+                    setPickMode("");
+                    if (currentUser?.uid) setUid(currentUser.uid);
+                  } else {
+                    setPickMode(pickMode === m.id ? "" : m.id);
+                  }
+                }}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 999,
+                  border: `1px solid ${active ? "#e0a13d" : "rgba(255,255,255,0.16)"}`,
+                  background: active ? "rgba(224,161,61,0.2)" : "transparent",
+                  color: TEXT,
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: "pointer",
+                }}
+              >
+                {m.label}
+              </button>
+            );
+          })}
         </div>
-        <input
-          style={inputStyle}
-          placeholder="🔍 Rechercher un athlète…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          style={{ ...inputStyle, marginTop: 8 }}
-          value={uid}
-          onChange={(e) => setUid(e.target.value)}
-        >
-          <option value="">— Choisir un athlète —</option>
-          {filteredAthletes.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.id === currentUser?.uid ? `🌟 Moi — ${athleteName(a)}` : athleteName(a)}
+        {pickMode && (
+          <select
+            style={{ ...inputStyle, marginTop: 10 }}
+            value={(pickMode === "admins" ? adminOnly : athleteOnly).some((a) => a.id === uid) ? uid : ""}
+            onChange={(e) => setUid(e.target.value)}
+          >
+            <option value="">
+              {pickMode === "admins" ? "— Choisir un admin —" : "— Choisir un athlète —"}
             </option>
-          ))}
-        </select>
+            {(pickMode === "admins" ? adminOnly : athleteOnly).map((a) => (
+              <option key={a.id} value={a.id}>
+                {athleteName(a)}
+              </option>
+            ))}
+          </select>
+        )}
+        {uid && selectedAthlete && (
+          <div style={{ marginTop: 8, fontSize: 13, color: MUTED }}>
+            Sélection : <b style={{ color: TEXT }}>{uid === currentUser?.uid ? "🌟 Moi — " : ""}{athleteName(selectedAthlete)}</b>
+          </div>
+        )}
         {uid && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             <select
