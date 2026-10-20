@@ -11,6 +11,7 @@ import {
   updateDoc,
   deleteDoc,
   arrayUnion,
+  serverTimestamp,
 } from "firebase/firestore";
 import {
   TEST_GROUPS,
@@ -31,6 +32,7 @@ import {
   evaluateTestNorms,
   evaluateLadderRows,
   evaluateStrength,
+  groupByPattern,
   LEVELS,
   levelLabel,
   noteColor,
@@ -250,6 +252,11 @@ export default function Tests() {
   const [msg, setMsg] = useState("");
   const [targetGroup, setTargetGroup] = useState("");
   const [rmDocs, setRmDocs] = useState([]);
+  const [injDraft, setInjDraft] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupSubs, setNewGroupSubs] = useState("");
+  const [subTargetGroup, setSubTargetGroup] = useState("");
+  const [newSubName, setNewSubName] = useState("");
 
   const test = getTest(testId);
 
@@ -494,6 +501,67 @@ export default function Tests() {
 
   const testsOfGroup = TESTS.filter((t) => t.group === group);
   const selectedAthlete = athletes.find((a) => a.id === uid);
+
+  // Antécédents de blessure : brouillon synchronisé avec l'athlète choisi
+  useEffect(() => {
+    setInjDraft(selectedAthlete?.injuryHistory || "");
+  }, [uid, selectedAthlete?.injuryHistory]);
+
+  const saveInjury = async () => {
+    if (!uid) return;
+    try {
+      await updateDoc(doc(db, "users", uid), { injuryHistory: injDraft.trim() });
+      setAthletes((as) => as.map((a) => (a.id === uid ? { ...a, injuryHistory: injDraft.trim() } : a)));
+      setMsg("✅ Antécédents enregistrés.");
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
+  };
+
+  // Création d'un groupe (+ sous-groupes séparés par des virgules), comme dans Workout
+  const createGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name) {
+      alert("Donne un nom au groupe");
+      return;
+    }
+    const subs = newGroupSubs
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s, i) => ({ id: `sg_${Date.now().toString(36)}_${i}`, name: s, color: "", athleteIds: [] }));
+    try {
+      const ref2 = await addDoc(collection(db, "groups"), {
+        name,
+        athleteIds: [],
+        subGroups: subs,
+        color: "",
+        createdBy: currentUser.uid,
+        createdAt: serverTimestamp(),
+      });
+      setGroups((gs) => [...gs, { id: ref2.id, name, athleteIds: [], subGroups: subs, color: "" }]);
+      setNewGroupName("");
+      setNewGroupSubs("");
+      setMsg(`✅ Groupe « ${name} » créé${subs.length ? ` avec ${subs.length} sous-groupe(s)` : ""}.`);
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
+  };
+
+  const addSubGroupTo = async () => {
+    const name = newSubName.trim();
+    const g = groups.find((x) => x.id === subTargetGroup);
+    if (!g || !name) return;
+    const subs = [...(g.subGroups || []), { id: `sg_${Date.now().toString(36)}_${(g.subGroups || []).length}`, name, color: "", athleteIds: [] }];
+    try {
+      await updateDoc(doc(db, "groups", g.id), { subGroups: subs });
+      setGroups((gs) => gs.map((x) => (x.id === g.id ? { ...x, subGroups: subs } : x)));
+      setNewSubName("");
+      setMsg(`✅ Sous-groupe « ${name} » ajouté à « ${g.name} ».`);
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
+  };
   const sport = selectedAthlete?.sport || "";
   const poste = selectedAthlete?.position || "";
   const level = selectedAthlete?.level || "";
@@ -518,6 +586,64 @@ export default function Tests() {
     [rmDocs, sport, poste, level, normsOn]
   );
   const inGroups = groups.filter((g) => (g.athleteIds || []).includes(uid));
+
+  /* ---- Notes /20 par domaine pour le Bilan ---- */
+  const mergedSprint = useMemo(() => {
+    const merged = {};
+    tests
+      .filter((t) => t.testId === "sprint")
+      .forEach((t) => {
+        Object.entries(t.values || {}).forEach(([k, v]) => {
+          if (merged[k] == null && v !== "" && v != null) merged[k] = v;
+        });
+      });
+    return merged;
+  }, [tests]);
+  const mergedCmj = useMemo(() => {
+    const c = tests.find((t) => t.testId === "cmj");
+    return c ? c.values : null;
+  }, [tests]);
+
+  const domainNotes = useMemo(() => {
+    const avg = (arr) => {
+      const n = arr.filter((x) => x != null);
+      return n.length ? Math.round((n.reduce((a, b) => a + b, 0) / n.length) * 10) / 10 : null;
+    };
+    const normRows = (testId, values, dateOf) =>
+      values
+        ? evaluateTestNorms(testId, values, sport, poste, level)
+            .filter((r) => r.note != null)
+            .map((r) => ({ label: r.label, note: r.note, extra: `${r.display} ${r.unit || ""}${dateOf ? " · " + dateOf : ""}`.trim() }))
+        : [];
+    const out = {};
+    // Mobilité + force isométrique (dernier résultat de chaque test, note propre au test)
+    const mi = {};
+    tests.forEach((t) => {
+      if (!["mobilite", "force_iso"].includes(t.group) || mi[t.testId]) return;
+      mi[t.testId] = t;
+    });
+    const miRows = Object.values(mi)
+      .map((t) => ({ label: getTest(t.testId)?.name || t.testId, note: score20(getTest(t.testId), t.values), extra: t.date }))
+      .filter((r) => r.note != null);
+    out.mobilite = { title: "🤸 Mobilité + force isométrique", avg: avg(miRows.map((r) => r.note)), rows: miRows };
+    if (normsOn) {
+      const pats = groupByPattern(strengthNorms).filter((g) => g.id !== "autre");
+      out.force = {
+        title: "💪 Force — par patron de mouvement",
+        avg: avg(pats.map((g) => g.avg)),
+        rows: pats.map((g) => ({ label: g.label, note: g.avg, extra: g.avg == null ? "pas de 1RM trouvé" : "" })),
+      };
+      const sRows = normRows("sprint", mergedSprint, "");
+      out.vitesse = { title: "⚡ Vitesse", avg: avg(sRows.map((r) => r.note)), rows: sRows };
+      const c = tests.find((t) => t.testId === "cmj");
+      const cRows = normRows("cmj", mergedCmj, c ? c.date : "");
+      out.cmj = { title: "🦘 Saut (CMJ)", avg: avg(cRows.map((r) => r.note)), rows: cRows };
+      const b = tests.find((t) => t.testId === "bronco");
+      const eRows = b ? normRows("bronco", b.values, b.date) : [];
+      out.endurance = { title: "🏃 Endurance", avg: avg(eRows.map((r) => r.note)), rows: eRows };
+    }
+    return out;
+  }, [tests, strengthNorms, mergedSprint, mergedCmj, sport, poste, level, normsOn]);
 
   const field = (key, label, unit, ph) => (
     <div key={key}>
@@ -916,6 +1042,20 @@ export default function Tests() {
                   </div>
 
                   <div style={cardStyle}>
+                    <div style={{ fontWeight: 700 }}>🦘 Standards de saut (CMJ) par niveau — {posteLabel(sport, poste)}</div>
+                    <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                      Hauteur de CMJ face à chaque niveau
+                      {level ? ` (objectif : ${levelLabel(level)})` : ""}. Ton dernier CMJ saisi est comparé automatiquement.
+                    </div>
+                    <LevelTable
+                      rows={evaluateLadderRows("cmj", mergedCmj, sport, poste, level)}
+                      targetId={level}
+                      labelHeader="Test"
+                      valueHeader="Ton CMJ"
+                    />
+                  </div>
+
+                  <div style={cardStyle}>
                     <div style={{ fontWeight: 700 }}>💪 Force (1RM de « Mes RM »)</div>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>
                       Poste : {posteLabel(sport, poste)}. Le 1RM est repéré automatiquement par le nom de l'exercice.
@@ -968,18 +1108,52 @@ export default function Tests() {
           {/* ------------ BILAN ------------ */}
           {tab === "bilan" && (
             <>
-              {globalNote != null && (
-                <div style={{ ...cardStyle, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                  <div>
-                    <div style={{ fontWeight: 700 }}>🏅 Note globale mobilité / force iso</div>
-                    <div style={{ fontSize: 12, color: MUTED }}>Moyenne des derniers tests (FMS, mobilité, force iso), chacun noté /20</div>
-                  </div>
-                  <div style={{ fontSize: 24, fontWeight: 800, color: noteColor(globalNote) }}>
-                    {globalNote}
-                    <span style={{ fontSize: 13, color: MUTED }}> / 20</span>
-                  </div>
+              <div style={cardStyle}>
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>🏅 Notes /20 par domaine</div>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                  Dernier résultat de chaque test. Force, vitesse, CMJ et endurance sont notés avec le barème du poste (niveau visé pris en compte).
                 </div>
-              )}
+                {!normsOn && (
+                  <div style={{ fontSize: 12, color: ACCENT, marginBottom: 8 }}>
+                    Choisis le sport et le poste de l'athlète en haut de la page pour obtenir les notes de force, vitesse, CMJ et endurance.
+                  </div>
+                )}
+                {["mobilite", "force", "vitesse", "cmj", "endurance"].map((k) => {
+                  const d = domainNotes[k];
+                  if (!d) return null;
+                  return (
+                    <div key={k} style={{ padding: "10px 0", borderTop: `1px solid ${BORDER}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <strong>{d.title}</strong>
+                        {d.avg != null ? (
+                          <span style={{ fontSize: 20, fontWeight: 800, color: noteColor(d.avg) }}>
+                            {d.avg}
+                            <span style={{ fontSize: 12, color: MUTED }}> / 20</span>
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: MUTED }}>pas encore de donnée</span>
+                        )}
+                      </div>
+                      {d.rows.map((r, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, color: MUTED, marginTop: 3 }}>
+                          <span>
+                            {r.label}
+                            {r.extra ? ` · ${r.extra}` : ""}
+                          </span>
+                          {r.note != null && (
+                            <span style={{ color: noteColor(r.note), fontWeight: 700 }}>{r.note} / 20</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+                {normsOn && (
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 6, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
+                    Pas de barème pour la VMA, le Yo-Yo et le 30-15 : l'endurance n'est notée que via le Bronco.
+                  </div>
+                )}
+              </div>
               <div style={cardStyle}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>🧭 Zones à travailler (derniers tests mobilité / force iso)</div>
                 {zoneBilan.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Pas encore de test de mobilité ou de force isométrique.</div>}
@@ -996,6 +1170,28 @@ export default function Tests() {
                     ))}
                   </div>
                 ))}
+              </div>
+
+              <div style={cardStyle}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>🩹 Antécédents de blessure</div>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                  À croiser avec les zones à travailler ci-dessus pour choisir le groupe d'individualisation.
+                </div>
+                <textarea
+                  style={{ ...inputStyle, width: "100%", minHeight: 70, resize: "vertical", boxSizing: "border-box" }}
+                  value={injDraft}
+                  onChange={(e) => setInjDraft(e.target.value)}
+                  placeholder="Ex : entorse cheville gauche 2025, douleur genou à l'effort…"
+                />
+                <div style={{ marginTop: 8 }}>
+                  <button
+                    onClick={saveInjury}
+                    disabled={injDraft.trim() === (selectedAthlete?.injuryHistory || "").trim()}
+                    style={pill(injDraft.trim() !== (selectedAthlete?.injuryHistory || "").trim())}
+                  >
+                    Enregistrer les antécédents
+                  </button>
+                </div>
               </div>
 
               <div style={cardStyle}>
@@ -1038,6 +1234,50 @@ export default function Tests() {
                   </select>
                   <button onClick={addToGroup} disabled={!targetGroup} style={pill(!!targetGroup)}>
                     Ajouter au groupe
+                  </button>
+                </div>
+              </div>
+
+              <div style={cardStyle}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>➕ Créer un groupe / sous-groupe</div>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                  Même groupes que dans Workout : un groupe peut contenir des sous-groupes (ex : Cheville, Chaîne post, Bassin).
+                </div>
+                <input
+                  style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginBottom: 8 }}
+                  value={newGroupName}
+                  onChange={(e) => setNewGroupName(e.target.value)}
+                  placeholder="Nom du nouveau groupe"
+                />
+                <input
+                  style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginBottom: 8 }}
+                  value={newGroupSubs}
+                  onChange={(e) => setNewGroupSubs(e.target.value)}
+                  placeholder="Sous-groupes (séparés par des virgules, optionnel)"
+                />
+                <button onClick={createGroup} disabled={!newGroupName.trim()} style={pill(!!newGroupName.trim())}>
+                  Créer le groupe
+                </button>
+
+                <div style={{ borderTop: `1px solid ${BORDER}`, margin: "14px 0 10px" }} />
+                <div style={{ fontSize: 13, marginBottom: 6 }}>Ajouter un sous-groupe à un groupe existant</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <select style={{ ...inputStyle, flex: 1, minWidth: 140 }} value={subTargetGroup} onChange={(e) => setSubTargetGroup(e.target.value)}>
+                    <option value="">— Groupe —</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    style={{ ...inputStyle, flex: 1, minWidth: 140 }}
+                    value={newSubName}
+                    onChange={(e) => setNewSubName(e.target.value)}
+                    placeholder="Nom du sous-groupe"
+                  />
+                  <button onClick={addSubGroupTo} disabled={!subTargetGroup || !newSubName.trim()} style={pill(!!subTargetGroup && !!newSubName.trim())}>
+                    Ajouter
                   </button>
                 </div>
               </div>
