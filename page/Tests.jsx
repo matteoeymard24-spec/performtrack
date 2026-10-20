@@ -12,6 +12,9 @@ import {
   deleteDoc,
   arrayUnion,
   serverTimestamp,
+  query,
+  where,
+  Timestamp,
 } from "firebase/firestore";
 import {
   TEST_GROUPS,
@@ -252,7 +255,18 @@ export default function Tests() {
   const [msg, setMsg] = useState("");
   const [targetGroup, setTargetGroup] = useState("");
   const [rmDocs, setRmDocs] = useState([]);
-  const [injDraft, setInjDraft] = useState("");
+  // Journal de blessures (collection "injuries", même structure que le Dashboard)
+  const [injuries, setInjuries] = useState([]);
+  const [showInjuryForm, setShowInjuryForm] = useState(false);
+  const [editingInjuryId, setEditingInjuryId] = useState(null);
+  const [injuryZone, setInjuryZone] = useState("");
+  const [injuryTissue, setInjuryTissue] = useState("muscle");
+  const [injuryMechanism, setInjuryMechanism] = useState("surcharge");
+  const [injuryDaysLost, setInjuryDaysLost] = useState("");
+  const [injuryNotes, setInjuryNotes] = useState("");
+  const [injuryDate, setInjuryDate] = useState("");
+  const [injurySaving, setInjurySaving] = useState(false);
+  const [injuryMessage, setInjuryMessage] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupSubs, setNewGroupSubs] = useState("");
   const [subTargetGroup, setSubTargetGroup] = useState("");
@@ -502,19 +516,95 @@ export default function Tests() {
   const testsOfGroup = TESTS.filter((t) => t.group === group);
   const selectedAthlete = athletes.find((a) => a.id === uid);
 
-  // Antécédents de blessure : brouillon synchronisé avec l'athlète choisi
+  /* ---- Journal de blessures de l'athlète choisi ---- */
+  const TISSUE_LABELS = { muscle: "Muscle", tendon: "Tendon", ligament: "Ligament", os: "Os / articulation", autre: "Autre" };
+  const MECHANISM_LABELS = { contact: "Contact / traumatique", surcharge: "Surcharge / usure", autre: "Autre" };
+  const injToday = new Date().toISOString().slice(0, 10);
+
+  const loadInjuries = async (id) => {
+    if (!id) {
+      setInjuries([]);
+      return;
+    }
+    try {
+      const snap = await getDocs(query(collection(db, "injuries"), where("userId", "==", id)));
+      setInjuries(
+        snap.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+      );
+    } catch (e) {
+      console.error("Tests: chargement blessures", e);
+    }
+  };
+
+  const resetInjuryForm = () => {
+    setEditingInjuryId(null);
+    setInjuryZone("");
+    setInjuryTissue("muscle");
+    setInjuryMechanism("surcharge");
+    setInjuryDaysLost("");
+    setInjuryNotes("");
+    setInjuryDate(injToday);
+    setInjuryMessage("");
+  };
+
   useEffect(() => {
-    setInjDraft(selectedAthlete?.injuryHistory || "");
-  }, [uid, selectedAthlete?.injuryHistory]);
+    setShowInjuryForm(false);
+    resetInjuryForm();
+    loadInjuries(uid);
+  }, [uid]);
+
+  const startEditInjury = (inj) => {
+    setEditingInjuryId(inj.id);
+    setInjuryZone(inj.zone || "");
+    setInjuryTissue(inj.tissueType || "muscle");
+    setInjuryMechanism(inj.mechanism || "surcharge");
+    setInjuryDaysLost(inj.daysLost !== null && inj.daysLost !== undefined ? String(inj.daysLost) : "");
+    setInjuryNotes(inj.notes || "");
+    setInjuryDate(inj.date || injToday);
+    setShowInjuryForm(true);
+  };
 
   const saveInjury = async () => {
     if (!uid) return;
+    setInjurySaving(true);
+    setInjuryMessage("");
     try {
-      await updateDoc(doc(db, "users", uid), { injuryHistory: injDraft.trim() });
-      setAthletes((as) => as.map((a) => (a.id === uid ? { ...a, injuryHistory: injDraft.trim() } : a)));
-      setMsg("✅ Antécédents enregistrés.");
+      const payload = {
+        userId: uid,
+        date: injuryDate || injToday,
+        zone: injuryZone || "",
+        tissueType: injuryTissue,
+        mechanism: injuryMechanism,
+        daysLost: injuryDaysLost ? Number(injuryDaysLost) : null,
+        notes: injuryNotes || "",
+      };
+      if (editingInjuryId) {
+        await updateDoc(doc(db, "injuries", editingInjuryId), payload);
+      } else {
+        await setDoc(doc(db, "injuries", `${uid}_${Date.now()}`), { ...payload, createdAt: Timestamp.now() });
+      }
+      setInjuryMessage("✅ Enregistré.");
+      await loadInjuries(uid);
+      setTimeout(() => {
+        setShowInjuryForm(false);
+        resetInjuryForm();
+      }, 900);
     } catch (e) {
-      alert("Erreur : " + e.message);
+      setInjuryMessage("❌ Erreur : " + e.message);
+    } finally {
+      setInjurySaving(false);
+    }
+  };
+
+  const removeInjury = async (id) => {
+    if (!window.confirm("Supprimer cette blessure de l'historique ?")) return;
+    try {
+      await deleteDoc(doc(db, "injuries", id));
+      setInjuries((prev) => prev.filter((i) => i.id !== id));
+    } catch (e) {
+      alert("Erreur suppression : " + e.message);
     }
   };
 
@@ -629,7 +719,7 @@ export default function Tests() {
     if (normsOn) {
       const pats = groupByPattern(strengthNorms).filter((g) => g.id !== "autre");
       out.force = {
-        title: "💪 Force — par patron de mouvement",
+        title: "💪 Force — par pattern de mouvement",
         avg: avg(pats.map((g) => g.avg)),
         rows: pats.map((g) => ({ label: g.label, note: g.avg, extra: g.avg == null ? "pas de 1RM trouvé" : "" })),
       };
@@ -1081,11 +1171,11 @@ export default function Tests() {
                   const d = domainNotes[k];
                   if (!d) return null;
                   return (
-                    <div key={k} style={{ padding: "10px 0", borderTop: `1px solid ${BORDER}` }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                        <strong>{d.title}</strong>
+                    <div key={k} style={{ background: "#151310", borderRadius: 12, padding: "14px 16px", marginTop: 14 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: d.rows.length ? 10 : 0 }}>
+                        <strong style={{ fontSize: 15 }}>{d.title}</strong>
                         {d.avg != null ? (
-                          <span style={{ fontSize: 20, fontWeight: 800, color: noteColor(d.avg) }}>
+                          <span style={{ fontSize: 22, fontWeight: 800, color: noteColor(d.avg) }}>
                             {d.avg}
                             <span style={{ fontSize: 12, color: MUTED }}> / 20</span>
                           </span>
@@ -1094,13 +1184,16 @@ export default function Tests() {
                         )}
                       </div>
                       {d.rows.map((r, i) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, color: MUTED, marginTop: 3 }}>
-                          <span>
+                        <div
+                          key={i}
+                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 13, color: MUTED, padding: "9px 0", borderTop: `1px solid ${BORDER}` }}
+                        >
+                          <span style={{ lineHeight: 1.35 }}>
                             {r.label}
-                            {r.extra ? ` · ${r.extra}` : ""}
+                            {r.extra ? <span style={{ display: "block", fontSize: 11, color: "#706a61" }}>{r.extra}</span> : null}
                           </span>
                           {r.note != null && (
-                            <span style={{ color: noteColor(r.note), fontWeight: 700 }}>{r.note} / 20</span>
+                            <span style={{ color: noteColor(r.note), fontWeight: 700, whiteSpace: "nowrap" }}>{r.note} / 20</span>
                           )}
                         </div>
                       ))}
@@ -1108,7 +1201,7 @@ export default function Tests() {
                   );
                 })}
                 {normsOn && (
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 6, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 14 }}>
                     Pas de barème pour la VMA, le Yo-Yo et le 30-15 : l'endurance n'est notée que via le Bronco.
                   </div>
                 )}
@@ -1131,26 +1224,86 @@ export default function Tests() {
                 ))}
               </div>
 
-              <div style={cardStyle}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>🩹 Antécédents de blessure</div>
-                <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
-                  À croiser avec les zones à travailler ci-dessus pour choisir le groupe d'individualisation.
-                </div>
-                <textarea
-                  style={{ ...inputStyle, width: "100%", minHeight: 70, resize: "vertical", boxSizing: "border-box" }}
-                  value={injDraft}
-                  onChange={(e) => setInjDraft(e.target.value)}
-                  placeholder="Ex : entorse cheville gauche 2025, douleur genou à l'effort…"
-                />
-                <div style={{ marginTop: 8 }}>
+              <div style={{ ...cardStyle, border: "1px solid rgba(217,105,90,0.4)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                  <div style={{ fontWeight: 700, color: "#d9695a" }}>🚑 Historique de blessures ({injuries.length})</div>
                   <button
-                    onClick={saveInjury}
-                    disabled={injDraft.trim() === (selectedAthlete?.injuryHistory || "").trim()}
-                    style={pill(injDraft.trim() !== (selectedAthlete?.injuryHistory || "").trim())}
+                    disabled={!uid}
+                    onClick={() => {
+                      if (showInjuryForm && !editingInjuryId) {
+                        setShowInjuryForm(false);
+                      } else {
+                        resetInjuryForm();
+                        setShowInjuryForm(true);
+                      }
+                    }}
+                    style={{ ...pill(false), color: "#d9695a", borderColor: "#d9695a" }}
                   >
-                    Enregistrer les antécédents
+                    {showInjuryForm ? "Annuler" : "+ Ajouter une blessure"}
                   </button>
                 </div>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                  Même journal que dans le Dashboard : à croiser avec les zones à travailler pour choisir le groupe d'individualisation.
+                </div>
+
+                {showInjuryForm && (
+                  <div style={{ marginBottom: 14, padding: 12, background: "#151310", borderRadius: 10 }}>
+                    <label style={{ fontSize: 12, color: MUTED }}>Date</label>
+                    <input type="date" value={injuryDate} onChange={(e) => setInjuryDate(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
+                    <label style={{ fontSize: 12, color: MUTED }}>Zone touchée</label>
+                    <input type="text" value={injuryZone} onChange={(e) => setInjuryZone(e.target.value)} placeholder="ex : cheville gauche" style={{ ...inputStyle, marginBottom: 10 }} />
+                    <label style={{ fontSize: 12, color: MUTED }}>Type de tissu</label>
+                    <select value={injuryTissue} onChange={(e) => setInjuryTissue(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
+                      {Object.entries(TISSUE_LABELS).map(([k, l]) => (
+                        <option key={k} value={k}>{l}</option>
+                      ))}
+                    </select>
+                    <label style={{ fontSize: 12, color: MUTED }}>Mécanisme</label>
+                    <select value={injuryMechanism} onChange={(e) => setInjuryMechanism(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
+                      {Object.entries(MECHANISM_LABELS).map(([k, l]) => (
+                        <option key={k} value={k}>{l}</option>
+                      ))}
+                    </select>
+                    <label style={{ fontSize: 12, color: MUTED }}>Jours d'arrêt estimés</label>
+                    <input type="number" min="0" value={injuryDaysLost} onChange={(e) => setInjuryDaysLost(e.target.value)} placeholder="ex : 7" style={{ ...inputStyle, marginBottom: 10 }} />
+                    <label style={{ fontSize: 12, color: MUTED }}>Notes</label>
+                    <textarea value={injuryNotes} onChange={(e) => setInjuryNotes(e.target.value)} rows={3} style={{ ...inputStyle, marginBottom: 10, resize: "vertical" }} />
+                    <button
+                      onClick={saveInjury}
+                      disabled={injurySaving}
+                      style={{ width: "100%", padding: 12, background: injurySaving ? "#a8a199" : "#d9695a", color: "white", border: "none", borderRadius: 8, fontSize: 15, fontWeight: "bold", cursor: injurySaving ? "not-allowed" : "pointer" }}
+                    >
+                      {injurySaving ? "Enregistrement..." : editingInjuryId ? "Mettre à jour" : "Enregistrer la blessure"}
+                    </button>
+                    {injuryMessage && (
+                      <div style={{ marginTop: 8, fontSize: 13, color: injuryMessage.includes("✅") ? "#4fae7d" : "#d9695a" }}>{injuryMessage}</div>
+                    )}
+                  </div>
+                )}
+
+                {!uid ? (
+                  <div style={{ fontSize: 13, color: MUTED }}>Choisis un athlète en haut de la page.</div>
+                ) : injuries.length > 0 ? (
+                  injuries.map((inj) => (
+                    <div key={inj.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "10px 0", borderTop: `1px solid ${BORDER}`, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 13 }}>
+                        <strong style={{ color: "#d9695a" }}>{inj.date}</strong>
+                        {inj.zone ? ` — ${inj.zone}` : ""}{" "}
+                        <span style={{ color: MUTED }}>
+                          ({TISSUE_LABELS[inj.tissueType] || inj.tissueType}, {MECHANISM_LABELS[inj.mechanism] || inj.mechanism})
+                          {inj.daysLost !== null && inj.daysLost !== undefined ? `, ${inj.daysLost}j d'arrêt` : ""}
+                        </span>
+                        {inj.notes && <div style={{ color: "#706a61", fontSize: 12, marginTop: 2 }}>{inj.notes}</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={() => startEditInjury(inj)} style={{ ...pill(false), color: ACCENT, padding: "6px 10px", fontSize: 12 }}>Modifier</button>
+                        <button onClick={() => removeInjury(inj.id)} style={{ ...pill(false), color: "#d9534f", padding: "6px 10px", fontSize: 12 }}>Supprimer</button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div style={{ fontSize: 13, color: MUTED }}>Aucune blessure enregistrée pour cet athlète.</div>
+                )}
               </div>
 
               <div style={cardStyle}>

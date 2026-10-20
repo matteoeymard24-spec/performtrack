@@ -234,9 +234,7 @@ export default function WellnessForm() {
         </div>
       )}
 
-      {/* Le journal de blessures (déclaration + historique modifiable) vit
-          maintenant dans l'interface Wellness, pas dans ce questionnaire
-          quotidien — voir page/Wellness.jsx. */}
+      {/* Le journal de blessures est géré par le coach (page Tests › Bilan). */}
       {douleur >= 6 && (
         <div
           style={{
@@ -249,15 +247,8 @@ export default function WellnessForm() {
             color: "#a8a199",
           }}
         >
-          🚑 Douleur élevée aujourd'hui — si c'est une vraie blessure, tu peux
-          la déclarer depuis{" "}
-          <button
-            onClick={() => navigate("/wellness")}
-            style={{ background: "none", border: "none", color: "#d9695a", fontWeight: "bold", cursor: "pointer", padding: 0, fontSize: 13, textDecoration: "underline" }}
-          >
-            l'interface Wellness
-          </button>
-          .
+          🚑 Douleur élevée aujourd'hui — si c'est une vraie blessure,
+          signale-la à ton coach : il l'ajoutera à ton historique de blessures.
         </div>
       )}
 

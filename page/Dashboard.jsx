@@ -1568,7 +1568,7 @@ export default function Dashboard() {
             }}
           >
             <h3 style={{ margin: "0 0 12px 0", fontSize: 16, color: "#d9695a" }}>
-              🚑 Blessures déclarées récemment
+              🚑 Blessures enregistrées récemment
             </h3>
             {selfInjuries.map((inj) => (
               <div key={inj.id} style={{ fontSize: 13, color: "#a8a199", marginBottom: 6 }}>
@@ -2900,7 +2900,7 @@ export default function Dashboard() {
                   <div style={{ marginTop: 14 }}>
                     {showAthleteDetail.injuries.length === 0 && (
                       <div style={{ fontSize: 13, color: "#a8a199" }}>
-                        Aucune blessure déclarée par cet athlète.
+                        Aucune blessure enregistrée. Ajoute-en depuis Tests › Bilan.
                       </div>
                     )}
                     {showAthleteDetail.injuries.map((inj) =>
