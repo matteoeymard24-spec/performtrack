@@ -10,10 +10,19 @@ const BORDER_STRONG = "rgba(255,255,255,0.16)";
 const TEXT_MUTED = "#a8a199";
 
 export default function Layout() {
-  const { currentUser, userRole, isSuperAdmin, logout } = useAuth();
+  const { currentUser, userRole, isSuperAdmin, logout, canPreview, previewAthlete, setPreviewAthlete } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+
+  const togglePreview = () => {
+    const next = !previewAthlete;
+    setPreviewAthlete(next);
+    setMenuOpen(false);
+    // En quittant l'aperçu depuis une page réservée au coach, ou en y entrant
+    // depuis une page réservée au coach, on revient sur le tableau de bord.
+    navigate("/dashboard");
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -145,6 +154,24 @@ export default function Layout() {
 
           {/* Actions desktop */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }} className="desktop-actions">
+            {canPreview && (
+              <button
+                onClick={togglePreview}
+                title={previewAthlete ? "Revenir à la vue coach" : "Voir l'appli comme un athlète"}
+                style={{
+                  padding: "9px 14px",
+                  background: previewAthlete ? "#4fae7d" : "transparent",
+                  color: previewAthlete ? "#06180f" : ACCENT,
+                  border: `1px solid ${previewAthlete ? "#4fae7d" : ACCENT}`,
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {previewAthlete ? "↩ Vue coach" : "👁 Mode athlète"}
+              </button>
+            )}
             <button
               onClick={() => navigate("/MyProfile")}
               style={{
@@ -210,6 +237,33 @@ export default function Layout() {
           </button>
         </div>
       </header>
+
+      {/* Bandeau d'aperçu : toujours visible tant qu'on est en mode athlète */}
+      {previewAthlete && (
+        <div
+          style={{
+            background: "#4fae7d",
+            color: "#06180f",
+            padding: "7px 14px",
+            fontSize: 13,
+            fontWeight: 600,
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            textAlign: "center",
+          }}
+        >
+          <span>👁 Aperçu athlète : tu vois l'appli comme un athlète (avec ton propre compte).</span>
+          <button
+            onClick={togglePreview}
+            style={{ background: "#06180f", color: "#4fae7d", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+          >
+            Quitter l'aperçu
+          </button>
+        </div>
+      )}
 
       {/* Navigation mobile basse */}
       <nav
@@ -335,6 +389,25 @@ export default function Layout() {
               );
             })}
             <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
+              {canPreview && (
+                <button
+                  onClick={togglePreview}
+                  style={{
+                    width: "100%",
+                    padding: "13px 14px",
+                    marginBottom: 8,
+                    background: previewAthlete ? "#4fae7d" : "transparent",
+                    color: previewAthlete ? "#06180f" : ACCENT,
+                    border: `1px solid ${previewAthlete ? "#4fae7d" : ACCENT}`,
+                    borderRadius: 10,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    textAlign: "left",
+                  }}
+                >
+                  {previewAthlete ? "↩ Revenir à la vue coach" : "👁 Mode athlète (aperçu)"}
+                </button>
+              )}
               <button
                 onClick={() => {
                   navigate("/MyProfile");

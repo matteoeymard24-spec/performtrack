@@ -22,6 +22,25 @@ export function AuthProvider({ children }) {
   // (validation par le coach).
   const [userStatus, setUserStatus] = useState("approved");
   const [loading, setLoading] = useState(true);
+  // Mode "aperçu athlète" : le coach voit l'appli exactement comme un athlète
+  // (menus, pages, séances, cycles). C'est purement visuel côté interface : on
+  // reste connecté avec son propre compte, rien n'est modifié en base.
+  const [previewAthlete, setPreviewAthleteState] = useState(() => {
+    try {
+      return sessionStorage.getItem("pt_preview_athlete") === "1";
+    } catch (e) {
+      return false;
+    }
+  });
+  const setPreviewAthlete = (on) => {
+    setPreviewAthleteState(!!on);
+    try {
+      if (on) sessionStorage.setItem("pt_preview_athlete", "1");
+      else sessionStorage.removeItem("pt_preview_athlete");
+    } catch (e) {
+      /* stockage indisponible : l'aperçu reste actif tant que la page est ouverte */
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -93,14 +112,21 @@ export function AuthProvider({ children }) {
     return auth.signOut();
   };
 
+  // Le coach réel (indépendamment de l'aperçu) peut activer l'aperçu athlète.
+  const canPreview = userRole === "admin" || isSuperAdmin;
+  const preview = canPreview && previewAthlete;
+
   const value = {
     currentUser,
-    userRole,
+    userRole: preview ? "athlete" : userRole,
     userGroup,
     userProfile,
-    isSuperAdmin,
+    isSuperAdmin: preview ? false : isSuperAdmin,
     userStatus,
     logout,
+    canPreview,
+    previewAthlete: preview,
+    setPreviewAthlete,
   };
 
   return (

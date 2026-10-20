@@ -61,6 +61,17 @@ const btn = (bg, color = "#fff") => ({
   fontWeight: 700,
   cursor: "pointer",
 });
+/* Fenêtre flottante : le formulaire est toujours visible, même quand la liste
+   des cycles est longue (avant, il s'ouvrait en haut de page, hors écran). */
+function Modal({ children }) {
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000, overflowY: "auto", padding: 12, display: "flex", justifyContent: "center", alignItems: "flex-start" }}
+    >
+      <div style={{ width: "100%", maxWidth: 720, marginTop: 16, marginBottom: 80 }}>{children}</div>
+    </div>
+  );
+}
 const typeIcon = (e) => (e.type === "sprint" ? "⚡" : e.type === "endurance" ? "🏃" : "💪");
 
 /* ------------------------------------------------------------------ */
@@ -271,15 +282,38 @@ export default function PlanningPanel({
   const blank = () => ({
     name: "",
     level: "meso",
-    model: "classique",
-    phase: "prepa_gen",
+    model: "bloc",
+    phase: "accumulation",
     startDate: todayStr,
     endDate: addDays(todayStr, 27),
+    _dur: 27, // durée mémorisée (en jours) : quand on change le début, la fin suit
     scope: "total",
     objective: "",
     notes: "",
   });
   const setF = (patch) => setForm((f) => ({ ...f, ...patch }));
+  // Une date saisie au clavier passe par des valeurs intermédiaires (année 0002,
+  // 0020…) : on ne réagit qu'aux dates plausibles.
+  const okDay = (v) => typeof v === "string" && v.length === 10 && v >= "2000-01-01";
+  const setStart = (v) =>
+    setForm((f) => {
+      const n = { ...f, startDate: v };
+      if (okDay(v)) n.endDate = addDays(v, f._dur ?? 27);
+      return n;
+    });
+  const setEnd = (v) =>
+    setForm((f) => {
+      const n = { ...f, endDate: v };
+      if (okDay(v) && okDay(f.startDate) && v >= f.startDate) n._dur = diffDays(f.startDate, v);
+      return n;
+    });
+  const setWeeks = (nw) =>
+    setForm((f) => {
+      const d = nw * 7 - 1;
+      return { ...f, endDate: okDay(f.startDate) ? addDays(f.startDate, d) : f.endDate, _dur: d };
+    });
+  const snapMonday = () =>
+    setForm((f) => (okDay(f.startDate) ? { ...f, startDate: mondayOf(f.startDate), endDate: addDays(mondayOf(f.startDate), f._dur ?? 27) } : f));
 
   const save = async () => {
     const f = form;
@@ -291,7 +325,7 @@ export default function PlanningPanel({
       const payload = {
         name: f.name.trim(),
         level: f.level,
-        model: f.model || "classique",
+        model: f.model || "bloc",
         phase: f.phase,
         startDate: f.startDate,
         endDate: f.endDate,
@@ -447,7 +481,7 @@ export default function PlanningPanel({
                 return (
                   <div
                     key={f.id}
-                    onClick={() => isAdmin && setFForm({ ...f })}
+                    onClick={() => { if (isAdmin) { setForm(null); setFForm({ ...f }); } }}
                     title={`${k.label} : ${f.name} · ${fmtShort(f.date)}${f.endDate ? " → " + fmtShort(f.endDate) : ""}${f.place ? " · " + f.place : ""}`}
                     style={{
                       position: "absolute",
@@ -506,7 +540,7 @@ export default function PlanningPanel({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 10 }}>
         {(() => {
           const used = PHASES.filter((p) => visible.some((c) => c.phase === p.id));
-          return used.length ? used : PHASES;
+          return used.length ? used : PHASES.filter((p) => p.models.length);
         })().map((p) => (
           <span key={p.id} style={{ fontSize: 11, color: MUTED, display: "flex", alignItems: "center", gap: 4 }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: p.color, display: "inline-block" }} />
@@ -517,7 +551,8 @@ export default function PlanningPanel({
 
       {/* formulaire */}
       {form && (
-        <div style={{ background: DARK, borderRadius: 10, padding: 14, marginTop: 14, border: `1px solid ${AMBER}` }}>
+        <Modal>
+        <div style={{ background: DARK, borderRadius: 10, padding: 14, border: `1px solid ${AMBER}` }}>
           <div style={{ fontWeight: 700, marginBottom: 10, color: TEXT }}>{form.id ? "✏️ Modifier le cycle" : "➕ Nouveau cycle"}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <div>
@@ -536,12 +571,15 @@ export default function PlanningPanel({
               <label style={{ fontSize: 11, color: MUTED }}>Modèle de planification</label>
               <select
                 style={inputStyle}
-                value={form.model || "classique"}
+                value={form.model || "bloc"}
                 onChange={(e) => setF({ model: e.target.value, phase: phasesOfModel(e.target.value)[0].id })}
               >
                 {MODELS.map((m) => (
                   <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
+                {!MODELS.some((m) => m.id === (form.model || "bloc")) && (
+                  <option value={form.model}>Ancien modèle (à convertir)</option>
+                )}
               </select>
             </div>
             <div>
@@ -557,11 +595,11 @@ export default function PlanningPanel({
             </div>
             <div>
               <label style={{ fontSize: 11, color: MUTED }}>Début</label>
-              <input type="date" style={inputStyle} value={form.startDate} onChange={(e) => setF({ startDate: e.target.value })} />
+              <input type="date" style={inputStyle} value={form.startDate} onChange={(e) => setStart(e.target.value)} />
             </div>
             <div>
               <label style={{ fontSize: 11, color: MUTED }}>Fin</label>
-              <input type="date" style={inputStyle} value={form.endDate} onChange={(e) => setF({ endDate: e.target.value })} />
+              <input type="date" style={inputStyle} value={form.endDate} onChange={(e) => setEnd(e.target.value)} />
             </div>
             <div>
               <label style={{ fontSize: 11, color: MUTED }}>Pour qui</label>
@@ -586,6 +624,22 @@ export default function PlanningPanel({
               </select>
             </div>
           </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+            <span style={{ fontSize: 11, color: MUTED }}>Durée :</span>
+            {[1, 2, 3, 4, 6, 8, 12].map((n) => (
+              <button key={n} type="button" onClick={() => setWeeks(n)} style={{ ...btn("#2a2620"), padding: "4px 9px", fontSize: 12 }}>
+                {n} sem.
+              </button>
+            ))}
+            <button type="button" onClick={snapMonday} style={{ ...btn("#2a2620"), padding: "4px 9px", fontSize: 12 }}>
+              Début → lundi
+            </button>
+            {okDay(form.startDate) && okDay(form.endDate) && form.endDate >= form.startDate && (
+              <span style={{ fontSize: 11, color: MUTED }}>
+                = {diffDays(form.startDate, form.endDate) + 1} j · {fmtShort(form.startDate)} → {fmtShort(form.endDate)}
+              </span>
+            )}
+          </div>
           <div style={{ marginTop: 10 }}>
             <label style={{ fontSize: 11, color: MUTED }}>Objectif du cycle</label>
             <input style={inputStyle} value={form.objective} onChange={(e) => setF({ objective: e.target.value })} placeholder="Ex : +5 % sur le squat, base aérobie…" />
@@ -599,6 +653,7 @@ export default function PlanningPanel({
             <button onClick={() => setForm(null)} style={btn("#2a2620")}>Annuler</button>
           </div>
         </div>
+        </Modal>
       )}
 
       {/* liste des cycles */}
@@ -623,7 +678,7 @@ export default function PlanningPanel({
                   <span style={{ background: cycleColor(c) + "33", color: cycleColor(c), padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
                     {levelOf(c.level).short} · {phaseOf(c.phase).label}
                   </span>
-                  {c.model && c.model !== "classique" && (
+                  {(c.model === "bloc" || c.model === "ondulation") && (
                     <span style={{ marginLeft: 6, color: MUTED, fontSize: 11 }}>({c.model === "bloc" ? "par blocs" : "ondulatoire"})</span>
                   )}
                   {isNow && <span style={{ marginLeft: 6, color: GREEN, fontSize: 11, fontWeight: 700 }}>● en cours · S{w.idx}/{w.total}</span>}
@@ -660,7 +715,7 @@ export default function PlanningPanel({
                   )}
                   {isAdmin && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                      <button onClick={() => setForm({ ...c })} style={btn("#2a2620")}>✏️ Modifier</button>
+                      <button onClick={() => { setFForm(null); setForm({ ...c, model: c.model || "bloc", _dur: Math.max(0, diffDays(c.startDate, c.endDate)) }); }} style={btn("#2a2620")}>✏️ Modifier</button>
                       {c.level !== "micro" && (
                         <button disabled={busy} onClick={() => generateWeeks(c)} style={btn("#5b8def")}>
                           ➕ Générer les semaines
@@ -678,7 +733,8 @@ export default function PlanningPanel({
 
       {/* matchs et jours de compétition */}
       {fForm && (
-        <div style={{ background: DARK, borderRadius: 10, padding: 14, marginTop: 16, border: "1px solid #d9534f" }}>
+        <Modal>
+        <div style={{ background: DARK, borderRadius: 10, padding: 14, border: "1px solid #d9534f" }}>
           <div style={{ fontWeight: 700, marginBottom: 10, color: TEXT }}>{fForm.id ? "✏️ Modifier" : "🏉 Nouveau match / compétition"}</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <div>
@@ -737,6 +793,7 @@ export default function PlanningPanel({
             <button onClick={() => setFForm(null)} style={btn("#2a2620")}>Annuler</button>
           </div>
         </div>
+        </Modal>
       )}
 
       <div style={{ marginTop: 16 }}>

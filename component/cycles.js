@@ -15,25 +15,25 @@ export const CYCLE_LEVELS = [
 ];
 
 /* Modèles de planification : on choisit le modèle d'un cycle, la liste des phases s'adapte.
-   - classique   : périodes (préparation générale / spécifique / compétition…)
-   - bloc        : périodisation par blocs (accumulation → transmutation → réalisation)
+   (L'ancien modèle "classique" n'est plus proposé ; les cycles existants restent lisibles.)
+   - bloc       : périodisation par blocs (accumulation → transmutation → réalisation)
    - ondulation  : ondulatoire (développement / maintien / affûtage / décharge) */
 export const MODELS = [
-  { id: "classique", label: "Classique (périodes)" },
   { id: "bloc", label: "Par blocs : accumulation · transmutation · réalisation" },
   { id: "ondulation", label: "Ondulatoire : développement · maintien · affûtage · décharge" },
 ];
 export const modelOf = (id) => MODELS.find((m) => m.id === id) || MODELS[0];
 
 export const PHASES = [
-  // classique
-  { id: "prepa_gen", label: "Préparation générale", color: "#5b8def", models: ["classique"] },
-  { id: "prepa_spe", label: "Préparation spécifique", color: "#8e6bd8", models: ["classique"] },
-  { id: "pre_comp", label: "Pré-compétition", color: "#e0a13d", models: ["classique"] },
-  { id: "competition", label: "Compétition", color: "#d9534f", models: ["classique"] },
-  { id: "intersaison", label: "Intersaison", color: "#3aa6b9", models: ["classique"] },
-  { id: "transition", label: "Transition / récupération", color: "#4fae7d", models: ["classique"] },
-  { id: "charge", label: "Semaine de charge", color: "#c46a3a", models: ["classique"] },
+  // Anciennes phases "classique" : plus proposées (models: []) mais toujours
+  // reconnues pour que les cycles déjà créés restent affichés correctement.
+  { id: "prepa_gen", label: "Préparation générale", color: "#5b8def", models: [] },
+  { id: "prepa_spe", label: "Préparation spécifique", color: "#8e6bd8", models: [] },
+  { id: "pre_comp", label: "Pré-compétition", color: "#e0a13d", models: [] },
+  { id: "competition", label: "Compétition", color: "#d9534f", models: [] },
+  { id: "intersaison", label: "Intersaison", color: "#3aa6b9", models: [] },
+  { id: "transition", label: "Transition / récupération", color: "#4fae7d", models: [] },
+  { id: "charge", label: "Semaine de charge", color: "#c46a3a", models: [] },
   // blocs
   { id: "accumulation", label: "Accumulation", color: "#3f7be0", models: ["bloc"] },
   { id: "transmutation", label: "Transmutation", color: "#e08a3d", models: ["bloc"] },
@@ -42,10 +42,10 @@ export const PHASES = [
   { id: "developpement", label: "Développement", color: "#8e6bd8", models: ["ondulation"] },
   { id: "maintien", label: "Maintien", color: "#3aa6b9", models: ["ondulation"] },
   { id: "affutage", label: "Affûtage", color: "#e0c13d", models: ["ondulation"] },
-  { id: "decharge", label: "Décharge", color: "#7fb77e", models: ["classique", "ondulation"] },
-  { id: "autre", label: "Autre", color: "#8a8378", models: ["classique", "bloc", "ondulation"] },
+  { id: "decharge", label: "Décharge", color: "#7fb77e", models: ["bloc", "ondulation"] },
+  { id: "autre", label: "Autre", color: "#8a8378", models: ["bloc", "ondulation"] },
 ];
-export const phasesOfModel = (m) => PHASES.filter((p) => p.models.includes(m || "classique"));
+export const phasesOfModel = (m) => PHASES.filter((p) => p.models.includes(m || "bloc"));
 
 export const phaseOf = (id) => PHASES.find((p) => p.id === id) || PHASES[PHASES.length - 1];
 export const levelOf = (id) => CYCLE_LEVELS.find((l) => l.id === id) || CYCLE_LEVELS[0];
@@ -144,8 +144,8 @@ export function packRows(list) {
 /* Microcycles hebdomadaires d'un cycle (pour le bouton "Générer les semaines") */
 export function buildWeeks(parent, { lastIsDeload }) {
   const n = Math.max(1, Math.ceil((diffDays(parent.startDate, parent.endDate) + 1) / 7));
-  const model = parent.model || "classique";
-  const basePhase = model === "classique" ? "charge" : parent.phase;
+  const model = parent.model || "bloc";
+  const basePhase = parent.phase;
   const weeks = [];
   for (let i = 0; i < n; i++) {
     const start = addDays(parent.startDate, i * 7);
