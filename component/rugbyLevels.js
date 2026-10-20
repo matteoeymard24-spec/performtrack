@@ -30,7 +30,7 @@ export const LEVELS = [
 export const levelLabel = (id) => LEVELS.find((l) => l.id === id)?.label || id;
 
 /* Sensibilité de chaque qualité à l'écart de niveau :
-   1 = suit tout l'écart (force), 0.3 = écart très réduit (vitesse pure). */
+   1 = suit tout l'écart (force), 0.6 = vitesse (réglé à 0.6 : les joueurs de Fédérale courent nettement moins vite que Pro D2). */
 export const SENS = {
   SQUAT: 1,
   "DEVELOPPE COUCHE": 1,
@@ -49,12 +49,12 @@ export const SENS = {
   CMJB: 0.5,
   Bronco: 0.5,
   "Prowler 85Kg 10m": 0.5,
-  "Vitesse GPS": 0.3,
-  "5m": 0.3,
-  "10m": 0.3,
-  "15m": 0.3,
-  "20m": 0.3,
-  "60m": 0.3,
+  "Vitesse GPS": 0.6,
+  "5m": 0.6,
+  "10m": 0.6,
+  "15m": 0.6,
+  "20m": 0.6,
+  "60m": 0.6,
 };
 
 /* Colonnes du référentiel : Pilier, Talonneur, 2e ligne, 3e ligne, 9, 10, Centre, Ailier/Arrière */
