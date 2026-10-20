@@ -80,7 +80,7 @@ function LevelBlock({ lv }) {
 }
 
 /* Tableau : une ligne par exercice, une colonne par niveau (standards de force du poste) */
-export function LevelTable({ rows, targetId }) {
+export function LevelTable({ rows, targetId, labelHeader = "Exercice", valueHeader = "Ton RM" }) {
   const withLv = (rows || []).filter((r) => r.lv);
   if (withLv.length === 0) return null;
   const cols = withLv[0].lv.items;
@@ -90,13 +90,13 @@ export function LevelTable({ rows, targetId }) {
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
         <thead>
           <tr>
-            <th style={{ ...th, textAlign: "left" }}>Exercice</th>
+            <th style={{ ...th, textAlign: "left" }}>{labelHeader}</th>
             {cols.map((c) => (
               <th key={c.id} style={{ ...th, color: c.id === targetId ? ACCENT : MUTED }}>
                 {c.label}
               </th>
             ))}
-            <th style={th}>Ton RM</th>
+            <th style={th}>{valueHeader}</th>
           </tr>
         </thead>
         <tbody>
@@ -120,14 +120,17 @@ export function LevelTable({ rows, targetId }) {
                 </td>
               ))}
               <td style={{ padding: "6px 8px", textAlign: "right", color: ACCENT, fontWeight: 700 }}>
-                {r.display != null ? `${r.display} kg` : "—"}
+                {r.display != null ? `${r.display}${r.unit ? " " + r.unit : ""}` : "—"}
               </td>
             </tr>
           ))}
         </tbody>
       </table>
       <div style={{ color: MUTED, fontSize: 10, marginTop: 6 }}>
-        * référentiel (FFR 2020, World Class, Top 14) · ~ estimé (le référentiel ne contient rien pour ce niveau) · sinon barème Agen · vert = niveau atteint avec ton RM
+        * référentiel (FFR 2020, World Class, Top 14) · ~ estimé (le référentiel ne contient rien pour ce niveau) · sinon barème Agen · vert = niveau atteint · valeur affichée = 🥉 bronze (moyenne du niveau)
+        {(rows || []).filter((r) => r.estNote).map((r) => (
+          <div key={r.label} style={{ color: "#d9a441" }}>⚠ {r.label} : {r.estNote}</div>
+        ))}
       </div>
     </div>
   );

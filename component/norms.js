@@ -37,19 +37,37 @@ const hipThrustTable = () => {
   });
   return out;
 };
-/* Sprint 60 m : AUCUN barème Agen. Barème ESTIMÉ à partir du 20 m et de la Vmax GPS du même poste :
-   t60 = t20 + 40 m / (97 % de la Vmax). Valeurs indicatives, à remplacer par des vraies si le staff en a. */
-export const SPRINT60_NOTE = "Barème estimé : 20 m + 40 m à 97 % de la Vmax du poste (pas de barème Agen pour le 60 m)";
+/* Sprint 60 m : AUCUN barème Agen, et aucune norme 60 m publiée trouvée en rugby (la littérature
+   rugby rapporte surtout 10 / 20 / 40 m). Barème ESTIMÉ avec le modèle mono-exponentiel de la course
+   de vitesse, v(t) = Vmax·(1 − e^(−t/τ)) (Furusawa 1927 ; validé en terrain par Samozino et al. 2016,
+   Scand J Med Sci Sports 26:648-658) : pour chaque poste et chaque note du barème Agen, τ est calé sur
+   le temps au 20 m, puis le temps au 60 m est calculé avec la Vmax (GPS) du barème. */
+export const SPRINT60_NOTE =
+  "Barème estimé (modèle mono-exponentiel de course, Samozino 2016) à partir du 20 m et de la Vmax du barème Agen — pas de norme 60 m publiée en rugby";
+const dist = (t, vmax, tau) => vmax * (t - tau * (1 - Math.exp(-t / tau)));
+const solve = (f, lo, hi) => {
+  // dichotomie : f croissante entre lo et hi
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (f(mid) < 0) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+};
+const time60 = (t20, vKmh) => {
+  const vmax = vKmh / 3.6;
+  if (!(t20 > 0) || !(vmax > 0) || vmax * t20 <= 20) return null;
+  // τ tel que dist(t20) = 20 m : dist décroît quand τ augmente
+  const tau = solve((x) => dist(t20, vmax, x) - 20 > 0 ? -1 : 1, 0.05, 3);
+  const t60 = solve((t) => dist(t, vmax, tau) - 60, t20, 20);
+  return Math.round(t60 * 100) / 100;
+};
 const sprint60Table = () => {
   const out = {};
   Object.entries(RUGBY_BAREME["20m"] || {}).forEach(([poste, t20]) => {
     const vg = RUGBY_BAREME["Vitesse GPS"]?.[poste];
     if (!vg) return;
-    out[poste] = t20.map((t, i) => {
-      const v = vg[i];
-      if (t == null || v == null) return null;
-      return Math.round((t + 40 / ((0.97 * v) / 3.6)) * 100) / 100;
-    });
+    out[poste] = t20.map((t, i) => (t == null || vg[i] == null ? null : time60(t, vg[i])));
   });
   return out;
 };
@@ -327,6 +345,20 @@ export const TEST_NORMS = {
     { normKey: "Cervicales extension", label: "Cervicales — extension", unit: "kg", get: (v) => num(v.ext), fmt: fmtNum },
   ],
 };
+
+/* Lignes « standards par niveau » d'un test (même sans valeur saisie) : [{label,unit,display,lv}] */
+export function evaluateLadderRows(testId, values, sport, poste, level) {
+  const defs = TEST_NORMS[testId];
+  if (!defs || !hasNorms(sport, poste)) return [];
+  const out = [];
+  defs.forEach((d) => {
+    const value = values ? d.get(values) : null;
+    const lv = levelInfo(sport, d.normKey, poste, value, level, d.fmt);
+    if (!lv) return;
+    out.push({ label: d.label, unit: d.unit, display: value != null ? d.fmt(value) : null, lv, estNote: d.estimated || null });
+  });
+  return out;
+}
 
 /* Compare les valeurs saisies d'un test au barème du poste. [] si rien à comparer. */
 export function evaluateTestNorms(testId, values, sport, poste, level) {

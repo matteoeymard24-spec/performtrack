@@ -27,6 +27,7 @@ import {
   hasNorms,
   getMatchRef,
   evaluateTestNorms,
+  evaluateLadderRows,
   evaluateStrength,
   LEVELS,
   levelLabel,
@@ -815,6 +816,26 @@ export default function Tests() {
                       {level ? ` (objectif : ${levelLabel(level)})` : " (choisis un niveau visé en haut pour le surligner)"}.
                     </div>
                     <LevelTable rows={strengthNorms} targetId={level} />
+                  </div>
+
+                  <div style={cardStyle}>
+                    <div style={{ fontWeight: 700 }}>⚡ Standards de vitesse par niveau — {posteLabel(sport, poste)}</div>
+                    <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                      Sprint 5 / 10 / 15 / 20 / 60 m, vitesse max et Prowler face à chaque niveau
+                      {level ? ` (objectif : ${levelLabel(level)})` : ""}. Tes derniers temps saisis sont comparés automatiquement.
+                    </div>
+                    {(() => {
+                      const merged = {};
+                      tests
+                        .filter((t) => t.testId === "sprint")
+                        .forEach((t) => {
+                          Object.entries(t.values || {}).forEach(([k, v]) => {
+                            if (merged[k] == null && v !== "" && v != null) merged[k] = v;
+                          });
+                        });
+                      const rows = evaluateLadderRows("sprint", merged, sport, poste, level);
+                      return <LevelTable rows={rows} targetId={level} labelHeader="Test" valueHeader="Ton temps" />;
+                    })()}
                   </div>
 
                   <div style={cardStyle}>

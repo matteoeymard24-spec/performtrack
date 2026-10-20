@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { collection, getDocs, getDoc, doc } from "firebase/firestore";
 import { getTest, STATUS, TEST_GROUPS } from "./testsCalc";
-import { hasNorms, posteLabel, evaluateTestNorms, evaluateStrength, levelLabel } from "./norms";
+import { hasNorms, posteLabel, evaluateTestNorms, evaluateStrength, evaluateLadderRows, levelLabel } from "./norms";
 import { NormList, LevelTable, PatternList } from "./NormsUI";
 
 const ACCENT = "#e0a13d";
@@ -187,6 +187,20 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests" }) {
             💪 Force vs norme du poste ({posteLabel(profile.sport, profile.position)})
           </div>
           <PatternList rows={strengthRows} compact />
+        </div>
+      )}
+      {normsOn && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 12, color: MUTED, margin: "6px 0" }}>
+            ⚡ Standards de vitesse par niveau
+            {profile.level ? ` · objectif ${levelLabel(profile.level)}` : ""}
+          </div>
+          <LevelTable
+            rows={evaluateLadderRows("sprint", latest.sprint?.values, profile.sport, profile.position, profile.level)}
+            targetId={profile.level}
+            labelHeader="Test"
+            valueHeader="Ton temps"
+          />
         </div>
       )}
       {normsOn && strengthAll.length > 0 && (
