@@ -11,7 +11,7 @@
 export const TEST_GROUPS = [
   { id: "endurance", label: "🏃 Endurance" },
   { id: "mobilite", label: "🤸 Mobilité" },
-  { id: "force_iso", label: "💥 Force iso" },
+  { id: "force_iso", label: "💥 Force & contrôle" },
   { id: "saut", label: "🦘 Saut (CMJ)" },
   { id: "vitesse", label: "⚡ Vitesse" },
 ];
@@ -131,9 +131,16 @@ export function evaluateMeasures(test, values) {
       if (r != null) items.push({ ...m, side: "D", value: r, status: measureStatus(m, r) });
       let a = null;
       if (l != null && r != null) {
-        a = test.scoreOnly
-          ? { pct: Math.abs(l - r), status: l === r ? "ok" : "watch" }
-          : asymmetryStatus(l, r, test.asymWatch ?? 10, test.asymDeficit ?? 20);
+        if (test.scoreOnly) a = { pct: Math.abs(l - r), status: l === r ? "ok" : "watch" };
+        else if (test.asymAbs) {
+          const d = r1(Math.abs(l - r));
+          a = {
+            pct: d,
+            abs: true,
+            unit: m.unit,
+            status: test.asymAbs.deficit != null && d >= test.asymAbs.deficit ? "deficit" : d >= test.asymAbs.watch ? "watch" : "ok",
+          };
+        } else a = asymmetryStatus(l, r, test.asymWatch ?? 10, test.asymDeficit ?? 20);
       }
       if (a) asym.push({ key: m.key, label: m.label, zone: m.zone, ...a, l, r, scoreOnly: !!test.scoreOnly });
     } else {
@@ -520,6 +527,7 @@ export const TESTS = [
   {
     id: "ktw",
     group: "mobilite",
+    noGear: true,
     name: "Knee-to-wall (dorsiflexion cheville)",
     zoneLabel: "Cheville",
     equipment: "Mur, mètre ruban",
@@ -531,6 +539,7 @@ export const TESTS = [
   {
     id: "slr",
     group: "mobilite",
+    noGear: true,
     name: "Straight Leg Raise (ischios)",
     equipment: "Table / sol, inclinomètre ou smartphone",
     howTo:
@@ -541,6 +550,7 @@ export const TESTS = [
   {
     id: "hip_rot",
     group: "mobilite",
+    noGear: true,
     name: "Rotations de hanche (RI / RE)",
     equipment: "Table, goniomètre ou inclinomètre",
     howTo:
@@ -554,6 +564,7 @@ export const TESTS = [
   {
     id: "thomas",
     group: "mobilite",
+    noGear: true,
     name: "Test de Thomas (psoas / quadriceps)",
     equipment: "Table, goniomètre",
     howTo:
@@ -567,6 +578,7 @@ export const TESTS = [
   {
     id: "thoracic",
     group: "mobilite",
+    noGear: true,
     name: "Rotation thoracique",
     equipment: "Chaise, bâton, goniomètre",
     howTo:
@@ -577,6 +589,7 @@ export const TESTS = [
   {
     id: "shoulder_mob",
     group: "mobilite",
+    noGear: true,
     name: "Épaule (rotations / élévation)",
     equipment: "Goniomètre ou inclinomètre, table",
     howTo:
@@ -590,6 +603,7 @@ export const TESTS = [
   {
     id: "cervical",
     group: "mobilite",
+    noGear: true,
     name: "Cervicales (rotation)",
     equipment: "Goniomètre / application inclinomètre",
     howTo:
@@ -600,6 +614,7 @@ export const TESTS = [
   {
     id: "fms",
     group: "mobilite",
+    noGear: true,
     name: "FMS (mouvements au choix)",
     equipment: "Bâton, planche FMS, élastique",
     howTo:
@@ -700,6 +715,77 @@ export const TESTS = [
       { key: "pf", label: "Flexion plantaire", unit: "N", sided: true, zone: "Cheville" },
       { key: "df", label: "Flexion dorsale", unit: "N", sided: true, zone: "Cheville" },
     ],
+  },
+
+  /* ============ FORCE / CONTRÔLE — SANS MATÉRIEL (sol, mur, chaise ou banc, mètre ruban) ============
+     Pas de norme publiée fiable pour ces tests : on compare G/D et l'évolution de l'athlète.
+     (le seul seuil chiffré est la différence de portée unipodale ≥ 4 cm, issue de Helme 2021). */
+  {
+    id: "cop_plank",
+    group: "force_iso",
+    noGear: true,
+    name: "Copenhagen plank (adducteurs)",
+    equipment: "Banc ou chaise stable",
+    howTo:
+      "Planche latérale, jambe du dessus posée sur le banc (cheville), jambe du dessous suspendue, bassin aligné. Tenir le plus longtemps possible. Noter le temps (s) à gauche et à droite. La force des adducteurs est le facteur le plus lié à la douleur à l'aine (méta-analyse BJSM 2025, preuve faible).",
+    ...ytSearch("Copenhagen adduction plank exercise"),
+    measures: [{ key: "t", label: "Tenue max", unit: "s", sided: true, zone: "Hanche" }],
+  },
+  {
+    id: "bridge_sl",
+    group: "force_iso",
+    noGear: true,
+    name: "Pont ischios une jambe (reps)",
+    equipment: "Banc ou chaise (≈ 50 cm)",
+    howTo:
+      "Allongé sur le dos, un talon sur le banc, genou légèrement fléchi, bras croisés sur la poitrine. Monter le bassin jusqu'à l'alignement épaules-hanches-genou puis redescendre en effleurant le sol. Répéter à 1 rép / 2 s jusqu'à l'échec. Noter les reps à gauche et à droite.",
+    ...ytSearch("single leg hamstring bridge test"),
+    measures: [{ key: "reps", label: "Répétitions", unit: "reps", sided: true, zone: "Genou / Ischios" }],
+  },
+  {
+    id: "sl_chair",
+    group: "force_iso",
+    noGear: true,
+    name: "Squat unipodal sur chaise (30 s)",
+    equipment: "Chaise",
+    howTo:
+      "Debout sur une jambe devant une chaise, s'asseoir en contrôle puis se relever sans les mains. Nombre de répétitions propres en 30 s, à gauche et à droite.",
+    ...ytSearch("single leg sit to stand chair test"),
+    measures: [{ key: "reps", label: "Répétitions (30 s)", unit: "reps", sided: true, zone: "Genou / Quadriceps" }],
+  },
+  {
+    id: "calf_raise",
+    group: "force_iso",
+    noGear: true,
+    name: "Montées sur pointe un pied (reps max)",
+    equipment: "Mur (appui d'un doigt)",
+    howTo:
+      "Debout sur un pied, un doigt contre le mur. Montée complète sur la pointe puis descente contrôlée, 1 rép / 2 s, jusqu'à l'échec ou perte d'amplitude. Noter les reps à gauche et à droite.",
+    ...ytSearch("single leg calf raise endurance test"),
+    measures: [{ key: "reps", label: "Répétitions", unit: "reps", sided: true, zone: "Cheville" }],
+  },
+  {
+    id: "reach_ant",
+    group: "force_iso",
+    noGear: true,
+    name: "Portée antérieure unipodale (Y-Balance simplifié)",
+    equipment: "Sol, ruban adhésif, mètre ruban",
+    howTo:
+      "Tracer une ligne vers l'avant. Sur un pied, au départ de la ligne, pousser le pied libre le plus loin possible le long de la ligne sans prendre appui ni perdre l'équilibre, puis revenir. Meilleur de 3 essais (cm), chaque côté. Une différence G/D ≥ 4 cm est un signal à surveiller (associée à la blessure dans plusieurs études, résultats mitigés : Helme 2021).",
+    ...ytSearch("Y balance test anterior reach"),
+    asymAbs: { watch: 4 },
+    measures: [{ key: "reach", label: "Portée antérieure", unit: "cm", sided: true, zone: "Cheville" }],
+  },
+  {
+    id: "neck_dnf",
+    group: "force_iso",
+    noGear: true,
+    name: "Cervicales — endurance des fléchisseurs profonds",
+    equipment: "Sol ou lit",
+    howTo:
+      "Allongé sur le dos, genoux fléchis. Rentrer le menton (hochement « oui »), soulever la tête de 2 cm et tenir en gardant le menton rentré. Chrono jusqu'à perte de la position (s). Test de profil : les études ne montrent pas de lien net avec les commotions.",
+    ...ytSearch("deep neck flexor endurance test"),
+    measures: [{ key: "t", label: "Tenue max", unit: "s", sided: false, zone: "Cervicales" }],
   },
 ];
 

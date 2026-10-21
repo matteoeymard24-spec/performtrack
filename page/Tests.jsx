@@ -39,6 +39,7 @@ import {
   noteColor,
 } from "../component/norms";
 import { NormList, LevelTable } from "../component/NormsUI";
+import RegionProfile from "../component/RegionProfile";
 
 const ACCENT = "#e0a13d";
 const SURFACE = "#151310";
@@ -214,7 +215,7 @@ function ResultPreview({ res }) {
             <div key={"a" + k} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13 }}>
               <span style={{ color: MUTED }}>
                 Asymétrie G/D — {a.label} : {a.pct}
-                {a.scoreOnly ? " pt" : "%"}
+                {a.scoreOnly ? " pt" : a.abs ? ` ${a.unit}` : "%"}
               </span>
               <StatusChip status={a.status} />
             </div>
@@ -476,25 +477,6 @@ export default function Tests() {
     await setDoc(doc(db, "exerciseMedia", "test_" + tid), { ...data, updatedAt: new Date().toISOString() });
     setMedia((m) => ({ ...m, [tid]: data }));
   };
-
-  /* ---- bilan mobilité par zone (dernier résultat de chaque test mobilité / force iso) ---- */
-  const zoneBilan = useMemo(() => {
-    const latest = {};
-    tests.forEach((t) => {
-      if (!["mobilite", "force_iso"].includes(t.group)) return;
-      if (!latest[t.testId]) latest[t.testId] = t;
-    });
-    const zones = {};
-    Object.values(latest).forEach((t) => {
-      Object.entries(t.result?.zones || {}).forEach(([z, st]) => {
-        const cur = zones[z] || { status: "ok", tests: [] };
-        if (STATUS[st].rank > STATUS[cur.status].rank) cur.status = st;
-        cur.tests.push({ name: getTest(t.testId)?.name || t.testId, status: st, date: t.date });
-        zones[z] = cur;
-      });
-    });
-    return Object.entries(zones).sort((a, b) => STATUS[b[1].status].rank - STATUS[a[1].status].rank);
-  }, [tests]);
 
   const addToGroup = async () => {
     if (!targetGroup || !uid) return;
@@ -902,19 +884,49 @@ export default function Tests() {
           </div>
         )}
         {showParams && !isCoach && (
-          <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {[
-              ["Sport", sport ? (SPORTS.find((x) => x.id === sport) || {}).label || sport : "non défini"],
-              ["Poste", poste ? posteLabel(sport, poste) : "non défini"],
-              ["Niveau visé", level ? levelLabel(level) : "non défini"],
-            ].map(([l, v]) => (
-              <div key={l} style={{ background: "#151310", padding: "8px 12px", borderRadius: 8 }}>
-                <div style={{ fontSize: 11, color: MUTED }}>{l}</div>
-                <div style={{ fontSize: 14, fontWeight: 700 }}>{v}</div>
-              </div>
-            ))}
-            <div style={{ fontSize: 12, color: MUTED, alignSelf: "center" }}>
-              Ces paramètres sont définis par ton coach.
+          <div style={{ marginTop: 10 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <select
+                style={{ ...inputStyle, flex: 1, minWidth: 140 }}
+                value={sport}
+                onChange={(e) => saveProfile({ sport: e.target.value, position: "" })}
+              >
+                <option value="">Sport…</option>
+                {SPORTS.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                style={{ ...inputStyle, flex: 2, minWidth: 180 }}
+                value={poste}
+                disabled={!sport}
+                onChange={(e) => saveProfile({ position: e.target.value })}
+              >
+                <option value="">Poste (pour comparer aux normes)…</option>
+                {(POSTES[sport] || []).map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                style={{ ...inputStyle, flex: 1, minWidth: 160 }}
+                value={level}
+                disabled={!sport}
+                onChange={(e) => saveProfile({ level: e.target.value })}
+              >
+                <option value="">Niveau visé…</option>
+                {LEVELS.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 8 }}>
+              Choisis ton sport, ton poste et ton niveau visé : tes résultats sont comparés aux normes correspondantes.
             </div>
           </div>
         )}
@@ -960,6 +972,7 @@ export default function Tests() {
               <select style={{ ...inputStyle, marginBottom: 12 }} value={testId} onChange={(e) => setTestId(e.target.value)}>
                 {testsOfGroup.map((t) => (
                   <option key={t.id} value={t.id}>
+                    {t.noGear ? "🧰 " : ""}
                     {t.name}
                   </option>
                 ))}
@@ -1031,7 +1044,7 @@ export default function Tests() {
                       )}
                       {!normsOn && selectedAthlete && (
                         <div style={{ marginTop: 10, fontSize: 12, color: MUTED }}>
-                          Choisis le sport et le poste de l'athlète (en haut) pour comparer ce résultat aux normes.
+                          Choisis le sport et le poste (en haut de la page) pour comparer ce résultat aux normes.
                         </div>
                       )}
                     </div>
@@ -1146,7 +1159,7 @@ export default function Tests() {
                           ))}
                           {ev.asym.map((a) => (
                             <div key={a.key} style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
-                              Asymétrie G/D — {a.label} : {a.pct}{a.scoreOnly ? " pt" : " %"} · {STATUS[a.status].label}
+                              Asymétrie G/D — {a.label} : {a.pct}{a.scoreOnly ? " pt" : a.abs ? ` ${a.unit}` : " %"} · {STATUS[a.status].label}
                             </div>
                           ))}
                         </div>
@@ -1300,21 +1313,19 @@ export default function Tests() {
                 )}
               </div>
               <div style={cardStyle}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>🧭 Zones à travailler (derniers tests mobilité / force iso)</div>
-                {zoneBilan.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Pas encore de test de mobilité ou de force isométrique.</div>}
-                {zoneBilan.map(([zone, z]) => (
-                  <div key={zone} style={{ padding: "8px 0", borderTop: `1px solid ${BORDER}` }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                      <strong>{zone}</strong>
-                      <StatusChip status={z.status} />
-                    </div>
-                    {z.tests.map((t, i) => (
-                      <div key={i} style={{ fontSize: 12, color: MUTED }}>
-                        {t.name} · {t.date} · {STATUS[t.status].label}
-                      </div>
-                    ))}
-                  </div>
-                ))}
+                <RegionProfile
+                  tests={tests}
+                  onPickTest={
+                    isCoach
+                      ? (id, g) => {
+                          setTab("saisie");
+                          setGroup(g);
+                          setTestId(id);
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }
+                      : null
+                  }
+                />
               </div>
 
               <div style={{ ...cardStyle, border: "1px solid rgba(217,105,90,0.4)" }}>

@@ -31,6 +31,7 @@ import {
   Cell,
 } from "recharts";
 import BodyScan from "../component/BodyScan";
+import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
 import TestsSummary from "../component/TestsSummary";
 import {
   rediRatio,
@@ -2335,6 +2336,31 @@ export default function Dashboard() {
           )}
           </div>
         )}
+
+        {(() => {
+          const fbEntries = extractFeedbackExercises(athleteWorkouts, currentUser?.uid);
+          if (fbEntries.length === 0) return null;
+          return (
+            <div style={CARD_STYLE}>
+              {foldHead("fbex", "🕘 Mes derniers exercices")}
+              {vis("fbex") && (
+                <>
+                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10 }}>
+                    Les derniers exercices pour lesquels tu as donné un feedback. Touche une ligne pour voir tes séries.
+                  </div>
+                  <FeedbackList entries={fbEntries} mode="last" limit={6} />
+                  <button
+                    type="button"
+                    onClick={() => navigate("/myrm#feedbacks")}
+                    style={{ width: "100%", marginTop: 12, padding: "10px 14px", background: "rgba(224,161,61,0.12)", color: "#e0a13d", border: "1px solid rgba(224,161,61,0.4)", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+                  >
+                    Voir tout ({fbEntries.length}) →
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {Object.keys(athleteRMFullHistory).length > 0 && (() => {
           const q = rmSearchSelf.trim().toLowerCase();

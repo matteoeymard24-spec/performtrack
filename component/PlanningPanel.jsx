@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "../firebase";
+import { FoldBtn } from "./ui";
 import { addDoc, collection, deleteDoc, doc, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import {
   CYCLE_LEVELS,
@@ -616,20 +617,6 @@ export default function PlanningPanel({
               Masquer les mois vides
             </button>
           )}
-          <button
-            onClick={() => setHideFix(!hideFix)}
-            style={{ ...btn(hideFix ? AMBER : "#2a2620", hideFix ? "#1a1814" : "#fff"), fontWeight: 600, fontSize: 12 }}
-            title="Afficher ou masquer les matchs et échéances de compétition"
-          >
-            {hideFix ? "🏉 Afficher les matchs" : "🏉 Masquer les matchs"}
-          </button>
-          {isAdmin && <button
-            onClick={() => setGraphOnly(!graphOnly)}
-            style={{ ...btn(graphOnly ? AMBER : "#2a2620", graphOnly ? "#1a1814" : "#fff"), fontWeight: 600, fontSize: 12 }}
-            title="Afficher seulement le graphique, ou le détail des cycles et semaines"
-          >
-            {graphOnly ? "📋 Voir le détail" : "📊 Graphique seul"}
-          </button>}
           {isAdmin && (
             <>
               <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
@@ -999,6 +986,12 @@ export default function PlanningPanel({
         </Modal>
       )}
 
+      {isAdmin && (
+        <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontWeight: 700, color: TEXT }}>📋 Détail des cycles et semaines</div>
+          <FoldBtn open={!graphOnly} onClick={() => setGraphOnly(!graphOnly)} />
+        </div>
+      )}
       {!graphOnly && (
       <>
       <div style={{ marginTop: 14, display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1205,10 +1198,12 @@ export default function PlanningPanel({
         </Modal>
       )}
 
-      {!graphOnly && !hideFix && (
       <div style={{ marginTop: 16 }}>
-        <div style={{ fontWeight: 700, color: TEXT, marginBottom: 8 }}>🏉 Matchs et compétitions</div>
-        {visibleFixtures.length === 0 ? (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: hideFix ? 0 : 8 }}>
+          <div style={{ fontWeight: 700, color: TEXT }}>🏉 Matchs et compétitions</div>
+          <FoldBtn open={!hideFix} onClick={() => setHideFix(!hideFix)} />
+        </div>
+        {!hideFix && (visibleFixtures.length === 0 ? (
           <div style={{ color: MUTED, fontSize: 13 }}>
             Aucun match saisi.{isAdmin ? " Utilise « Match / compétition » pour les placer (pour tous, un groupe ou un athlète seul)." : ""}
           </div>
@@ -1249,9 +1244,8 @@ export default function PlanningPanel({
               );
             })}
           </div>
-        )}
+        ))}
       </div>
-      )}
     </div>
   );
 }

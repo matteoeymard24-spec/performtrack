@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { getWorkoutDocs } from "../component/workoutQueries";
@@ -56,6 +57,7 @@ export default function MyRM() {
   // series[].actualWeight quand l'exercice s'appelle "CMJ" / "Counter
   // Movement Jump"). Pas besoin de le ressaisir à la main.
   const [sessionCmjEntries, setSessionCmjEntries] = useState([]);
+  const [fbEntries, setFbEntries] = useState([]);
 
   // États RM
   const [rmHistory, setRmHistory] = useState({});
@@ -216,6 +218,18 @@ export default function MyRM() {
     loadRM();
   }, [currentUser]);
 
+  // Arrivée depuis le Dashboard (« Voir tout ») : ouvre le bloc et descend dessus.
+  useEffect(() => {
+    if (window.location.hash !== "#feedbacks" || fbEntries.length === 0) return;
+    if (!fold.isOpen("fbhist")) fold.toggle("fbhist");
+    const t = setTimeout(() => {
+      const el = document.getElementById("feedbacks");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 150);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fbEntries.length]);
+
   const isCMJName = (exerciseName) => {
     if (!exerciseName) return false;
     const name = exerciseName.toLowerCase().trim();
@@ -226,6 +240,12 @@ export default function MyRM() {
     if (!currentUser) return;
     try {
       const snap = await getWorkoutDocs();
+      setFbEntries(
+        extractFeedbackExercises(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+          currentUser.uid
+        )
+      );
       const map = {};
       snap.docs.forEach((docSnap) => {
         const w = docSnap.data();
@@ -472,6 +492,18 @@ export default function MyRM() {
           </li>
         </ul>
       </FoldCard>
+
+      {/* ==================== DERNIERS EXERCICES AVEC FEEDBACK ==================== */}
+      <div id="feedbacks">
+        <FoldCard
+          id="fbhist"
+          fold={fold}
+          title={`🕘 Mes feedbacks d'exercices (${fbEntries.length})`}
+          subtitle="Tous les exercices de tes séances pour lesquels tu as donné un feedback (charge, reps, RPE). Touche une ligne pour voir toutes les séries."
+        >
+          <FeedbackList entries={fbEntries} mode="all" limit={15} searchable />
+        </FoldCard>
+      </div>
 
       {/* ==================== VMA & CMJ : désormais gérés dans l'onglet Tests ==================== */}
       <FoldCard id="vmacmj" fold={fold} title="🏃 VMA & 🦘 CMJ">

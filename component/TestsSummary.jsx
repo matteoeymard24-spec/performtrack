@@ -4,6 +4,7 @@ import { collection, getDocs, getDoc, doc } from "firebase/firestore";
 import { getTest, STATUS, TEST_GROUPS, score20 } from "./testsCalc";
 import { hasNorms, posteLabel, evaluateTestNorms, evaluateStrength, evaluateLadderRows, levelLabel, noteColor, MEDALS } from "./norms";
 import { NormList, LevelTable, PatternList } from "./NormsUI";
+import RegionProfile from "./RegionProfile";
 
 const ACCENT = "#e0a13d";
 const MUTED = "#a8a199";
@@ -160,14 +161,6 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = f
     );
   }
 
-  const zones = {};
-  Object.values(latest).forEach((t) => {
-    if (!["mobilite", "force_iso"].includes(t.group)) return;
-    Object.entries(t.result?.zones || {}).forEach(([z, st]) => {
-      if (!zones[z] || STATUS[st].rank > STATUS[zones[z]].rank) zones[z] = st;
-    });
-  });
-  const problemZones = Object.entries(zones).filter(([, st]) => st !== "ok");
   const normsOn = hasNorms(profile.sport, profile.position);
   const strengthAll = normsOn ? evaluateStrength(rmDocs, profile.sport, profile.position, profile.level) : [];
   const strengthRows = strengthAll.filter((r) => r.note != null);
@@ -192,27 +185,9 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = f
         </div>
       )}
 
-      {problemZones.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>Zones à travailler</div>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {problemZones.map(([z, st]) => (
-              <span
-                key={z}
-                style={{
-                  fontSize: 12,
-                  padding: "4px 10px",
-                  borderRadius: 999,
-                  background: STATUS[st].color + "26",
-                  color: STATUS[st].color,
-                }}
-              >
-                {z}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      <div style={{ marginBottom: 16 }}>
+        <RegionProfile tests={tests} title="🧭 Profil par région" />
+      </div>
 
       {TEST_GROUPS.map((g) => {
         const list = Object.values(latest).filter((t) => t.group === g.id);
