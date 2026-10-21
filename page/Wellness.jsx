@@ -5,6 +5,8 @@ import {
   where,
   orderBy,
   getDocs,
+  deleteDoc,
+  doc as fsDoc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
@@ -56,6 +58,8 @@ export default function Wellness() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [entries, setEntries] = useState([]);
+  const [confirmId, setConfirmId] = useState(null);
+  const [deleteError, setDeleteError] = useState("");
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -86,6 +90,7 @@ export default function Wellness() {
 
         return {
           ...d,
+          id: doc.id,
           normalizedScore: Number(normalized.toFixed(2)),
           shortDate: formatShortDate(d.date),
         };
@@ -122,6 +127,20 @@ export default function Wellness() {
   });
 
   const fold = useFold("wellness");
+
+  // Suppression d'un questionnaire saisi par erreur (confirmation en deux temps).
+  const deleteEntry = async (id) => {
+    try {
+      await deleteDoc(fsDoc(db, "wellness", id));
+      setEntries((prev) => prev.filter((e) => e.id !== id));
+      setConfirmId(null);
+      setDeleteError("");
+    } catch (err) {
+      console.error("Erreur suppression wellness:", err);
+      setDeleteError("Suppression impossible : " + (err.message || "erreur inconnue"));
+    }
+  };
+  const recentEntries = [...entries].reverse().slice(0, 7);
 
   const weeklyAverage =
     thisWeekEntries.length > 0
@@ -229,6 +248,71 @@ export default function Wellness() {
             painTypes={todayEntry.painTypes || {}}
             setPainMap={() => {}}
           />
+        </FoldCard>
+      )}
+
+      {/* Questionnaires récents : suppression en cas d'erreur de saisie */}
+      {recentEntries.length > 0 && (
+        <FoldCard
+          id="recent"
+          fold={fold}
+          title="🗂️ Mes questionnaires récents"
+          subtitle="Tu t'es trompé ? Supprime le questionnaire puis remplis-le à nouveau."
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {recentEntries.map((e) => (
+              <div
+                key={e.id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  padding: "10px 12px",
+                  background: "#0d0c0a",
+                  borderRadius: 10,
+                  border: e.date === today ? "1px solid #e0a13d66" : "1px solid rgba(255,255,255,0.06)",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#f3f0ea" }}>
+                    {e.shortDate}
+                    {e.date === today ? " · aujourd'hui" : ""}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#a8a199" }}>Score {e.normalizedScore}/10</div>
+                </div>
+                {confirmId === e.id ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "#d9695a" }}>Supprimer définitivement ?</span>
+                    <button
+                      type="button"
+                      onClick={() => deleteEntry(e.id)}
+                      style={{ padding: "7px 12px", background: "#d9695a", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
+                    >
+                      Oui, supprimer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmId(null)}
+                      style={{ padding: "7px 12px", background: "transparent", color: "#a8a199", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
+                    >
+                      Annuler
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { setConfirmId(e.id); setDeleteError(""); }}
+                    style={{ padding: "7px 12px", background: "transparent", color: "#d9695a", border: "1px solid #d9695a88", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
+                  >
+                    🗑️ Supprimer
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          {deleteError && <div style={{ marginTop: 8, fontSize: 12, color: "#d9695a" }}>{deleteError}</div>}
         </FoldCard>
       )}
 

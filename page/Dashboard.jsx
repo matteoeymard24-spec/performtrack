@@ -13,6 +13,7 @@ import {
   setDoc,
   deleteDoc,
   writeBatch,
+  Timestamp,
 } from "firebase/firestore";
 import {
   LineChart,
@@ -252,6 +253,23 @@ export default function Dashboard() {
   const [, setSelfRpeReliability] = useState(null);
   const [selfInjuries, setSelfInjuries] = useState([]);
   const [selfPainZone, setSelfPainZone] = useState(null);
+  const [painSaveError, setPainSaveError] = useState("");
+
+  // L'athlète corrige sa localisation de douleur directement depuis le
+  // dashboard : on met à jour le wellness du jour (champs painMap / painTypes).
+  const savePainField = async (field, value) => {
+    if (!todayWellness || !todayWellness.id) return;
+    const previous = todayWellness[field];
+    setTodayWellness((prev) => (prev ? { ...prev, [field]: value } : prev));
+    try {
+      await updateDoc(doc(db, "wellness", todayWellness.id), { [field]: value, updatedAt: Timestamp.now() });
+      setPainSaveError("");
+    } catch (e) {
+      console.error("Erreur enregistrement douleur:", e);
+      setTodayWellness((prev) => (prev ? { ...prev, [field]: previous } : prev));
+      setPainSaveError("Impossible d'enregistrer la modification. Réessaie.");
+    }
+  };
   // Modal historique de blessures (coach) — ouvert en cliquant sur la
   // rubrique dans le détail athlète, édition/suppression sur place.
   const [showInjuryHistory, setShowInjuryHistory] = useState(false);
@@ -1727,8 +1745,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {todayWellness?.painMap &&
-          Object.keys(todayWellness.painMap).length > 0 && (
+        {todayWellness && (
             <div
               style={{
                 background: "#151310",
@@ -1760,12 +1777,16 @@ export default function Dashboard() {
                 🩹 Voir / modifier dans l'onglet Wellness →
               </button>
               <BodyScan
-                painMap={todayWellness.painMap}
+                painMap={todayWellness.painMap || {}}
                 painTypes={todayWellness.painTypes || {}}
-                setPainMap={() => {}}
+                setPainMap={(m) => savePainField("painMap", m)}
+                setPainTypes={(t) => savePainField("painTypes", t)}
                 selectedZone={selfPainZone}
                 setSelectedZone={setSelfPainZone}
               />
+              {painSaveError && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#d9695a" }}>{painSaveError}</div>
+              )}
             </>
           )}
             </div>
