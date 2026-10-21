@@ -15,8 +15,8 @@ const TEXT = "#f3f0ea";
 const TEXT_MUTED = "#a8a199";
 
 // Teintes musculaires (palette chaude de la charte) et os (ivoire)
-const MUSCLE_TONES = ["#a39387", "#94857a", "#ac9c90", "#9a8a7f"];
-const MUSCLE_BASE = "#54463f";
+const MUSCLE_TONES = ["#dccfbc", "#d0c2ae", "#e3d7c5", "#d5c7b3"];
+const MUSCLE_BASE = "#8c7d6f";
 const BONE = "#d8cfbd";
 const BONE_LINE = "#6d6352";
 
@@ -30,21 +30,6 @@ export const PAIN_TYPES = [
   { key: "contracture", emoji: "🪢", label: "Contracture / crampe", hint: "tension, raideur" },
   { key: "articulaire", emoji: "🦴", label: "Articulaire / osseuse", hint: "blocage, douleur profonde" },
 ];
-export const PAIN_SENSATIONS = [
-  { key: "chaud", emoji: "🌡️", label: "Chaud" },
-  { key: "froid", emoji: "🧊", label: "Froid" },
-  { key: "piqure", emoji: "📌", label: "Piqûre" },
-  { key: "serrement", emoji: "🤏", label: "Serrement" },
-  { key: "pulsatile", emoji: "💓", label: "Battements" },
-  { key: "lancinante", emoji: "💢", label: "Élancements" },
-  { key: "fourmillement", emoji: "🐜", label: "Fourmillements" },
-  { key: "engourdissement", emoji: "🫥", label: "Engourdissement" },
-  { key: "lourdeur", emoji: "🪨", label: "Lourdeur" },
-  { key: "raideur", emoji: "🧱", label: "Raideur" },
-  { key: "sourde", emoji: "〰️", label: "Sourde, diffuse" },
-  { key: "vive", emoji: "❗", label: "Vive, localisée" },
-];
-const SENS_BY_KEY = Object.fromEntries(PAIN_SENSATIONS.map((t) => [t.key, t]));
 const PAIN_TYPE_BY_KEY = Object.fromEntries(PAIN_TYPES.map((t) => [t.key, t]));
 
 // Interpole entre vert (0) -> ambre (5) -> rouge (10)
@@ -140,7 +125,7 @@ function zoneValue(painMap, zone) {
   return 0;
 }
 
-export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, setPainTypes, painSens = {}, setPainSens }) {
+export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, setPainTypes }) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
 
   // Ouvre directement le mode (muscle / squelette) où il y a déjà une douleur.
@@ -154,7 +139,6 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
   const [hoverZone, setHoverZone] = useState(null);
   const [intensity, setIntensity] = useState(0);
   const [ptype, setPtype] = useState("");
-  const [psens, setPsens] = useState([]);
 
   const zoneById = useMemo(() => {
     const m = {};
@@ -170,9 +154,8 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
       const own = painMap[selectedZone];
       setIntensity(own ?? (z ? zoneValue(painMap, z) : 0));
       setPtype(painTypes[selectedZone] || "");
-      setPsens(painSens[selectedZone] || []);
     }
-  }, [selectedZone, painMap, painTypes, painSens, zoneById]);
+  }, [selectedZone, painMap, painTypes, zoneById]);
 
   function deletePain() {
     if (!selectedZone) return;
@@ -188,11 +171,6 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
       delete t[selectedZone];
       setPainTypes(t);
     }
-    if (setPainSens) {
-      const n = { ...painSens };
-      delete n[selectedZone];
-      setPainSens(n);
-    }
     setSelectedZone(null);
   }
 
@@ -204,12 +182,6 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
       if (intensity > 0 && ptype) next[selectedZone] = ptype;
       else delete next[selectedZone];
       setPainTypes(next);
-    }
-    if (setPainSens) {
-      const nextS = { ...painSens };
-      if (intensity > 0 && psens.length) nextS[selectedZone] = psens;
-      else delete nextS[selectedZone];
-      setPainSens(nextS);
     }
     setSelectedZone(null);
   }
@@ -230,7 +202,7 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
       const v = painMap[z.id] ?? 0;
       if (v > 0) {
         seen.add(z.id);
-        out.push({ id: z.id, label: z.label, value: v, mode: z.mode, view: z.view, type: painTypes[z.id], sens: painSens[z.id] || [] });
+        out.push({ id: z.id, label: z.label, value: v, mode: z.mode, view: z.view, type: painTypes[z.id] });
       }
     });
     // Anciennes zones groupées sans équivalent fin
@@ -241,7 +213,7 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
     });
     // Un même muscle gauche/droit n'apparaît qu'une fois par id
     return out.sort((a, b) => b.value - a.value);
-  }, [painMap, painTypes, painSens]);
+  }, [painMap, painTypes]);
 
   const countByMode = (m) => filled.filter((f) => f.mode === m).length;
   const filledCount = filled.length;
@@ -597,36 +569,6 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
             </div>
           )}
 
-          {(setPainSens || (painSens[selectedZone] || []).length > 0) && (
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 8 }}>Quelle sensation ? (plusieurs possibles)</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {PAIN_SENSATIONS.map((t) => {
-                  const on = psens.includes(t.key);
-                  return (
-                    <button
-                      key={t.key}
-                      type="button"
-                      disabled={!setPainSens}
-                      onClick={() => setPsens(on ? psens.filter((k) => k !== t.key) : [...psens, t.key])}
-                      style={{
-                        padding: "6px 11px",
-                        borderRadius: 16,
-                        cursor: setPainSens ? "pointer" : "default",
-                        fontSize: 12,
-                        background: on ? ACCENT : SURFACE_3,
-                        color: on ? "#1a1308" : TEXT,
-                        border: `1px solid ${on ? ACCENT : BORDER_STRONG}`,
-                      }}
-                    >
-                      {t.emoji} {t.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           <div style={{ display: "flex", gap: 10 }}>
             <button
               onClick={saveIntensity}
@@ -681,7 +623,6 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
                 {f.mode === "skel" ? "🦴 " : ""}
                 {f.label} · {f.value}/10
                 {f.type && PAIN_TYPE_BY_KEY[f.type] ? ` · ${PAIN_TYPE_BY_KEY[f.type].emoji} ${PAIN_TYPE_BY_KEY[f.type].label}` : ""}
-                {f.sens && f.sens.length > 0 ? ` · ${f.sens.map((k) => (SENS_BY_KEY[k] ? SENS_BY_KEY[k].label.toLowerCase() : k)).join(", ")}` : ""}
               </button>
             ))}
           </div>

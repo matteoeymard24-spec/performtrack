@@ -636,8 +636,10 @@ export default function Dashboard() {
           week.push({
             date: dateStr,
             dayLabel: d.toLocaleDateString("fr-FR", { weekday: "short" }),
+            dayNum: d.getDate(),
             isToday: dateStr === today,
             status,
+            title: session?.title || "",
             sessionId: session?.id || null,
           });
         }
@@ -1353,63 +1355,64 @@ export default function Dashboard() {
         {weekOverview.length > 0 && (
           <div
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 6,
               marginBottom: 16,
               background: "#151310",
               borderRadius: 12,
-              padding: "14px 10px",
+              padding: "14px 10px 12px",
               border: "1px solid rgba(255,255,255,0.08)",
             }}
           >
-            {weekOverview.map((day) => {
-              const STATUS_STYLE = {
-                done: { color: "#4fae7d", dot: "●", label: "Faite" },
-                inProgress: { color: "#d9a441", dot: "◐", label: "En cours" },
-                missed: { color: "#d9695a", dot: "●", label: "Manquée" },
-                today: { color: "#e0a13d", dot: "●", label: "Aujourd'hui" },
-                upcoming: { color: "#6f8fb0", dot: "○", label: "À venir" },
-                none: { color: "#3a362f", dot: "·", label: "Repos" },
-              };
-              const s = STATUS_STYLE[day.status] || STATUS_STYLE.none;
-              return (
-                <div
-                  key={day.date}
-                  onClick={() => day.sessionId && goToWorkout(day.sessionId, false)}
-                  title={s.label}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 4,
-                    flex: 1,
-                    cursor: day.sessionId ? "pointer" : "default",
-                    opacity: day.isToday ? 1 : 0.85,
-                  }}
-                >
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 4px 10px" }}>
+              Entraînements de la semaine
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+              {weekOverview.map((day) => {
+                const STATUS_STYLE = {
+                  done: { color: "#4fae7d", icon: "✓", label: "Faite" },
+                  inProgress: { color: "#e0a13d", icon: "◐", label: "En cours" },
+                  missed: { color: "#e5534b", icon: "✗", label: "Non faite" },
+                  today: { color: "#4a90d9", icon: "●", label: "Aujourd'hui" },
+                  upcoming: { color: "#4a90d9", icon: "○", label: "À venir" },
+                  none: { color: "#4a453d", icon: "·", label: "Repos" },
+                };
+                const s = STATUS_STYLE[day.status] || STATUS_STYLE.none;
+                const hasSession = day.status !== "none";
+                return (
                   <div
+                    key={day.date}
+                    onClick={() => day.sessionId && goToWorkout(day.sessionId, false)}
+                    title={day.title ? `${day.title} — ${s.label}` : s.label}
                     style={{
-                      fontSize: 10,
-                      color: day.isToday ? "#e0a13d" : "#a8a199",
-                      fontWeight: day.isToday ? "bold" : "normal",
-                      textTransform: "uppercase",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 3,
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "8px 2px",
+                      borderRadius: 10,
+                      background: hasSession ? `${s.color}26` : "transparent",
+                      border: hasSession ? `1.5px solid ${s.color}` : "1.5px solid rgba(255,255,255,0.06)",
+                      boxShadow: day.isToday ? "0 0 0 2px rgba(224,161,61,0.55)" : "none",
+                      cursor: day.sessionId ? "pointer" : "default",
                     }}
                   >
-                    {day.dayLabel}
+                    <div style={{ fontSize: 10, color: day.isToday ? "#e0a13d" : "#a8a199", fontWeight: day.isToday ? "bold" : "normal", textTransform: "uppercase" }}>
+                      {day.dayLabel}
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: hasSession ? "#f3f0ea" : "#6f6a62", lineHeight: 1 }}>
+                      {day.dayNum}
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.icon}</div>
                   </div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      color: s.color,
-                      lineHeight: 1,
-                    }}
-                  >
-                    {s.dot}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 14, marginTop: 10, fontSize: 11, color: "#a8a199" }}>
+              <span><span style={{ color: "#4fae7d" }}>●</span> Fait</span>
+              <span><span style={{ color: "#e5534b" }}>●</span> Non fait</span>
+              <span><span style={{ color: "#4a90d9" }}>●</span> À venir</span>
+            </div>
           </div>
         )}
 
@@ -1438,9 +1441,21 @@ export default function Dashboard() {
             <p style={{ margin: 0, fontSize: 14, color: "#f0c98a" }}>
               N'oublie pas de remplir ton questionnaire wellness d'aujourd'hui !
             </p>
-            <p style={{ margin: "8px 0 0 0", fontSize: 13, fontWeight: 600, color: "#d9a441" }}>
-              Touche ici pour le remplir →
-            </p>
+            <div
+              style={{
+                marginTop: 14,
+                padding: "13px 16px",
+                background: "#e0a13d",
+                color: "#1a1308",
+                borderRadius: 10,
+                textAlign: "center",
+                fontSize: 16,
+                fontWeight: 800,
+                boxShadow: "0 2px 10px rgba(224,161,61,0.35)",
+              }}
+            >
+              👉 Touche ici pour le remplir
+            </div>
           </div>
         )}
 
@@ -1673,7 +1688,6 @@ export default function Dashboard() {
               <BodyScan
                 painMap={todayWellness.painMap}
                 painTypes={todayWellness.painTypes || {}}
-                painSens={todayWellness.painSens || {}}
                 setPainMap={() => {}}
                 selectedZone={selfPainZone}
                 setSelectedZone={setSelfPainZone}
@@ -3591,7 +3605,6 @@ export default function Dashboard() {
                         <BodyScan
                           painMap={showAthleteDetail.lastWellness.painMap}
                           painTypes={showAthleteDetail.lastWellness.painTypes || {}}
-                          painSens={showAthleteDetail.lastWellness.painSens || {}}
                           setPainMap={() => {}}
                         />
                       </div>

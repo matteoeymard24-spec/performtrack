@@ -29,7 +29,6 @@ export default function WellnessForm() {
 
   const [painMap, setPainMap] = useState({});
   const [painTypes, setPainTypes] = useState({});
-  const [painSens, setPainSens] = useState({});
   const [selectedZone, setSelectedZone] = useState(null);
 
   const [message, setMessage] = useState("");
@@ -58,7 +57,6 @@ export default function WellnessForm() {
         setMotivation(docData.motivation || 5);
         setPainMap(docData.painMap || {});
         setPainTypes(docData.painTypes || {});
-        setPainSens(docData.painSens || {});
       }
     };
     loadToday();
@@ -91,7 +89,6 @@ export default function WellnessForm() {
         motivation,
         painMap,
         painTypes,
-        painSens,
         updatedAt: Timestamp.now(),
       };
 
@@ -236,8 +233,6 @@ export default function WellnessForm() {
             setPainMap={setPainMap}
             painTypes={painTypes}
             setPainTypes={setPainTypes}
-            painSens={painSens}
-            setPainSens={setPainSens}
             selectedZone={selectedZone}
             setSelectedZone={setSelectedZone}
           />

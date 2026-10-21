@@ -227,7 +227,6 @@ export default function Wellness() {
           <BodyScan
             painMap={todayEntry.painMap}
             painTypes={todayEntry.painTypes || {}}
-            painSens={todayEntry.painSens || {}}
             setPainMap={() => {}}
           />
         </FoldCard>
