@@ -41,6 +41,9 @@ import {
   rpeVariability,
   getRPEReliabilityStatus,
   cmjStatus,
+  neuralFatigueAnalysis,
+  classifyForm,
+  FORM_LEVELS,
 } from "../component/loadMetrics";
 
 /* ===== Charte graphique du dashboard athlète (une seule pour toutes les cartes) ===== */
@@ -492,6 +495,48 @@ export default function Dashboard() {
     }));
   };
 
+  // Séances de musculation terminées → structure attendue par
+  // neuralFatigueAnalysis (charge, reps, RPE par série). Les échauffements,
+  // exercices sans charge (PDC / élastique) et CMJ sont ignorés.
+  const normalizeExerciseKey = (name) =>
+    (name || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[/\\.]/g, " ")
+      .trim()
+      .replace(/\s+/g, " ");
+
+  const extractStrengthSessions = (workouts, userId) => {
+    const out = [];
+    (workouts || []).forEach((w) => {
+      if ((w.type || "muscu") !== "muscu" || !Array.isArray(w.blocks)) return;
+      if (!isWorkoutCompleted(w, userId)) return;
+      const fb = getUserFeedback(w, userId);
+      if (!fb) return;
+      const exercises = [];
+      Object.entries(fb).forEach(([key, f]) => {
+        const [bIdx, eIdx] = key.split("-").map(Number);
+        const block = w.blocks[bIdx];
+        const ex = block && block.exercises ? block.exercises[eIdx] : null;
+        if (!ex || !f) return;
+        if (/échauffement|echauffement|warm.?up|activation/i.test(block.name || "")) return;
+        if (ex.rmPercent === "PDC" || ex.rmPercent === "ELASTIQUE") return;
+        if (/cmj/i.test(ex.name || "")) return;
+        const name = ex.rmName || ex.name;
+        if (!name) return;
+        const sets = Array.isArray(f.series)
+          ? f.series.map((st) => ({ weight: Number(st.actualWeight), reps: Number(st.actualReps), rpe: Number(st.rpe) }))
+          : f.actualWeight !== undefined
+            ? [{ weight: Number(f.actualWeight), reps: Number(f.actualReps), rpe: Number(f.rpe) }]
+            : [];
+        if (sets.length > 0) exercises.push({ key: normalizeExerciseKey(name), name, sets });
+      });
+      if (exercises.length > 0) out.push({ date: w.date, exercises });
+    });
+    return out;
+  };
+
   const getAthleteName = (a) => {
     if (a.firstName && a.lastName) return `${a.firstName} ${a.lastName}`;
     if (a.displayName) return a.displayName;
@@ -897,6 +942,26 @@ export default function Dashboard() {
           console.error("Erreur chargement blessures:", e);
         }
 
+        // RM enregistrés par athlète (sert à repérer une performance < 80 % du RM).
+        const rmByUser = {};
+        await Promise.all(
+          athleteUsers.map(async (u) => {
+            const m = {};
+            try {
+              const snap = await getDocs(collection(db, "users", u.id, "rm"));
+              snap.docs.forEach((d) => {
+                const key = normalizeExerciseKey(d.id);
+                const kg = Number(d.data().kg);
+                if (key === "vma" || key === "cmj" || !(kg > 0)) return;
+                m[key] = kg;
+              });
+            } catch (e) {
+              console.error("Erreur lecture RM (classification forme):", e);
+            }
+            rmByUser[u.id] = m;
+          })
+        );
+
         const result = athleteUsers.map((u) => {
           const userWellness = allWellness
             .filter((w) => w.userId === u.id)
@@ -934,11 +999,19 @@ export default function Dashboard() {
           const todayCmjEntry = uCmjEntries.find((e) => e.date === today);
           const uCmjStatus = cmjStatus(todayCmjEntry ? todayCmjEntry.heightCm : null, uCmjEntries, today);
 
-          const cross = crossRiskStatusFull({
+          // Fatigue nerveuse (force) puis classification de forme croisée :
+          // REDI × z-score wellness × performance (chute > 15 %, < 80 % du RM).
+          const neural = neuralFatigueAnalysis(
+            extractStrengthSessions(uWorkouts, u.id),
+            rmByUser[u.id] || {},
+            today
+          );
+          const form = classifyForm({
             rediRatioValue: acwrNum,
             wellnessZ,
+            wellnessScore: wScore,
             cmjPctChange: uCmjStatus.pctChange,
-            rpeReliability: uRpeReliability,
+            neural,
           });
 
           const totalSessions = uWorkouts.length;
@@ -952,10 +1025,12 @@ export default function Dashboard() {
             ...u,
             lastWellness: todayW || null,
             wellnessScore: wScore,
-            status: wScore !== null ? getWellnessStatus(wScore) : null,
+            status: form,
+            wellnessStatus: wScore !== null ? getWellnessStatus(wScore) : null,
+            neural,
             wellnessZ,
             wellnessZStatus: getWellnessZScoreStatus(wellnessZ),
-            crossStatus: cross,
+            crossStatus: form,
             cmjStatus: uCmjStatus,
             cmjEntries: uCmjEntries
               .slice()
@@ -973,7 +1048,12 @@ export default function Dashboard() {
           };
         });
 
-        result.sort((a, b) => (b.wellnessScore || 0) - (a.wellnessScore || 0));
+        result.sort((a, b) => {
+          const ra = (FORM_LEVELS[a.status.level] || FORM_LEVELS.nodata).rank;
+          const rb = (FORM_LEVELS[b.status.level] || FORM_LEVELS.nodata).rank;
+          if (ra !== rb) return ra - rb;
+          return (a.wellnessScore ?? 99) - (b.wellnessScore ?? 99);
+        });
         setAthletes(result);
         setLoading(false);
       } catch (e) {
@@ -1187,16 +1267,10 @@ export default function Dashboard() {
     }
 
     if (wellnessFilter === "total") return true;
-    if (wellnessFilter === "risque")
-      return a.wellnessScore !== null && a.wellnessScore < 5;
+    if (wellnessFilter === "risque") return a.status?.level === "risk";
     if (wellnessFilter === "fatigue")
-      return (
-        a.wellnessScore !== null &&
-        a.wellnessScore >= 5 &&
-        a.wellnessScore < 7.5
-      );
-    if (wellnessFilter === "forme")
-      return a.wellnessScore !== null && a.wellnessScore >= 7.5;
+      return a.status?.level === "fatigue" || a.status?.level === "watch";
+    if (wellnessFilter === "forme") return a.status?.level === "fit";
     return true;
   });
 
@@ -1370,7 +1444,7 @@ export default function Dashboard() {
                 const STATUS_STYLE = {
                   done: { color: "#4fae7d", icon: "✓", label: "Faite" },
                   inProgress: { color: "#e0a13d", icon: "◐", label: "En cours" },
-                  missed: { color: "#e5534b", icon: "✗", label: "Non faite" },
+                  missed: { color: "#e5534b", icon: "❌", label: "Non faite" },
                   today: { color: "#4a90d9", icon: "●", label: "Aujourd'hui" },
                   upcoming: { color: "#4a90d9", icon: "○", label: "À venir" },
                   none: { color: "#4a453d", icon: "·", label: "Repos" },
@@ -2451,9 +2525,7 @@ export default function Dashboard() {
           {
             key: "risque",
             label: `⚠️ Risque (${
-              athletes.filter(
-                (a) => a.wellnessScore !== null && a.wellnessScore < 5
-              ).length
+              athletes.filter((a) => a.status?.level === "risk").length
             })`,
             color: "#d9695a",
           },
@@ -2461,10 +2533,7 @@ export default function Dashboard() {
             key: "fatigue",
             label: `😌 Fatigue (${
               athletes.filter(
-                (a) =>
-                  a.wellnessScore !== null &&
-                  a.wellnessScore >= 5 &&
-                  a.wellnessScore < 7.5
+                (a) => a.status?.level === "fatigue" || a.status?.level === "watch"
               ).length
             })`,
             color: "#d9a441",
@@ -2472,9 +2541,7 @@ export default function Dashboard() {
           {
             key: "forme",
             label: `💪 En forme (${
-              athletes.filter(
-                (a) => a.wellnessScore !== null && a.wellnessScore >= 7.5
-              ).length
+              athletes.filter((a) => a.status?.level === "fit").length
             })`,
             color: "#4fae7d",
           },
@@ -2560,7 +2627,7 @@ export default function Dashboard() {
                         marginBottom: 6,
                       }}
                     >
-                      {athlete.crossStatus.label}
+                      {athlete.crossStatus.emoji} {athlete.crossStatus.label}
                     </span>
                   )}
                   <div style={{ fontSize: 13, color: "#a8a199" }}>
@@ -2605,15 +2672,15 @@ export default function Dashboard() {
                         style={{
                           fontSize: 22,
                           fontWeight: "bold",
-                          color: athlete.status.color,
+                          color: athlete.wellnessStatus.color,
                         }}
                       >
                         {athlete.wellnessScore.toFixed(1)}
                       </div>
                       <div
-                        style={{ fontSize: 11, color: athlete.status.color }}
+                        style={{ fontSize: 11, color: athlete.wellnessStatus.color }}
                       >
-                        {athlete.status.emoji} {athlete.status.label}
+                        {athlete.wellnessStatus.emoji} {athlete.wellnessStatus.label}
                       </div>
                     </div>
                   )}
@@ -2758,7 +2825,7 @@ export default function Dashboard() {
                     style={{
                       fontSize: 30,
                       fontWeight: "bold",
-                      color: showAthleteDetail.status.color,
+                      color: showAthleteDetail.wellnessStatus.color,
                     }}
                   >
                     {showAthleteDetail.wellnessScore.toFixed(1)}/10
@@ -2766,12 +2833,12 @@ export default function Dashboard() {
                   <div
                     style={{
                       fontSize: 13,
-                      color: showAthleteDetail.status.color,
+                      color: showAthleteDetail.wellnessStatus.color,
                       marginTop: 4,
                     }}
                   >
-                    {showAthleteDetail.status.emoji}{" "}
-                    {showAthleteDetail.status.label}
+                    {showAthleteDetail.wellnessStatus.emoji}{" "}
+                    {showAthleteDetail.wellnessStatus.label}
                   </div>
                 </div>
               )}
@@ -3054,14 +3121,38 @@ export default function Dashboard() {
                       color: showAthleteDetail.crossStatus.color,
                     }}
                   >
-                    🔀 Statut croisé REDI × Wellness : {showAthleteDetail.crossStatus.label}
+                    {showAthleteDetail.crossStatus.emoji} Forme (REDI × Wellness × Force) : {showAthleteDetail.crossStatus.label}
                   </h3>
                   <SectionToggleBtn sectionKey="cross" />
                 </div>
                 {sectionVisibility.cross && (
-                <p style={{ margin: 0, fontSize: 13, color: "#a8a199", lineHeight: 1.5 }}>
-                  {showAthleteDetail.crossStatus.detail}
-                </p>
+                <div style={{ fontSize: 13, color: "#a8a199", lineHeight: 1.5 }}>
+                  {showAthleteDetail.crossStatus.reasons && showAthleteDetail.crossStatus.reasons.length > 0 ? (
+                    <ul style={{ margin: "0 0 8px 0", paddingLeft: 18 }}>
+                      {showAthleteDetail.crossStatus.reasons.map((r, i) => (
+                        <li key={i}>{r}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p style={{ margin: "0 0 8px 0" }}>{showAthleteDetail.crossStatus.detail}</p>
+                  )}
+                  {showAthleteDetail.neural && showAthleteDetail.neural.evaluated > 0 && (
+                    <div style={{ fontSize: 12, marginTop: 6 }}>
+                      🧠 Dernière séance de force ({showAthleteDetail.neural.date}) :{" "}
+                      {showAthleteDetail.neural.exercises
+                        .map(
+                          (e) =>
+                            `${e.name} e1RM ${e.e1rm} kg` +
+                            (e.dropPct !== null ? ` (${e.dropPct > 0 ? "−" : "+"}${Math.abs(e.dropPct)}% vs préc.)` : "") +
+                            (e.rmRatio !== null ? ` · ${e.rmRatio}% du RM` : "")
+                        )
+                        .join(" · ")}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, marginTop: 8, opacity: 0.75 }}>
+                    Fatigue nerveuse : e1RM estimé via charge × reps × RPE (RIR). Signal si chute &gt; 15 % vs séance précédente ou si e1RM &lt; 80 % du RM enregistré.
+                  </div>
+                </div>
                 )}
               </div>
             )}

@@ -513,3 +513,202 @@ export function getLocalDateStr(date) {
   const dd = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${dd}`;
 }
+
+// ─── Fatigue nerveuse : performance en musculation (e1RM) ─────────────────
+// Principe : à partir de chaque série (charge, reps, RPE déclaré), on estime
+// le 1RM du jour ("e1RM") avec la table RPE ↔ %1RM (Tuchscherer / Zourdos
+// et al. 2016, Helms et al. 2017) : RPE 10 = 0 rep en réserve, RPE 9 = 1 rep
+// en réserve, etc. Reps réalisées + reps en réserve = reps théoriques à
+// l'échec, d'où le % du 1RM. Deux signaux de fatigue nerveuse :
+//   1. Chute de l'e1RM > 15 % par rapport à la séance précédente (même exo).
+//   2. e1RM < 80 % du RM enregistré de l'athlète : il ne tient pas la charge
+//      que son RM annoncé laissait prévoir. Ex. : 5 reps à 60 % du RM avec
+//      un RPE 10 → e1RM ≈ 69 % du RM, alors que le RPE devrait être ~5-6.
+// Limites assumées : le RPE est subjectif (erreur d'estimation moyenne
+// ≈ 1 rep d'après Halperin et al., meilleure sur séries ≤ 12 reps et près
+// de l'échec) → seules les séries ≤ 12 reps théoriques et RPE ≥ 6 sont
+// utilisées ; le seuil de 15 % est un choix prudent, pas une valeur validée
+// telle quelle par une étude (voir commentaire sur la classification).
+export const NEURAL_DROP_THRESHOLD = 0.15;
+export const NEURAL_RM_FLOOR = 0.8;
+export const NEURAL_WINDOW_DAYS = 4;
+export const NEURAL_PREV_LOOKBACK_DAYS = 28;
+
+// % du 1RM pour n répétitions maximales (RPE 10), table RPE standard.
+const PCT_AT_FAILURE = { 1: 100, 2: 95.5, 3: 92.2, 4: 89.2, 5: 86.3, 6: 83.7, 7: 81.1, 8: 78.6, 9: 76.2, 10: 73.9, 11: 70.7, 12: 68.0 };
+
+export function pct1RMFromRepsRpe(reps, rpe) {
+  const r = Number(reps);
+  const p = Number(rpe);
+  if (!r || !p || r < 1 || p < 6 || p > 10) return null;
+  const n = r + (10 - p); // reps théoriques à l'échec = reps + reps en réserve
+  if (n < 1 || n > 12) return null;
+  const lo = Math.floor(n);
+  const hi = Math.ceil(n);
+  const a = PCT_AT_FAILURE[lo];
+  const b = PCT_AT_FAILURE[hi];
+  return (a + (b - a) * (n - lo)) / 100;
+}
+
+export function e1rmFromSet(weight, reps, rpe) {
+  const w = Number(weight);
+  const pct = pct1RMFromRepsRpe(reps, rpe);
+  if (!w || w <= 0 || !pct) return null;
+  return w / pct;
+}
+
+function medianOf(values) {
+  if (!values.length) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+function dayDiff(aStr, bStr) {
+  return Math.round((new Date(aStr + "T12:00:00") - new Date(bStr + "T12:00:00")) / 86400000);
+}
+
+/**
+ * sessions : [{ date, exercises: [{ key, name, sets: [{ weight, reps, rpe }] }] }]
+ * rmByKey  : { cléExercice: kg } (RM enregistrés de l'athlète)
+ * Retourne { level: "none" | "ok" | "watch" | "alert", date, flagged, exercises, evaluated }.
+ */
+export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
+  const empty = { level: "none", date: null, flagged: [], exercises: [], evaluated: 0 };
+  if (!sessions || sessions.length === 0) return empty;
+
+  // e1RM par exercice et par séance (médiane des séries valides)
+  const perSession = sessions
+    .map((s) => {
+      const ex = {};
+      (s.exercises || []).forEach((e) => {
+        const vals = (e.sets || []).map((st) => e1rmFromSet(st.weight, st.reps, st.rpe)).filter((v) => v !== null);
+        const m = medianOf(vals);
+        if (m !== null) ex[e.key] = { name: e.name, e1rm: m };
+      });
+      return { date: s.date, ex };
+    })
+    .filter((s) => Object.keys(s.ex).length > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const current = [...perSession]
+    .reverse()
+    .find((s) => s.date <= targetDateStr && dayDiff(targetDateStr, s.date) <= NEURAL_WINDOW_DAYS);
+  if (!current) return empty;
+
+  const exercises = Object.entries(current.ex).map(([key, cur]) => {
+    const prev = [...perSession]
+      .reverse()
+      .find((s) => s.date < current.date && dayDiff(current.date, s.date) <= NEURAL_PREV_LOOKBACK_DAYS && s.ex[key]);
+    const dropPct = prev ? (prev.ex[key].e1rm - cur.e1rm) / prev.ex[key].e1rm : null;
+    const rm = rmByKey ? Number(rmByKey[key]) : null;
+    const rmRatio = rm > 0 ? cur.e1rm / rm : null;
+    const reasons = [];
+    if (dropPct !== null && dropPct > NEURAL_DROP_THRESHOLD) reasons.push("drop");
+    if (rmRatio !== null && rmRatio < NEURAL_RM_FLOOR) reasons.push("rm");
+    return {
+      key,
+      name: cur.name,
+      e1rm: Math.round(cur.e1rm * 10) / 10,
+      prevDate: prev ? prev.date : null,
+      dropPct: dropPct !== null ? Math.round(dropPct * 1000) / 10 : null,
+      rmRatio: rmRatio !== null ? Math.round(rmRatio * 1000) / 10 : null,
+      reasons,
+    };
+  });
+
+  const flagged = exercises.filter((e) => e.reasons.length > 0);
+  let level = "ok";
+  // Alerte si au moins la moitié des exercices évalués posent problème (ou un
+  // exercice cumule les deux signaux) ; sinon simple vigilance (une série
+  // isolée peut venir d'un mauvais exercice, pas d'une fatigue globale).
+  if (flagged.length > 0 && (flagged.length / exercises.length >= 0.5 || flagged.some((e) => e.reasons.length === 2))) level = "alert";
+  else if (flagged.length > 0) level = "watch";
+  return { level, date: current.date, flagged, exercises, evaluated: exercises.length };
+}
+
+// ─── Classification globale de forme ──────────────────────────────────────
+// Croise 3 domaines, chacun noté 0 (RAS), 1 (signal) ou 2 (signal fort) :
+//   • Charge  : ratio REDI (> 1,3 → 1 ; > 1,5 → 2)
+//   • Bien-être : z-score wellness individuel (≤ −0,5 → 1 ; ≤ −1,5 → 2) ;
+//     à défaut de z-score, score absolu (< 6,5 → 1 ; < 5 → 2)
+//   • Fatigue nerveuse : performance de force (voir ci-dessus) et CMJ
+//     (−5 % → 1 ; −10 % → 2, Claudino et al. 2017 : le CMJ est un marqueur
+//     sensible de l'état neuromusculaire)
+// Un seul domaine en alerte reste une "surveillance" (le plus souvent
+// extra-sportif ou ponctuel), sauf la fatigue nerveuse qui classe d'emblée
+// en "Fatigué" ; plusieurs domaines qui convergent montent d'un cran,
+// comme dans la littérature sur le suivi multi-indicateurs (Saw et al.
+// 2016 : les mesures subjectives réagissent plus que les objectives, d'où
+// l'intérêt de croiser les deux).
+export const FORM_LEVELS = {
+  risk: { label: "Risque élevé", color: "#d9695a", emoji: "⚠️", rank: 0 },
+  fatigue: { label: "Fatigué", color: "#e08a3d", emoji: "😓", rank: 1 },
+  watch: { label: "À surveiller", color: "#d9a441", emoji: "😌", rank: 2 },
+  fit: { label: "En forme", color: "#4fae7d", emoji: "💪", rank: 3 },
+  nodata: { label: "Données insuffisantes", color: "#a8a199", emoji: "❔", rank: 4 },
+};
+
+export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctChange, neural }) {
+  const hasRedi = rediRatioValue !== null && rediRatioValue !== undefined;
+  const hasZ = wellnessZ !== null && wellnessZ !== undefined;
+  const hasScore = wellnessScore !== null && wellnessScore !== undefined;
+  const hasCmj = cmjPctChange !== null && cmjPctChange !== undefined;
+  const hasNeural = neural && neural.level && neural.level !== "none";
+
+  if (!hasRedi && !hasZ && !hasScore && !hasCmj && !hasNeural) {
+    return { level: "nodata", ...FORM_LEVELS.nodata, detail: "Pas assez de données (REDI, wellness, séances de force).", reasons: [], domains: { load: 0, wellness: 0, neural: 0 } };
+  }
+
+  const reasons = [];
+  let load = 0;
+  if (hasRedi) {
+    if (rediRatioValue > 1.5) { load = 2; reasons.push(`Charge très élevée (REDI ${rediRatioValue.toFixed(2)})`); }
+    else if (rediRatioValue > 1.3) { load = 1; reasons.push(`Charge élevée (REDI ${rediRatioValue.toFixed(2)})`); }
+  }
+
+  let well = 0;
+  if (hasZ) {
+    if (wellnessZ <= -1.5) { well = 2; reasons.push(`Wellness très en dessous de sa norme (z = ${wellnessZ.toFixed(1)})`); }
+    else if (wellnessZ <= -0.5) { well = 1; reasons.push(`Wellness en baisse (z = ${wellnessZ.toFixed(1)})`); }
+  } else if (hasScore) {
+    if (wellnessScore < 5) { well = 2; reasons.push(`Wellness bas (${wellnessScore.toFixed(1)}/10)`); }
+    else if (wellnessScore < 6.5) { well = 1; reasons.push(`Wellness moyen (${wellnessScore.toFixed(1)}/10)`); }
+  }
+
+  let neu = 0;
+  if (hasNeural && neural.level === "alert") neu = 2;
+  else if (hasNeural && neural.level === "watch") neu = 1;
+  if (neural && neural.flagged) {
+    neural.flagged.forEach((e) => {
+      const parts = [];
+      if (e.reasons.includes("drop")) parts.push(`−${e.dropPct}% vs séance précédente`);
+      if (e.reasons.includes("rm")) parts.push(`e1RM à ${e.rmRatio}% du RM`);
+      reasons.push(`Force ${e.name} : ${parts.join(", ")}`);
+    });
+  }
+  if (hasCmj) {
+    if (cmjPctChange <= -10) { neu = 2; reasons.push(`CMJ en chute de ${Math.abs(cmjPctChange)}%`); }
+    else if (cmjPctChange <= -5) { neu = Math.max(neu, 1); reasons.push(`CMJ en baisse de ${Math.abs(cmjPctChange)}%`); }
+  }
+
+  const vals = [load, well, neu];
+  const count1 = vals.filter((v) => v >= 1).length;
+  const count2 = vals.filter((v) => v === 2).length;
+
+  let level = "fit";
+  if (count2 >= 2 || (count1 === 3 && count2 >= 1)) level = "risk";
+  else if ((count2 === 1 && count1 >= 2) || count1 === 3 || neu === 2) level = "fatigue";
+  else if (count1 >= 1) level = "watch";
+
+  const base = FORM_LEVELS[level];
+  let label = base.label;
+  if (level === "fatigue" && neu === 2 && load < 2 && well < 2) label = "Fatigue nerveuse";
+  if (level === "fit" && hasRedi && rediRatioValue < 0.8) label = "En forme (sous-charge)";
+
+  const detail =
+    reasons.length > 0
+      ? reasons.join(" · ")
+      : "REDI, wellness et performance de force dans la norme individuelle.";
+  return { level, label, color: base.color, emoji: base.emoji, detail, reasons, domains: { load, wellness: well, neural: neu } };
+}
