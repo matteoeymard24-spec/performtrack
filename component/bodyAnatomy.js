@@ -7,10 +7,68 @@
 export const VB = { w: 320, h: 660, cx: 160 };
 
 /* ---- Silhouette commune (face avant = face arrière) ---- */
-const SIL = [
+const SIL_BASE = [
   "M160 82 L143 85 C142 98 140 105 130 109 C116 111 102 112 94 117 C100 124 104 136 106 150 C106 160 108 170 109 186 C112 204 117 220 119 238 C119 258 114 276 109 294 C106 308 105 330 106 352 C106 388 108 420 114 444 C118 456 121 464 123 472 C119 492 114 518 114 546 C115 568 123 586 128 600 C128 608 126 614 123 622 C119 630 114 642 117 650 L153 652 C158 645 155 628 151 618 C150 612 150 606 150 600 C152 584 154 566 154 546 C154 520 153 492 153 470 C153 450 153 410 153 372 C153 352 156 332 160 314 Z",
   "M94 117 C84 120 76 130 74 148 C73 172 72 196 71 216 C69 230 66 240 64 252 C62 274 58 296 55 314 L51 324 C46 332 41 346 41 355 C41 360 47 360 49 356 L50 352 L50 376 C50 380 56 380 56 377 L56 382 C56 386 61 386 61 382 L61.5 378 C61.5 381 66.5 381 66.5 378 L67 369 C67 372 72 372 72 369 L73 350 C74 344 74 334 72 324 L79 318 C84 298 88 276 92 254 C95 242 96 234 98 224 C101 204 105 184 107 164 C108 152 107 138 106 126 Z",
 ];
+/* ---- Pieds : dessinés en coordonnées locales (cheville en 135,606) puis tournés
+   vers l'extérieur et agrandis, comme sur une planche anatomique. ---- */
+const FOOT_ANGLE = (24 * Math.PI) / 180;
+const FOOT_SCALE = 1.12;
+const FAX = 135;
+const FAY = 606;
+const R1 = (n) => Math.round(n * 10) / 10;
+const NUM_PAIR = /(-?\d+\.?\d*) (-?\d+\.?\d*)/g;
+const fxy = (x, y) => {
+  const dx = (x - FAX) * FOOT_SCALE;
+  const dy = (y - FAY) * FOOT_SCALE;
+  const c = Math.cos(FOOT_ANGLE);
+  const s = Math.sin(FOOT_ANGLE);
+  return [FAX + dx * c - dy * s, FAY + dx * s + dy * c];
+};
+const footPath = (d) => d.replace(NUM_PAIR, (m, x, y) => { const [a, b] = fxy(+x, +y); return `${R1(a)} ${R1(b)}`; });
+const polyD = (pts) => "M" + pts.map(([x, y]) => `${x} ${y}`).join(" L") + " Z";
+const ellD = (cx, cy, rx, ry) => {
+  const k = 0.5523;
+  return `M${cx + rx} ${cy} C${cx + rx} ${cy + k * ry} ${cx + k * rx} ${cy + ry} ${cx} ${cy + ry} C${cx - k * rx} ${cy + ry} ${cx - rx} ${cy + k * ry} ${cx - rx} ${cy} C${cx - rx} ${cy - k * ry} ${cx - k * rx} ${cy - ry} ${cx} ${cy - ry} C${cx + k * rx} ${cy - ry} ${cx + rx} ${cy - k * ry} ${cx + rx} ${cy} Z`;
+};
+const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+const hullOf = (pts) => {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const lo = [];
+  for (const q of p) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  const up = [];
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+};
+/* shapes : { poly: [[x,y]…] } ou { ell: [cx,cy,rx,ry] } en coordonnées locales */
+const footSil = (shapes) => {
+  const pts = [];
+  shapes.forEach((sh) => {
+    if (sh.poly) sh.poly.forEach(([x, y]) => pts.push(fxy(x, y)));
+    else {
+      const [cx, cy, rx, ry] = sh.ell;
+      for (let a = 0; a < 360; a += 20) pts.push(fxy(cx + rx * Math.cos((a * Math.PI) / 180), cy + ry * Math.sin((a * Math.PI) / 180)));
+    }
+  });
+  const h = hullOf(pts);
+  const near = (t) => h.reduce((bi, q, i) => (Math.hypot(q[0] - t[0], q[1] - t[1]) < Math.hypot(h[bi][0] - t[0], h[bi][1] - t[1]) ? i : bi), 0);
+  const iL = near(fxy(128, 606));
+  const iR = near(fxy(142, 606));
+  const walk = (dir) => { const out = [h[iL]]; let i = iL; while (i !== iR) { i = (i + dir + h.length) % h.length; out.push(h[i]); } return out; };
+  const a = walk(1);
+  const b = walk(-1);
+  const arc = a.length > b.length ? a : b;
+  return "L" + arc.map(([x, y]) => `${R1(x)} ${R1(y)}`).join(" L") + " L150 606 L150 600";
+};
+const TOES = [[146, 645, 5.6, 7.5], [138.6, 647.5, 3.5, 7], [132.6, 646.5, 3.2, 6.3], [127.2, 644.5, 3, 5.6], [122.2, 642, 2.7, 4.8]];
+const FRONT_FOOT_SHAPES = [{ poly: [[128, 606], [142, 606], [146, 622], [152, 640], [118, 640], [121, 622]] }, ...TOES.map((e) => ({ ell: e }))];
+const BACK_FOOT_SHAPES = [{ poly: [[128, 606], [142, 606], [146, 622], [143, 634], [127, 634], [124, 622]] }, { ell: [135, 630, 9, 10] }];
+const SIL_SEG = "C128 608 126 614 123 622 C119 630 114 642 117 650 L153 652 C158 645 155 628 151 618 C150 612 150 606 150 600";
+const makeSil = (shapes) => [SIL_BASE[0].replace(SIL_SEG, footSil(shapes)), SIL_BASE[1]];
+const SIL_FRONT = makeSil(FRONT_FOOT_SHAPES);
+const SIL_BACK = makeSil(BACK_FOOT_SHAPES);
+
 const HEAD = "M160 14 C180 14 189 28 189 46 C189 58 187 66 184 72 C181 80 174 86 166 88 L160 89 L154 88 C146 86 139 80 136 72 C133 66 131 58 131 46 C131 28 140 14 160 14 Z";
 const EARS = "M131 42 C126 42 125 52 128 59 C129 62 132 62 133 60 Z M189 42 C194 42 195 52 192 59 C191 62 188 62 187 60 Z";
 
@@ -21,10 +79,12 @@ const FOREARM = "M72 228 C68 246 64 270 58 298 L56 318 L66 320 C70 296 74 270 80
 const HAND = "M50 324 L72 324 C74 334 74 344 73 350 L50 350 C49 344 49 334 50 324 Z M50.5 349 L55.5 349 L55.5 376 C55.5 379 50.5 379 50.5 376 Z M56 349 L61 349 L61 382 C61 385 56 385 56 382 Z M61.5 349 L66.5 349 L66.5 378 C66.5 381 61.5 381 61.5 378 Z M67 349 L72 349 L72 369 C72 372 67 372 67 369 Z M50 328 C46 334 42 344 41 354 C41 358 46 359 48 355 C50 348 53 342 55 336 Z";
 const HAND_F = ["M56 350 L56 372", "M61.5 350 L61.5 376", "M67 350 L67 366", "M52 338 C58 342 66 342 71 338"];
 /* Pied vu de face : cheville → dos du pied → orteils, légèrement ouvert vers l'extérieur */
-const FOOT = "M127 606 L143 606 C147 616 151 626 152 640 A5.5 8 0 0 1 141 640 A3.2 9 0 0 1 134.6 640 A3 7 0 0 1 128.6 640 A2.8 5.5 0 0 1 123 640 A2.5 4 0 0 1 118 640 C118 630 122 616 127 606 Z";
-const FOOT_F = ["M133 610 C134 620 134 630 134 640", "M139 610 C142 620 143 630 143 640", "M126 626 C127 632 128 636 128 640"];
-/* Pied vu de dos : talon arrondi + tendon d'Achille */
-const FOOT_BACK = "M129 606 L143 606 C147 616 149 626 147 634 C145 641 143 645 136 645 C129 645 125 641 125 634 C124 626 127 616 129 606 Z";
+/* Pied vu de face : dos du pied + 5 orteils arrondis, tourné vers l'extérieur */
+const FOOT = footPath(polyD(FRONT_FOOT_SHAPES[0].poly) + " " + TOES.map((e) => ellD(...e)).join(" "));
+const FOOT_F = ["M136 641 L136 649", "M130 640 L130 648", "M124.8 639 L124.8 645", "M133 610 C134 620 134 630 134 640", "M139 610 C142 620 143 630 143 640"].map(footPath);
+/* Pied vu de dos : talon + bord externe */
+const FOOT_BACK = footPath(polyD(BACK_FOOT_SHAPES[0].poly) + " " + ellD(135, 630, 9, 10));
+const FOOT_BACK_F = ["M135 610 L135 628"].map(footPath);
 /* Squelette main / pied (os générés) */
 const bone = (x, y, w, h) => `M${x} ${y} L${x + w} ${y} L${x + w} ${y + h} L${x} ${y + h} Z`;
 const HAND_BONES = (() => {
@@ -38,12 +98,14 @@ const HAND_BONES = (() => {
   return p.join(" ");
 })();
 const FOOT_BONES_FRONT = (() => {
-  const p = ["M128 608 L145 608 L149 624 L122 624 Z"];
+  const p = [polyD([[128, 608], [145, 608], [149, 624], [122, 624]])];
   for (let i = 0; i < 5; i++) {
-    const a = 124.5 + i * 5, b = 119 + i * 6.2, w = i === 4 ? 6 : 4;
-    p.push(`M${a} 625 L${a + 4} 625 L${b + w} 637 L${b} 637 Z`, bone(b, 638, w, 8));
+    const a = 124.5 + i * 5;
+    const b = 119 + i * 6.2;
+    const w = i === 4 ? 6 : 4;
+    p.push(polyD([[a, 625], [a + 4, 625], [b + w, 637], [b, 637]]), polyD([[b, 638], [b + w, 638], [b + w, 646], [b, 646]]));
   }
-  return p.join(" ");
+  return footPath(p.join(" "));
 })();
 /* Côtes : arcs arrondis qui montent puis redescendent ; côtes 1-7 attachées au sternum,
    8-10 au rebord costal, 11-12 flottantes. */
@@ -70,28 +132,33 @@ const RIBS_BACK = (() => {
   }
   return out;
 })();
-const FOOT_BONES_BACK = "M129 606 L143 606 C147 616 148 628 146 636 C143 643 129 643 127 636 C125 628 127 616 129 606 Z";
+const FOOT_BONES_BACK = footPath(ellD(135, 629, 7.5, 11) + " " + polyD([[130, 606], [140, 606], [142, 617], [128, 617]]));
 const mirrorPath = (d) => d.replace(/(-?\d+\.?\d*) (-?\d+\.?\d*)/g, (m, x, y) => `${320 - x} ${y}`);
 const faceDeco = (d, fill) => ({ deco: true, side: "c", d, fill });
+const EYE = "M144 42 C147 39 152 39 155 42 C152 45 147 45 144 42 Z";
+const IRIS = "M149.6 40.2 C151 40.2 151.8 41 151.8 42 C151.8 43 151 43.8 149.6 43.8 C148.2 43.8 147.4 43 147.4 42 C147.4 41 148.2 40.2 149.6 40.2 Z";
 const FACE_PARTS = [
-  faceDeco("M141 20 C150 15 170 15 179 20 C182 28 182 32 180 36 C172 32 148 32 140 36 C138 32 138 28 141 20 Z", "#a8483a"),
+  faceDeco("M141 20 C150 15 170 15 179 20 C182 28 182 32 180 36 C172 32 148 32 140 36 C138 32 138 28 141 20 Z", "#c0604b"),
   faceDeco("M133 30 C131 38 132 48 135 54 C137 46 137 38 139 32 Z", "#8e3a2f"),
   faceDeco(mirrorPath("M133 30 C131 38 132 48 135 54 C137 46 137 38 139 32 Z"), "#8e3a2f"),
-  faceDeco("M140 41 C142 34 153 33 157 38 C158 45 150 50 143 48 C140 46 139 43 140 41 Z", "#8e3a2f"),
-  faceDeco(mirrorPath("M140 41 C142 34 153 33 157 38 C158 45 150 50 143 48 C140 46 139 43 140 41 Z"), "#8e3a2f"),
-  faceDeco("M144 42 C147 39 152 39 155 42 C152 45 147 45 144 42 Z", "#1f0c09"),
-  faceDeco(mirrorPath("M144 42 C147 39 152 39 155 42 C152 45 147 45 144 42 Z"), "#1f0c09"),
-  faceDeco("M157 38 C158 50 156 60 151 64 C155 69 165 69 169 64 C164 60 162 50 163 38 C161 36 159 36 157 38 Z", "#b5513f"),
+  faceDeco("M140 41 C142 34 153 33 157 38 C158 45 150 50 143 48 C140 46 139 43 140 41 Z", "#7a3126"),
+  faceDeco(mirrorPath("M140 41 C142 34 153 33 157 38 C158 45 150 50 143 48 C140 46 139 43 140 41 Z"), "#7a3126"),
+  faceDeco(EYE, "#eadccf"),
+  faceDeco(mirrorPath(EYE), "#eadccf"),
+  faceDeco(IRIS, "#22110d"),
+  faceDeco(mirrorPath(IRIS), "#22110d"),
+  faceDeco("M157 38 C158 50 156 60 151 64 C155 69 165 69 169 64 C164 60 162 50 163 38 C161 36 159 36 157 38 Z", "#cf6f59"),
   faceDeco("M135 56 C138 66 142 76 148 82 C146 85 141 81 137 75 C134 69 133 61 135 56 Z", "#8e3a2f"),
   faceDeco(mirrorPath("M135 56 C138 66 142 76 148 82 C146 85 141 81 137 75 C134 69 133 61 135 56 Z"), "#8e3a2f"),
-  faceDeco("M148 74 C152 71 156 72 160 73 C164 72 168 71 172 74 C168 80 152 80 148 74 Z", "#6f2822"),
-  faceDeco("M150 82 C155 86 165 86 170 82 C168 89 152 89 150 82 Z", "#9a4234"),
+  faceDeco("M148 74 C152 71 156 72 160 73 C164 72 168 71 172 74 C160 76 160 76 148 74 Z", "#7a2a22"),
+  faceDeco("M148 74 C160 77 160 77 172 74 C168 81 152 81 148 74 Z", "#a8453a"),
+  faceDeco("M150 82 C155 86 165 86 170 82 C168 89 152 89 150 82 Z", "#a9503f"),
 ];
 const DELT = "M94 112 C82 112 74 124 73 140 C72 156 74 172 84 190 C90 180 94 166 100 154 C108 140 116 128 115 120 C110 114 102 112 94 112 Z";
 
 /* ======================= MUSCLES — FACE AVANT ======================= */
 const M_FRONT = {
-  sil: SIL, head: HEAD,
+  sil: SIL_FRONT, head: HEAD,
   parts: [
     { id: "hanche", side: "lr", label: "Hanche (psoas, tenseur du fascia lata)", t: 3, fill: "#7a362b", d: "M96 256 L150 270 L160 312 L150 342 L96 346 Z" },
     { id: "genou", side: "lr", label: "Genou (rotule)", t: 3, fill: "#7a4a3c", d: "M112 440 L160 440 L160 512 L110 512 Z" },
@@ -119,7 +186,7 @@ const M_FRONT = {
 
 /* ======================= MUSCLES — FACE ARRIÈRE ======================= */
 const M_BACK = {
-  sil: SIL, head: HEAD,
+  sil: SIL_BACK, head: HEAD,
   parts: [
     { id: "hanche", side: "lr", label: "Bassin", t: 3, fill: "#7a362b", d: "M96 256 L160 262 L160 330 L96 346 Z", hide: true },
     { id: "cou", side: "lr", one: true, label: "Nuque (extenseurs du cou)", t: 1, d: "M146 72 C150 70 156 70 160 70 L160 106 C154 100 148 90 146 72 Z", f: ["M152 78 C154 88 157 96 160 102"] },
@@ -135,7 +202,7 @@ const M_BACK = {
     { id: "ischio", noBack: true, side: "lr", label: "Ischio-jambiers", t: 0, d: "M106 336 C102 376 106 420 114 458 L128 462 C128 420 128 380 128 342 Z M130 342 C130 380 132 420 136 462 L150 462 C156 426 158 382 158 340 Z", f: ["M118 346 C116 384 118 424 122 456", "M143 348 C143 386 143 424 143 456"] },
     { id: "poplite", side: "lr", label: "Creux poplité", t: 3, d: "M114 458 L150 462 L148 482 L116 482 Z" },
     { id: "mollet", side: "lr", label: "Mollet (gastrocnémiens, soléaire)", t: 1, d: "M110 484 C106 512 110 548 120 576 L132 576 C136 548 136 512 132 484 Z M136 484 C140 512 140 548 138 576 L150 574 C154 548 154 512 150 484 Z M118 574 C120 590 124 600 128 606 L142 606 C144 592 144 582 144 568 Z", f: ["M122 494 C120 520 122 550 126 572", "M143 494 C145 520 145 550 143 572", "M134 598 L134 616"] },
-    { id: "pied", side: "lr", label: "Pied (talon)", t: 3, d: FOOT_BACK, f: ["M136 610 L136 630"] },
+    { id: "pied", side: "lr", label: "Pied (talon)", t: 3, d: FOOT_BACK, f: FOOT_BACK_F },
     { id: "tete", side: "c", label: "Tête (arrière)", t: 1, d: HEAD + " " + EARS,
       f: ["M160 18 L160 80", "M138 66 C146 74 174 74 182 66"] },
   ],
@@ -160,7 +227,7 @@ const S_COMMON_LEG = [
 ];
 
 const S_FRONT = {
-  sil: SIL, head: HEAD, skel: true,
+  sil: SIL_FRONT, head: HEAD, skel: true,
   parts: [
     { id: "clavicule", side: "lr", label: "Clavicule", kind: "bone", d: "M158 112 C146 108 128 108 112 110 C102 111 96 114 91 119 L94 123 C100 119 108 117 118 116 C132 114 146 115 158 120 Z" },
     { id: "cotes", side: "lr", label: "Côtes & cage thoracique", kind: "bone",
@@ -180,7 +247,7 @@ const S_FRONT = {
 };
 
 const S_BACK = {
-  sil: SIL, head: HEAD, skel: true,
+  sil: SIL_BACK, head: HEAD, skel: true,
   parts: [
     { id: "cotes", side: "lr", label: "Côtes & cage thoracique", kind: "bone", d: "M157 122 C138 114 118 124 112 146 C106 172 108 198 118 214 L157 226 Z", fillOnly: true,
       f: RIBS_BACK },
@@ -202,3 +269,21 @@ export const ANAT = {
   muscle: { front: M_FRONT, back: M_BACK },
   skel: { front: S_FRONT, back: S_BACK },
 };
+
+/* ---- Tête agrandie (proportion plus réaliste) : transformation appliquée au crâne,
+   au visage et aux décors de la tête, autour du bas du cou. ---- */
+const HEAD_SCALE = 1.17;
+const HX = 160;
+const HY = 89;
+const headPath = (d) => d.replace(NUM_PAIR, (m, x, y) => `${R1(HX + (x - HX) * HEAD_SCALE)} ${R1(HY + (y - HY) * HEAD_SCALE)}`);
+Object.values(ANAT).forEach((modeSet) =>
+  Object.values(modeSet).forEach((view) => {
+    view.head = headPath(view.head);
+    view.parts.forEach((p) => {
+      if (p.id === "tete" || p.id === "crane" || p.deco) {
+        p.d = headPath(p.d);
+        if (p.f) p.f = p.f.map(headPath);
+      }
+    });
+  })
+);

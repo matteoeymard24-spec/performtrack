@@ -389,7 +389,7 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
         </div>
         <svg
           viewBox={`0 0 ${VB.w} ${VB.h}`}
-          style={{ width: "100%", maxWidth: 300, height: "auto", marginTop: 14 }}
+          style={{ width: "100%", maxWidth: 340, height: "auto", marginTop: 14 }}
           role="img"
           aria-label={isSkel ? "Squelette" : "Système musculaire"}
         >
