@@ -38,6 +38,7 @@ import {
 export default function ACWRMonitoring() {
   const { userRole, currentUser } = useAuth();
   const [athletes, setAthletes] = useState([]);
+  const [pickMode, setPickMode] = useState(""); // "" | "athletes" | "admins" (carrés de choix, comme Tests / Workout)
   const [selectedAthlete, setSelectedAthlete] = useState(null);
   const [rediData, setRediData] = useState([]);
   const [currentStats, setCurrentStats] = useState(null);
@@ -57,7 +58,7 @@ export default function ACWRMonitoring() {
         const usersSnap = await getDocs(collection(db, "users"));
         const athletesData = usersSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          .filter((u) => u.id === currentUser?.uid || (u.superAdmin !== true && u.role !== "admin")); // + moi-même (filtre « Moi »)
+          ; // tous les comptes : le tri Athlètes / Moi / Admins se fait à l'affichage
 
         athletesData.sort((a, b) => {
           const nameA = a.firstName || a.email || "";
@@ -255,46 +256,79 @@ export default function ACWRMonitoring() {
 
       {/* Sélection athlète */}
       <FoldCard id="select" fold={fold} title="👤 Athlète">
-        {currentUser?.uid && athletes.some((a) => a.id === currentUser.uid) && (
-          <div style={{ marginBottom: 10 }}>
-            <button
-              type="button"
-              onClick={() => {
-                const me = athletes.find((a) => a.id === currentUser.uid);
-                if (me) loadAthleteREDI(me);
-              }}
-              style={{
-                padding: "10px 18px",
-                borderRadius: 8,
-                border: `1px solid ${selectedAthlete?.id === currentUser.uid ? "#e0a13d" : "#2a2620"}`,
-                background: selectedAthlete?.id === currentUser.uid ? "rgba(224,161,61,0.18)" : "transparent",
-                color: "#f3f0ea",
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: "pointer",
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {[
+            { id: "athletes", label: "🏉 Athlètes" },
+            { id: "moi", label: "🌟 Moi" },
+            { id: "admins", label: "👥 Admins" },
+          ].map((m) => {
+            const active =
+              m.id === "moi" ? selectedAthlete?.id === currentUser?.uid : pickMode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  if (m.id === "moi") {
+                    setPickMode("");
+                    const me = athletes.find((a) => a.id === currentUser?.uid);
+                    if (me) loadAthleteREDI(me);
+                  } else {
+                    setPickMode(pickMode === m.id ? "" : m.id);
+                  }
+                }}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 999,
+                  border: `1px solid ${active ? "#e0a13d" : "rgba(255,255,255,0.16)"}`,
+                  background: active ? "rgba(224,161,61,0.2)" : "transparent",
+                  color: "#f3f0ea",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: "pointer",
+                }}
+              >
+                {m.label}
+              </button>
+            );
+          })}
+        </div>
+        {pickMode && (() => {
+          const isAdminUser = (u) => u.role === "admin" || u.superAdmin === true;
+          const list =
+            pickMode === "admins"
+              ? athletes.filter((a) => isAdminUser(a) && a.id !== currentUser?.uid)
+              : athletes.filter((a) => !isAdminUser(a));
+          return (
+            <select
+              style={{ ...FIELD_STYLE, marginTop: 10 }}
+              value={list.some((a) => a.id === selectedAthlete?.id) ? selectedAthlete.id : ""}
+              onChange={(e) => {
+                const athlete = athletes.find((a) => a.id === e.target.value);
+                if (athlete) loadAthleteREDI(athlete);
               }}
             >
-              🌟 Moi (mes propres graphiques)
-            </button>
+              <option value="">
+                {pickMode === "admins" ? "— Choisir un admin —" : "— Choisir un athlète —"}
+              </option>
+              {list.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email}
+                </option>
+              ))}
+            </select>
+          );
+        })()}
+        {selectedAthlete && (
+          <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199" }}>
+            Sélection : <b style={{ color: "#f3f0ea" }}>
+              {selectedAthlete.id === currentUser?.uid ? "🌟 Moi — " : ""}
+              {selectedAthlete.firstName && selectedAthlete.lastName
+                ? `${selectedAthlete.firstName} ${selectedAthlete.lastName}`
+                : selectedAthlete.displayName || selectedAthlete.email}
+            </b>
           </div>
         )}
-        <select
-          value={selectedAthlete?.id || ""}
-          onChange={(e) => {
-            const athlete = athletes.find((a) => a.id === e.target.value);
-            if (athlete) loadAthleteREDI(athlete);
-          }}
-          style={FIELD_STYLE}
-        >
-          <option value="">-- Choisir un athlète --</option>
-          {athletes.map((a) => (
-            <option key={a.id} value={a.id}>
-              {`${a.id === currentUser?.uid ? "🌟 Moi — " : ""}${
-                a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email
-              }`}
-            </option>
-          ))}
-        </select>
       </FoldCard>
 
       {loadingAthlete && (
