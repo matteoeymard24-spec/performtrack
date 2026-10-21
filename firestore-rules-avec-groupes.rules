@@ -174,7 +174,27 @@ service cloud.firestore {
     // component/PlanningPanel.jsx) ==========
     match /fixtures/{fixtureId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+
+      // Admins : tout. Un athlète peut gérer SES matchs perso : portée
+      // "user:<son uid>" uniquement, créés par lui, sans pouvoir les
+      // réattribuer à quelqu'un d'autre.
+      allow create: if isAdmin() || (
+        isSignedIn() &&
+        request.resource.data.scope == ('user:' + request.auth.uid) &&
+        request.resource.data.createdBy == request.auth.uid
+      );
+      allow update: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.createdBy == request.auth.uid &&
+        resource.data.scope == ('user:' + request.auth.uid) &&
+        request.resource.data.scope == ('user:' + request.auth.uid) &&
+        request.resource.data.createdBy == request.auth.uid
+      );
+      allow delete: if isAdmin() || (
+        isSignedIn() &&
+        resource.data.createdBy == request.auth.uid &&
+        resource.data.scope == ('user:' + request.auth.uid)
+      );
     }
   }
 }

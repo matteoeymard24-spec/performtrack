@@ -482,15 +482,40 @@ export const TESTS = [
     },
   },
 
+  {
+    id: "broad_jump",
+    group: "saut",
+    noGear: true,
+    name: "Broad jump (saut en longueur sans élan)",
+    sports: "Tous sports",
+    equipment: "Mètre ruban (ou décamètre), ligne de départ au sol",
+    howTo:
+      "Pieds écartés largeur de hanches, orteils sur la ligne. Armer les bras, fléchir, puis sauter le plus loin possible vers l'avant en arrivant sur les deux pieds sans tomber (essai nul sinon). Mesurer de la ligne de départ jusqu'au talon le plus proche de la ligne à la réception, au cm. Faire 3 essais, noter chacun : le meilleur compte. Mesure la puissance horizontale (accélération, impulsion vers l'avant).",
+    ...ytSearch("broad jump standing long jump test technique mesure"),
+    fields: [
+      { key: "d1", label: "Essai 1", unit: "cm", placeholder: "ex : 255" },
+      { key: "d2", label: "Essai 2", unit: "cm", placeholder: "ex : 262" },
+      { key: "d3", label: "Essai 3", unit: "cm", placeholder: "ex : 258" },
+    ],
+    compute: (v) => {
+      const trials = ["d1", "d2", "d3"].map((k) => num(v[k])).filter((x) => x && x > 0);
+      if (trials.length === 0) return null;
+      const best = Math.max(...trials);
+      const lines = [];
+      if (trials.length > 1) lines.push(`Moyenne des essais : ${r1(trials.reduce((a, b) => a + b, 0) / trials.length)} cm`);
+      return { main: { label: "Broad jump", value: r1(best), unit: "cm" }, best: r1(best), lines };
+    },
+  },
+
   /* ======================= VITESSE ======================= */
   {
     id: "sprint",
     group: "vitesse",
-    name: "Sprint 5-10-15-20-60 m, Vmax, Prowler",
+    name: "Sprint 5-10-15-20-60 m, Vmax",
     sports: "Rugby, sports collectifs",
-    equipment: "Cellules photoélectriques (ou radar), plots, GPS pour la Vmax, Prowler 85 kg",
+    equipment: "Cellules photoélectriques (ou radar), plots, GPS pour la Vmax",
     howTo:
-      "Départ debout, pied avant 30-50 cm derrière la 1re cellule, sprint maximal. Noter les temps intermédiaires à 5, 10, 15, 20 et 60 m (secondes, au centième). Vmax : pic de vitesse (km/h) relevé au GPS ou au radar. Prowler : temps sur 10 m avec 85 kg. Tous les champs sont optionnels.",
+      "Départ debout, pied avant 30-50 cm derrière la 1re cellule, sprint maximal. Noter les temps intermédiaires à 5, 10, 15, 20 et 60 m (secondes, au centième). Vmax : pic de vitesse (km/h) relevé au GPS ou au radar. Tous les champs sont optionnels.",
     ...ytSearch("test sprint 20 m cellules photoélectriques départ debout rugby"),
     fields: [
       { key: "t5", label: "Temps 5 m", unit: "s", placeholder: "ex : 1.02" },
@@ -499,7 +524,6 @@ export const TESTS = [
       { key: "t20", label: "Temps 20 m", unit: "s", placeholder: "ex : 3.05" },
       { key: "t60", label: "Temps 60 m", unit: "s", placeholder: "ex : 7.90" },
       { key: "vmax", label: "Vitesse max (GPS / radar)", unit: "km/h", placeholder: "ex : 31.5" },
-      { key: "prowler", label: "Prowler 85 kg — 10 m", unit: "s", placeholder: "ex : 2.9" },
     ],
     compute: (v) => {
       const t20 = num(v.t20);
@@ -513,8 +537,6 @@ export const TESTS = [
         ? { label: "Vmax", value: r1(vm), unit: "km/h" }
         : num(v.t5)
         ? { label: "5 m", value: r2(num(v.t5)), unit: "s" }
-        : num(v.prowler)
-        ? { label: "Prowler", value: r2(num(v.prowler)), unit: "s" }
         : null;
       if (!main) return null;
       const lines = [];

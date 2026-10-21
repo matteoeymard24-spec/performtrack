@@ -48,7 +48,7 @@ export const SENS = {
   CMJ: 1,
   CMJB: 1,
   Bronco: 0.5,
-  "Prowler 85Kg 10m": 0.5,
+  BROAD: 0.5,
   "Vitesse GPS": 0.6,
   "5m": 0.6,
   "10m": 0.6,
@@ -87,9 +87,6 @@ export const SOURCED = {
   },
   "Vitesse GPS": {
     international: { v: [30, 32, 32, 33, 35, 34, 34, 36], src: "Références physiques V3 World Class" },
-  },
-  "Prowler 85Kg 10m": {
-    international: { v: [2.69, 2.82, 2.67, 2.67, 3.06, 2.82, 2.82, 2.7], src: "Objectif FFR 2020 (Prowler 0-10 m)" },
   },
 };
 

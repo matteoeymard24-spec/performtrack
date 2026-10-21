@@ -296,7 +296,10 @@ export default function PlanningPanel({
   const totalDays = Math.max(1, diffDays(rangeStart, rangeEnd));
   const pct = (day) => (diffDays(rangeStart, day) / totalDays) * 100;
 
-  const blankFixture = () => ({ name: "", kind: "match", date: todayStr, endDate: "", place: "", scope: defaultScope, notes: "" });
+  const myScope = currentUser ? userScope(currentUser.uid) : "total";
+  // Un athlète ne gère que SES matchs perso (portée "user:<son uid>") ; un admin gère tout.
+  const canEditFx = (f) => isAdmin || (!!currentUser && f.createdBy === currentUser.uid && f.scope === myScope);
+  const blankFixture = () => ({ name: "", kind: "match", date: todayStr, endDate: "", place: "", scope: isAdmin ? defaultScope : myScope, notes: "" });
   const saveFixture = async () => {
     const f = fForm;
     if (!f.name.trim()) return alert("Donne un nom (ex. « Agen – Brive »).");
@@ -310,7 +313,7 @@ export default function PlanningPanel({
         date: f.date,
         endDate: f.endDate || "",
         place: (f.place || "").trim(),
-        scope: f.scope || "total",
+        scope: isAdmin ? f.scope || "total" : myScope,
         notes: (f.notes || "").trim(),
       };
       if (f.id) await updateDoc(doc(db, "fixtures", f.id), payload);
@@ -617,6 +620,11 @@ export default function PlanningPanel({
               Masquer les mois vides
             </button>
           )}
+          {!isAdmin && currentUser && (
+            <button onClick={() => { setForm(null); setFForm(blankFixture()); }} style={btn("#d9534f")}>
+              🏉 Mon match / compétition
+            </button>
+          )}
           {isAdmin && (
             <>
               <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
@@ -700,7 +708,7 @@ export default function PlanningPanel({
                 return (
                   <div
                     key={f.id}
-                    onClick={() => { if (isAdmin) { setForm(null); setFForm({ ...f }); } }}
+                    onClick={() => { if (canEditFx(f)) { setForm(null); setFForm({ ...f }); } }}
                     title={`${k.label} : ${f.name} · ${fmtShort(f.date)}${f.endDate ? " → " + fmtShort(f.endDate) : ""}${f.place ? " · " + f.place : ""}`}
                     style={{
                       position: "absolute",
@@ -711,7 +719,7 @@ export default function PlanningPanel({
                       height: 18,
                       background: k.color,
                       borderRadius: 3,
-                      cursor: isAdmin ? "pointer" : "default",
+                      cursor: canEditFx(f) ? "pointer" : "default",
                       fontSize: 10,
                       lineHeight: "18px",
                       textAlign: "center",
@@ -897,6 +905,10 @@ export default function PlanningPanel({
             </div>
             <div>
               <label style={{ fontSize: 11, color: MUTED }}>Pour qui</label>
+              {!isAdmin ? (
+                <div style={{ ...inputStyle, color: MUTED }}>Moi (visible par moi et mon coach)</div>
+              ) : (
+              <>
               <select style={inputStyle} value={form.scope} onChange={(e) => setF({ scope: e.target.value })}>
                 <option value="total">Tous</option>
                 {(customGroups || []).length > 0 && (
@@ -921,6 +933,8 @@ export default function PlanningPanel({
                   </optgroup>
                 )}
               </select>
+              </>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
@@ -1205,7 +1219,7 @@ export default function PlanningPanel({
         </div>
         {!hideFix && (visibleFixtures.length === 0 ? (
           <div style={{ color: MUTED, fontSize: 13 }}>
-            Aucun match saisi.{isAdmin ? " Utilise « Match / compétition » pour les placer (pour tous, un groupe ou un athlète seul)." : ""}
+            Aucun match saisi.{isAdmin ? " Utilise « Match / compétition » pour les placer (pour tous, un groupe ou un athlète seul)." : " Utilise « Mon match / compétition » pour ajouter les tiens."}
           </div>
         ) : (
           <div style={{ display: "grid", gap: 6 }}>
@@ -1233,7 +1247,7 @@ export default function PlanningPanel({
                         {inDays <= 0 ? "en cours" : `J-${inDays}`}
                       </span>
                     )}
-                    {isAdmin && (
+                    {canEditFx(f) && (
                       <>
                         <button onClick={() => { setForm(null); setFForm({ ...f }); }} style={btn("#2a2620")}>✏️</button>
                         <button disabled={busy} onClick={() => removeFixture(f)} style={btn("rgba(217,105,90,0.18)", "#d9695a")}>🗑️</button>

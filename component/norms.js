@@ -71,7 +71,39 @@ const sprint60Table = () => {
   });
   return out;
 };
-const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable(), "60m": sprint60Table() };
+/* Broad jump (saut en longueur sans élan) : AUCUN barème Agen. Une seule étude publiée trouvée avec des
+   valeurs par poste en rugby : Posthumus et al. (2020), Sports 8(6):85, 39 pros de Super Rugby (NZ) :
+   avants 252,3 ± 25,3 cm, trois-quarts 269,0 ± 13,0 cm, ensemble 261,3 ± 18,6 cm.
+   Choix de construction (estimation, à ajuster ici) :
+   • note 10/20 (niveau « Pro D2 ») = moyenne publiée du groupe (avants / trois-quarts) ; on suppose
+     que la moyenne Pro D2 est proche de celle du Super Rugby (hypothèse, non vérifiée) ;
+   • chaque note vaut BROAD_SD / 5 cm : note 15 = +1 écart-type, note 20 = +2 écarts-types, avec
+     l'écart-type de l'ensemble (18,6 cm) car celui des trois-quarts (n = 16) est très étroit ;
+   • aucune valeur publiée par poste fin (pilier, 2e ligne...) : tous les avants partagent la même
+     colonne, tous les trois-quarts aussi. */
+export const BROAD_MEAN = { avants: 252.3, arrieres: 269.0 };
+export const BROAD_SD = 18.6;
+export const BROAD_NOTE =
+  "Barème estimé : moyennes publiées Super Rugby (Posthumus 2020 : avants 252 cm, trois-quarts 269 cm), écart par note = 18,6 cm / 5. Aucune valeur publiée par poste fin ni par niveau.";
+const BROAD_FORWARDS = ["PILIER", "TALON", "2L", "3L"];
+const broadTable = () => {
+  const out = {};
+  (POSTES.rugby || []).forEach(({ key }) => {
+    const mean = BROAD_FORWARDS.includes(key) ? BROAD_MEAN.avants : BROAD_MEAN.arrieres;
+    out[key] = Array.from({ length: 21 }, (_, n) => Math.round(mean + (n - 10) * (BROAD_SD / 5)));
+  });
+  return out;
+};
+const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable(), "60m": sprint60Table(), BROAD: broadTable() };
+
+/* Source affichée pour certaines échelles (sinon : texte par défaut du barème Agen) */
+const LADDER_META = {
+  BROAD: {
+    prod2: { tag: "doc", src: "Posthumus 2020 (Super Rugby, n = 39) : moyenne avants 252 cm / trois-quarts 269 cm" },
+    top14: { tag: "estimé", src: "Moyenne + 1 écart-type (18,6 cm) — estimation à partir de Posthumus 2020" },
+    international: { tag: "estimé", src: "Moyenne + 2 écarts-types (18,6 cm) — estimation à partir de Posthumus 2020" },
+  },
+};
 
 const BAREMES = { rugby: { bareme: RUGBY_BAREME_X, matchRef: RUGBY_MATCH_REF } };
 
@@ -158,7 +190,8 @@ export function buildLadder(sport, normKey, poste) {
     return e && gi != null && e.v[gi] != null ? { w: W(cv(e.v[gi])), src: e.src } : null;
   };
 
-  let iTag = { tag: "barème", src: "Barème Agen, note 20/20" };
+  const meta0 = LADDER_META[normKey] || {};
+  let iTag = meta0.international || { tag: "barème", src: "Barème Agen, note 20/20" };
   let i = n20;
   const si = srcOf("international");
   if (si && si.w > p) {
@@ -167,7 +200,7 @@ export function buildLadder(sport, normKey, poste) {
   }
   if (!(i > p)) i = p + Math.abs(p) * 0.08;
 
-  let tTag = { tag: "barème", src: "Barème Agen, note 15/20" };
+  let tTag = meta0.top14 || { tag: "barème", src: "Barème Agen, note 15/20" };
   let t = n15;
   const st = srcOf("top14");
   if (st && st.w > p && st.w < i) {
@@ -185,7 +218,7 @@ export function buildLadder(sport, normKey, poste) {
     let w, meta;
     if (l.id === "international") [w, meta] = [i, iTag];
     else if (l.id === "top14") [w, meta] = [t, tTag];
-    else if (l.id === "prod2") [w, meta] = [p, { tag: "barème", src: "Barème Agen, note 10/20 (≈ moyenne des tops Pro D2)" }];
+    else if (l.id === "prod2") [w, meta] = [p, meta0.prod2 || { tag: "barème", src: "Barème Agen, note 10/20 (≈ moyenne des tops Pro D2)" }];
     else {
       const eff = 1 - (1 - l.f) * sens;
       const pReal = dir === "high" ? p : -p; // valeur réelle Pro D2 (secondes pour Bronco)
@@ -349,13 +382,13 @@ export const TEST_NORMS = {
     },
   ],
   cmj: [{ normKey: "CMJ", label: "CMJ", unit: "cm", get: (v) => num(v.height), fmt: fmtNum }],
+  broad_jump: [{ normKey: "BROAD", label: "Broad jump", unit: "cm", get: (v) => { const a = [v.d1, v.d2, v.d3].map(num).filter((x) => x != null && x > 0); return a.length ? Math.max(...a) : null; }, fmt: (x) => (x == null ? "—" : String(Math.round(x))), estimated: BROAD_NOTE }],
   sprint: [
     { normKey: "10m", label: "Sprint 10 m", unit: "s", get: (v) => num(v.t10), fmt: fmtNum },
     { normKey: "15m", label: "Sprint 15 m", unit: "s", get: (v) => num(v.t15), fmt: fmtNum },
     { normKey: "20m", label: "Sprint 20 m", unit: "s", get: (v) => num(v.t20), fmt: fmtNum },
     { normKey: "60m", label: "Sprint 60 m", unit: "s", get: (v) => num(v.t60), fmt: fmtNum, estimated: SPRINT60_NOTE },
     { normKey: "Vitesse GPS", label: "Vitesse max (GPS)", unit: "km/h", get: (v) => num(v.vmax), fmt: fmtNum },
-    { normKey: "Prowler 85Kg 10m", label: "Prowler 85 kg · 10 m", unit: "s", get: (v) => num(v.prowler), fmt: fmtNum },
   ],
   iso_neck: [
     { normKey: "Cervicales Flexion", label: "Cervicales — flexion", unit: "kg", get: (v) => num(v.flex), fmt: fmtNum },

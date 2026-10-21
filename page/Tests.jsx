@@ -684,6 +684,11 @@ export default function Tests() {
     return c ? c.values : null;
   }, [tests]);
 
+  const mergedBroad = useMemo(() => {
+    const b = tests.find((t) => t.testId === "broad_jump");
+    return b ? b.values : null;
+  }, [tests]);
+
   const domainNotes = useMemo(() => {
     const avg = (arr) => {
       const n = arr.filter((x) => x != null);
@@ -724,13 +729,16 @@ export default function Tests() {
       out.vitesse = { title: "⚡ Vitesse", avg: avg(sRows.map((r) => r.note)), rows: sRows };
       const c = tests.find((t) => t.testId === "cmj");
       const cRows = normRows("cmj", mergedCmj, c ? c.date : "");
-      out.cmj = { title: "🦘 Saut (CMJ)", avg: avg(cRows.map((r) => r.note)), rows: cRows };
+      const bj = tests.find((t) => t.testId === "broad_jump");
+      const bRows = normRows("broad_jump", mergedBroad, bj ? bj.date : "").map((r) => ({ ...r, estNoteTxt: true }));
+      const jumpRows = [...cRows, ...bRows];
+      out.cmj = { title: "🦘 Saut (CMJ + broad jump)", avg: avg(jumpRows.map((r) => r.note)), rows: jumpRows };
       const b = tests.find((t) => t.testId === "bronco");
       const eRows = b ? normRows("bronco", b.values, b.date) : [];
       out.endurance = { title: "🏃 Endurance", avg: avg(eRows.map((r) => r.note)), rows: eRows };
     }
     return out;
-  }, [tests, strengthNorms, mergedSprint, mergedCmj, sport, poste, level, normsOn]);
+  }, [tests, strengthNorms, mergedSprint, mergedCmj, mergedBroad, sport, poste, level, normsOn]);
 
   const field = (key, label, unit, ph) => (
     <div key={key}>
@@ -1212,7 +1220,7 @@ export default function Tests() {
                   <div style={cardStyle}>
                     <div style={{ fontWeight: 700 }}>⚡ Standards de vitesse par niveau — {posteLabel(sport, poste)}</div>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
-                      Sprint 10 / 15 / 20 / 60 m, vitesse max et Prowler face à chaque niveau
+                      Sprint 10 / 15 / 20 / 60 m, et vitesse max face à chaque niveau
                       {level ? ` (objectif : ${levelLabel(level)})` : ""}. Tes derniers temps saisis sont comparés automatiquement.
                     </div>
                     {(() => {
@@ -1240,6 +1248,20 @@ export default function Tests() {
                       targetId={level}
                       labelHeader="Test"
                       valueHeader="Ton CMJ"
+                    />
+                  </div>
+
+                  <div style={cardStyle}>
+                    <div style={{ fontWeight: 700 }}>↗️ Standards de saut horizontal (Broad jump) par niveau — {posteLabel(sport, poste)}</div>
+                    <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                      Distance du meilleur essai face à chaque niveau
+                      {level ? ` (objectif : ${levelLabel(level)})` : ""}. Seule valeur publiée : moyennes de pros de Super Rugby (Posthumus et al. 2020, n = 39) — avants 252 cm, trois-quarts 269 cm ; le reste du tableau est estimé (~).
+                    </div>
+                    <LevelTable
+                      rows={evaluateLadderRows("broad_jump", mergedBroad, sport, poste, level)}
+                      targetId={level}
+                      labelHeader="Test"
+                      valueHeader="Ton broad jump"
                     />
                   </div>
 
