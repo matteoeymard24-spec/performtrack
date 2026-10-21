@@ -5,6 +5,7 @@ const ACCENT = "#e0a13d";
 const SUCCESS = "#4fae7d";
 const WARNING = "#d9a441";
 const DANGER = "#d9695a";
+const PAIN_MAX = "#e5322d";
 const SURFACE = "#151310";
 const SURFACE_2 = "#1a1815";
 const SURFACE_3 = "#221f1a";
@@ -14,8 +15,8 @@ const TEXT = "#f3f0ea";
 const TEXT_MUTED = "#a8a199";
 
 // Teintes musculaires (palette chaude de la charte) et os (ivoire)
-const MUSCLE_TONES = ["#a8483a", "#8e3a2f", "#b5513f", "#9a4234"];
-const MUSCLE_BASE = "#6a3025";
+const MUSCLE_TONES = ["#a39387", "#94857a", "#ac9c90", "#9a8a7f"];
+const MUSCLE_BASE = "#54463f";
 const BONE = "#d8cfbd";
 const BONE_LINE = "#6d6352";
 
@@ -60,7 +61,7 @@ function painColor(value = 0) {
   };
   const [r1, g1, b1] = hexToRgb(SUCCESS);
   const [r2, g2, b2] = hexToRgb(WARNING);
-  const [r3, g3, b3] = hexToRgb(DANGER);
+  const [r3, g3, b3] = hexToRgb(PAIN_MAX);
   let r, g, b;
   if (v <= 5) {
     const t = v / 5;
@@ -172,6 +173,28 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
       setPsens(painSens[selectedZone] || []);
     }
   }, [selectedZone, painMap, painTypes, painSens, zoneById]);
+
+  function deletePain() {
+    if (!selectedZone) return;
+    const z = zoneById[selectedZone];
+    const legacyActive = z && z.part.legacy && z.part.legacy.some((l) => painMap[l] > 0);
+    const next = { ...painMap };
+    // Une ancienne saisie groupée (tronc / dos) colorerait encore la zone : on force 0.
+    if (legacyActive) next[selectedZone] = 0;
+    else delete next[selectedZone];
+    setPainMap(next);
+    if (setPainTypes) {
+      const t = { ...painTypes };
+      delete t[selectedZone];
+      setPainTypes(t);
+    }
+    if (setPainSens) {
+      const n = { ...painSens };
+      delete n[selectedZone];
+      setPainSens(n);
+    }
+    setSelectedZone(null);
+  }
 
   function saveIntensity() {
     if (!selectedZone) return;
@@ -490,7 +513,7 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
           style={{
             height: 6,
             borderRadius: 4,
-            background: `linear-gradient(to right, ${SUCCESS}, ${WARNING}, ${DANGER})`,
+            background: `linear-gradient(to right, ${SUCCESS}, ${WARNING}, ${PAIN_MAX})`,
             marginBottom: 6,
           }}
         />
@@ -529,7 +552,7 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
               height: 8,
               borderRadius: 5,
               outline: "none",
-              background: `linear-gradient(to right, ${SUCCESS}, ${WARNING}, ${DANGER})`,
+              background: `linear-gradient(to right, ${SUCCESS}, ${WARNING}, ${PAIN_MAX})`,
               WebkitAppearance: "none",
               appearance: "none",
               cursor: "pointer",
@@ -541,7 +564,7 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
             {intensity}/10
           </div>
 
-          {(setPainTypes || painTypes[selectedZone]) && intensity > 0 && (
+          {(setPainTypes || painTypes[selectedZone]) && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 8 }}>Quel type de douleur ?</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -574,7 +597,7 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
             </div>
           )}
 
-          {(setPainSens || (painSens[selectedZone] || []).length > 0) && intensity > 0 && (
+          {(setPainSens || (painSens[selectedZone] || []).length > 0) && (
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: TEXT_MUTED, marginBottom: 8 }}>Quelle sensation ? (plusieurs possibles)</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -611,6 +634,15 @@ export default function BodyScan({ painMap = {}, setPainMap, painTypes = {}, set
             >
               ✅ Valider
             </button>
+            {selectedData && zoneValue(painMap, selectedData) > 0 && (
+              <button
+                onClick={deletePain}
+                title="Supprimer cette douleur"
+                style={{ padding: "14px 16px", background: "transparent", color: DANGER, border: `1px solid ${DANGER}`, borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: "bold" }}
+              >
+                🗑️ Supprimer
+              </button>
+            )}
             <button
               onClick={() => setSelectedZone(null)}
               style={{ padding: "14px 18px", background: "transparent", color: TEXT_MUTED, border: `1px solid ${BORDER_STRONG}`, borderRadius: 8, cursor: "pointer", fontSize: 16 }}

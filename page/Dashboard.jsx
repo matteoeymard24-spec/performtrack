@@ -1415,12 +1415,19 @@ export default function Dashboard() {
 
         {!todayWellness && (
           <div
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate("/wellness")}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") navigate("/wellness");
+            }}
             style={{
               background: "rgba(217,164,65,0.14)",
               padding: 20,
               borderRadius: 12,
               border: "1px solid #d9a44166",
               marginBottom: 16,
+              cursor: "pointer",
             }}
           >
             <h3
@@ -1430,6 +1437,9 @@ export default function Dashboard() {
             </h3>
             <p style={{ margin: 0, fontSize: 14, color: "#f0c98a" }}>
               N'oublie pas de remplir ton questionnaire wellness d'aujourd'hui !
+            </p>
+            <p style={{ margin: "8px 0 0 0", fontSize: 13, fontWeight: 600, color: "#d9a441" }}>
+              Touche ici pour le remplir →
             </p>
           </div>
         )}
@@ -1501,6 +1511,24 @@ export default function Dashboard() {
             {foldHead("wellness", "🧘 Wellness")}
             {vis("wellness") && (
             <>
+              <button
+                type="button"
+                onClick={() => navigate("/wellness")}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  marginBottom: 14,
+                  background: "rgba(224,161,61,0.12)",
+                  color: "#e0a13d",
+                  border: "1px solid rgba(224,161,61,0.4)",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                🧘 Ouvrir l'onglet Wellness →
+              </button>
             <div
               style={{
                 display: "grid",
@@ -1624,6 +1652,24 @@ export default function Dashboard() {
             {foldHead("pain", "🩹 Douleur (aujourd'hui)")}
             {vis("pain") && (
             <>
+              <button
+                type="button"
+                onClick={() => navigate("/wellness")}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  marginBottom: 14,
+                  background: "rgba(224,161,61,0.12)",
+                  color: "#e0a13d",
+                  border: "1px solid rgba(224,161,61,0.4)",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                🩹 Voir / modifier dans l'onglet Wellness →
+              </button>
               <BodyScan
                 painMap={todayWellness.painMap}
                 painTypes={todayWellness.painTypes || {}}

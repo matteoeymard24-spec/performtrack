@@ -9,6 +9,7 @@ import {
 import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
+import BodyScan from "../component/BodyScan";
 import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB } from "../component/ui";
 
 import {
@@ -205,6 +206,32 @@ export default function Wellness() {
           )}
         </div>
       </div>
+
+      {/* Douleurs du jour (zone, intensité, type et sensation) */}
+      {todayEntry && todayEntry.painMap && Object.values(todayEntry.painMap).some((v) => v > 0) && (
+        <FoldCard
+          id="pain"
+          fold={fold}
+          title="🩹 Douleurs d'aujourd'hui"
+          subtitle="Zone, intensité, type et sensation — touche une zone pour le détail"
+          right={
+            <button
+              type="button"
+              onClick={() => navigate("/wellness-form")}
+              style={{ padding: "6px 12px", background: "transparent", color: "#e0a13d", border: "1px solid #e0a13d66", borderRadius: 8, cursor: "pointer", fontSize: 12 }}
+            >
+              Modifier
+            </button>
+          }
+        >
+          <BodyScan
+            painMap={todayEntry.painMap}
+            painTypes={todayEntry.painTypes || {}}
+            painSens={todayEntry.painSens || {}}
+            setPainMap={() => {}}
+          />
+        </FoldCard>
+      )}
 
       {/* Graphiques */}
       {entries.length > 0 ? (
