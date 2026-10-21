@@ -7,9 +7,6 @@ import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
   collection,
-  query,
-  where,
-  orderBy,
   addDoc,
   getDocs,
   getDoc,
@@ -811,63 +808,6 @@ export default function Workout() {
     return Math.round((rm * percent) / 100);
   };
 
-  /* ===================== CRÉATION AUTO DES RM ===================== */
-  const ensureRMsExist = async (session) => {
-    if (!currentUser || !session.blocks || session.type !== "muscu") return;
-    
-    try {
-      // Collecter tous les rmName uniques de la séance
-      const rmNames = new Set();
-      
-      session.blocks.forEach((block) => {
-        block.exercises?.forEach((exercise) => {
-          if (exercise.rmName && !isNoRmIntensity(exercise.rmPercent)) {
-            const normalized = normalizeExerciseName(exercise.rmName);
-            if (normalized) {
-              rmNames.add(normalized);
-            }
-          }
-        });
-      });
-      
-      if (rmNames.size === 0) return;
-      
-      // Récupérer les RM existants
-      const rmSnap = await getDocs(collection(db, "users", currentUser.uid, "rm"));
-      const existingRMs = new Set();
-      rmSnap.docs.forEach((d) => {
-        const normalized = normalizeExerciseName(d.id);
-        existingRMs.add(normalized);
-      });
-      
-      // Créer les RM manquants
-      const promises = [];
-      rmNames.forEach((rmName) => {
-        if (!existingRMs.has(rmName)) {
-          // RM n'existe pas, le créer avec valeur nulle
-          promises.push(
-            setDoc(doc(db, "users", currentUser.uid, "rm", rmName), {
-              kg: null, // Valeur nulle = l'athlète doit le remplir
-              exerciseName: rmName,
-              updatedAt: new Date().toISOString(),
-              autoCreated: true, // Marqueur pour savoir que c'est auto-créé
-            })
-          );
-        }
-      });
-      
-      if (promises.length > 0) {
-        await Promise.all(promises);
-        console.log(`✅ ${promises.length} RM(s) créé(s) automatiquement:`, Array.from(rmNames));
-        
-        // Recharger les RM
-        await fetchRM();
-      }
-    } catch (e) {
-      console.error("Erreur création auto RM:", e);
-      // Ne pas bloquer la séance si erreur
-    }
-  };
   
   // Fonction pour recharger les RM
   const fetchRM = async () => {
@@ -4985,7 +4925,7 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "2px solid rgba(102, 126, 234, 0.3)",
+                border: "2px solid rgba(224, 161, 61, 0.3)",
                 background: "#151310",
                 color: "#f3f0ea",
                 fontSize: 16,
@@ -4994,11 +4934,11 @@ export default function Workout() {
                 transition: "all 0.3s ease",
               }}
               onFocus={(e) => {
-                e.target.style.border = "2px solid rgba(102, 126, 234, 0.6)";
-                e.target.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.3)";
+                e.target.style.border = "2px solid rgba(224, 161, 61, 0.6)";
+                e.target.style.boxShadow = "0 0 15px rgba(224, 161, 61, 0.3)";
               }}
               onBlur={(e) => {
-                e.target.style.border = "2px solid rgba(102, 126, 234, 0.3)";
+                e.target.style.border = "2px solid rgba(224, 161, 61, 0.3)";
                 e.target.style.boxShadow = "none";
               }}
             />
@@ -5082,7 +5022,7 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "2px solid rgba(102, 126, 234, 0.3)",
+                border: "2px solid rgba(224, 161, 61, 0.3)",
                 background: "#151310",
                 color: "#f3f0ea",
                 fontSize: 16,
@@ -5102,7 +5042,7 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "2px solid rgba(102, 126, 234, 0.3)",
+                border: "2px solid rgba(224, 161, 61, 0.3)",
                 background: "#151310",
                 color: "#f3f0ea",
                 fontSize: 16,
@@ -5174,7 +5114,7 @@ export default function Workout() {
               borderRadius: 12,
               maxWidth: 500,
               width: "100%",
-              border: "2px solid #11998e",
+              border: "2px solid #4fae7d",
             }}
           >
             <h3 style={{ margin: "0 0 10px 0", color: "#38ef7d" }}>
@@ -5226,7 +5166,7 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "2px solid rgba(56, 239, 125, 0.3)",
+                border: "2px solid rgba(79, 174, 125, 0.3)",
                 background: "#151310",
                 color: "#f3f0ea",
                 fontSize: 16,
@@ -5261,7 +5201,7 @@ export default function Workout() {
                   width: "100%",
                   padding: 12,
                   borderRadius: 8,
-                  border: "2px solid rgba(56, 239, 125, 0.3)",
+                  border: "2px solid rgba(79, 174, 125, 0.3)",
                   background: "#151310",
                   color: "#f3f0ea",
                   fontSize: 16,
@@ -5304,7 +5244,7 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "2px solid rgba(56, 239, 125, 0.3)",
+                border: "2px solid rgba(79, 174, 125, 0.3)",
                 background: "#151310",
                 color: "#f3f0ea",
                 fontSize: 16,
@@ -5313,11 +5253,11 @@ export default function Workout() {
                 transition: "all 0.3s ease",
               }}
               onFocus={(e) => {
-                e.target.style.border = "2px solid rgba(56, 239, 125, 0.6)";
-                e.target.style.boxShadow = "0 0 15px rgba(56, 239, 125, 0.3)";
+                e.target.style.border = "2px solid rgba(79, 174, 125, 0.6)";
+                e.target.style.boxShadow = "0 0 15px rgba(79, 174, 125, 0.3)";
               }}
               onBlur={(e) => {
-                e.target.style.border = "2px solid rgba(56, 239, 125, 0.3)";
+                e.target.style.border = "2px solid rgba(79, 174, 125, 0.3)";
                 e.target.style.boxShadow = "none";
               }}
             />
@@ -5551,7 +5491,7 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "2px solid rgba(102, 126, 234, 0.3)",
+                border: "2px solid rgba(224, 161, 61, 0.3)",
                 background: "#151310",
                 color: "#f3f0ea",
                 fontSize: 16,
@@ -5559,11 +5499,11 @@ export default function Workout() {
                 transition: "all 0.3s ease",
               }}
               onFocus={(e) => {
-                e.target.style.border = "2px solid rgba(102, 126, 234, 0.6)";
-                e.target.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.3)";
+                e.target.style.border = "2px solid rgba(224, 161, 61, 0.6)";
+                e.target.style.boxShadow = "0 0 15px rgba(224, 161, 61, 0.3)";
               }}
               onBlur={(e) => {
-                e.target.style.border = "2px solid rgba(102, 126, 234, 0.3)";
+                e.target.style.border = "2px solid rgba(224, 161, 61, 0.3)";
                 e.target.style.boxShadow = "none";
               }}
             />
@@ -5587,7 +5527,7 @@ export default function Workout() {
                 width: "100%",
                 padding: 12,
                 borderRadius: 8,
-                border: "2px solid rgba(102, 126, 234, 0.3)",
+                border: "2px solid rgba(224, 161, 61, 0.3)",
                 background: "#151310",
                 color: "#f3f0ea",
                 fontSize: 16,
@@ -5595,11 +5535,11 @@ export default function Workout() {
                 transition: "all 0.3s ease",
               }}
               onFocus={(e) => {
-                e.target.style.border = "2px solid rgba(102, 126, 234, 0.6)";
-                e.target.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.3)";
+                e.target.style.border = "2px solid rgba(224, 161, 61, 0.6)";
+                e.target.style.boxShadow = "0 0 15px rgba(224, 161, 61, 0.3)";
               }}
               onBlur={(e) => {
-                e.target.style.border = "2px solid rgba(102, 126, 234, 0.3)";
+                e.target.style.border = "2px solid rgba(224, 161, 61, 0.3)";
                 e.target.style.boxShadow = "none";
               }}
             >
@@ -5698,7 +5638,7 @@ export default function Workout() {
                   width: "100%",
                   padding: 12,
                   borderRadius: 8,
-                  border: "2px solid rgba(102, 126, 234, 0.3)",
+                  border: "2px solid rgba(224, 161, 61, 0.3)",
                   background: "#151310",
                   color: "#f3f0ea",
                   fontSize: 16,
@@ -5706,11 +5646,11 @@ export default function Workout() {
                   transition: "all 0.3s ease",
                 }}
                 onFocus={(e) => {
-                  e.target.style.border = "2px solid rgba(102, 126, 234, 0.6)";
-                  e.target.style.boxShadow = "0 0 15px rgba(102, 126, 234, 0.3)";
+                  e.target.style.border = "2px solid rgba(224, 161, 61, 0.6)";
+                  e.target.style.boxShadow = "0 0 15px rgba(224, 161, 61, 0.3)";
                 }}
                 onBlur={(e) => {
-                  e.target.style.border = "2px solid rgba(102, 126, 234, 0.3)";
+                  e.target.style.border = "2px solid rgba(224, 161, 61, 0.3)";
                   e.target.style.boxShadow = "none";
                 }}
               >

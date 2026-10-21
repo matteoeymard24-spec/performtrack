@@ -34,12 +34,9 @@ import TestsSummary from "../component/TestsSummary";
 import {
   rediRatio,
   rediRatioHistory,
-  getREDIStatus,
   zScore,
-  loadZScoreHistory,
   wellnessZScoreHistory,
   getWellnessZScoreStatus,
-  crossRiskStatus,
   crossRiskStatusFull,
   rpeVariability,
   getRPEReliabilityStatus,
@@ -119,7 +116,7 @@ const getExerciseCategoryLabel = (value) =>
   "📦 Autre";
 
 export default function Dashboard() {
-  const { currentUser, userRole, userProfile, isSuperAdmin } = useAuth();
+  const { currentUser, userRole, userProfile } = useAuth();
   const navigate = useNavigate();
 
   // Ouvre la séance du jour dans Workout, en lecture ("voir") ou en la
@@ -245,19 +242,19 @@ export default function Dashboard() {
   // charge, sans refaire de requête Firestore séparée.
   const [athleteWorkouts, setAthleteWorkouts] = useState([]);
   const [weekOverview, setWeekOverview] = useState([]);
-  const [selfCrossStatus, setSelfCrossStatus] = useState(null);
-  const [selfRediRatio, setSelfRediRatio] = useState(null);
-  const [selfWellnessZ, setSelfWellnessZ] = useState(null);
-  const [selfCmjStatus, setSelfCmjStatus] = useState(null);
-  const [selfRpeReliability, setSelfRpeReliability] = useState(null);
+  const [, setSelfCrossStatus] = useState(null);
+  const [, setSelfRediRatio] = useState(null);
+  const [, setSelfWellnessZ] = useState(null);
+  const [, setSelfCmjStatus] = useState(null);
+  const [, setSelfRpeReliability] = useState(null);
   const [selfInjuries, setSelfInjuries] = useState([]);
   const [selfPainZone, setSelfPainZone] = useState(null);
   // Modal historique de blessures (coach) — ouvert en cliquant sur la
   // rubrique dans le détail athlète, édition/suppression sur place.
   const [showInjuryHistory, setShowInjuryHistory] = useState(false);
+  const [, setShowRMEvolution] = useState(false);
   const [editingInjury, setEditingInjury] = useState(null);
   const [injuryEditDraft, setInjuryEditDraft] = useState(null);
-  const [showRMEvolution, setShowRMEvolution] = useState(false);
   // Détail athlète (coach) : recherche d'un exercice pour sa courbe d'évolution
   const [rmSearch, setRmSearch] = useState("");
   const [rmSelected, setRmSelected] = useState(null);

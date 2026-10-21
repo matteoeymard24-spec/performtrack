@@ -12,6 +12,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { getTest, computeResult, toStoredResult } from "../component/testsCalc";
+import { Page, FoldCard, useFold, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE } from "../component/ui";
 import {
   LineChart,
   Line,
@@ -45,14 +46,10 @@ export default function MyRM() {
 
   // États VMA
   const [vma, setVma] = useState(null);
-  const [editingVMA, setEditingVMA] = useState(false);
-  const [vmaValue, setVmaValue] = useState("");
   const [vmaHistory, setVmaHistory] = useState([]);
 
   // États CMJ
   const [cmj, setCmj] = useState(null);
-  const [editingCMJ, setEditingCMJ] = useState(false);
-  const [cmjValue, setCmjValue] = useState("");
   const [cmjHistory, setCmjHistory] = useState([]);
   // CMJ détecté automatiquement quand un test CMJ est fait dans une séance
   // (même convention que Dashboard.jsx : hauteur stockée dans
@@ -105,6 +102,7 @@ export default function MyRM() {
   const [testWeight, setTestWeight] = useState("");
   const [testReps, setTestReps] = useState(1);
   const [calculated1RM, setCalculated1RM] = useState(null);
+  const fold = useFold("myrm", ["info"]);
 
   // Calculer le 1RM théorique (formule d'Epley)
   const calculate1RM = (weight, reps) => {
@@ -261,80 +259,6 @@ export default function MyRM() {
     loadSessionCmj();
   }, [currentUser]);
 
-  // Fusion CMJ manuel (saisi ici) + CMJ automatique (détecté dans les
-  // séances) en une seule série chronologique, pour que l'athlète voie son
-  // évolution complète sans avoir à ressaisir ce qui a déjà été mesuré en
-  // séance. À date égale, la valeur de séance prime (mesure réelle).
-  const mergedCmjSeries = (() => {
-    const map = {};
-    cmjHistory.forEach((h) => {
-      const d = (h.date || "").slice(0, 10);
-      if (d) map[d] = { date: d, heightCm: h.kg, source: "manuel" };
-    });
-    sessionCmjEntries.forEach((e) => {
-      map[e.date] = { date: e.date, heightCm: e.heightCm, source: "séance" };
-    });
-    return Object.values(map).sort((a, b) => a.date.localeCompare(b.date));
-  })();
-
-  /* ===================== VMA ===================== */
-  const saveVMA = async () => {
-    if (!currentUser || !vmaValue) return;
-
-    try {
-      const history = [...vmaHistory];
-
-      // Ajouter nouvelle entrée à l'historique
-      if (vma && vma.kg !== Number(vmaValue)) {
-        history.push({
-          date: new Date().toISOString(),
-          kg: Number(vmaValue),
-        });
-      } else if (!vma) {
-        history.push({
-          date: new Date().toISOString(),
-          kg: Number(vmaValue),
-        });
-      }
-
-      await setDoc(doc(db, "users", currentUser.uid, "rm", "VMA"), {
-        kg: Number(vmaValue),
-        exerciseName: "VMA",
-        updatedAt: new Date().toISOString(),
-        autoAdjusted: false,
-        history: history.slice(-20),
-      });
-
-      setVma({
-        kg: Number(vmaValue),
-        exerciseName: "VMA",
-        updatedAt: new Date().toISOString(),
-        history: history.slice(-20),
-      });
-      setVmaHistory(history.slice(-20));
-      setEditingVMA(false);
-      setVmaValue("");
-      alert("✅ VMA mise à jour !");
-    } catch (e) {
-      console.error("Erreur save VMA:", e);
-      alert("Erreur: " + e.message);
-    }
-  };
-
-  const deleteVMA = async () => {
-    if (!window.confirm("Supprimer ta VMA ?")) return;
-
-    try {
-      await deleteDoc(doc(db, "users", currentUser.uid, "rm", "VMA"));
-      setVma(null);
-      setVmaHistory([]);
-      alert("✅ VMA supprimée !");
-    } catch (e) {
-      console.error("Erreur suppression VMA:", e);
-      alert("Erreur: " + e.message);
-    }
-  };
-
   /* ===================== SPRINT (10 / 20 / 60 m) ===================== */
   const loadSprints = async () => {
     if (!currentUser) return;
@@ -394,64 +318,6 @@ export default function MyRM() {
       await loadSprints();
     } catch (e) {
       alert("❌ Erreur : " + e.message);
-    }
-  };
-
-  /* ===================== CMJ ===================== */
-  const saveCMJ = async () => {
-    if (!currentUser || !cmjValue) return;
-
-    try {
-      const history = [...cmjHistory];
-
-      // Ajouter nouvelle entrée à l'historique
-      if (cmj && cmj.kg !== Number(cmjValue)) {
-        history.push({
-          date: new Date().toISOString(),
-          kg: Number(cmjValue),
-        });
-      } else if (!cmj) {
-        history.push({
-          date: new Date().toISOString(),
-          kg: Number(cmjValue),
-        });
-      }
-
-      await setDoc(doc(db, "users", currentUser.uid, "rm", "CMJ"), {
-        kg: Number(cmjValue),
-        exerciseName: "CMJ",
-        updatedAt: new Date().toISOString(),
-        autoAdjusted: false,
-        history: history.slice(-20),
-      });
-
-      setCmj({
-        kg: Number(cmjValue),
-        exerciseName: "CMJ",
-        updatedAt: new Date().toISOString(),
-        history: history.slice(-20),
-      });
-      setCmjHistory(history.slice(-20));
-      setEditingCMJ(false);
-      setCmjValue("");
-      alert("✅ CMJ mis à jour !");
-    } catch (e) {
-      console.error("Erreur save CMJ:", e);
-      alert("Erreur: " + e.message);
-    }
-  };
-
-  const deleteCMJ = async () => {
-    if (!window.confirm("Supprimer ton CMJ ?")) return;
-
-    try {
-      await deleteDoc(doc(db, "users", currentUser.uid, "rm", "CMJ"));
-      setCmj(null);
-      setCmjHistory([]);
-      alert("✅ CMJ supprimé !");
-    } catch (e) {
-      console.error("Erreur suppression CMJ:", e);
-      alert("Erreur: " + e.message);
     }
   };
 
@@ -578,33 +444,13 @@ export default function MyRM() {
   }
 
   return (
-    <div
-      style={{
-        padding: 20,
-        background: "#151310",
-        minHeight: "100vh",
-        color: "#f3f0ea",
-        maxWidth: 800,
-        margin: "0 auto",
-      }}
-    >
-      <h2 style={{ fontSize: 24, marginBottom: 20 }}>💪 Mes RM</h2>
+    <Page>
+      <h2 style={{ ...PAGE_TITLE, marginBottom: 16 }}>💪 Mes RM</h2>
 
       {/* Info */}
-      <div
-        style={{
-          marginBottom: 30,
-          padding: 20,
-          background: "rgba(217,164,65,0.14)",
-          borderRadius: 10,
-          border: "2px solid #b8862e",
-        }}
-      >
-        <h4 style={{ marginTop: 0, color: "#d9a441", fontSize: 16 }}>
-          💡 Comment ça fonctionne ?
-        </h4>
+      <FoldCard id="info" fold={fold} title="💡 Comment ça fonctionne ?">
         <ul
-          style={{ color: "#f0c98a", lineHeight: 1.8, margin: 0, fontSize: 14 }}
+          style={{ color: "#a8a199", lineHeight: 1.7, margin: 0, fontSize: 13, paddingLeft: 18 }}
         >
           <li>
             Le <strong>1RM théorique</strong> est calculé avec la formule
@@ -625,18 +471,10 @@ export default function MyRM() {
             calculer les séances d'endurance
           </li>
         </ul>
-      </div>
+      </FoldCard>
 
       {/* ==================== VMA & CMJ : désormais gérés dans l'onglet Tests ==================== */}
-      <div
-        style={{
-          background: "#1a1815",
-          padding: 20,
-          borderRadius: 12,
-          border: "1px solid #2a2620",
-          marginBottom: 30,
-        }}
-      >
+      <FoldCard id="vmacmj" fold={fold} title="🏃 VMA & 🦘 CMJ">
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
           <div style={{ background: "#0d0c0a", padding: "10px 16px", borderRadius: 8, minWidth: 130 }}>
             <div style={{ fontSize: 12, color: "#a8a199" }}>🏃 VMA</div>
@@ -659,19 +497,10 @@ export default function MyRM() {
           par ton coach lors des tests. Retrouve tous tes résultats dans ton
           <strong> Dashboard</strong> (bloc « Mes tests »).
         </div>
-      </div>
+      </FoldCard>
 
       {/* ==================== SPRINT : 10 / 20 / 60 m ==================== */}
-      <div
-        style={{
-          background: "#1a1815",
-          padding: 20,
-          borderRadius: 12,
-          border: "1px solid #2a2620",
-          marginBottom: 30,
-        }}
-      >
-        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>⚡ Mes temps de sprint</div>
+      <FoldCard id="sprint" fold={fold} title="⚡ Mes temps de sprint">
         <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 12 }}>
           Temps en secondes, au centième (ex : 1.72). Ils sont comparés aux normes de ton poste et de ton niveau dans l'onglet Tests.
         </div>
@@ -723,7 +552,7 @@ export default function MyRM() {
             ))}
           </div>
         )}
-      </div>
+      </FoldCard>
 
       {/* ==================== BOUTON AJOUTER RM ==================== */}
       {/* Le bouton "Ajouter un exercice" a été retiré : la liste des
@@ -738,11 +567,8 @@ export default function MyRM() {
         <div
           ref={formRef}
           style={{
-            background: "#1a1815",
-            padding: 25,
-            borderRadius: 12,
-            border: "2px solid #e0a13d",
-            marginBottom: 30,
+            ...CARD_STYLE,
+            border: CARD_ACCENT_BORDER,
             scrollMarginTop: 90,
           }}
         >
@@ -885,7 +711,7 @@ export default function MyRM() {
 
       {/* ==================== RECHERCHE + CATÉGORIES ==================== */}
       {Object.keys(rmHistory).length > 0 && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ ...CARD_STYLE, padding: 14 }}>
           <input
             type="text"
             placeholder="🔍 Rechercher un exercice..."
@@ -945,11 +771,8 @@ export default function MyRM() {
       {/* ==================== LISTE DES EXERCICES ==================== */}
       {exercises.length > 0 ? (
         <>
-          <div style={{ marginBottom: 30 }}>
-            <h3 style={{ fontSize: 18, marginBottom: 15 }}>
-              📋 Mes Exercices ({exercises.length})
-            </h3>
-            <div style={{ display: "grid", gap: 12 }}>
+          <FoldCard id="list" fold={fold} title={`📋 Mes exercices (${exercises.length})`}>
+            <div style={{ display: "grid", gap: 10 }}>
               {exercises.map((exercise) => {
                 const history = rmHistory[exercise];
                 const hasData = history.length > 0;
@@ -970,11 +793,11 @@ export default function MyRM() {
                     key={exercise}
                     onClick={() => setSelectedExercise(exercise)}
                     style={{
-                      background: "#1a1815",
-                      padding: 15,
+                      background: "#0d0c0a",
+                      padding: 14,
                       borderRadius: 10,
-                      border: `2px solid ${
-                        selectedExercise === exercise ? "#e0a13d" : "rgba(255,255,255,0.16)"
+                      border: `1px solid ${
+                        selectedExercise === exercise ? "#e0a13d" : "rgba(255,255,255,0.08)"
                       }`,
                       cursor: "pointer",
                       transition: "all 0.2s",
@@ -1090,17 +913,15 @@ export default function MyRM() {
                 );
               })}
             </div>
-          </div>
+          </FoldCard>
 
           {/* ==================== DÉTAILS EXERCICE ==================== */}
           {selectedExercise && rmHistory[selectedExercise] && (
             <div
               ref={detailRef}
               style={{
-                background: "#1a1815",
-                padding: 20,
-                borderRadius: 12,
-                border: "2px solid #e0a13d",
+                ...CARD_STYLE,
+                border: CARD_ACCENT_BORDER,
                 scrollMarginTop: 90,
               }}
             >
@@ -1241,10 +1062,10 @@ export default function MyRM() {
                       <div
                         key={index}
                         style={{
-                          background: "#151310",
-                          padding: 15,
-                          borderRadius: 8,
-                          border: "1px solid #2a2620",
+                          background: "#0d0c0a",
+                          padding: 14,
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.08)",
                         }}
                       >
                         <div
@@ -1341,11 +1162,9 @@ export default function MyRM() {
         !showAddForm && (
           <div
             style={{
-              background: "#1a1815",
-              padding: 40,
-              borderRadius: 12,
+              ...CARD_STYLE,
+              padding: 32,
               textAlign: "center",
-              border: "1px solid rgba(255,255,255,0.16)",
             }}
           >
             <p style={{ fontSize: 16, margin: "0 0 10px 0" }}>
@@ -1358,6 +1177,6 @@ export default function MyRM() {
           </div>
         )
       )}
-    </div>
+    </Page>
   );
 }

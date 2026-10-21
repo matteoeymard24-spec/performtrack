@@ -234,7 +234,7 @@ export default function WellnessForm() {
         </div>
       )}
 
-      {/* Le journal de blessures est géré par le coach (page Tests › Bilan). */}
+      {/* Le journal de blessures se remplit dans la page Tests › Bilan (athlète ou coach). */}
       {douleur >= 6 && (
         <div
           style={{
@@ -247,8 +247,14 @@ export default function WellnessForm() {
             color: "#a8a199",
           }}
         >
-          🚑 Douleur élevée aujourd'hui — si c'est une vraie blessure,
-          signale-la à ton coach : il l'ajoutera à ton historique de blessures.
+          🚑 Douleur élevée aujourd'hui — si c'est une vraie blessure, ajoute-la dans{" "}
+          <button
+            onClick={() => navigate("/tests")}
+            style={{ background: "none", border: "none", color: "#d9695a", fontWeight: "bold", cursor: "pointer", padding: 0, fontSize: 13, textDecoration: "underline" }}
+          >
+            Tests › Bilan
+          </button>{" "}
+          (historique de blessures).
         </div>
       )}
 

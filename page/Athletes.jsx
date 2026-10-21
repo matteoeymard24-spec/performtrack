@@ -3,6 +3,7 @@ import { getWorkoutDocs } from "../component/workoutQueries";
 import { collection, getDocs, getDoc, setDoc, updateDoc, doc, query, where, deleteDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { Page, CARD_STYLE, CARD_ACCENT_BORDER, CARD_TITLE, PAGE_TITLE, FIELD_STYLE, FoldBtn } from "../component/ui";
 import { Navigate } from "react-router-dom";
 
 export default function Athletes() {
@@ -13,6 +14,9 @@ export default function Athletes() {
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [searchQuery, setSearchQuery] = useState("");
+  // Fiches athlètes repliées par défaut (liste plus lisible) ; en édition elle s'ouvre seule.
+  const [openUsers, setOpenUsers] = useState({});
+  const [pendingOpen, setPendingOpen] = useState(true);
 
   console.log("[Athletes] Render - userRole:", userRole, "isSuperAdmin:", isSuperAdmin);
 
@@ -375,32 +379,18 @@ export default function Athletes() {
   }
 
   return (
-    <div
-      style={{
-        padding: 20,
-        background: "#0d0c0a",
-        minHeight: "100vh",
-        color: "#f3f0ea",
-      }}
-    >
-      <h2 style={{ marginBottom: 20, fontSize: 24, fontWeight: "bold" }}>
-        👥 Gestion des Athlètes
-      </h2>
+    <Page>
+      <h2 style={{ ...PAGE_TITLE, marginBottom: 18 }}>👥 Gestion des Athlètes</h2>
 
       {pendingUsers.length > 0 && (
-        <div
-          style={{
-            background: "#1a1815",
-            border: "2px solid #e0a13d",
-            borderRadius: 12,
-            padding: 20,
-            marginBottom: 25,
-          }}
-        >
-          <h3 style={{ margin: "0 0 15px 0", fontSize: 17, color: "#e0a13d" }}>
-            🔔 Demandes d'accès en attente ({pendingUsers.length})
-          </h3>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ ...CARD_STYLE, border: CARD_ACCENT_BORDER }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: pendingOpen ? 14 : 0 }}>
+            <h3 style={{ ...CARD_TITLE, color: "#e0a13d" }}>
+              🔔 Demandes d'accès en attente ({pendingUsers.length})
+            </h3>
+            <FoldBtn open={pendingOpen} onClick={() => setPendingOpen((v) => !v)} />
+          </div>
+          {pendingOpen && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {pendingUsers.map((u) => (
               <div
                 key={u.id}
@@ -455,27 +445,18 @@ export default function Athletes() {
                 </div>
               </div>
             ))}
-          </div>
+          </div>}
         </div>
       )}
 
       {/* Barre de recherche */}
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ marginBottom: 16 }}>
         <input
           type="text"
           placeholder="🔍 Rechercher un athlète par nom ou email..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "12px 16px",
-            background: "#151310",
-            border: "2px solid #e0a13d",
-            borderRadius: 8,
-            color: "#f3f0ea",
-            fontSize: 16,
-            outline: "none",
-          }}
+          style={FIELD_STYLE}
         />
       </div>
 
@@ -491,7 +472,7 @@ export default function Athletes() {
           Aucun utilisateur trouvé
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 15 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {users.filter((u) => {
             if (u.status === "pending") return false; // déjà affichés ci-dessus
             if (!searchQuery.trim()) return true;
@@ -502,20 +483,15 @@ export default function Athletes() {
           }).map((user) => (
             <div
               key={user.id}
-              style={{
-                background: "#151310",
-                padding: 20,
-                borderRadius: 12,
-                border: "1px solid rgba(255, 255, 255, 0.05)",
-                boxShadow: "0 4px 20px rgba(0, 0, 0, 0.5)",
-              }}
+              style={{ ...CARD_STYLE, marginBottom: 0 }}
             >
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "flex-start",
-                  marginBottom: 15,
+                  gap: 8,
+                  marginBottom: openUsers[user.id] || editingUser === user.id ? 15 : 0,
                 }}
               >
                 <div>
@@ -533,6 +509,7 @@ export default function Athletes() {
                   </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div
                     style={{
                       padding: "6px 14px",
@@ -545,10 +522,14 @@ export default function Athletes() {
                           ? "#2a2620"
                           : "#e0a13d",
                       color: user.role === "admin" ? "#f3f0ea" : "#1a1306",
-                      boxShadow: "0 4px 15px rgba(0, 0, 0, 0.3)",
-                    }}
+                                          }}
                   >
                     {user.role === "admin" ? "ADMIN" : "ATHLETE"}
+                  </div>
+                  <FoldBtn
+                    open={!!openUsers[user.id] || editingUser === user.id}
+                    onClick={() => setOpenUsers((p) => ({ ...p, [user.id]: !p[user.id] }))}
+                  />
                   </div>
                   {user.status === "rejected" && (
                     <button
@@ -572,7 +553,7 @@ export default function Athletes() {
                 </div>
               </div>
 
-              {editingUser === user.id ? (
+              {(openUsers[user.id] || editingUser === user.id) && (editingUser === user.id ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <div style={{ display: "flex", gap: 10 }}>
                     <input
@@ -672,8 +653,7 @@ export default function Athletes() {
                         borderRadius: 10,
                         cursor: "pointer",
                         fontWeight: "600",
-                        boxShadow: "0 4px 15px rgba(79, 174, 125, 0.4)",
-                      }}
+                                              }}
                     >
                       ✅ Enregistrer
                     </button>
@@ -734,8 +714,7 @@ export default function Athletes() {
                         borderRadius: 10,
                         cursor: "pointer",
                         fontWeight: "600",
-                        boxShadow: "0 4px 15px rgba(224, 161, 61, 0.4)",
-                        transition: "all 0.3s ease",
+                                                transition: "all 0.3s ease",
                       }}
                       onMouseEnter={(e) => {
                         e.target.style.transform = "translateY(-2px)";
@@ -770,8 +749,7 @@ export default function Athletes() {
                           borderRadius: 10,
                           cursor: "pointer",
                           fontWeight: "600",
-                          boxShadow: "0 4px 15px rgba(0, 0, 0, 0.35)",
-                          transition: "all 0.3s ease",
+                                                    transition: "all 0.3s ease",
                         }}
                         onMouseEnter={(e) => {
                           e.target.style.transform = "translateY(-2px)";
@@ -800,8 +778,7 @@ export default function Athletes() {
                           borderRadius: 10,
                           cursor: "pointer",
                           fontWeight: "600",
-                          boxShadow: "0 4px 15px rgba(217, 105, 90, 0.4)",
-                          transition: "all 0.3s ease",
+                                                    transition: "all 0.3s ease",
                         }}
                         onMouseEnter={(e) => {
                           e.target.style.transform = "translateY(-2px)";
@@ -817,11 +794,11 @@ export default function Athletes() {
                     )}
                   </div>
                 </div>
-              )}
+              ))}
             </div>
           ))}
         </div>
       )}
-    </div>
+    </Page>
   );
 }

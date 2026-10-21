@@ -4,6 +4,7 @@ import { db } from "../firebase";
 import { getWorkoutDocs } from "../component/workoutQueries";
 import { collection, getDocs } from "firebase/firestore";
 import { Navigate } from "react-router-dom";
+import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB, FIELD_STYLE } from "../component/ui";
 import {
   LineChart,
   Line,
@@ -43,6 +44,7 @@ export default function ACWRMonitoring() {
   const [loading, setLoading] = useState(true);
   const [loadingAthlete, setLoadingAthlete] = useState(false);
   const [customGroups, setCustomGroups] = useState([]);
+  const fold = useFold("redi", ["intro", "interp"]);
 
   // 🔒 Sécurité : Admin uniquement
   if (userRole !== "admin") {
@@ -230,43 +232,29 @@ export default function ACWRMonitoring() {
   const strainStatus = currentStats ? getStrainStatus(currentStats.strainZ) : null;
 
   return (
-    <div
-      style={{
-        padding: 20,
-        background: "#151310",
-        minHeight: "100vh",
-        color: "#f3f0ea",
-      }}
-    >
-      <h2 style={{ color: "#f3f0ea", marginBottom: 10 }}>Monitoring REDI</h2>
-      <p style={{ color: "#a8a199", marginBottom: 8, maxWidth: 720 }}>
-        Charge d'entraînement (sRPE) pondérée par décroissance exponentielle
-        (Robust Exponential Decreasing Index — Moussa et al., 2020), plus
-        fiable que l'ACWR classique quand des séances ou des feedbacks
-        manquent : les jours sans donnée sont ignorés au lieu d'être comptés
-        comme nuls.
-      </p>
-      <p style={{ color: "#a8a199", marginBottom: 30, maxWidth: 720, fontSize: 13 }}>
-        Le ratio REDI (aigu / chronique) est complété par un{" "}
-        <strong style={{ color: "#e0a13d" }}>z-score individualisé</strong> :
-        il compare la charge du jour à la moyenne et l'écart-type propres à
-        cet athlète (pas à une norme générale), ce qui repère une charge
-        inhabituelle même quand le ratio reste en "zone optimale".
-      </p>
+    <Page>
+      <h2 style={PAGE_TITLE}>Monitoring REDI</h2>
+      <p style={PAGE_SUB}>Charge d'entraînement pondérée (sRPE) et z-score individualisé</p>
+
+      <FoldCard id="intro" fold={fold} title="ℹ️ Comprendre le REDI">
+        <p style={{ color: "#a8a199", margin: "0 0 10px 0", fontSize: 13, lineHeight: 1.5 }}>
+          Charge d'entraînement (sRPE) pondérée par décroissance exponentielle
+          (Robust Exponential Decreasing Index — Moussa et al., 2020), plus
+          fiable que l'ACWR classique quand des séances ou des feedbacks
+          manquent : les jours sans donnée sont ignorés au lieu d'être comptés
+          comme nuls.
+        </p>
+        <p style={{ color: "#a8a199", margin: 0, fontSize: 13, lineHeight: 1.5 }}>
+          Le ratio REDI (aigu / chronique) est complété par un{" "}
+          <strong style={{ color: "#e0a13d" }}>z-score individualisé</strong> :
+          il compare la charge du jour à la moyenne et l'écart-type propres à
+          cet athlète (pas à une norme générale), ce qui repère une charge
+          inhabituelle même quand le ratio reste en "zone optimale".
+        </p>
+      </FoldCard>
 
       {/* Sélection athlète */}
-      <div style={{ marginBottom: 30 }}>
-        <label
-          style={{
-            display: "block",
-            marginBottom: 10,
-            fontSize: 16,
-            fontWeight: "bold",
-            color: "#f3f0ea",
-          }}
-        >
-          Sélectionner un athlète :
-        </label>
+      <FoldCard id="select" fold={fold} title="👤 Athlète">
         {currentUser?.uid && athletes.some((a) => a.id === currentUser.uid) && (
           <div style={{ marginBottom: 10 }}>
             <button
@@ -296,15 +284,7 @@ export default function ACWRMonitoring() {
             const athlete = athletes.find((a) => a.id === e.target.value);
             if (athlete) loadAthleteREDI(athlete);
           }}
-          style={{
-            padding: 12,
-            borderRadius: 8,
-            border: "1px solid #2a2620",
-            background: "#1a1815",
-            color: "#f3f0ea",
-            fontSize: 16,
-            minWidth: 300,
-          }}
+          style={FIELD_STYLE}
         >
           <option value="">-- Choisir un athlète --</option>
           {athletes.map((a) => (
@@ -315,7 +295,7 @@ export default function ACWRMonitoring() {
             </option>
           ))}
         </select>
-      </div>
+      </FoldCard>
 
       {loadingAthlete && (
         <div style={{ textAlign: "center", padding: 20, color: "#a8a199" }}>
@@ -326,16 +306,8 @@ export default function ACWRMonitoring() {
       {/* Affichage REDI */}
       {selectedAthlete && !loadingAthlete && (
         <div>
-          <div
-            style={{
-              background: "#1a1815",
-              padding: 25,
-              borderRadius: 12,
-              border: "2px solid #e0a13d",
-              marginBottom: 30,
-            }}
-          >
-            <h3 style={{ margin: "0 0 20px 0", color: "#f3f0ea" }}>
+          <div>
+            <h3 style={{ margin: "0 0 12px 2px", fontSize: 18, fontWeight: 700, color: "#e0a13d" }}>
               {selectedAthlete.firstName && selectedAthlete.lastName
                 ? `${selectedAthlete.firstName} ${selectedAthlete.lastName}`
                 : selectedAthlete.displayName || selectedAthlete.email}
@@ -343,20 +315,21 @@ export default function ACWRMonitoring() {
 
             {currentStats && currentStats.ratio !== null ? (
               <>
+                <FoldCard id="kpi" fold={fold} title="📊 Indicateurs">
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-                    gap: 15,
-                    marginBottom: 20,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                    gap: 10,
+                    marginBottom: 14,
                   }}
                 >
                   <div
                     style={{
-                      background: "#151310",
-                      padding: 20,
-                      borderRadius: 8,
-                      border: `2px solid ${rediStatus.color}`,
+                      background: "#0d0c0a",
+                      padding: 14,
+                      borderRadius: 10,
+                      border: `1px solid ${rediStatus.color}`,
                     }}
                   >
                     <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
@@ -377,10 +350,10 @@ export default function ACWRMonitoring() {
 
                   <div
                     style={{
-                      background: "#151310",
-                      padding: 20,
-                      borderRadius: 8,
-                      border: `2px solid ${zStatus.color}`,
+                      background: "#0d0c0a",
+                      padding: 14,
+                      borderRadius: 10,
+                      border: `1px solid ${zStatus.color}`,
                     }}
                   >
                     <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
@@ -394,7 +367,7 @@ export default function ACWRMonitoring() {
                     </div>
                   </div>
 
-                  <div style={{ background: "#151310", padding: 20, borderRadius: 8 }}>
+                  <div style={{ background: "#0d0c0a", padding: 14, borderRadius: 10 }}>
                     <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
                       CHARGE AIGÜE REDI (~7j)
                     </div>
@@ -403,7 +376,7 @@ export default function ACWRMonitoring() {
                     </div>
                   </div>
 
-                  <div style={{ background: "#151310", padding: 20, borderRadius: 8 }}>
+                  <div style={{ background: "#0d0c0a", padding: 14, borderRadius: 10 }}>
                     <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
                       CHARGE CHRONIQUE REDI (~28j)
                     </div>
@@ -415,10 +388,10 @@ export default function ACWRMonitoring() {
                   {currentStats.monotony !== null && (
                     <div
                       style={{
-                        background: "#151310",
-                        padding: 20,
-                        borderRadius: 8,
-                        border: `2px solid ${monotonyStatus.color}`,
+                        background: "#0d0c0a",
+                        padding: 14,
+                        borderRadius: 10,
+                        border: `1px solid ${monotonyStatus.color}`,
                       }}
                     >
                       <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
@@ -436,10 +409,10 @@ export default function ACWRMonitoring() {
                   {currentStats.strain !== null && (
                     <div
                       style={{
-                        background: "#151310",
-                        padding: 20,
-                        borderRadius: 8,
-                        border: `2px solid ${strainStatus.color}`,
+                        background: "#0d0c0a",
+                        padding: 14,
+                        borderRadius: 10,
+                        border: `1px solid ${strainStatus.color}`,
                       }}
                     >
                       <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 5 }}>
@@ -459,9 +432,8 @@ export default function ACWRMonitoring() {
                   style={{
                     fontSize: 12,
                     color: "#a8a199",
-                    marginBottom: 30,
                     padding: "8px 12px",
-                    background: "#151310",
+                    background: "#0d0c0a",
                     borderRadius: 8,
                     display: "inline-block",
                   }}
@@ -472,13 +444,11 @@ export default function ACWRMonitoring() {
                   </strong>{" "}
                   ({currentStats.dailyCount} jours avec séance renseignée)
                 </div>
+                </FoldCard>
 
                 {/* Graphique REDI */}
-                <div>
-                  <h4 style={{ color: "#f3f0ea", marginBottom: 15 }}>
-                    Évolution du ratio REDI (60 derniers jours)
-                  </h4>
-                  <ResponsiveContainer width="100%" height={400}>
+                <FoldCard id="chart" fold={fold} title="📈 Évolution du ratio REDI" subtitle="60 derniers jours">
+                  <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={rediData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
                       <XAxis
@@ -511,20 +481,10 @@ export default function ACWRMonitoring() {
                       />
                     </LineChart>
                   </ResponsiveContainer>
-                </div>
+                </FoldCard>
 
                 {/* Légende */}
-                <div
-                  style={{
-                    marginTop: 30,
-                    padding: 20,
-                    background: "#151310",
-                    borderRadius: 8,
-                  }}
-                >
-                  <h4 style={{ margin: "0 0 15px 0", color: "#f3f0ea" }}>
-                    Interprétation
-                  </h4>
+                <FoldCard id="interp" fold={fold} title="🧭 Interprétation">
                   <div
                     style={{
                       display: "grid",
@@ -588,15 +548,14 @@ export default function ACWRMonitoring() {
                     l'historique propre de l'athlète, car son niveau
                     "normal" dépend entièrement du profil individuel.
                   </p>
-                </div>
+                </FoldCard>
               </>
             ) : (
               <div
                 style={{
+                  ...CARD_STYLE,
                   textAlign: "center",
-                  padding: 40,
-                  background: "#151310",
-                  borderRadius: 8,
+                  padding: 32,
                   color: "#a8a199",
                 }}
               >
@@ -617,9 +576,8 @@ export default function ACWRMonitoring() {
         <div
           style={{
             textAlign: "center",
-            padding: 60,
-            background: "#1a1815",
-            borderRadius: 12,
+            ...CARD_STYLE,
+            padding: 40,
             color: "#a8a199",
           }}
         >
@@ -628,6 +586,6 @@ export default function ACWRMonitoring() {
           </p>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

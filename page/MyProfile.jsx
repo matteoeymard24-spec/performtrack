@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
+import { Page, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE, PAGE_SUB } from "../component/ui";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 
 export default function MyProfile() {
@@ -109,47 +110,12 @@ export default function MyProfile() {
   }
 
   return (
-    <div
-      style={{
-        padding: 20,
-        background: "#0d0c0a",
-        minHeight: "100vh",
-        color: "#f3f0ea",
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          background: "#e0a13d",
-          color: "#1a1306",
-          padding: "24px 20px",
-          borderRadius: 12,
-          marginBottom: 25,
-          boxShadow: "0 4px 20px rgba(224, 161, 61, 0.4)",
-          textAlign: "center",
-        }}
-      >
-        <div style={{ fontSize: 32, marginBottom: 8 }}>👤</div>
-        <h2 style={{ margin: 0, fontSize: 24, fontWeight: "800" }}>
-          Mon Profil
-        </h2>
-        <div style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>
-          {isAdmin ? "👑 Administrateur" : "🏃 Athlète"}
-        </div>
-      </div>
+    <Page>
+      <h2 style={PAGE_TITLE}>👤 Mon Profil</h2>
+      <p style={PAGE_SUB}>{isAdmin ? "👑 Administrateur" : "🏃 Athlète"}</p>
 
       {/* Carte principale */}
-      <div
-        style={{
-          background: "#151310",
-          padding: 25,
-          borderRadius: 12,
-          border: "1px solid rgba(255, 255, 255, 0.05)",
-          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.5)",
-          maxWidth: "600px",
-          margin: "0 auto",
-        }}
-      >
+      <div style={CARD_STYLE}>
         {/* Email (non éditable) */}
         <div style={{ marginBottom: 20 }}>
           <label
@@ -168,7 +134,7 @@ export default function MyProfile() {
           <div
             style={{
               padding: 14,
-              background: "#151310",
+              background: "#0d0c0a",
               borderRadius: 10,
               border: "1px solid rgba(255, 255, 255, 0.1)",
               color: "#a8a199",
@@ -207,7 +173,7 @@ export default function MyProfile() {
               border: editing
                 ? "2px solid rgba(102, 126, 234, 0.5)"
                 : "1px solid rgba(255, 255, 255, 0.1)",
-              background: editing ? "#151310" : "#151310",
+              background: "#0d0c0a",
               color: "white",
               transition: "all 0.3s ease",
               outline: "none",
@@ -244,7 +210,7 @@ export default function MyProfile() {
               border: editing
                 ? "2px solid rgba(102, 126, 234, 0.5)"
                 : "1px solid rgba(255, 255, 255, 0.1)",
-              background: editing ? "#151310" : "#151310",
+              background: "#0d0c0a",
               color: "white",
               transition: "all 0.3s ease",
               outline: "none",
@@ -290,7 +256,7 @@ export default function MyProfile() {
                 border: editing
                   ? "2px solid rgba(102, 126, 234, 0.5)"
                   : "1px solid rgba(255, 255, 255, 0.1)",
-                background: editing ? "#151310" : "#151310",
+                background: "#0d0c0a",
                 color: "white",
                 transition: "all 0.3s ease",
                 outline: "none",
@@ -327,7 +293,7 @@ export default function MyProfile() {
                 border: editing
                   ? "2px solid rgba(102, 126, 234, 0.5)"
                   : "1px solid rgba(255, 255, 255, 0.1)",
-                background: editing ? "#151310" : "#151310",
+                background: "#0d0c0a",
                 color: "white",
                 transition: "all 0.3s ease",
                 outline: "none",
@@ -366,7 +332,7 @@ export default function MyProfile() {
                 border: editing
                   ? "2px solid rgba(102, 126, 234, 0.5)"
                   : "1px solid rgba(255, 255, 255, 0.1)",
-                background: editing ? "#151310" : "#151310",
+                background: "#0d0c0a",
                 color: "white",
                 transition: "all 0.3s ease",
                 outline: "none",
@@ -405,7 +371,7 @@ export default function MyProfile() {
             <div
               style={{
                 padding: 14,
-                background: "#151310",
+                background: "#0d0c0a",
                 borderRadius: 10,
                 border: "1px solid rgba(255, 255, 255, 0.1)",
                 color: "#a8a199",
@@ -520,25 +486,16 @@ export default function MyProfile() {
 
       {/* Info card - Athlètes uniquement */}
       {!isAdmin && (
-        <div
-          style={{
-            maxWidth: "600px",
-            margin: "20px auto 0",
-            padding: 16,
-            background: "#e0a13d",
-            borderRadius: 12,
-            boxShadow: "0 4px 15px rgba(224, 161, 61, 0.3)",
-          }}
-        >
+        <div style={{ ...CARD_STYLE, border: CARD_ACCENT_BORDER }}>
           <div style={{ fontSize: 14, fontWeight: "600", display: "flex", alignItems: "center", gap: 8 }}>
             <span>💡</span>
             <span>Votre poids se gère depuis le Dashboard</span>
           </div>
-          <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>
+          <div style={{ marginTop: 6, fontSize: 13, color: "#a8a199" }}>
             Mettez à jour votre poids quotidiennement depuis votre tableau de bord personnel.
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

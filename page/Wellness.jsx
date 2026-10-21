@@ -5,11 +5,11 @@ import {
   where,
   orderBy,
   getDocs,
-  doc,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
+import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB } from "../component/ui";
 
 import {
   LineChart,
@@ -120,6 +120,8 @@ export default function Wellness() {
     );
   });
 
+  const fold = useFold("wellness");
+
   const weeklyAverage =
     thisWeekEntries.length > 0
       ? (
@@ -129,20 +131,9 @@ export default function Wellness() {
       : null;
 
   return (
-    <div
-      style={{
-        padding: 20,
-        background: "#151310",
-        minHeight: "100vh",
-        color: "#f3f0ea",
-      }}
-    >
-      <h2 style={{ color: "#f3f0ea", marginBottom: 10 }}>
-        Wellness – Suivi détaillé
-      </h2>
-      <p style={{ color: "#a8a199", marginBottom: 30 }}>
-        Suivez votre état de forme quotidien et votre récupération
-      </p>
+    <Page>
+      <h2 style={PAGE_TITLE}>Wellness – Suivi détaillé</h2>
+      <p style={PAGE_SUB}>Suivez votre état de forme quotidien et votre récupération</p>
 
       <button
         onClick={() => navigate("/wellness-form")}
@@ -155,7 +146,7 @@ export default function Wellness() {
           cursor: "pointer",
           fontSize: 16,
           fontWeight: "bold",
-          marginBottom: 30,
+          marginBottom: 20,
         }}
       >
         📝 Remplir le questionnaire
@@ -166,16 +157,15 @@ export default function Wellness() {
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-          gap: 20,
-          marginBottom: 40,
+          gap: 12,
+          marginBottom: 16,
         }}
       >
         <div
           style={{
-            background: "#1a1815",
-            padding: 25,
-            borderRadius: 12,
-            border: "2px solid #e0a13d",
+            ...CARD_STYLE,
+            marginBottom: 0,
+            border: "1px solid #e0a13d88",
           }}
         >
           <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8 }}>
@@ -195,10 +185,9 @@ export default function Wellness() {
 
         <div
           style={{
-            background: "#1a1815",
-            padding: 25,
-            borderRadius: 12,
-            border: "2px solid #4fae7d",
+            ...CARD_STYLE,
+            marginBottom: 0,
+            border: "1px solid #4fae7d88",
           }}
         >
           <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8 }}>
@@ -218,23 +207,10 @@ export default function Wellness() {
       </div>
 
       {/* Graphiques */}
-      <div
-        style={{
-          background: "#1a1815",
-          padding: 25,
-          borderRadius: 12,
-          border: "1px solid rgba(255,255,255,0.16)",
-          marginBottom: 30,
-        }}
-      >
-        {entries.length > 0 ? (
+      {entries.length > 0 ? (
           <>
             {/* Graphique principal : score global, mis en avant */}
-            <div style={{ marginBottom: 35 }}>
-              <h4 style={{ color: "#f3f0ea", marginBottom: 4 }}>Score global</h4>
-              <p style={{ color: "#706a61", fontSize: 12, marginBottom: 12 }}>
-                Moyenne des 7 indicateurs (fatigue, stress et douleur inversés) — 10 = meilleur état
-              </p>
+            <FoldCard id="global" fold={fold} title="Score global" subtitle="Moyenne des 7 indicateurs (fatigue, stress et douleur inversés) — 10 = meilleur état">
               <ResponsiveContainer width="100%" height={260}>
                 <AreaChart data={entries}>
                   <defs>
@@ -259,14 +235,10 @@ export default function Wellness() {
                   />
                 </AreaChart>
               </ResponsiveContainer>
-            </div>
+            </FoldCard>
 
             {/* Indicateurs à surveiller (on veut les voir BAS) */}
-            <div style={{ marginBottom: 35 }}>
-              <h4 style={{ color: "#f3f0ea", marginBottom: 4 }}>Indicateurs à surveiller</h4>
-              <p style={{ color: "#706a61", fontSize: 12, marginBottom: 12 }}>
-                Fatigue, stress, douleur — idéalement bas
-              </p>
+            <FoldCard id="watch" fold={fold} title="Indicateurs à surveiller" subtitle="Fatigue, stress, douleur — idéalement bas">
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={entries}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
@@ -279,14 +251,10 @@ export default function Wellness() {
                   <Line type="monotone" dataKey="douleur" name="Douleur" stroke={NEGATIVE_COLORS.douleur} strokeWidth={2} strokeDasharray={DASH_BY_INDEX[2]} dot={false} activeDot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
-            </div>
+            </FoldCard>
 
             {/* Indicateurs positifs (on veut les voir HAUT) */}
-            <div>
-              <h4 style={{ color: "#f3f0ea", marginBottom: 4 }}>Indicateurs positifs</h4>
-              <p style={{ color: "#706a61", fontSize: 12, marginBottom: 12 }}>
-                Sommeil, nutrition, hydratation, motivation — idéalement haut
-              </p>
+            <FoldCard id="pos" fold={fold} title="Indicateurs positifs" subtitle="Sommeil, nutrition, hydratation, motivation — idéalement haut">
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={entries}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
@@ -300,13 +268,14 @@ export default function Wellness() {
                   <Line type="monotone" dataKey="motivation" name="Motivation" stroke={POSITIVE_COLORS.motivation} strokeWidth={2} strokeDasharray={DASH_BY_INDEX[3]} dot={false} activeDot={{ r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
-            </div>
+            </FoldCard>
           </>
-        ) : (
+      ) : (
           <div
             style={{
+              ...CARD_STYLE,
               textAlign: "center",
-              padding: 60,
+              padding: 40,
               color: "#a8a199",
             }}
           >
@@ -317,8 +286,7 @@ export default function Wellness() {
               Commencez à remplir votre questionnaire quotidien !
             </p>
           </div>
-        )}
-      </div>
-    </div>
+      )}
+    </Page>
   );
 }

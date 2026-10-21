@@ -9,7 +9,6 @@ const SURFACE_2 = "#1a1815";
 const SURFACE_3 = "#221f1a";
 const BORDER = "rgba(255,255,255,0.08)";
 const BORDER_STRONG = "rgba(255,255,255,0.16)";
-const TEXT = "#f3f0ea";
 const TEXT_MUTED = "#a8a199";
 const EMPTY_ZONE = "#2a2620";
 

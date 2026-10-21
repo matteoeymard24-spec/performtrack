@@ -10,7 +10,6 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  arrayUnion,
   serverTimestamp,
   query,
   where,
@@ -31,7 +30,6 @@ import {
   POSTES,
   posteLabel,
   hasNorms,
-  getMatchRef,
   evaluateTestNorms,
   evaluateLadderRows,
   evaluateStrength,
@@ -40,7 +38,7 @@ import {
   levelLabel,
   noteColor,
 } from "../component/norms";
-import { NormList, MatchRefCard, LevelTable, PatternList } from "../component/NormsUI";
+import { NormList, LevelTable } from "../component/NormsUI";
 
 const ACCENT = "#e0a13d";
 const SURFACE = "#151310";
@@ -72,7 +70,7 @@ const inputStyle = {
   color: TEXT,
   fontSize: 14,
 };
-const cardStyle = { background: SURFACE, padding: 16, borderRadius: 10, marginBottom: 14 };
+const cardStyle = { background: SURFACE, padding: 16, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", marginBottom: 16 };
 const pill = (active) => ({
   padding: "8px 14px",
   borderRadius: 999,
@@ -479,20 +477,6 @@ export default function Tests() {
     setMedia((m) => ({ ...m, [tid]: data }));
   };
 
-  /* ---- note globale /20 : moyenne des derniers tests mobilité / force iso ---- */
-  const globalNote = useMemo(() => {
-    const latest = {};
-    tests.forEach((t) => {
-      if (!["mobilite", "force_iso"].includes(t.group)) return;
-      if (!latest[t.testId]) latest[t.testId] = t;
-    });
-    const notes = Object.values(latest)
-      .map((t) => score20(getTest(t.testId), t.values))
-      .filter((n) => n != null);
-    if (!notes.length) return null;
-    return Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 10) / 10;
-  }, [tests]);
-
   /* ---- bilan mobilité par zone (dernier résultat de chaque test mobilité / force iso) ---- */
   const zoneBilan = useMemo(() => {
     const latest = {};
@@ -783,7 +767,7 @@ export default function Tests() {
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", color: TEXT }}>
-      <h2 style={{ margin: "0 0 4px 0" }}>🧪 Tests</h2>
+      <h2 style={{ margin: "0 0 4px 0", fontSize: 24, fontWeight: 700 }}>🧪 Tests</h2>
       <div style={{ color: MUTED, fontSize: 13, marginBottom: 14 }}>
         {isCoach
           ? "Saisis les tests d'endurance, de mobilité, de force isométrique et de saut. Les séances énergétiques s'appuient sur le test de référence choisi pour chaque athlète."
