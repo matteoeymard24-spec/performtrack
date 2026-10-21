@@ -4,7 +4,7 @@
    Une pièce `one:true` reflétée partage un seul id (cou, tête…).
    Champs : id, label, side, d (forme), f (traits de détail), t (teinte 0-3),
    fill (teinte forcée), legacy (anciens ids dont la valeur s'applique). */
-export const VB = { w: 320, h: 660, cx: 160 };
+export const VB = { w: 320, h: 672, cx: 160 };
 
 /* ---- Silhouette commune (face avant = face arrière) ---- */
 const SIL_BASE = [
@@ -61,8 +61,19 @@ const footSil = (shapes) => {
   const arc = a.length > b.length ? a : b;
   return "L" + arc.map(([x, y]) => `${R1(x)} ${R1(y)}`).join(" L") + " L150 606 L150 600";
 };
-const TOES = [[146, 645, 5.6, 7.5], [138.6, 647.5, 3.5, 7], [132.6, 646.5, 3.2, 6.3], [127.2, 644.5, 3, 5.6], [122.2, 642, 2.7, 4.8]];
-const FRONT_FOOT_SHAPES = [{ poly: [[128, 606], [142, 606], [146, 622], [152, 640], [118, 640], [121, 622]] }, ...TOES.map((e) => ({ ell: e }))];
+const FOREFOOT = [[128, 606], [142, 606], [146, 622], [152, 640], [120, 640], [122, 622]];
+/* orteils : [x gauche, x droit, bas, arrondi] — côte à côte, soudés à l'avant-pied */
+const TOE_CAPS = [[142.5, 152, 656, 5], [136.5, 142, 658, 3], [131, 136.1, 655, 3], [126, 130.6, 651, 3], [120, 125.6, 646, 3]];
+/* contour unique (encoches entre les orteils) : pas de traits parasites à la jonction */
+const FOOT_LOCAL = (() => {
+  let d = "M128 606 L142 606 L146 622 L152 640";
+  TOE_CAPS.forEach(([x0, x1, yb, r], i) => {
+    d += ` L${x1} ${yb} C${x1} ${yb + r} ${x0} ${yb + r} ${x0} ${yb} L${x0} 643`;
+    if (i < TOE_CAPS.length - 1) d += ` L${TOE_CAPS[i + 1][1]} 643`;
+  });
+  return d + " L122 622 Z";
+})();
+const FRONT_FOOT_SHAPES = [{ poly: FOREFOOT }, ...TOE_CAPS.map(([x0, x1, yb, r]) => ({ poly: [[x0, 638], [x1, 638], [x1, yb + r], [x0, yb + r]] }))];
 const BACK_FOOT_SHAPES = [{ poly: [[128, 606], [142, 606], [146, 622], [143, 634], [127, 634], [124, 622]] }, { ell: [135, 630, 9, 10] }];
 const SIL_SEG = "C128 608 126 614 123 622 C119 630 114 642 117 650 L153 652 C158 645 155 628 151 618 C150 612 150 606 150 600";
 const makeSil = (shapes) => [SIL_BASE[0].replace(SIL_SEG, footSil(shapes)), SIL_BASE[1]];
@@ -80,59 +91,98 @@ const HAND = "M50 324 L72 324 C74 334 74 344 73 350 L50 350 C49 344 49 334 50 32
 const HAND_F = ["M56 350 L56 372", "M61.5 350 L61.5 376", "M67 350 L67 366", "M52 338 C58 342 66 342 71 338"];
 /* Pied vu de face : cheville → dos du pied → orteils, légèrement ouvert vers l'extérieur */
 /* Pied vu de face : dos du pied + 5 orteils arrondis, tourné vers l'extérieur */
-const FOOT = footPath(polyD(FRONT_FOOT_SHAPES[0].poly) + " " + TOES.map((e) => ellD(...e)).join(" "));
-const FOOT_F = ["M136 641 L136 649", "M130 640 L130 648", "M124.8 639 L124.8 645", "M133 610 C134 620 134 630 134 640", "M139 610 C142 620 143 630 143 640"].map(footPath);
+const FOOT = footPath(FOOT_LOCAL);
+const FOOT_F = ["M133 610 C134 620 134 630 134 640", "M139 610 C142 620 143 630 143 640"].map(footPath);
 /* Pied vu de dos : talon + bord externe */
 const FOOT_BACK = footPath(polyD(BACK_FOOT_SHAPES[0].poly) + " " + ellD(135, 630, 9, 10));
 const FOOT_BACK_F = ["M135 610 L135 628"].map(footPath);
-/* Squelette main / pied (os générés) */
-const bone = (x, y, w, h) => `M${x} ${y} L${x + w} ${y} L${x + w} ${y + h} L${x} ${y + h} Z`;
+/* ---- Squelette : générateurs d'os ---- */
+const f1 = (n) => Math.round(n * 10) / 10;
+const pt = (a) => `${f1(a[0])} ${f1(a[1])}`;
+/* os long effilé : de (x0,y0) largeur w0 à (x1,y1) largeur w1, extrémités arrondies */
+const shaft = (x0, y0, w0, x1, y1, w1) => {
+  const L = Math.hypot(x1 - x0, y1 - y0) || 1;
+  const tx = (x1 - x0) / L;
+  const ty = (y1 - y0) / L;
+  const nx = -ty;
+  const ny = tx;
+  const A = [x0 + (nx * w0) / 2, y0 + (ny * w0) / 2];
+  const B = [x0 - (nx * w0) / 2, y0 - (ny * w0) / 2];
+  const D = [x1 + (nx * w1) / 2, y1 + (ny * w1) / 2];
+  const C = [x1 - (nx * w1) / 2, y1 - (ny * w1) / 2];
+  const k1 = w1 * 0.66;
+  const k0 = w0 * 0.66;
+  return `M${pt(A)} L${pt(D)} C${f1(D[0] + tx * k1)} ${f1(D[1] + ty * k1)} ${f1(C[0] + tx * k1)} ${f1(C[1] + ty * k1)} ${pt(C)} L${pt(B)} C${f1(B[0] - tx * k0)} ${f1(B[1] - ty * k0)} ${f1(A[0] - tx * k0)} ${f1(A[1] - ty * k0)} ${pt(A)} Z`;
+};
+const rrect = (x, y, w, h, r) =>
+  `M${f1(x + r)} ${f1(y)} L${f1(x + w - r)} ${f1(y)} Q${f1(x + w)} ${f1(y)} ${f1(x + w)} ${f1(y + r)} L${f1(x + w)} ${f1(y + h - r)} Q${f1(x + w)} ${f1(y + h)} ${f1(x + w - r)} ${f1(y + h)} L${f1(x + r)} ${f1(y + h)} Q${f1(x)} ${f1(y + h)} ${f1(x)} ${f1(y + h - r)} L${f1(x)} ${f1(y + r)} Q${f1(x)} ${f1(y)} ${f1(x + r)} ${f1(y)} Z`;
+/* vertèbre : corps + apophyses transverses (tp = longueur) */
+const vertebra = (cx, y, w, h, tp) => {
+  const p = [rrect(cx - w / 2, y, w, h, Math.min(2.2, h / 2))];
+  if (tp > 0) {
+    p.push(shaft(cx - w / 2 + 1, y + h / 2, h * 0.55, cx - w / 2 - tp, y + h / 2 - 0.6, h * 0.4));
+    p.push(shaft(cx + w / 2 - 1, y + h / 2, h * 0.55, cx + w / 2 + tp, y + h / 2 - 0.6, h * 0.4));
+  }
+  return p.join(" ");
+};
+const stack = (n, y0, step, h, w0, w1, tp0, tp1) =>
+  Array.from({ length: n }, (_, i) => {
+    const t = n > 1 ? i / (n - 1) : 0;
+    return vertebra(160, y0 + i * step, w0 + (w1 - w0) * t, h, tp0 + (tp1 - tp0) * t);
+  }).join(" ");
+
 const HAND_BONES = (() => {
-  const p = ["M52 324 L70 324 L72 338 L50 338 Z"];
-  [52, 57.5, 63, 68.5].forEach((x) => p.push(bone(x, 340, 3.6, 12)));
-  [[50.8, [9, 7, 6]], [56.3, [10, 8, 7]], [61.8, [9, 7, 6]], [67.3, [7, 5, 5]]].forEach(([x, segs]) => {
-    let y = 353;
-    segs.forEach((h) => { p.push(bone(x, y, 3.6, h)); y += h + 1.5; });
+  const p = [];
+  [[54, 326], [59, 325], [64, 325], [69, 327], [56.5, 331.5], [62, 331], [67.5, 332], [51.5, 332.5]].forEach(([x, y]) => p.push(ellD(x, y, 2.8, 2.6)));
+  const top = [55, 59.5, 64, 68.5];
+  const bot = [54, 59.5, 65, 70.5];
+  top.forEach((x, i) => p.push(shaft(x, 334, 3.4, bot[i], 351.5, 3.8)));
+  [[54, 3.6, [10, 6, 5.5]], [59.5, 3.6, [11, 7, 6]], [65, 3.4, [10, 6.5, 5.5]], [70.5, 3, [7.5, 5, 4.5]]].forEach(([x, w, segs]) => {
+    let y = 353.2;
+    segs.forEach((h, i) => { p.push(shaft(x, y, w - i * 0.15, x, y + h, w - 0.3 - i * 0.15)); y += h + 1.5; });
   });
-  p.push("M50 328 L53 326 L50 344 L46 342 Z", "M46 345 L50 346 L48 354 L44 353 Z", "M44 355 L48 356 L46 362 L43 361 Z");
+  p.push(shaft(52, 332, 4, 47, 347, 4.4), shaft(46.5, 348.5, 4, 44, 357, 3.8), shaft(43.5, 358.5, 3.6, 41.5, 365.5, 3.2));
   return p.join(" ");
 })();
+
 const FOOT_BONES_FRONT = (() => {
-  const p = [polyD([[128, 608], [145, 608], [149, 624], [122, 624]])];
-  for (let i = 0; i < 5; i++) {
-    const a = 124.5 + i * 5;
-    const b = 119 + i * 6.2;
-    const w = i === 4 ? 6 : 4;
-    p.push(polyD([[a, 625], [a + 4, 625], [b + w, 637], [b, 637]]), polyD([[b, 638], [b + w, 638], [b + w, 646], [b, 646]]));
-  }
+  const p = [ellD(135, 612, 8, 5.5), ellD(142, 620, 5, 4.5), ellD(129, 621, 5, 4), ellD(135.5, 626, 4.2, 3.4)];
+  const top = [127, 131.5, 136, 140.5, 146];
+  const bot = [123, 129, 135, 141, 148];
+  top.forEach((x, i) => p.push(shaft(x, 627, i === 4 ? 6 : 4.4, bot[i], 639.5, i === 4 ? 6.6 : 4.2)));
+  p.push(shaft(148.4, 641.5, 6.2, 148.6, 648.5, 5.4), shaft(148.7, 650, 5.2, 148.8, 655.5, 4));
+  [[141, 3.4, [6, 4.5, 3.5]], [135, 3.2, [6, 4, 3.5]], [129.5, 3, [5.5, 4, 3]], [124, 2.8, [5, 3.5, 3]]].forEach(([x, w, segs]) => {
+    let y = 641.5;
+    segs.forEach((h, i) => { p.push(shaft(x, y, w - i * 0.15, x, y + h, w - 0.35 - i * 0.15)); y += h + 1.3; });
+  });
   return footPath(p.join(" "));
 })();
-/* Côtes : arcs arrondis qui montent puis redescendent ; côtes 1-7 attachées au sternum,
-   8-10 au rebord costal, 11-12 flottantes. */
+const FOOT_BONES_BACK = footPath(ellD(135, 630, 8, 11) + " " + ellD(135, 612, 6.5, 5.5));
+
+/* Côtes : arcs qui s'éloignent du rachis puis redescendent ; 10 paires visibles de face (7 vraies,
+   3 fausses), 12 de dos. */
 const RIBS_FRONT = (() => {
-  const xo = [126, 120, 115, 112, 110.5, 110, 111, 112, 114, 118];
+  const xo = [127, 121, 116, 112, 110, 109.5, 110.5, 112, 114, 118];
   const out = [];
   for (let i = 0; i < 10; i++) {
-    const sx = i < 7 ? 157 : [150, 145, 140][i - 7];
-    const sy = i < 7 ? 124 + i * 7.7 : [175, 183, 191][i - 7];
-    const d = i < 7 ? 14 + i * 2.2 : 28 - (i - 7);
+    const sx = i < 7 ? 150 : [148, 146, 144][i - 7];
+    const sy = i < 7 ? 122 + i * 9 : [184, 193, 202][i - 7];
+    const d = i < 7 ? 13 + i * 2.4 : 29 - (i - 7);
     out.push(`M${sx} ${sy} C${sx - 12} ${sy - 7} ${xo[i] + 9} ${sy + d - 15} ${xo[i]} ${sy + d}`);
   }
-  out.push("M124 196 C120 200 116 204 113 210", "M122 204 C119 208 116 212 114 217");
   return out;
 })();
 const RIBS_BACK = (() => {
   const xo = [128, 122, 117, 113, 111, 110, 110, 111, 113, 116, 120, 124];
   const out = [];
   for (let i = 0; i < 12; i++) {
-    const sy = 124 + i * 8.6;
+    const sy = 120 + i * 9.4;
     const d = i < 10 ? 14 + i * 1.6 : 10 - (i - 10) * 2;
     const sx = i < 10 ? 152 : 153;
     out.push(`M${sx} ${sy} C${sx - 10} ${sy - 4} ${xo[i] + 8} ${sy + d - 13} ${xo[i]} ${sy + d}`);
   }
   return out;
 })();
-const FOOT_BONES_BACK = footPath(ellD(135, 629, 7.5, 11) + " " + polyD([[130, 606], [140, 606], [142, 617], [128, 617]]));
 const mirrorPath = (d) => d.replace(/(-?\d+\.?\d*) (-?\d+\.?\d*)/g, (m, x, y) => `${320 - x} ${y}`);
 const faceDeco = (d, fill) => ({ deco: true, side: "c", d, fill });
 const EYE = "M144 42 C147 39 152 39 155 42 C152 45 147 45 144 42 Z";
@@ -153,6 +203,29 @@ const FACE_PARTS = [
   faceDeco("M148 74 C152 71 156 72 160 73 C164 72 168 71 172 74 C160 76 160 76 148 74 Z", "#7a2a22"),
   faceDeco("M148 74 C160 77 160 77 172 74 C168 81 152 81 148 74 Z", "#a8453a"),
   faceDeco("M150 82 C155 86 165 86 170 82 C168 89 152 89 150 82 Z", "#a9503f"),
+];
+const hairDeco = (d, fill, extra = {}) => ({ deco: true, side: "c", d, fill, stroke: "#1c0f0a", ...extra });
+const hairLine = (d) => ({ deco: true, side: "c", d, fill: "none", stroke: "#150a06", sw: 0.8 });
+const HAIR_FRONT = [
+  hairDeco("M131 46 C128 26 140 12.5 160 12.5 C180 12.5 192 26 189 46 C187 38 184 31 180 28 C172 22 148 22 140 28 C136 31 133 38 131 46 Z", "#3a2217"),
+  hairDeco("M131 46 C132 52 134 57 137 60 L138 50 Z", "#3a2217"),
+  hairDeco(mirrorPath("M131 46 C132 52 134 57 137 60 L138 50 Z"), "#3a2217"),
+  hairLine("M160 13 C158 17 155 21 150 24"),
+  hairLine("M160 13 C163 17 166 21 171 24"),
+  hairLine("M150 14 C146 18 142 22 139 28"),
+  hairLine("M171 14 C175 18 178 22 181 28"),
+  hairLine("M141 16 C136 22 133 30 132 38"),
+  hairLine("M179 16 C184 22 187 30 188 38"),
+];
+const HAIR_BACK = [
+  hairDeco("M131 46 C128 26 140 12.5 160 12.5 C180 12.5 192 26 189 46 C189 58 185 66 177 71 C170 67 150 67 143 71 C135 66 131 58 131 46 Z", "#3a2217"),
+  hairLine("M160 14 L160 66"),
+  hairLine("M160 22 C148 28 140 40 139 58"),
+  hairLine("M160 22 C172 28 180 40 181 58"),
+  hairLine("M160 36 C152 42 147 52 147 64"),
+  hairLine("M160 36 C168 42 173 52 173 64"),
+  hairLine("M146 17 C138 24 134 34 133 44"),
+  hairLine("M174 17 C182 24 186 34 187 44"),
 ];
 const DELT = "M94 112 C82 112 74 124 73 140 C72 156 74 172 84 190 C90 180 94 166 100 154 C108 140 116 128 115 120 C110 114 102 112 94 112 Z";
 
@@ -181,6 +254,7 @@ const M_FRONT = {
     { id: "tete", side: "c", label: "Tête", t: 1, d: HEAD + " " + EARS,
       f: ["M140 36 C145 32 154 32 158 36", "M162 36 C166 32 175 32 180 36", "M151 76 C156 78 164 78 169 76"] },
     ...FACE_PARTS,
+    ...HAIR_FRONT,
   ],
 };
 
@@ -205,63 +279,83 @@ const M_BACK = {
     { id: "pied", side: "lr", label: "Pied (talon)", t: 3, d: FOOT_BACK, f: FOOT_BACK_F },
     { id: "tete", side: "c", label: "Tête (arrière)", t: 1, d: HEAD + " " + EARS,
       f: ["M160 18 L160 80", "M138 66 C146 74 174 74 182 66"] },
+    ...HAIR_BACK,
   ],
 };
 
 /* ======================= SQUELETTE ======================= */
-/* Os : couleur "ivoire" ; articulations : zones cliquables distinctes (ellipses). */
+/* Os en ivoire, articulations en ambre (zones cliquables à part). */
+const FEMUR = shaft(125.5, 341, 13, 138, 452, 12.5) + " " + ellD(117, 346, 6.5, 8) + " " + shaft(124, 338, 7, 131, 346, 9) + " " + ellD(139, 462, 12.5, 9.5);
+const TIBIA = shaft(141.5, 490, 15, 139.5, 594, 10.5) + " " + ellD(141, 598, 6, 5);
+const PERONE = shaft(125, 496, 5.5, 126, 596, 6.5) + " " + ellD(125, 493, 4.6, 4.6) + " " + ellD(126, 600, 4.4, 5);
+const HUMERUS = shaft(88, 136, 12, 85, 226, 10.5) + " " + ellD(85, 232, 10, 7);
+const AVANT_BRAS = shaft(91, 244, 9.5, 66, 322, 5.5) + " " + ellD(91, 242, 6, 6) + " " + shaft(80, 250, 5, 57, 322, 8.5) + " " + ellD(80, 248, 4.6, 4.2);
+
 const S_COMMON_ARM = [
-  { id: "humerus", side: "lr", label: "Humérus", kind: "bone", d: "M86 130 C82 132 82 142 82 152 C81 182 80 206 80 224 C80 230 84 234 88 234 C92 234 94 230 94 224 C94 206 96 182 96 152 C96 142 96 132 92 130 Z" },
-  { id: "avantbras", side: "lr", label: "Avant-bras (radius, cubitus)", kind: "bone", d: "M80 246 C74 270 68 294 60 316 L64 320 C74 298 84 272 88 250 Z M91 248 C87 272 81 298 70 320 L74 324 C86 302 95 274 98 252 Z" },
+  { id: "humerus", side: "lr", label: "Humérus", kind: "bone", d: HUMERUS },
+  { id: "avantbras", side: "lr", label: "Avant-bras (radius, cubitus)", kind: "bone", d: AVANT_BRAS },
   { id: "main", side: "lr", label: "Main (carpe, métacarpes, doigts)", kind: "bone", d: HAND_BONES },
-  { id: "epaule", side: "lr", label: "Épaule (articulation)", kind: "joint", d: "M79 122 C79 111 103 111 103 122 C104 135 78 135 79 122 Z" },
-  { id: "coude", side: "lr", label: "Coude", kind: "joint", d: "M78 236 C78 230 96 230 96 236 C97 246 77 246 78 236 Z" },
-  { id: "poignet", side: "lr", label: "Poignet", kind: "joint", d: "M56 322 C58 330 80 332 80 324 C80 318 58 316 56 322 Z" },
+  { id: "epaule", side: "lr", label: "Épaule (articulation)", kind: "joint", d: ellD(90, 122, 12, 11) },
+  { id: "coude", side: "lr", label: "Coude", kind: "joint", d: ellD(87, 237, 11, 8) },
+  { id: "poignet", side: "lr", label: "Poignet", kind: "joint", d: ellD(61.5, 326, 11, 5.5) },
 ];
 const S_COMMON_LEG = [
-  { id: "femur", side: "lr", label: "Fémur", kind: "bone", d: "M122 340 C118 344 118 350 120 358 C124 384 128 420 132 452 L128 462 C128 468 146 468 146 462 L142 452 C140 420 136 380 132 350 C132 344 128 340 122 340 Z" },
-  { id: "tibia", side: "lr", label: "Tibia & péroné", kind: "bone", d: "M130 486 L146 486 C146 520 144 560 142 592 L134 592 C134 560 132 520 130 486 Z M121 490 C119 530 121 566 125 596 L129 596 C127 566 125 530 127 490 Z" },
-  { id: "hanche", side: "lr", label: "Hanche (articulation)", kind: "joint", d: "M110 326 C110 316 134 316 134 326 C135 340 109 340 110 326 Z" },
-  { id: "genou", side: "lr", label: "Genou (articulation)", kind: "joint", d: "M124 474 C124 462 152 462 152 474 C153 488 123 488 124 474 Z" },
-  { id: "cheville", side: "lr", label: "Cheville", kind: "joint", d: "M123 602 C123 594 147 594 147 602 C148 612 122 612 123 602 Z" },
+  { id: "femur", side: "lr", label: "Fémur", kind: "bone", d: FEMUR },
+  { id: "tibia", side: "lr", label: "Tibia & péroné", kind: "bone", d: TIBIA + " " + PERONE },
+  { id: "hanche", side: "lr", label: "Hanche (articulation)", kind: "joint", d: ellD(124, 327, 12.5, 11) },
+  { id: "genou", side: "lr", label: "Genou (articulation)", kind: "joint", d: ellD(138, 474, 14, 9.5) },
+  { id: "cheville", side: "lr", label: "Cheville", kind: "joint", d: ellD(135, 604, 12, 6.5) },
 ];
+const PATELLA = { deco: true, side: "lr", d: ellD(138.5, 471, 6.8, 8.6), fill: "#e4dccb", stroke: "#6d6352", sw: 1 };
+
+const SKULL_ORBITS = "M140 40 C140 45 142 49 147 49 C152 49 156 46 156 41 C156 37 153 35 148 35 C144 35 140 36 140 40 Z M180 40 C180 36 176 35 172 35 C167 35 164 37 164 41 C164 46 168 49 173 49 C178 49 180 45 180 40 Z M160 51 C157 54 156 60 158 63 L162 63 C164 60 163 54 160 51 Z";
+const TEETH_F = (() => {
+  const l = ["M144 66.5 L176 66.5", "M144 72 L176 72", "M143 76 L177 76", "M145 82 L175 82"];
+  for (let i = 0; i <= 8; i++) { const x = 144 + i * 4; l.push(`M${x} 66.5 L${x} 72`, `M${x - 0.5} 76 L${x - 0.5} 82`); }
+  return l;
+})();
 
 const S_FRONT = {
   sil: SIL_FRONT, head: HEAD, skel: true,
   parts: [
-    { id: "clavicule", side: "lr", label: "Clavicule", kind: "bone", d: "M158 112 C146 108 128 108 112 110 C102 111 96 114 91 119 L94 123 C100 119 108 117 118 116 C132 114 146 115 158 120 Z" },
-    { id: "cotes", side: "lr", label: "Côtes & cage thoracique", kind: "bone",
-      d: "M158 120 C136 114 118 124 112 142 C106 166 108 192 116 208 C124 216 140 220 158 222 Z",
-      fillOnly: true,
-      f: RIBS_FRONT },
+    { id: "clavicule", side: "lr", label: "Clavicule", kind: "bone", d: "M157 113 C150 110 140 109 130 110 C118 110 106 112 96 118 C93 120 92 122 93 124 L96 125 C100 122 108 118 118 117 C130 116 142 117 152 120 C156 121 158 120 158 117 Z" },
+    { id: "cotes", side: "lr", label: "Côtes & cage thoracique", kind: "bone", d: "M152 120 C132 114 116 124 110 144 C104 168 106 196 116 214 C126 224 140 226 152 226 Z", fillOnly: true, f: RIBS_FRONT },
     ...S_COMMON_ARM,
-    { id: "bassin", side: "lr", label: "Bassin (ilium, pubis)", kind: "bone", d: "M157 274 C148 266 134 262 122 265 C116 272 115 286 118 298 C121 308 127 314 134 317 L142 314 L150 324 C153 327 157 326 160 324 L160 300 C158 292 158 283 157 274 Z M140 304 C146 304 147 313 142 316 C137 317 134 309 140 304 Z" },
+    { id: "bassin", side: "lr", label: "Bassin (ilium, ischion, pubis)", kind: "bone",
+      d: "M154 270 C146 262 130 258 118 262 C111 266 110 276 113 286 C115 293 120 298 125 302 C124 310 124 316 128 320 C131 324 136 326 140 324 L144 332 C146 336 150 338 154 336 L158 332 L158 318 C156 306 156 296 154 286 C153 280 153 274 154 270 Z M138 308 C136 311 136 314 137 316 C139 321 144 321 145 316 C146 310 142 306 138 308 Z",
+      f: ["M126 278 C122 284 122 290 125 296", "M146 274 C142 270 134 268 126 270"] },
     ...S_COMMON_LEG,
-    { id: "crane", side: "c", label: "Crâne & mâchoire", kind: "bone", d: "M160 14 C180 14 189 28 189 46 C189 54 187 60 183 64 C182 70 180 74 176 76 L174 78 L146 78 L144 76 C140 74 138 70 137 64 C133 60 131 54 131 46 C131 28 140 14 160 14 Z M141 42 C141 48 153 49 155 42 C155 36 142 35 141 42 Z M165 42 C165 48 177 49 179 42 C179 36 167 35 165 42 Z M160 52 C157 56 156 62 158 64 L162 64 C164 62 163 56 160 52 Z M143 81 L177 81 C177 87 172 91 166 92 L154 92 C148 91 143 87 143 81 Z", f: ["M137 56 C140 62 146 66 150 67", "M183 56 C180 62 174 66 170 67", "M148 72 L172 72", "M152 72 L152 77 M156 72 L156 77 M160 72 L160 77 M164 72 L164 77 M168 72 L168 77", "M156 86 L164 86"] },
-    { id: "cervicales", side: "c", label: "Vertèbres cervicales", kind: "bone", d: "M153 88 L167 88 L167 94 L153 94 Z M153 96 L167 96 L167 102 L153 102 Z M154 104 L166 104 L166 111 L154 111 Z" },
-    { id: "sternum", side: "c", label: "Sternum", kind: "bone", d: "M154 120 L166 120 L167 134 L165 170 C163 178 161 182 160 184 C159 182 157 178 155 170 L153 134 Z", f: ["M155 134 L165 134"] },
-    { id: "lombaire", side: "c", label: "Vertèbres lombaires", kind: "bone", d: [0, 1, 2, 3, 4].map((i) => `M151 ${224 + i * 9.5} L169 ${224 + i * 9.5} L169 ${231 + i * 9.5} L151 ${231 + i * 9.5} Z`).join(" ") },
+    PATELLA,
     { id: "pied", side: "lr", label: "Pied (tarse, métatarses, orteils)", kind: "bone", d: FOOT_BONES_FRONT },
-    { id: "sacrum", side: "c", label: "Sacrum & coccyx", kind: "bone", d: "M153 276 L167 276 L164 294 L160 303 L156 294 Z" },
+    { id: "crane", side: "c", label: "Crâne & mâchoire", kind: "bone",
+      d: "M160 14 C180 14 189 28 189 46 C189 54 187 60 183 64 C182 70 180 74 177 77 L143 77 C140 74 138 70 137 64 C133 60 131 54 131 46 C131 28 140 14 160 14 Z " + SKULL_ORBITS + " M142 76 L178 76 C178 84 174 90 167 92 L153 92 C146 90 142 84 142 76 Z",
+      f: ["M137 56 C140 62 146 66 150 66", "M183 56 C180 62 174 66 170 66", "M160 63 L160 66", ...TEETH_F, "M143 78 C141 82 142 86 146 89", "M177 78 C179 82 178 86 174 89"] },
+    { id: "cervicales", side: "c", label: "Vertèbres cervicales", kind: "bone", d: stack(7, 91, 3.6, 3.1, 11, 13, 0, 3) },
+    { id: "thoracique", side: "c", label: "Vertèbres thoraciques", kind: "bone", d: stack(12, 116, 8.7, 6.6, 14, 18, 2, 6) },
+    { id: "lombaire", side: "c", label: "Vertèbres lombaires", kind: "bone", d: stack(5, 222, 9.8, 8.2, 19, 22, 8, 10) },
+    { id: "sacrum", side: "c", label: "Sacrum & coccyx", kind: "bone", d: "M150 272 C154 270 166 270 170 272 L167 292 C165 300 163 306 160 310 C157 306 155 300 153 292 Z M158 311 L162 311 L161 318 L159 318 Z", f: ["M154 280 L157 280", "M163 280 L166 280", "M155 288 L158 288", "M162 288 L165 288"] },
   ],
 };
 
 const S_BACK = {
   sil: SIL_BACK, head: HEAD, skel: true,
   parts: [
-    { id: "cotes", side: "lr", label: "Côtes & cage thoracique", kind: "bone", d: "M157 122 C138 114 118 124 112 146 C106 172 108 198 118 214 L157 226 Z", fillOnly: true,
-      f: RIBS_BACK },
-    { id: "omoplate", side: "lr", label: "Omoplate", kind: "bone", d: "M104 124 L140 130 C138 148 134 164 126 176 C116 172 108 156 104 124 Z", f: ["M104 130 C118 134 130 138 140 142"] },
+    { id: "cotes", side: "lr", label: "Côtes & cage thoracique", kind: "bone", d: "M152 118 C134 112 116 124 110 146 C104 172 106 198 118 214 L152 228 Z", fillOnly: true, f: RIBS_BACK },
+    { id: "omoplate", side: "lr", label: "Omoplate", kind: "bone", d: "M102 124 C112 121 126 123 140 130 C141 148 136 166 128 178 C121 181 113 172 109 158 C105 146 103 134 102 124 Z", f: ["M103 128 C118 133 130 138 141 143"] },
     { id: "clavicule", side: "lr", label: "Clavicule / acromion", kind: "bone", d: "M146 112 C134 110 118 110 104 112 C96 113 92 116 90 120 L94 124 C98 120 106 118 116 117 C130 115 140 116 148 118 Z" },
     ...S_COMMON_ARM,
-    { id: "bassin", side: "lr", label: "Bassin (ilium, ischion)", kind: "bone", d: "M157 268 C148 260 134 258 122 261 C116 268 115 284 119 300 C122 312 126 320 130 324 C134 327 138 323 138 318 C142 311 150 306 160 302 L160 284 C158 278 158 272 157 268 Z", f: ["M146 270 C136 270 124 274 116 284"] },
+    { id: "bassin", side: "lr", label: "Bassin (ilium, ischion)", kind: "bone",
+      d: "M158 266 C148 258 132 255 119 258 C111 262 108 274 111 288 C113 298 118 306 124 312 C124 318 127 326 132 330 C136 332 140 330 141 326 C145 316 152 308 158 304 Z",
+      f: ["M146 268 C136 266 124 270 116 280"] },
     ...S_COMMON_LEG,
-    { id: "crane", side: "c", label: "Crâne", kind: "bone", d: "M160 14 C181 14 190 28 189 46 C189 58 185 68 178 74 L176 80 L144 80 L142 74 C135 68 131 58 131 46 C131 28 140 14 160 14 Z", f: ["M160 16 L160 62", "M137 34 C148 28 172 28 183 34", "M141 64 C150 70 170 70 179 64"] },
-    { id: "cervicales", side: "c", label: "Vertèbres cervicales", kind: "bone", d: [0, 1, 2, 3, 4, 5, 6].map((i) => `M153 ${86 + i * 3.6} L167 ${86 + i * 3.6} L167 ${88.6 + i * 3.6} L153 ${88.6 + i * 3.6} Z`).join(" ") },
-    { id: "thoracique", side: "c", label: "Vertèbres thoraciques", kind: "bone", d: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((i) => `M152 ${113 + i * 9} L168 ${113 + i * 9} L168 ${120 + i * 9} L152 ${120 + i * 9} Z`).join(" ") },
-    { id: "lombaire", side: "c", label: "Vertèbres lombaires", kind: "bone", d: [0, 1, 2, 3, 4].map((i) => `M151 ${224 + i * 9.5} L169 ${224 + i * 9.5} L169 ${231 + i * 9.5} L151 ${231 + i * 9.5} Z`).join(" ") },
+    PATELLA,
     { id: "pied", side: "lr", label: "Pied (calcanéus, talon)", kind: "bone", d: FOOT_BONES_BACK },
-    { id: "sacrum", side: "c", label: "Sacrum & coccyx", kind: "bone", d: "M152 274 L168 274 L165 294 L160 306 L155 294 Z", f: ["M156 282 L164 282"] },
+    { id: "crane", side: "c", label: "Crâne", kind: "bone", d: "M160 14 C181 14 190 28 189 46 C189 58 185 68 178 74 L176 80 L144 80 L142 74 C135 68 131 58 131 46 C131 28 140 14 160 14 Z",
+      f: ["M160 16 L160 62", "M137 34 C148 28 172 28 183 34", "M141 64 C150 70 170 70 179 64"] },
+    { id: "cervicales", side: "c", label: "Vertèbres cervicales", kind: "bone", d: stack(7, 88, 3.8, 3.2, 11, 13, 0, 3) },
+    { id: "thoracique", side: "c", label: "Vertèbres thoraciques", kind: "bone", d: stack(12, 114, 8.8, 6.8, 14, 18, 2, 6) },
+    { id: "lombaire", side: "c", label: "Vertèbres lombaires", kind: "bone", d: stack(5, 222, 9.8, 8.2, 19, 22, 8, 10) },
+    { id: "sacrum", side: "c", label: "Sacrum & coccyx", kind: "bone", d: "M148 266 L172 266 C171 280 169 292 166 302 C164 310 162 316 160 322 C158 316 156 310 154 302 C151 292 149 280 148 266 Z M158 323 L162 323 L161 330 L159 330 Z", f: ["M154 276 L157 276", "M163 276 L166 276", "M155 286 L158 286", "M162 286 L165 286", "M156 296 L158 296", "M162 296 L164 296"] },
   ],
 };
 
@@ -272,7 +366,7 @@ export const ANAT = {
 
 /* ---- Tête agrandie (proportion plus réaliste) : transformation appliquée au crâne,
    au visage et aux décors de la tête, autour du bas du cou. ---- */
-const HEAD_SCALE = 1.17;
+const HEAD_SCALE = 1.15;
 const HX = 160;
 const HY = 89;
 const headPath = (d) => d.replace(NUM_PAIR, (m, x, y) => `${R1(HX + (x - HX) * HEAD_SCALE)} ${R1(HY + (y - HY) * HEAD_SCALE)}`);

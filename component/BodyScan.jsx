@@ -190,7 +190,18 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
   // Dessin d'une pièce (un côté) : forme cliquable + traits de détail
   function renderPart(part, side, key) {
     if (part.deco) {
-      return <path key={key} d={part.d} fill={part.fill} stroke="#3b1a14" strokeWidth={0.7} strokeLinejoin="round" style={{ pointerEvents: "none" }} />;
+      return (
+        <path
+          key={key}
+          d={part.d}
+          fill={part.fill}
+          stroke={part.stroke || "#3b1a14"}
+          strokeWidth={part.sw || 0.7}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ pointerEvents: "none" }}
+        />
+      );
     }
     const id = partId(part, side, mode, view);
     const zone = zoneById[id];
@@ -225,9 +236,11 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
       }
     }
 
-    const detailStroke = isSkel ? (part.fillOnly ? BONE : BONE_LINE) : "rgba(30,10,6,0.5)";
-    const detailWidth = isSkel && part.fillOnly ? 2.6 : 0.85;
-    const detailOpacity = isSkel && part.fillOnly && value > 0 ? 0.55 : 1;
+    const skelBone = isSkel && !joint && !part.fillOnly;
+    const ribs = isSkel && part.fillOnly;
+    const detailStroke = ribs ? (value > 0 ? painColor(value) : BONE) : isSkel ? BONE_LINE : "rgba(30,10,6,0.5)";
+    const detailWidth = ribs ? 3.4 : 0.85;
+    const detailOpacity = 1;
 
     return (
       <g
@@ -237,16 +250,24 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
         onMouseLeave={() => setHoverZone(null)}
         style={{ cursor: "pointer" }}
       >
-        <path
-          d={part.d}
-          fill={fill}
-          fillOpacity={fillOpacity}
-          stroke={isSel ? ACCENT : part.fillOnly ? "none" : stroke}
-          strokeWidth={isSel ? 2.6 : 1}
-          strokeLinejoin="round"
-        />
-        {!isSkel && (
-          <path d={part.d} fill={`url(#${uid}hl)`} stroke="none" style={{ pointerEvents: "none" }} />
+        {skelBone ? (
+          <>
+            {/* contour dessiné dessous puis recouvert : seul le bord extérieur de l'os reste visible */}
+            <path d={part.d} fill={fill} stroke={isSel ? ACCENT : BONE_LINE} strokeWidth={isSel ? 3.6 : 2.2} strokeLinejoin="round" />
+            <path d={part.d} fill={fill} fillOpacity={fillOpacity} stroke="none" />
+          </>
+        ) : (
+          <path
+            d={part.d}
+            fill={fill}
+            fillOpacity={fillOpacity}
+            stroke={isSel ? ACCENT : part.fillOnly ? "none" : stroke}
+            strokeWidth={isSel ? 2.6 : 1}
+            strokeLinejoin="round"
+          />
+        )}
+        {(!isSkel || skelBone) && (
+          <path d={part.d} fill={`url(#${uid}hl)`} fillOpacity={isSkel ? 0.55 : 1} stroke="none" style={{ pointerEvents: "none" }} />
         )}
         {(isHover || isSel) && (
           <path
@@ -256,6 +277,10 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
             style={{ pointerEvents: "none" }}
           />
         )}
+        {ribs &&
+          (part.f || []).map((f, i) => (
+            <path key={`u${i}`} d={f} fill="none" stroke={BONE_LINE} strokeWidth={5.4} strokeLinecap="round" style={{ pointerEvents: "none" }} />
+          ))}
         {(part.f || []).map((f, i) => (
           <path
             key={i}
