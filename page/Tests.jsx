@@ -1313,6 +1313,34 @@ export default function Tests() {
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                   Dernier résultat de chaque test. Force, vitesse, CMJ et endurance sont notés avec le barème du poste (niveau visé pris en compte).
                 </div>
+                {(() => {
+                  const parts = ["mobilite", "force", "vitesse", "cmj", "endurance"]
+                    .map((k) => ({ k, d: domainNotes[k] }))
+                    .filter((x) => x.d && x.d.avg != null);
+                  const total = parts.length ? Math.round((parts.reduce((a, x) => a + x.d.avg, 0) / parts.length) * 10) / 10 : null;
+                  return (
+                    <div style={{ background: "#151310", borderRadius: 12, padding: "14px 16px", marginBottom: 4, border: `1px solid ${BORDER}` }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                        <strong style={{ fontSize: 15 }}>🏆 Note physique globale</strong>
+                        {total != null ? (
+                          <span style={{ fontSize: 28, fontWeight: 800, color: noteColor(total) }}>
+                            {total}
+                            <span style={{ fontSize: 13, color: MUTED }}> / 20</span>
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 12, color: MUTED }}>pas encore de donnée</span>
+                        )}
+                      </div>
+                      {total != null && (
+                        <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
+                          Moyenne de {parts.length} domaine{parts.length > 1 ? "s" : ""} sur 5 (poids égal) :{" "}
+                          {parts.map((x) => `${x.d.title.replace(/^\S+\s/, "")} ${x.d.avg}`).join(" · ")}
+                          {parts.length < 5 ? ". Plus tu passes de tests, plus la note est complète." : "."}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 {!normsOn && (
                   <div style={{ fontSize: 12, color: ACCENT, marginBottom: 8 }}>
                     Choisis le sport et le poste de l'athlète en haut de la page pour obtenir les notes de force, vitesse, CMJ et endurance.

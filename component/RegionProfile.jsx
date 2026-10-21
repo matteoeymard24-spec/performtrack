@@ -16,15 +16,15 @@ export default function RegionProfile({ tests, onPickTest = null, title = "🧭 
   const [open, setOpen] = useState(null);
   const profiles = useMemo(() => computeRegionProfiles(latestByTestId(tests)), [tests]);
 
-  const sorted = [...profiles].sort((a, b) => REGION_STATE[a.state].order - REGION_STATE[b.state].order);
+  const sorted = profiles.filter((p) => p.state !== "nodata").sort((a, b) => REGION_STATE[a.state].order - REGION_STATE[b.state].order);
   const anyData = profiles.some((p) => p.state !== "nodata");
 
   return (
     <div>
       {title ? <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div> : null}
       <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>
-        Le FMS donne un signal ; un test spécifique de la région le confirme. Plus tu fais de tests, plus le profil est précis.
-        Repères indicatifs : le FMS ne prédit pas la blessure à lui seul.
+        Les régions sans aucun test sont masquées. Le FMS donne un signal ; un test spécifique de la région le confirme. La barre répartit 100 % de l'attention à donner
+        entre les régions : plus une région est en difficulté, plus sa part est grande. Repères indicatifs : le FMS ne prédit pas la blessure à lui seul.
       </div>
       {!anyData && (
         <div style={{ color: MUTED, fontSize: 13, marginBottom: 8 }}>
@@ -58,10 +58,10 @@ export default function RegionProfile({ tests, onPickTest = null, title = "🧭 
 
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                 <div style={{ flex: 1, height: 5, background: "#1d1a16", borderRadius: 3, overflow: "hidden" }}>
-                  <div style={{ width: `${p.pct}%`, height: "100%", background: st.color }} />
+                  <div style={{ width: `${p.priority}%`, height: "100%", background: st.color }} />
                 </div>
                 <span style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>
-                  Précision : {p.confidence} ({p.pct} %)
+                  Priorité : {p.priority} %
                 </span>
               </div>
 

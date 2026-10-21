@@ -147,7 +147,7 @@ export const REGION_STATE = {
 export function computeRegionProfiles(latestByTest) {
   const fmsValues = latestByTest.fms?.values || null;
 
-  return REGIONS.map((reg) => {
+  const profiles = REGIONS.map((reg) => {
     const signals = reg.fms
       .map((f) => {
         const sg = fmsSignal(fmsValues, f.key);
@@ -219,6 +219,32 @@ export function computeRegionProfiles(latestByTest) {
 
     return { ...reg, signals, specific, missing, state, tags: [...tags], pct, confidence, note, fmsFlag };
   });
+  return withPriority(profiles);
+}
+
+/* Poids de chaque état dans la répartition de l'attention (choix de conception, pas une norme publiée) :
+   plus la région est en difficulté, plus elle prend de place ; sans donnée = poids moyen (on ne sait pas). */
+export const PRIORITY_WEIGHT = { pain: 4, deficit: 3, watch: 2, tocheck: 1.5, nodata: 1, measured: 1, ok_fms: 0.6, ok: 0.4 };
+
+/* Répartit 100 % entre les régions testées selon leur état ; arrondi à l'entier en gardant un total de 100. */
+function withPriority(profiles) {
+  // les régions sans aucun test (nodata) sont masquées : elles ne prennent pas de part
+  const w = profiles.map((p) => (p.state === "nodata" ? 0 : PRIORITY_WEIGHT[p.state] ?? 1));
+  const sum = w.reduce((a, b) => a + b, 0);
+  if (!sum) return profiles.map((p) => ({ ...p, priority: 0 }));
+  const raw = w.map((x) => (x / sum) * 100);
+  const floor = raw.map(Math.floor);
+  let left = 100 - floor.reduce((a, b) => a + b, 0);
+  raw
+    .map((r, i) => ({ i, frac: r - Math.floor(r) }))
+    .sort((a, b) => b.frac - a.frac)
+    .forEach((x) => {
+      if (left > 0) {
+        floor[x.i] += 1;
+        left -= 1;
+      }
+    });
+  return profiles.map((p, i) => ({ ...p, priority: floor[i] }));
 }
 
 /* Dernier résultat de chaque test à partir de la liste Firestore (triée ou non) */
