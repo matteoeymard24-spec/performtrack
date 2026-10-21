@@ -19,14 +19,15 @@ const FAX = 135;
 const FAY = 606;
 const R1 = (n) => Math.round(n * 10) / 10;
 const NUM_PAIR = /(-?\d+\.?\d*) (-?\d+\.?\d*)/g;
-const fxy = (x, y) => {
+const BACK_ANGLE = (5 * Math.PI) / 180;
+const fxy = (x, y, ang = FOOT_ANGLE) => {
   const dx = (x - FAX) * FOOT_SCALE;
   const dy = (y - FAY) * FOOT_SCALE;
-  const c = Math.cos(FOOT_ANGLE);
-  const s = Math.sin(FOOT_ANGLE);
+  const c = Math.cos(ang);
+  const s = Math.sin(ang);
   return [FAX + dx * c - dy * s, FAY + dx * s + dy * c];
 };
-const footPath = (d) => d.replace(NUM_PAIR, (m, x, y) => { const [a, b] = fxy(+x, +y); return `${R1(a)} ${R1(b)}`; });
+const footPath = (d, ang) => d.replace(NUM_PAIR, (m, x, y) => { const [a, b] = fxy(+x, +y, ang); return `${R1(a)} ${R1(b)}`; });
 const polyD = (pts) => "M" + pts.map(([x, y]) => `${x} ${y}`).join(" L") + " Z";
 const ellD = (cx, cy, rx, ry) => {
   const k = 0.5523;
@@ -42,19 +43,19 @@ const hullOf = (pts) => {
   return lo.slice(0, -1).concat(up.slice(0, -1));
 };
 /* shapes : { poly: [[x,y]…] } ou { ell: [cx,cy,rx,ry] } en coordonnées locales */
-const footSil = (shapes) => {
+const footSil = (shapes, ang) => {
   const pts = [];
   shapes.forEach((sh) => {
-    if (sh.poly) sh.poly.forEach(([x, y]) => pts.push(fxy(x, y)));
+    if (sh.poly) sh.poly.forEach(([x, y]) => pts.push(fxy(x, y, ang)));
     else {
       const [cx, cy, rx, ry] = sh.ell;
-      for (let a = 0; a < 360; a += 20) pts.push(fxy(cx + rx * Math.cos((a * Math.PI) / 180), cy + ry * Math.sin((a * Math.PI) / 180)));
+      for (let a = 0; a < 360; a += 20) pts.push(fxy(cx + rx * Math.cos((a * Math.PI) / 180), cy + ry * Math.sin((a * Math.PI) / 180), ang));
     }
   });
   const h = hullOf(pts);
   const near = (t) => h.reduce((bi, q, i) => (Math.hypot(q[0] - t[0], q[1] - t[1]) < Math.hypot(h[bi][0] - t[0], h[bi][1] - t[1]) ? i : bi), 0);
-  const iL = near(fxy(128, 606));
-  const iR = near(fxy(142, 606));
+  const iL = near(fxy(128, 606, ang));
+  const iR = near(fxy(142, 606, ang));
   const walk = (dir) => { const out = [h[iL]]; let i = iL; while (i !== iR) { i = (i + dir + h.length) % h.length; out.push(h[i]); } return out; };
   const a = walk(1);
   const b = walk(-1);
@@ -76,9 +77,9 @@ const FOOT_LOCAL = (() => {
 const FRONT_FOOT_SHAPES = [{ poly: FOREFOOT }, ...TOE_CAPS.map(([x0, x1, yb, r]) => ({ poly: [[x0, 638], [x1, 638], [x1, yb + r], [x0, yb + r]] }))];
 const BACK_FOOT_SHAPES = [{ poly: [[128, 606], [142, 606], [146, 622], [143, 634], [127, 634], [124, 622]] }, { ell: [135, 630, 9, 10] }];
 const SIL_SEG = "C128 608 126 614 123 622 C119 630 114 642 117 650 L153 652 C158 645 155 628 151 618 C150 612 150 606 150 600";
-const makeSil = (shapes) => [SIL_BASE[0].replace(SIL_SEG, footSil(shapes)), SIL_BASE[1]];
+const makeSil = (shapes, ang) => [SIL_BASE[0].replace(SIL_SEG, footSil(shapes, ang)), SIL_BASE[1]];
 const SIL_FRONT = makeSil(FRONT_FOOT_SHAPES);
-const SIL_BACK = makeSil(BACK_FOOT_SHAPES);
+const SIL_BACK = makeSil(BACK_FOOT_SHAPES, BACK_ANGLE);
 
 const HEAD = "M160 14 C180 14 189 28 189 46 C189 58 187 66 184 72 C181 80 174 86 166 88 L160 89 L154 88 C146 86 139 80 136 72 C133 66 131 58 131 46 C131 28 140 14 160 14 Z";
 const EARS = "M131 42 C126 42 125 52 128 59 C129 62 132 62 133 60 Z M189 42 C194 42 195 52 192 59 C191 62 188 62 187 60 Z";
@@ -94,8 +95,8 @@ const HAND_F = ["M56 350 L56 372", "M61.5 350 L61.5 376", "M67 350 L67 366", "M5
 const FOOT = footPath(FOOT_LOCAL);
 const FOOT_F = ["M133 610 C134 620 134 630 134 640", "M139 610 C142 620 143 630 143 640"].map(footPath);
 /* Pied vu de dos : talon + bord externe */
-const FOOT_BACK = footPath(polyD(BACK_FOOT_SHAPES[0].poly) + " " + ellD(135, 630, 9, 10));
-const FOOT_BACK_F = ["M135 610 L135 628"].map(footPath);
+const FOOT_BACK = footPath(polyD(BACK_FOOT_SHAPES[0].poly) + " " + ellD(135, 630, 9, 10), BACK_ANGLE);
+const FOOT_BACK_F = ["M135 610 L135 628"].map((d) => footPath(d, BACK_ANGLE));
 /* ---- Squelette : générateurs d'os ---- */
 const f1 = (n) => Math.round(n * 10) / 10;
 const pt = (a) => `${f1(a[0])} ${f1(a[1])}`;
@@ -157,7 +158,7 @@ const FOOT_BONES_FRONT = (() => {
   });
   return footPath(p.join(" "));
 })();
-const FOOT_BONES_BACK = footPath(ellD(135, 630, 8, 11) + " " + ellD(135, 612, 6.5, 5.5));
+const FOOT_BONES_BACK = footPath(ellD(135, 630, 8, 11) + " " + ellD(135, 612, 6.5, 5.5), BACK_ANGLE);
 
 /* Côtes : arcs qui s'éloignent du rachis puis redescendent ; 10 paires visibles de face (7 vraies,
    3 fausses), 12 de dos. */
@@ -207,25 +208,30 @@ const FACE_PARTS = [
 const hairDeco = (d, fill, extra = {}) => ({ deco: true, side: "c", d, fill, stroke: "#1c0f0a", ...extra });
 const hairLine = (d) => ({ deco: true, side: "c", d, fill: "none", stroke: "#150a06", sw: 0.8 });
 const HAIR_FRONT = [
-  hairDeco("M131 46 C128 26 140 12.5 160 12.5 C180 12.5 192 26 189 46 C187 38 184 31 180 28 C172 22 148 22 140 28 C136 31 133 38 131 46 Z", "#3a2217"),
-  hairDeco("M131 46 C132 52 134 57 137 60 L138 50 Z", "#3a2217"),
-  hairDeco(mirrorPath("M131 46 C132 52 134 57 137 60 L138 50 Z"), "#3a2217"),
-  hairLine("M160 13 C158 17 155 21 150 24"),
-  hairLine("M160 13 C163 17 166 21 171 24"),
-  hairLine("M150 14 C146 18 142 22 139 28"),
-  hairLine("M171 14 C175 18 178 22 181 28"),
-  hairLine("M141 16 C136 22 133 30 132 38"),
-  hairLine("M179 16 C184 22 187 30 188 38"),
+  hairDeco("M128 52 C122 30 132 13 160 12.5 C188 13 198 30 192 52 C191 44 188 36 184 31 C176 25 144 25 136 31 C132 36 129 44 128 52 Z", "#3a2217"),
+  hairDeco("M128 52 C127 58 130 64 134 67 L137 54 L136 36 Z", "#3a2217"),
+  hairDeco(mirrorPath("M128 52 C127 58 130 64 134 67 L137 54 L136 36 Z"), "#3a2217"),
+  hairDeco("M136 34 C146 26 156 30 160 22 C164 30 176 26 184 34 C176 29 168 31 160 28 C152 31 144 29 136 34 Z", "#4a2c1d"),
+  hairLine("M160 14 C158 14 155 20 150 25"),
+  hairLine("M160 14 C163 14 166 20 171 25"),
+  hairLine("M150 15 C144 15 139 22 136 31"),
+  hairLine("M171 15 C177 15 181 22 184 31"),
+  hairLine("M140 16 C132 18 129 28 128 40"),
+  hairLine("M180 16 C188 18 191 28 192 40"),
+  hairLine("M146 26 C150 30 154 29 157 27"),
+  hairLine("M174 26 C170 30 166 29 163 27"),
 ];
 const HAIR_BACK = [
-  hairDeco("M131 46 C128 26 140 12.5 160 12.5 C180 12.5 192 26 189 46 C189 58 185 66 177 71 C170 67 150 67 143 71 C135 66 131 58 131 46 Z", "#3a2217"),
-  hairLine("M160 14 L160 66"),
-  hairLine("M160 22 C148 28 140 40 139 58"),
-  hairLine("M160 22 C172 28 180 40 181 58"),
-  hairLine("M160 36 C152 42 147 52 147 64"),
-  hairLine("M160 36 C168 42 173 52 173 64"),
-  hairLine("M146 17 C138 24 134 34 133 44"),
-  hairLine("M174 17 C182 24 186 34 187 44"),
+  hairDeco("M128 52 C122 30 132 13 160 12.5 C188 13 198 30 192 52 C193 62 188 72 180 78 C172 74 148 74 140 78 C132 72 127 62 128 52 Z", "#3a2217"),
+  hairLine("M160 14 L160 74"),
+  hairLine("M160 18 C146 26 137 40 136 64"),
+  hairLine("M160 18 C174 26 183 40 184 64"),
+  hairLine("M160 34 C150 42 145 56 145 72"),
+  hairLine("M160 34 C170 42 175 56 175 72"),
+  hairLine("M144 16 C134 20 130 32 129 46"),
+  hairLine("M176 16 C186 20 190 32 191 46"),
+  hairLine("M150 56 C152 66 150 72 148 76"),
+  hairLine("M170 56 C168 66 170 72 172 76"),
 ];
 const DELT = "M94 112 C82 112 74 124 73 140 C72 156 74 172 84 190 C90 180 94 166 100 154 C108 140 116 128 115 120 C110 114 102 112 94 112 Z";
 
