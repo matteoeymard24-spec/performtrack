@@ -12,7 +12,7 @@ export const TEST_GROUPS = [
   { id: "endurance", label: "🏃 Endurance" },
   { id: "mobilite", label: "🤸 Mobilité" },
   { id: "force_iso", label: "💥 Force & contrôle" },
-  { id: "saut", label: "🦘 Saut (CMJ)" },
+  { id: "saut", label: "🦘 Puissance" },
   { id: "vitesse", label: "⚡ Vitesse" },
 ];
 

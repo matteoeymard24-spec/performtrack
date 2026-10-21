@@ -21,7 +21,7 @@ export default function RegionProfile({ tests, onPickTest = null, title = "🧭 
 
   return (
     <div>
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
+      {title ? <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div> : null}
       <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>
         Le FMS donne un signal ; un test spécifique de la région le confirme. Plus tu fais de tests, plus le profil est précis.
         Repères indicatifs : le FMS ne prédit pas la blessure à lui seul.

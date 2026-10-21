@@ -40,6 +40,7 @@ import {
 } from "../component/norms";
 import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
+import { FoldBtn, useFold } from "../component/ui";
 
 const ACCENT = "#e0a13d";
 const SURFACE = "#151310";
@@ -71,6 +72,18 @@ const inputStyle = {
   color: TEXT,
   fontSize: 14,
 };
+function FoldHead({ title, color, open, onToggle, right, gap = 6 }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: open ? gap : 0 }}>
+      <div style={{ fontWeight: 700, ...(color ? { color } : {}) }}>{title}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {right}
+        <FoldBtn open={open} onClick={onToggle} />
+      </div>
+    </div>
+  );
+}
+
 const cardStyle = { background: SURFACE, padding: 16, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", marginBottom: 16 };
 const pill = (active) => ({
   padding: "8px 14px",
@@ -275,6 +288,7 @@ export default function Tests() {
   const [newSubName, setNewSubName] = useState("");
 
   const test = getTest(testId);
+  const bf = useFold("tests_bilan");
   const effTab = !isCoach && tab === "saisie" ? "resultats" : tab;
 
   /* ---- chargements ---- */
@@ -1085,7 +1099,8 @@ export default function Tests() {
           {effTab === "resultats" && (
             <>
               <div style={cardStyle}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>⭐ Références pour les séances énergétiques</div>
+                <FoldHead title="⭐ Références pour les séances énergétiques" open={bf.isOpen("refs")} onToggle={() => bf.toggle("refs")} />
+                {bf.isOpen("refs") && (<>
                 {["vma", "vmi", "cs"].map((k) => (
                   <div key={k} style={{ fontSize: 13, color: ref[k] ? TEXT : MUTED, padding: "3px 0" }}>
                     {k === "vma" ? "VMA" : k === "vmi" ? "VMI (30-15)" : "Vitesse critique"} :{" "}
@@ -1104,6 +1119,7 @@ export default function Tests() {
                     Clique sur « Définir comme référence » sous un résultat pour que les séances utilisent ce test.
                   </div>
                 )}
+                </>)}
               </div>
 
               {tests.length === 0 && <div style={{ color: MUTED, textAlign: "center", padding: 20 }}>{isCoach ? "Aucun test enregistré pour cet athlète." : "Aucun test enregistré pour le moment."}</div>}
@@ -1113,7 +1129,10 @@ export default function Tests() {
                   <div key={t.id} style={cardStyle}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                       <div>
-                        <div style={{ fontWeight: 700 }}>{def?.name || t.testId}</div>
+                        <div style={{ fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>
+                          <span>{def?.name || t.testId}</span>
+                          <FoldBtn open={bf.isOpen("res_" + t.id)} onClick={() => bf.toggle("res_" + t.id)} />
+                        </div>
                         <div style={{ fontSize: 12, color: MUTED }}>{t.date}{t.notes ? ` · ${t.notes}` : ""}</div>
                       </div>
                       <div style={{ textAlign: "right" }}>
@@ -1132,6 +1151,7 @@ export default function Tests() {
                         })()}
                       </div>
                     </div>
+                    {bf.isOpen("res_" + t.id) && (<>
                     {(t.result?.lines || []).map((l, i) => (
                       <div key={i} style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{l}</div>
                     ))}
@@ -1189,6 +1209,7 @@ export default function Tests() {
                       </button>
                     </div>
                     )}
+                    </>)}
                   </div>
                 );
               })}
@@ -1200,25 +1221,30 @@ export default function Tests() {
             <>
               {!normsOn ? (
                 <div style={cardStyle}>
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>📐 Comparaison aux normes</div>
+                  <FoldHead title="📐 Comparaison aux normes" open={bf.isOpen("nonorm")} onToggle={() => bf.toggle("nonorm")} />
+                  {bf.isOpen("nonorm") && (
                   <div style={{ fontSize: 13, color: MUTED }}>
                     Choisis le sport et le poste de l'athlète en haut de la page. Les normes viennent de ton barème
                     (rugby : barème SU Agen, par poste).
                   </div>
+                  )}
                 </div>
               ) : (
                 <>
                   <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>🏅 Standards de force par niveau — {posteLabel(sport, poste)}</div>
+                    <FoldHead title={<>🏅 Standards de force par niveau — {posteLabel(sport, poste)}</>} open={bf.isOpen("n_force")} onToggle={() => bf.toggle("n_force")} gap={2} />
+                    {bf.isOpen("n_force") && (<>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                       Tes 1RM de « Mes RM » face à chaque niveau du rugby français
                       {level ? ` (objectif : ${levelLabel(level)})` : " (choisis un niveau visé en haut pour le surligner)"}.
                     </div>
                     <LevelTable rows={strengthNorms} targetId={level} />
+                    </>)}
                   </div>
 
                   <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>⚡ Standards de vitesse par niveau — {posteLabel(sport, poste)}</div>
+                    <FoldHead title={<>⚡ Standards de vitesse par niveau — {posteLabel(sport, poste)}</>} open={bf.isOpen("n_speed")} onToggle={() => bf.toggle("n_speed")} gap={2} />
+                    {bf.isOpen("n_speed") && (<>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                       Sprint 10 / 15 / 20 / 60 m, et vitesse max face à chaque niveau
                       {level ? ` (objectif : ${levelLabel(level)})` : ""}. Tes derniers temps saisis sont comparés automatiquement.
@@ -1235,10 +1261,12 @@ export default function Tests() {
                       const rows = evaluateLadderRows("sprint", merged, sport, poste, level);
                       return <LevelTable rows={rows} targetId={level} labelHeader="Test" valueHeader="Ton temps" />;
                     })()}
+                    </>)}
                   </div>
 
                   <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>🦘 Standards de puissance verticale par niveau — {posteLabel(sport, poste)}</div>
+                    <FoldHead title={<>🦘 Standards de puissance verticale par niveau — {posteLabel(sport, poste)}</>} open={bf.isOpen("n_vert")} onToggle={() => bf.toggle("n_vert")} gap={2} />
+                    {bf.isOpen("n_vert") && (<>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                       Hauteur de CMJ face à chaque niveau
                       {level ? ` (objectif : ${levelLabel(level)})` : ""}. Ton dernier CMJ saisi est comparé automatiquement.
@@ -1249,10 +1277,12 @@ export default function Tests() {
                       labelHeader="Test"
                       valueHeader="Ton CMJ"
                     />
+                    </>)}
                   </div>
 
                   <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>↗️ Standards de puissance horizontale par niveau — {posteLabel(sport, poste)}</div>
+                    <FoldHead title={<>↗️ Standards de puissance horizontale par niveau — {posteLabel(sport, poste)}</>} open={bf.isOpen("n_horiz")} onToggle={() => bf.toggle("n_horiz")} gap={2} />
+                    {bf.isOpen("n_horiz") && (<>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                       Distance du meilleur essai face à chaque niveau
                       {level ? ` (objectif : ${levelLabel(level)})` : ""}. Ton meilleur essai saisi est comparé automatiquement.
@@ -1263,6 +1293,7 @@ export default function Tests() {
                       labelHeader="Test"
                       valueHeader="Ton broad jump"
                     />
+                    </>)}
                   </div>
 
                   <div style={{ ...cardStyle, fontSize: 12, color: MUTED }}>
@@ -1277,7 +1308,8 @@ export default function Tests() {
           {effTab === "bilan" && (
             <>
               <div style={cardStyle}>
-                <div style={{ fontWeight: 700, marginBottom: 2 }}>🏅 Notes /20 par domaine</div>
+                <FoldHead title="🏅 Notes /20 par domaine" open={bf.isOpen("notes")} onToggle={() => bf.toggle("notes")} gap={2} />
+                {bf.isOpen("notes") && (<>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                   Dernier résultat de chaque test. Force, vitesse, CMJ et endurance sont notés avec le barème du poste (niveau visé pris en compte).
                 </div>
@@ -1332,9 +1364,13 @@ export default function Tests() {
                     Pas de barème pour la VMA, le Yo-Yo et le 30-15 : l'endurance n'est notée que via le Bronco.
                   </div>
                 )}
+                </>)}
               </div>
               <div style={cardStyle}>
+                <FoldHead title="🧭 Profil par région" open={bf.isOpen("region")} onToggle={() => bf.toggle("region")} gap={4} />
+                {bf.isOpen("region") && (
                 <RegionProfile
+                  title=""
                   tests={tests}
                   onPickTest={
                     isCoach
@@ -1347,12 +1383,14 @@ export default function Tests() {
                       : null
                   }
                 />
+                )}
               </div>
 
               <div style={{ ...cardStyle, border: "1px solid rgba(217,105,90,0.4)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: bf.isOpen("injuries") ? 6 : 0 }}>
                   <div style={{ fontWeight: 700, color: "#d9695a" }}>🚑 Historique de blessures ({injuries.length})</div>
-                  {uid && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  {uid && bf.isOpen("injuries") && (
                   <button
                     disabled={!uid}
                     onClick={() => {
@@ -1368,7 +1406,10 @@ export default function Tests() {
                     {showInjuryForm ? "Annuler" : "+ Ajouter une blessure"}
                   </button>
                   )}
+                  <FoldBtn open={bf.isOpen("injuries")} onClick={() => bf.toggle("injuries")} />
+                  </div>
                 </div>
+                {bf.isOpen("injuries") && (<>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                   {isCoach
                     ? "Même journal que dans le Dashboard : à croiser avec les zones à travailler pour choisir le groupe d'individualisation."
@@ -1435,11 +1476,13 @@ export default function Tests() {
                 ) : (
                   <div style={{ fontSize: 13, color: MUTED }}>{isCoach ? "Aucune blessure enregistrée pour cet athlète." : "Aucune blessure enregistrée pour le moment."}</div>
                 )}
+              </>)}
               </div>
 
               {!isCoach && (
                 <div style={cardStyle}>
-                  <div style={{ fontWeight: 700, marginBottom: 6 }}>👥 Mon groupe d'individualisation</div>
+                  <FoldHead title="👥 Mon groupe d'individualisation" open={bf.isOpen("mygroup")} onToggle={() => bf.toggle("mygroup")} />
+                  {bf.isOpen("mygroup") && (
                   <div style={{ fontSize: 13, color: MUTED }}>
                     {inGroups.length
                       ? inGroups
@@ -1450,11 +1493,13 @@ export default function Tests() {
                           .join(", ")
                       : "Pas encore placé dans un groupe par ton coach."}
                   </div>
+                  )}
                 </div>
               )}
               {isCoach && (<>
               <div style={cardStyle}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>👥 Placer dans un groupe d'individualisation</div>
+                <FoldHead title="👥 Placer dans un groupe d'individualisation" open={bf.isOpen("place")} onToggle={() => bf.toggle("place")} />
+                {bf.isOpen("place") && (<>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                   Groupes actuels :{" "}
                   {inGroups.length
@@ -1495,10 +1540,12 @@ export default function Tests() {
                     Ajouter au groupe
                   </button>
                 </div>
+                </>)}
               </div>
 
               <div style={cardStyle}>
-                <div style={{ fontWeight: 700, marginBottom: 6 }}>➕ Créer un groupe / sous-groupe</div>
+                <FoldHead title="➕ Créer un groupe / sous-groupe" open={bf.isOpen("create")} onToggle={() => bf.toggle("create")} />
+                {bf.isOpen("create") && (<>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                   Même groupes que dans Workout : un groupe peut contenir des sous-groupes (ex : Cheville, Chaîne post, Bassin).
                 </div>
@@ -1539,6 +1586,7 @@ export default function Tests() {
                     Ajouter
                   </button>
                 </div>
+                </>)}
               </div>
               </>)}
             </>

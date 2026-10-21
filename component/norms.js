@@ -71,25 +71,37 @@ const sprint60Table = () => {
   });
   return out;
 };
-/* Broad jump (saut en longueur sans élan) : AUCUN barème Agen. Une seule étude publiée trouvée avec des
-   valeurs par poste en rugby : Posthumus et al. (2020), Sports 8(6):85, 39 pros de Super Rugby (NZ) :
-   avants 252,3 ± 25,3 cm, trois-quarts 269,0 ± 13,0 cm, ensemble 261,3 ± 18,6 cm.
-   Choix de construction (estimation, à ajuster ici) :
-   • note 10/20 (niveau « Pro D2 ») = moyenne publiée du groupe (avants / trois-quarts) ; on suppose
-     que la moyenne Pro D2 est proche de celle du Super Rugby (hypothèse, non vérifiée) ;
-   • chaque note vaut BROAD_SD / 5 cm : note 15 = +1 écart-type, note 20 = +2 écarts-types, avec
-     l'écart-type de l'ensemble (18,6 cm) car celui des trois-quarts (n = 16) est très étroit ;
-   • aucune valeur publiée par poste fin (pilier, 2e ligne...) : tous les avants partagent la même
-     colonne, tous les trois-quarts aussi. */
+/* Broad jump (saut en longueur sans élan) : AUCUN barème Agen. Deux sources, combinées (estimation) :
+   1) NIVEAU = étude publiée Posthumus et al. (2020), Sports 8(6):85, 39 pros de Super Rugby (NZ) :
+      avants 252,3 ± 25,3 cm, trois-quarts 269,0 ± 13,0 cm, ensemble 261,3 ± 18,6 cm (mesures réelles) ;
+   2) ÉCART ENTRE POSTES = standards de broad jump par poste du document « USA Rugby Player Profiles and
+      Performance Standards » (équipes nationales juniors et Eagles). C'est un document fédéral : la
+      méthode de calcul n'y est pas indiquée, ce ne sont pas des moyennes publiées dans une revue. On n'en
+      garde que la position relative des postes (milieu de l'échelle de chaque poste).
+   Construction : moyenne du poste = moyenne publiée du groupe (avants / trois-quarts) + (milieu USA du poste
+   − moyenne pondérée des milieux USA du groupe, pondérée par le nombre de joueurs au poste sur le terrain).
+   Note 10/20 (« Pro D2 ») = cette moyenne (hypothèse : Pro D2 ≈ Super Rugby, non vérifiée) ; chaque note vaut
+   BROAD_SD / 5 cm (note 15 = +1 écart-type, note 20 = +2) avec l'écart-type de l'ensemble (18,6 cm), car celui
+   des trois-quarts (n = 16) est très étroit. À ajuster ici si le staff a de vraies valeurs. */
 export const BROAD_MEAN = { avants: 252.3, arrieres: 269.0 };
 export const BROAD_SD = 18.6;
-export const BROAD_NOTE =
-  "Barème estimé : moyennes publiées Super Rugby (Posthumus 2020 : avants 252 cm, trois-quarts 269 cm), écart par note = 18,6 cm / 5. Aucune valeur publiée par poste fin ni par niveau.";
+/* Milieu de l'échelle USA Rugby (cm, entre les scores 5 et 6) et nombre de joueurs au poste */
+export const BROAD_USA_MID = { PILIER: 252.5, TALON: 262.5, "2L": 272.5, "3L": 282.5, "9": 287.5, "10": 287.5, Centre: 292.5, Ailier: 292.5, Arriere: 292.5 };
+const BROAD_COUNT = { PILIER: 2, TALON: 1, "2L": 2, "3L": 3, "9": 1, "10": 1, Centre: 2, Ailier: 2, Arriere: 1 };
 const BROAD_FORWARDS = ["PILIER", "TALON", "2L", "3L"];
+export const BROAD_NOTE =
+  "Barème estimé : niveau = moyennes mesurées Super Rugby (Posthumus 2020), écart entre postes = standards USA Rugby (document fédéral, méthode non publiée). Aucune étude publiée ne donne le broad jump poste par poste.";
+export const broadPosteMean = (poste) => {
+  const fw = BROAD_FORWARDS.includes(poste);
+  const grp = (POSTES.rugby || []).map((x) => x.key).filter((k) => BROAD_FORWARDS.includes(k) === fw);
+  const wsum = grp.reduce((a, k) => a + BROAD_COUNT[k], 0);
+  const avgUsa = grp.reduce((a, k) => a + BROAD_USA_MID[k] * BROAD_COUNT[k], 0) / wsum;
+  return (fw ? BROAD_MEAN.avants : BROAD_MEAN.arrieres) + (BROAD_USA_MID[poste] - avgUsa);
+};
 const broadTable = () => {
   const out = {};
   (POSTES.rugby || []).forEach(({ key }) => {
-    const mean = BROAD_FORWARDS.includes(key) ? BROAD_MEAN.avants : BROAD_MEAN.arrieres;
+    const mean = broadPosteMean(key);
     out[key] = Array.from({ length: 21 }, (_, n) => Math.round(mean + (n - 10) * (BROAD_SD / 5)));
   });
   return out;
@@ -99,9 +111,9 @@ const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable(), "60m":
 /* Source affichée pour certaines échelles (sinon : texte par défaut du barème Agen) */
 const LADDER_META = {
   BROAD: {
-    prod2: { tag: "doc", src: "Posthumus 2020 (Super Rugby, n = 39) : moyenne avants 252 cm / trois-quarts 269 cm" },
-    top14: { tag: "estimé", src: "Moyenne + 1 écart-type (18,6 cm) — estimation à partir de Posthumus 2020" },
-    international: { tag: "estimé", src: "Moyenne + 2 écarts-types (18,6 cm) — estimation à partir de Posthumus 2020" },
+    prod2: { tag: "estimé", src: "Moyenne Super Rugby (Posthumus 2020) ajustée au poste avec les standards USA Rugby" },
+    top14: { tag: "estimé", src: "Moyenne du poste + 1 écart-type (18,6 cm)" },
+    international: { tag: "estimé", src: "Moyenne du poste + 2 écarts-types (18,6 cm)" },
   },
 };
 
