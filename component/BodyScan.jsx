@@ -71,7 +71,7 @@ function buildZones() {
     for (const view of ["front", "back"]) {
       const A = ANAT[mode][view];
       A.parts.forEach((part, index) => {
-        if (part.hide) return;
+        if (part.hide || part.deco) return;
         const sides = part.side === "lr" ? ["g", "d"] : ["c"];
         sides.forEach((side) => {
           const id = partId(part, side, mode, view);
@@ -189,6 +189,9 @@ export default function BodyScan({ painMap = {}, setPainMap }) {
 
   // Dessin d'une pièce (un côté) : forme cliquable + traits de détail
   function renderPart(part, side, key) {
+    if (part.deco) {
+      return <path key={key} d={part.d} fill={part.fill} stroke="#3b1a14" strokeWidth={0.7} strokeLinejoin="round" style={{ pointerEvents: "none" }} />;
+    }
     const id = partId(part, side, mode, view);
     const zone = zoneById[id];
     const value = zone ? zoneValue(painMap, zone) : 0;
