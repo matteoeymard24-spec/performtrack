@@ -27,6 +27,7 @@ import {
   Area,
   BarChart,
   Bar,
+  Cell,
 } from "recharts";
 import BodyScan from "../component/BodyScan";
 import TestsSummary from "../component/TestsSummary";
@@ -44,6 +45,23 @@ import {
   getRPEReliabilityStatus,
   cmjStatus,
 } from "../component/loadMetrics";
+
+/* ===== Charte graphique du dashboard athlète (une seule pour toutes les cartes) ===== */
+const CARD_STYLE = {
+  background: "#151310",
+  padding: 20,
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.08)",
+  marginBottom: 16,
+};
+const CARD_ACCENT_BORDER = "1px solid rgba(224,161,61,0.55)";
+const CARD_TITLE = { margin: "0 0 14px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" };
+const CHART_TOOLTIP = {
+  background: "#1a1815",
+  border: "1px solid rgba(255,255,255,0.16)",
+  borderRadius: 8,
+  fontSize: 12,
+};
 
 const getLocalDateStr = (date) => {
   const d = date instanceof Date ? date : new Date(date);
@@ -1261,6 +1279,8 @@ export default function Dashboard() {
     buildDailyLoads(athleteWorkouts, currentUser?.uid).forEach((d) => {
       loadsByDate[d.date] = d.load;
     });
+    // 21 jours = 3 blocs de 7 jours qui finissent aujourd'hui (wk 0 = le plus ancien).
+    const DAY_LETTERS = ["D", "L", "M", "M", "J", "V", "S"];
     const sparklineData = [];
     for (let i = 20; i >= 0; i--) {
       const d = new Date();
@@ -1269,9 +1289,27 @@ export default function Dashboard() {
       sparklineData.push({
         date: dateStr,
         load: Math.round(loadsByDate[dateStr] || 0),
+        wk: Math.floor((20 - i) / 7),
+        tick: DAY_LETTERS[d.getDay()],
+        isToday: i === 0,
       });
     }
     const hasSparklineData = sparklineData.some((d) => d.load > 0);
+    const weekInfo = [0, 1, 2].map((w) => {
+      const days = sparklineData.filter((d) => d.wk === w);
+      const fmt = (ds) => `${ds.slice(8, 10)}/${ds.slice(5, 7)}`;
+      return {
+        total: days.reduce((acc, d) => acc + d.load, 0),
+        sessions: days.filter((d) => d.load > 0).length,
+        range: `${fmt(days[0].date)} → ${fmt(days[days.length - 1].date)}`,
+      };
+    });
+    const weekDelta =
+      weekInfo[1].total > 0
+        ? Math.round(((weekInfo[2].total - weekInfo[1].total) / weekInfo[1].total) * 100)
+        : null;
+    const WEEK_OPACITY = [0.4, 0.68, 1];
+    const WEEK_NAMES = ["Il y a 2 sem.", "Sem. dernière", "7 derniers jours"];
 
     return (
       <div
@@ -1333,10 +1371,11 @@ export default function Dashboard() {
               display: "flex",
               justifyContent: "space-between",
               gap: 6,
-              marginBottom: 20,
+              marginBottom: 16,
               background: "#151310",
               borderRadius: 12,
-              padding: "12px 10px",
+              padding: "14px 10px",
+              border: "1px solid rgba(255,255,255,0.08)",
             }}
           >
             {weekOverview.map((day) => {
@@ -1395,12 +1434,12 @@ export default function Dashboard() {
               background: "rgba(217,164,65,0.14)",
               padding: 20,
               borderRadius: 12,
-              border: "2px solid #d9a441",
-              marginBottom: 20,
+              border: "1px solid #d9a44166",
+              marginBottom: 16,
             }}
           >
             <h3
-              style={{ margin: "0 0 10px 0", fontSize: 18, color: "#d9a441" }}
+              style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 700, color: "#d9a441" }}
             >
               ⚠️ Wellness non rempli
             </h3>
@@ -1416,11 +1455,11 @@ export default function Dashboard() {
               background: "rgba(217,105,90,0.14)",
               padding: 20,
               borderRadius: 12,
-              border: "2px solid #d9695a",
-              marginBottom: 20,
+              border: "1px solid #d9695a66",
+              marginBottom: 16,
             }}
           >
-            <h3 style={{ margin: "0 0 10px 0", fontSize: 18, color: "#d9695a" }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 700, color: "#d9695a" }}>
               ⏰ Séance pas encore démarrée
             </h3>
             <p style={{ margin: 0, fontSize: 14, color: "#f0b5ab" }}>
@@ -1435,11 +1474,11 @@ export default function Dashboard() {
               background: "rgba(224,161,61,0.14)",
               padding: 20,
               borderRadius: 12,
-              border: "2px solid #e0a13d",
-              marginBottom: 20,
+              border: "1px solid #e0a13d66",
+              marginBottom: 16,
             }}
           >
-            <h3 style={{ margin: "0 0 10px 0", fontSize: 18, color: "#e0a13d" }}>
+            <h3 style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 700, color: "#e0a13d" }}>
               🎯 {pendingRM.length} RM en attente de validation
             </h3>
             <p style={{ margin: "0 0 12px 0", fontSize: 14, color: "#f0d9ae" }}>
@@ -1470,11 +1509,11 @@ export default function Dashboard() {
               background: "#151310",
               padding: 20,
               borderRadius: 12,
-              border: "2px solid #e0a13d",
-              marginBottom: 20,
+              border: "1px solid rgba(255,255,255,0.08)",
+              marginBottom: 16,
             }}
           >
-            <h3 style={{ margin: "0 0 15px 0", fontSize: 18 }}>🧘 Wellness</h3>
+            <h3 style={CARD_TITLE}>🧘 Wellness</h3>
             <div
               style={{
                 display: "grid",
@@ -1487,7 +1526,7 @@ export default function Dashboard() {
                 style={{
                   background: "#0d0c0a",
                   padding: 12,
-                  borderRadius: 8,
+                  borderRadius: 10,
                   textAlign: "center",
                 }}
               >
@@ -1504,7 +1543,7 @@ export default function Dashboard() {
                 style={{
                   background: "#0d0c0a",
                   padding: 12,
-                  borderRadius: 8,
+                  borderRadius: 10,
                   textAlign: "center",
                 }}
               >
@@ -1563,11 +1602,11 @@ export default function Dashboard() {
               background: "#151310",
               padding: 20,
               borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.16)",
-              marginBottom: 20,
+              border: "1px solid rgba(255,255,255,0.08)",
+              marginBottom: 16,
             }}
           >
-            <h3 style={{ margin: "0 0 12px 0", fontSize: 16, color: "#d9695a" }}>
+            <h3 style={CARD_TITLE}>
               🚑 Blessures enregistrées récemment
             </h3>
             {selfInjuries.map((inj) => (
@@ -1587,11 +1626,11 @@ export default function Dashboard() {
                 background: "#151310",
                 padding: 20,
                 borderRadius: 12,
-                border: "2px solid #d9695a",
-                marginBottom: 20,
+                border: "1px solid rgba(255,255,255,0.08)",
+                marginBottom: 16,
               }}
             >
-              <h3 style={{ margin: "0 0 15px 0", fontSize: 18, color: "#d9695a" }}>
+              <h3 style={CARD_TITLE}>
                 🩹 Localisation de la douleur (aujourd'hui)
               </h3>
               <BodyScan
@@ -1604,7 +1643,7 @@ export default function Dashboard() {
           )}
 
         {vis("tests") && currentUser?.uid && (
-          <div style={{ marginBottom: 20 }}>
+          <div>
             <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" simple />
           </div>
         )}
@@ -1615,11 +1654,11 @@ export default function Dashboard() {
             background: "#151310",
             padding: 20,
             borderRadius: 12,
-            border: "2px solid #4fae7d",
-            marginBottom: 20,
+            border: "1px solid rgba(255,255,255,0.08)",
+            marginBottom: 16,
           }}
         >
-          <h3 style={{ margin: "0 0 15px 0", fontSize: 18 }}>
+          <h3 style={CARD_TITLE}>
             📊 Progression des séances
           </h3>
           <div
@@ -1633,7 +1672,7 @@ export default function Dashboard() {
               style={{
                 background: "#0d0c0a",
                 padding: 12,
-                borderRadius: 8,
+                borderRadius: 10,
                 textAlign: "center",
               }}
             >
@@ -1650,7 +1689,7 @@ export default function Dashboard() {
               style={{
                 background: "#0d0c0a",
                 padding: 12,
-                borderRadius: 8,
+                borderRadius: 10,
                 textAlign: "center",
               }}
             >
@@ -1684,41 +1723,118 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {hasSparklineData && (
-            <div style={{ marginTop: 15 }}>
-              <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
-                📈 Charge des 3 dernières semaines
-              </div>
-              <ResponsiveContainer width="100%" height={60}>
-                <BarChart data={sparklineData}>
-                  <Bar dataKey="load" fill="#4fae7d" radius={[2, 2, 0, 0]} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#0d0c0a",
-                      border: "1px solid rgba(255,255,255,0.05)",
-                      fontSize: 12,
-                    }}
-                    labelFormatter={(d) => d}
-                    formatter={(v) => [v, "Charge"]}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
         </div>
+        )}
+
+
+        {vis("progress") && (
+          <div style={CARD_STYLE}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <h3 style={{ ...CARD_TITLE, margin: 0 }}>📈 Charge des 3 dernières semaines</h3>
+              <span style={{ fontSize: 11, color: "#a8a199" }}>UA = RPE × minutes</span>
+            </div>
+            {hasSparklineData ? (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
+                  {weekInfo.map((w, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        background: "#0d0c0a",
+                        padding: "10px 8px",
+                        borderRadius: 10,
+                        textAlign: "center",
+                        border: i === 2 ? "1px solid rgba(224,161,61,0.4)" : "1px solid transparent",
+                      }}
+                    >
+                      <div style={{ fontSize: 10, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                        {WEEK_NAMES[i]}
+                      </div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: i === 2 ? "#e0a13d" : "#f3f0ea", margin: "4px 0 2px" }}>
+                        {w.total}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#6f685f" }}>
+                        {w.sessions} jour{w.sessions > 1 ? "s" : ""} d'effort
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {weekDelta !== null && (
+                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10 }}>
+                    {weekDelta === 0 ? "▬" : weekDelta > 0 ? "▲" : "▼"}{" "}
+                    <strong style={{ color: "#f3f0ea" }}>
+                      {weekDelta > 0 ? "+" : ""}
+                      {weekDelta} %
+                    </strong>{" "}
+                    par rapport à la semaine dernière
+                  </div>
+                )}
+                <ResponsiveContainer width="100%" height={170}>
+                  <BarChart data={sparklineData} margin={{ top: 6, right: 4, left: -16, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
+                    <XAxis dataKey="tick" interval={0} axisLine={false} tickLine={false} stroke="#a8a199" fontSize={10} />
+                    <YAxis axisLine={false} tickLine={false} stroke="#a8a199" fontSize={10} width={40} tickCount={4} allowDecimals={false} />
+                    <Tooltip
+                      cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                      content={({ active, payload }) => {
+                        if (!active || !payload || !payload.length) return null;
+                        const d = payload[0].payload;
+                        return (
+                          <div style={{ ...CHART_TOOLTIP, padding: "8px 10px" }}>
+                            <div style={{ color: "#f3f0ea", textTransform: "capitalize" }}>
+                              {new Date(d.date + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                            </div>
+                            <div style={{ color: "#a8a199", marginTop: 2 }}>
+                              {d.load > 0 ? (
+                                <>
+                                  Charge : <strong style={{ color: "#e0a13d" }}>{d.load} UA</strong>
+                                </>
+                              ) : (
+                                "Pas de séance"
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Bar dataKey="load" radius={[4, 4, 0, 0]} maxBarSize={18} minPointSize={2}>
+                      {sparklineData.map((d, i) => (
+                        <Cell
+                          key={i}
+                          fill={d.load > 0 ? "#e0a13d" : "#2a2620"}
+                          fillOpacity={d.load > 0 ? WEEK_OPACITY[d.wk] : 1}
+                          stroke={d.isToday ? "#f3f0ea" : "none"}
+                          strokeWidth={d.isToday ? 1.5 : 0}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  {weekInfo.map((w, i) => (
+                    <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "#a8a199" }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: "#e0a13d", opacity: WEEK_OPACITY[i], display: "inline-block" }} />
+                      {w.range}
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 13, color: "#a8a199", textAlign: "center", padding: "18px 8px" }}>
+                Aucune charge enregistrée sur les 3 dernières semaines. Elle apparaît dès que tu valides une séance avec ton RPE.
+              </div>
+            )}
+          </div>
         )}
 
         {vis("today") && (
         <div
           style={{
-            background: "#151310",
-            padding: 20,
-            borderRadius: 12,
-            border: "2px solid #e0a13d",
-            marginBottom: 20,
+            ...CARD_STYLE,
+            border: CARD_ACCENT_BORDER,
           }}
         >
-          <h3 style={{ margin: "0 0 15px 0", fontSize: 18 }}>
+          <h3 style={CARD_TITLE}>
             🏋️ Séance du jour
           </h3>
           {todayWorkout ? (
@@ -1854,11 +1970,11 @@ export default function Dashboard() {
             background: "#151310",
             padding: 20,
             borderRadius: 12,
-            border: "2px solid #e0a13d",
-            marginBottom: 20,
+            border: "1px solid rgba(255,255,255,0.08)",
+            marginBottom: 16,
           }}
         >
-          <h3 style={{ margin: "0 0 15px 0", color: "#e0a13d", fontSize: 18 }}>
+          <h3 style={CARD_TITLE}>
             ⚖️ Mon Poids
           </h3>
           {!editingWeight ? (
@@ -1979,11 +2095,7 @@ export default function Dashboard() {
                     domain={["auto", "auto"]}
                   />
                   <Tooltip
-                    contentStyle={{
-                      background: "#0d0c0a",
-                      border: "1px solid rgba(255, 255, 255, 0.05)",
-                      fontSize: 12,
-                    }}
+                    contentStyle={CHART_TOOLTIP}
                   />
                   <Area
                     type="monotone"
@@ -2006,10 +2118,11 @@ export default function Dashboard() {
               background: "#151310",
               padding: 20,
               borderRadius: 12,
-              border: "1px solid rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              marginBottom: 16,
             }}
           >
-            <h3 style={{ marginTop: 0, fontSize: 18, marginBottom: 15 }}>
+            <h3 style={CARD_TITLE}>
               🏃 Ma VMA & 🦘 Mon CMJ
             </h3>
             <div
@@ -2020,7 +2133,7 @@ export default function Dashboard() {
               }}
             >
               {athleteVma && athleteVma.kg != null && (
-                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 10 }}>
                   <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
                     🏃 VMA actuelle
                   </div>
@@ -2048,7 +2161,7 @@ export default function Dashboard() {
                 </div>
               )}
               {athleteCmj && athleteCmj.kg != null && (
-                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 10 }}>
                   <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
                     🦘 CMJ actuel
                   </div>
@@ -2085,10 +2198,11 @@ export default function Dashboard() {
               background: "#151310",
               padding: 20,
               borderRadius: 12,
-              border: "1px solid rgba(255, 255, 255, 0.05)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              marginBottom: 16,
             }}
           >
-            <h3 style={{ marginTop: 0, fontSize: 18, marginBottom: 15 }}>
+            <h3 style={CARD_TITLE}>
               💪 Mes RM — exercices déjà réalisés
             </h3>
             {EXERCISE_CATEGORIES.map((cat) => {
@@ -2107,7 +2221,7 @@ export default function Dashboard() {
                       return (
                         <div
                           key={exercise}
-                          style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}
+                          style={{ background: "#0d0c0a", padding: 15, borderRadius: 10 }}
                         >
                           <div
                             style={{

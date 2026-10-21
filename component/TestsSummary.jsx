@@ -124,8 +124,8 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = f
     strengthS.forEach((r) => items.push({ label: r.label, row: r }));
 
     return (
-      <div style={{ background: "#151310", padding: 20, borderRadius: 10 }}>
-        <h3 style={{ margin: "0 0 8px 0", fontSize: 17, color: TEXT }}>{title}</h3>
+      <div style={{ background: "#151310", padding: 20, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", marginBottom: 16 }}>
+        <h3 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 700, color: TEXT }}>{title}</h3>
         {items.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Aucune note pour le moment.</div>}
         {items.map((it, i) => {
           const r = it.row;
