@@ -1626,6 +1626,8 @@ export default function Dashboard() {
             <>
               <BodyScan
                 painMap={todayWellness.painMap}
+                painTypes={todayWellness.painTypes || {}}
+                painSens={todayWellness.painSens || {}}
                 setPainMap={() => {}}
                 selectedZone={selfPainZone}
                 setSelectedZone={setSelfPainZone}
@@ -3542,6 +3544,8 @@ export default function Dashboard() {
                         </div>
                         <BodyScan
                           painMap={showAthleteDetail.lastWellness.painMap}
+                          painTypes={showAthleteDetail.lastWellness.painTypes || {}}
+                          painSens={showAthleteDetail.lastWellness.painSens || {}}
                           setPainMap={() => {}}
                         />
                       </div>
