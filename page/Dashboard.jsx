@@ -1774,7 +1774,7 @@ export default function Dashboard() {
                   fontWeight: 600,
                 }}
               >
-                🩹 Voir / modifier dans l'onglet Wellness →
+                🧘 Ouvrir l'onglet Wellness →
               </button>
               <BodyScan
                 painMap={todayWellness.painMap || {}}
@@ -2495,23 +2495,6 @@ export default function Dashboard() {
           >
             🌟 Moi (mon dashboard)
           </button>
-          {todayWorkout && (
-            <button
-              onClick={() => (window.location.href = "/workout")}
-              style={{
-                padding: "12px 20px",
-                background: "#e0a13d",
-                color: "#1a1306",
-                border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontWeight: "bold",
-                fontSize: 14,
-              }}
-            >
-              🏋️ Ma séance du jour
-            </button>
-          )}
         </div>
       </div>
 
@@ -3117,66 +3100,189 @@ export default function Dashboard() {
               </div>
             )}
 
-            {showAthleteDetail.crossStatus && (
-              <div
-                style={{
-                  background: "#151310",
-                  padding: 18,
-                  borderRadius: 10,
-                  border: `2px solid ${showAthleteDetail.crossStatus.color}`,
-                  marginBottom: 25,
-                }}
-              >
+            {showAthleteDetail.crossStatus && (() => {
+              const cs = showAthleteDetail.crossStatus;
+              const dom = cs.domains || { load: 0, wellness: 0, neural: 0 };
+              const sevColor = (v) => (v >= 2 ? "#d9695a" : v === 1 ? "#d9a441" : "#4fae7d");
+              const sevText = (v) => (v >= 2 ? "Alerte" : v === 1 ? "Vigilance" : "OK");
+              const nl2 = showAthleteDetail.neural;
+              const hasLoad = showAthleteDetail.acwr !== null && showAthleteDetail.acwr !== undefined;
+              const hasWell = showAthleteDetail.wellnessZ !== null && showAthleteDetail.wellnessZ !== undefined || showAthleteDetail.wellnessScore !== null;
+              const cmjPct = showAthleteDetail.cmjStatus ? showAthleteDetail.cmjStatus.pctChange : null;
+              const hasNeu = (nl2 && nl2.evaluated > 0) || (cmjPct !== null && cmjPct !== undefined);
+              const tiles = [
+                {
+                  icon: "⚙️",
+                  title: "Charge d'entraînement",
+                  has: hasLoad,
+                  sev: dom.load,
+                  value: hasLoad ? `REDI ${Number(showAthleteDetail.acwr).toFixed(2)}` : "—",
+                  caption: hasLoad ? showAthleteDetail.acwrStatus.label : "Pas assez de séances",
+                },
+                {
+                  icon: "🧘",
+                  title: "Bien-être (wellness)",
+                  has: hasWell,
+                  sev: dom.wellness,
+                  value:
+                    showAthleteDetail.wellnessZ !== null && showAthleteDetail.wellnessZ !== undefined
+                      ? `z = ${showAthleteDetail.wellnessZ.toFixed(1)}`
+                      : showAthleteDetail.wellnessScore !== null
+                        ? `${showAthleteDetail.wellnessScore.toFixed(1)}/10`
+                        : "—",
+                  caption: hasWell ? showAthleteDetail.wellnessZStatus.label : "Pas de questionnaire",
+                },
+                {
+                  icon: "🧠",
+                  title: "Fatigue nerveuse",
+                  has: hasNeu,
+                  sev: dom.neural,
+                  value: hasNeu ? sevText(dom.neural) : "—",
+                  caption:
+                    nl2 && nl2.evaluated > 0
+                      ? `Force : séance du ${nl2.date.slice(8, 10)}/${nl2.date.slice(5, 7)}`
+                      : cmjPct !== null && cmjPct !== undefined
+                        ? `CMJ ${cmjPct > 0 ? "+" : ""}${cmjPct}%`
+                        : "Pas de séance de force récente",
+                },
+              ];
+              return (
                 <div
                   style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 8,
+                    background: "#151310",
+                    padding: 18,
+                    borderRadius: 12,
+                    border: `2px solid ${cs.color}`,
+                    marginBottom: 25,
                   }}
                 >
-                  <h3
-                    style={{
-                      margin: "0 0 8px 0",
-                      fontSize: 16,
-                      color: showAthleteDetail.crossStatus.color,
-                    }}
-                  >
-                    {showAthleteDetail.crossStatus.emoji} Forme (REDI × Wellness × Force) : {showAthleteDetail.crossStatus.label}
-                  </h3>
-                  <SectionToggleBtn sectionKey="cross" />
-                </div>
-                {sectionVisibility.cross && (
-                <div style={{ fontSize: 13, color: "#a8a199", lineHeight: 1.5 }}>
-                  {showAthleteDetail.crossStatus.reasons && showAthleteDetail.crossStatus.reasons.length > 0 ? (
-                    <ul style={{ margin: "0 0 8px 0", paddingLeft: 18 }}>
-                      {showAthleteDetail.crossStatus.reasons.map((r, i) => (
-                        <li key={i}>{r}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p style={{ margin: "0 0 8px 0" }}>{showAthleteDetail.crossStatus.detail}</p>
-                  )}
-                  {showAthleteDetail.neural && showAthleteDetail.neural.evaluated > 0 && (
-                    <div style={{ fontSize: 12, marginTop: 6 }}>
-                      🧠 Dernière séance de force ({showAthleteDetail.neural.date}) :{" "}
-                      {showAthleteDetail.neural.exercises
-                        .map(
-                          (e) =>
-                            `${e.name} e1RM ${e.e1rm} kg` +
-                            (e.dropPct !== null ? ` (${e.dropPct > 0 ? "−" : "+"}${Math.abs(e.dropPct)}% vs préc.)` : "") +
-                            (e.rmRatio !== null ? ` · ${e.rmRatio}% du RM` : "")
-                        )
-                        .join(" · ")}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: 28,
+                          background: `${cs.color}26`,
+                          border: `2px solid ${cs.color}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 28,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {cs.emoji}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                          État de forme
+                        </div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: cs.color, lineHeight: 1.15 }}>{cs.label}</div>
+                      </div>
                     </div>
-                  )}
-                  <div style={{ fontSize: 11, marginTop: 8, opacity: 0.75 }}>
-                    Fatigue nerveuse : e1RM estimé via charge × reps × RPE (RIR). Signal si chute &gt; 15 % vs séance précédente ou si e1RM &lt; 80 % du RM enregistré.
+                    <SectionToggleBtn sectionKey="cross" />
                   </div>
+
+                  {sectionVisibility.cross && (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginBottom: 14 }}>
+                        {tiles.map((t) => {
+                          const col = t.has ? sevColor(t.sev) : "#4a453d";
+                          return (
+                            <div key={t.title} style={{ background: "#0d0c0a", borderRadius: 10, padding: 12, border: `1px solid ${t.has ? col + "66" : "rgba(255,255,255,0.06)"}` }}>
+                              <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
+                                {t.icon} {t.title}
+                              </div>
+                              <div style={{ fontSize: 22, fontWeight: 800, color: t.has ? col : "#6f6a62", marginBottom: 8 }}>{t.value}</div>
+                              <div style={{ display: "flex", gap: 3, marginBottom: 6 }}>
+                                {[0, 1, 2].map((k) => (
+                                  <div
+                                    key={k}
+                                    style={{
+                                      flex: 1,
+                                      height: 7,
+                                      borderRadius: 4,
+                                      background: t.has && k <= t.sev ? sevColor(k === 0 && t.sev === 0 ? 0 : t.sev) : "rgba(255,255,255,0.08)",
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                              <div style={{ fontSize: 11, color: t.has ? col : "#6f6a62" }}>{t.caption}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#f3f0ea", marginBottom: 8 }}>Pourquoi ce statut ?</div>
+                        {cs.reasons && cs.reasons.length > 0 ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {cs.reasons.map((r, idx) => (
+                              <div key={idx} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "#f0d9ae", background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.25)", borderRadius: 8, padding: "7px 10px" }}>
+                                <span>⚠️</span>
+                                <span>{r}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 13, color: "#4fae7d", background: "rgba(79,174,125,0.1)", border: "1px solid rgba(79,174,125,0.3)", borderRadius: 8, padding: "8px 10px" }}>
+                            ✅ Aucun signal : charge, bien-être et performance dans la norme de l'athlète.
+                          </div>
+                        )}
+                      </div>
+
+                      {nl2 && nl2.evaluated > 0 && (
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#f3f0ea", marginBottom: 8 }}>
+                            🏋️ Performance en force — séance du {nl2.date.slice(8, 10)}/{nl2.date.slice(5, 7)}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {nl2.exercises.map((e) => {
+                              const ratio = e.rmRatio;
+                              const bad = e.reasons.length > 0;
+                              return (
+                                <div key={e.key}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, marginBottom: 4, flexWrap: "wrap" }}>
+                                    <span style={{ color: bad ? "#d9695a" : "#f3f0ea", fontWeight: 600 }}>{e.name}</span>
+                                    <span style={{ color: "#a8a199" }}>
+                                      e1RM {e.e1rm} kg
+                                      {e.dropPct !== null && (
+                                        <span style={{ marginLeft: 8, fontWeight: 700, color: e.dropPct > 15 ? "#d9695a" : e.dropPct > 0 ? "#d9a441" : "#4fae7d" }}>
+                                          {e.dropPct > 0 ? "−" : "+"}
+                                          {Math.abs(e.dropPct)}% vs préc.
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  {ratio !== null ? (
+                                    <div style={{ position: "relative", height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 5 }}>
+                                      <div style={{ width: `${Math.min(100, ratio)}%`, height: "100%", borderRadius: 5, background: ratio < 80 ? "#d9695a" : "#4fae7d" }} />
+                                      <div style={{ position: "absolute", left: "80%", top: -3, bottom: -3, width: 2, background: "#f3f0ea" }} title="Seuil 80 % du RM" />
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: 11, color: "#6f6a62" }}>RM non renseigné pour cet exercice</div>
+                                  )}
+                                  {ratio !== null && (
+                                    <div style={{ fontSize: 11, color: ratio < 80 ? "#d9695a" : "#a8a199", marginTop: 3 }}>
+                                      {ratio}% du RM enregistré (seuil 80 %)
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: 11, color: "#6f6a62", lineHeight: 1.5 }}>
+                        Fatigue nerveuse : 1RM estimé via charge × reps × RPE. Signal si chute &gt; 15 % vs séance précédente ou si le 1RM estimé est &lt; 80 % du RM enregistré.
+                      </div>
+                    </>
+                  )}
                 </div>
-                )}
-              </div>
-            )}
+              );
+            })()}
 
             {showAthleteDetail.injuries && (
               <div
