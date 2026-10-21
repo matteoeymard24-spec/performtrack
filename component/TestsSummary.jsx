@@ -11,7 +11,7 @@ const TEXT = "#f3f0ea";
 
 /* Résumé des tests d'un athlète : références, dernier résultat de chaque test,
    zones de mobilité à travailler. Lecture seule (la saisie se fait dans l'onglet Tests). */
-export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = false }) {
+export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = false, collapsed = false, onToggle = null }) {
   const [tests, setTests] = useState([]);
   const [ref, setRef] = useState({});
   const [open, setOpen] = useState(null);
@@ -125,9 +125,16 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = f
 
     return (
       <div style={{ background: "#151310", padding: 20, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", marginBottom: 16 }}>
-        <h3 style={{ margin: "0 0 10px 0", fontSize: 16, fontWeight: 700, color: TEXT }}>{title}</h3>
-        {items.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Aucune note pour le moment.</div>}
-        {items.map((it, i) => {
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: collapsed ? 0 : 10 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: TEXT }}>{title}</h3>
+          {onToggle && (
+            <button onClick={onToggle} title={collapsed ? "Afficher" : "Masquer"} style={{ padding: "4px 10px", background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+              {collapsed ? "▸" : "▾"}
+            </button>
+          )}
+        </div>
+        {!collapsed && items.length === 0 && <div style={{ color: MUTED, fontSize: 13 }}>Aucune note pour le moment.</div>}
+        {!collapsed && items.map((it, i) => {
           const r = it.row;
           const g = r ? goalOf(r) : null;
           const note = r ? r.note : it.note;

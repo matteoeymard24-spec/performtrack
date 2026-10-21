@@ -162,19 +162,6 @@ export default function Dashboard() {
 
   // Blocs du dashboard athlète que chacun peut masquer (réglage mémorisé sur
   // l'appareil, par utilisateur).
-  const DASH_SECTIONS = [
-    { key: "week", label: "🗓️ Ma semaine" },
-    { key: "wellness", label: "🧘 Wellness" },
-    { key: "pain", label: "🩹 Localisation de la douleur" },
-    { key: "injuries", label: "🚑 Blessures déclarées" },
-    { key: "rm", label: "🎯 RM en attente" },
-    { key: "tests", label: "🧪 Mes tests" },
-    { key: "progress", label: "📊 Progression des séances" },
-    { key: "today", label: "🏋️ Séance du jour" },
-    { key: "weight", label: "⚖️ Mon poids" },
-    { key: "vmacmj", label: "🏃 VMA & 🦘 CMJ" },
-    { key: "rmhist", label: "💪 Mes RM (historique)" },
-  ];
   const hiddenStoreKey = `pt_dash_hidden_${currentUser?.uid || "anon"}`;
   const [hiddenDash, setHiddenDash] = useState(() => {
     try {
@@ -183,7 +170,6 @@ export default function Dashboard() {
       return [];
     }
   });
-  const [showDashSettings, setShowDashSettings] = useState(false);
   const vis = (k) => !hiddenDash.includes(k);
   const toggleDash = (k) =>
     setHiddenDash((prev) => {
@@ -195,6 +181,27 @@ export default function Dashboard() {
       }
       return next;
     });
+  // Repli par carte (même principe que Workout) : le titre reste visible,
+  // le bouton ▾/▸ replie le contenu. Mémorisé sur l'appareil.
+  const foldBtn = (k) => (
+    <button
+      onClick={() => toggleDash(k)}
+      title={vis(k) ? "Masquer" : "Afficher"}
+      style={{ padding: "4px 10px", background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, flexShrink: 0 }}
+    >
+      {vis(k) ? "▾" : "▸"}
+    </button>
+  );
+  const foldHead = (k, text) => (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: vis(k) ? 14 : 0 }}>
+      <h3 style={{ ...CARD_TITLE, margin: 0 }}>{text}</h3>
+      {foldBtn(k)}
+    </div>
+  );
+  const [rmSearchSelf, setRmSearchSelf] = useState("");
+  const [rmOpenCats, setRmOpenCats] = useState({});
+  const [rmOpenEx, setRmOpenEx] = useState({});
+
   const SectionToggleBtn = ({ sectionKey }) => (
     <button
       onClick={() => toggleSection(sectionKey)}
@@ -1326,12 +1333,6 @@ export default function Dashboard() {
           Bonjour {userProfile?.firstName || "Athlète"} ! 👋
         </h2>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-          <button
-            onClick={() => setShowDashSettings((v) => !v)}
-            style={{ padding: "6px 12px", background: "#2a2620", color: "#f3f0ea", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
-          >
-            ⚙️ Personnaliser mon dashboard
-          </button>
           {userRole === "admin" && meMode && (
             <button
               onClick={() => setMeMode(false)}
@@ -1341,19 +1342,6 @@ export default function Dashboard() {
             </button>
           )}
         </div>
-        {showDashSettings && (
-          <div style={{ background: "#151310", borderRadius: 12, padding: 14, marginBottom: 16, border: "1px solid rgba(255,255,255,0.12)" }}>
-            <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>Coche ce que tu veux voir :</div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {DASH_SECTIONS.map((sec) => (
-                <label key={sec.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer" }}>
-                  <input type="checkbox" checked={vis(sec.key)} onChange={() => toggleDash(sec.key)} />
-                  {sec.label}
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
         <p style={{ color: "#a8a199", marginBottom: 20, fontSize: 14 }}>
           {new Date().toLocaleDateString("fr-FR", {
             weekday: "long",
@@ -1365,7 +1353,7 @@ export default function Dashboard() {
         {/* Mini-frise de la semaine : un coup d'œil sur les 7 jours (lundi
             → dimanche) sans avoir à ouvrir le calendrier. Un jour sans
             séance programmée reste un simple point neutre. */}
-        {vis("week") && weekOverview.length > 0 && (
+        {weekOverview.length > 0 && (
           <div
             style={{
               display: "flex",
@@ -1428,7 +1416,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {vis("wellness") && !todayWellness && (
+        {!todayWellness && (
           <div
             style={{
               background: "rgba(217,164,65,0.14)",
@@ -1449,7 +1437,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {vis("today") && sessionReminderDue && (
+        {sessionReminderDue && (
           <div
             style={{
               background: "rgba(217,105,90,0.14)",
@@ -1468,7 +1456,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {vis("rm") && pendingRM.length > 0 && (
+        {pendingRM.length > 0 && (
           <div
             style={{
               background: "rgba(224,161,61,0.14)",
@@ -1503,7 +1491,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {vis("wellness") && todayScore !== null && (
+        {todayScore !== null && (
           <div
             style={{
               background: "#151310",
@@ -1513,7 +1501,9 @@ export default function Dashboard() {
               marginBottom: 16,
             }}
           >
-            <h3 style={CARD_TITLE}>🧘 Wellness</h3>
+            {foldHead("wellness", "🧘 Wellness")}
+            {vis("wellness") && (
+            <>
             <div
               style={{
                 display: "grid",
@@ -1593,10 +1583,12 @@ export default function Dashboard() {
                 </LineChart>
               </ResponsiveContainer>
             )}
+            </>
+          )}
           </div>
         )}
 
-        {vis("injuries") && selfInjuries.length > 0 && (
+        {selfInjuries.length > 0 && (
           <div
             style={{
               background: "#151310",
@@ -1606,9 +1598,9 @@ export default function Dashboard() {
               marginBottom: 16,
             }}
           >
-            <h3 style={CARD_TITLE}>
-              🚑 Blessures enregistrées récemment
-            </h3>
+            {foldHead("injuries", "🚑 Blessures récentes")}
+            {vis("injuries") && (
+            <>
             {selfInjuries.map((inj) => (
               <div key={inj.id} style={{ fontSize: 13, color: "#a8a199", marginBottom: 6 }}>
                 <strong style={{ color: "#f3f0ea" }}>{inj.date}</strong>
@@ -1616,10 +1608,12 @@ export default function Dashboard() {
                 {inj.daysLost !== null && inj.daysLost !== undefined ? ` (${inj.daysLost}j d'arrêt)` : ""}
               </div>
             ))}
+            </>
+          )}
           </div>
         )}
 
-        {vis("pain") && todayWellness?.painMap &&
+        {todayWellness?.painMap &&
           Object.keys(todayWellness.painMap).length > 0 && (
             <div
               style={{
@@ -1630,25 +1624,27 @@ export default function Dashboard() {
                 marginBottom: 16,
               }}
             >
-              <h3 style={CARD_TITLE}>
-                🩹 Localisation de la douleur (aujourd'hui)
-              </h3>
+            {foldHead("pain", "🩹 Douleur (aujourd'hui)")}
+            {vis("pain") && (
+            <>
               <BodyScan
                 painMap={todayWellness.painMap}
                 setPainMap={() => {}}
                 selectedZone={selfPainZone}
                 setSelectedZone={setSelfPainZone}
               />
+            </>
+          )}
             </div>
           )}
 
-        {vis("tests") && currentUser?.uid && (
+        {currentUser?.uid && (
           <div>
-            <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" simple />
+            <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" simple collapsed={!vis("tests")} onToggle={() => toggleDash("tests")} />
           </div>
         )}
 
-        {vis("progress") && (
+        {(
         <div
           style={{
             background: "#151310",
@@ -1658,9 +1654,9 @@ export default function Dashboard() {
             marginBottom: 16,
           }}
         >
-          <h3 style={CARD_TITLE}>
-            📊 Progression des séances
-          </h3>
+            {foldHead("progress", "📊 Progression des séances")}
+            {vis("progress") && (
+            <>
           <div
             style={{
               display: "grid",
@@ -1723,16 +1719,20 @@ export default function Dashboard() {
             </div>
           </div>
 
+            </>
+          )}
         </div>
         )}
 
 
-        {vis("progress") && (
+        {(
           <div style={CARD_STYLE}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: vis("load") ? 14 : 0, flexWrap: "wrap" }}>
               <h3 style={{ ...CARD_TITLE, margin: 0 }}>📈 Charge des 3 dernières semaines</h3>
-              <span style={{ fontSize: 11, color: "#a8a199" }}>UA = RPE × minutes</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ fontSize: 11, color: "#a8a199" }}>UA = RPE × minutes</span>{foldBtn("load")}</span>
             </div>
+            {vis("load") && (
+              <>
             {hasSparklineData ? (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
@@ -1824,19 +1824,21 @@ export default function Dashboard() {
                 Aucune charge enregistrée sur les 3 dernières semaines. Elle apparaît dès que tu valides une séance avec ton RPE.
               </div>
             )}
+              </>
+            )}
           </div>
         )}
 
-        {vis("today") && (
+        {(
         <div
           style={{
             ...CARD_STYLE,
             border: CARD_ACCENT_BORDER,
           }}
         >
-          <h3 style={CARD_TITLE}>
-            🏋️ Séance du jour
-          </h3>
+            {foldHead("today", "🏋️ Séance du jour")}
+            {vis("today") && (
+            <>
           {todayWorkout ? (
             <div>
               <div
@@ -1961,10 +1963,12 @@ export default function Dashboard() {
               Pas de séance programmée aujourd'hui
             </div>
           )}
+            </>
+          )}
         </div>
         )}
 
-        {vis("weight") && (
+        {(
         <div
           style={{
             background: "#151310",
@@ -1974,9 +1978,9 @@ export default function Dashboard() {
             marginBottom: 16,
           }}
         >
-          <h3 style={CARD_TITLE}>
-            ⚖️ Mon Poids
-          </h3>
+            {foldHead("weight", "⚖️ Mon poids")}
+            {vis("weight") && (
+            <>
           {!editingWeight ? (
             <div
               style={{
@@ -2109,10 +2113,12 @@ export default function Dashboard() {
               </ResponsiveContainer>
             </div>
           )}
+            </>
+          )}
         </div>
         )}
 
-        {vis("vmacmj") && (athleteVma || athleteCmj) && (
+        {(athleteVma || athleteCmj) && (
           <div
             style={{
               background: "#151310",
@@ -2122,9 +2128,9 @@ export default function Dashboard() {
               marginBottom: 16,
             }}
           >
-            <h3 style={CARD_TITLE}>
-              🏃 Ma VMA & 🦘 Mon CMJ
-            </h3>
+            {foldHead("vmacmj", "🏃 Ma VMA & 🦘 Mon CMJ")}
+            {vis("vmacmj") && (
+            <>
             <div
               style={{
                 display: "grid",
@@ -2189,87 +2195,110 @@ export default function Dashboard() {
                 </div>
               )}
             </div>
+            </>
+          )}
           </div>
         )}
 
-        {vis("rmhist") && Object.keys(athleteRMFullHistory).length > 0 && (
-          <div
-            style={{
-              background: "#151310",
-              padding: 20,
-              borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.08)",
-              marginBottom: 16,
-            }}
-          >
-            <h3 style={CARD_TITLE}>
-              💪 Mes RM — exercices déjà réalisés
-            </h3>
-            {EXERCISE_CATEGORIES.map((cat) => {
-              const exercisesInCat = Object.entries(athleteRMFullHistory).filter(
-                ([ex]) => (athleteRMCategoriesMap[ex] || "autre") === cat.value
-              );
-              if (exercisesInCat.length === 0) return null;
-              return (
-                <div key={cat.value} style={{ marginBottom: 20 }}>
-                  <h4 style={{ fontSize: 13, color: "#a8a199", margin: "0 0 10px 0" }}>
-                    {cat.label} ({exercisesInCat.length})
-                  </h4>
-                  <div style={{ display: "grid", gap: 12 }}>
-                    {exercisesInCat.map(([exercise, history]) => {
-                      const latest = history[history.length - 1];
-                      return (
-                        <div
-                          key={exercise}
-                          style={{ background: "#0d0c0a", padding: 15, borderRadius: 10 }}
+        {Object.keys(athleteRMFullHistory).length > 0 && (() => {
+          const q = rmSearchSelf.trim().toLowerCase();
+          const fmtD = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+          const cats = EXERCISE_CATEGORIES.map((cat) => {
+            const list = Object.entries(athleteRMFullHistory)
+              .filter(([ex]) => (athleteRMCategoriesMap[ex] || "autre") === cat.value)
+              .filter(([ex]) => !q || ex.toLowerCase().includes(q))
+              .sort((a, b) => a[0].localeCompare(b[0], "fr"));
+            return { cat, list };
+          }).filter((c) => c.list.length > 0);
+          const total = cats.reduce((n, c) => n + c.list.length, 0);
+          return (
+            <div style={CARD_STYLE}>
+              {foldHead("rmhist", "💪 Mes RM")}
+              {vis("rmhist") && (
+                <>
+                  <input
+                    type="text"
+                    value={rmSearchSelf}
+                    onChange={(e) => setRmSearchSelf(e.target.value)}
+                    placeholder={`🔍 Chercher un exercice (${Object.keys(athleteRMFullHistory).length})`}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", background: "#0d0c0a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#f3f0ea", fontSize: 14, outline: "none", marginBottom: 12 }}
+                  />
+                  {total === 0 && (
+                    <div style={{ fontSize: 13, color: "#a8a199", textAlign: "center", padding: 12 }}>Aucun exercice trouvé.</div>
+                  )}
+                  {cats.map(({ cat, list }) => {
+                    const open = q ? true : !!rmOpenCats[cat.value];
+                    return (
+                      <div key={cat.value} style={{ marginBottom: 8 }}>
+                        <button
+                          onClick={() => setRmOpenCats((p) => ({ ...p, [cat.value]: !p[cat.value] }))}
+                          style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#1d1a16", color: "#f3f0ea", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, textAlign: "left" }}
                         >
-                          <div
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              marginBottom: history.length > 1 ? 10 : 0,
-                              flexWrap: "wrap",
-                              gap: 8,
-                            }}
-                          >
-                            <div style={{ fontSize: 14, textTransform: "capitalize" }}>
-                              {exercise}
-                            </div>
-                            <div style={{ fontSize: 20, fontWeight: "bold", color: "#e0a13d" }}>
-                              {latest.kg} <span style={{ fontSize: 13 }}>kg</span>
-                              {latest.autoAdjusted && (
-                                <span style={{ fontSize: 13, marginLeft: 6, color: "#d9a441" }}>⚡</span>
-                              )}
-                            </div>
+                          <span>{cat.label} <span style={{ color: "#a8a199", fontWeight: 400 }}>({list.length})</span></span>
+                          <span style={{ color: "#a8a199" }}>{open ? "▾" : "▸"}</span>
+                        </button>
+                        {open && (
+                          <div style={{ marginTop: 4 }}>
+                            {list.map(([exercise, history]) => {
+                              const latest = history[history.length - 1];
+                              const prev = history.length > 1 ? history[history.length - 2] : null;
+                              const diff = prev ? Math.round((latest.kg - prev.kg) * 10) / 10 : null;
+                              const isOpen = !!rmOpenEx[exercise];
+                              return (
+                                <div key={exercise} style={{ borderBottom: "1px solid #1d1a16" }}>
+                                  <div
+                                    onClick={() => history.length > 1 && setRmOpenEx((p) => ({ ...p, [exercise]: !p[exercise] }))}
+                                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 4px", cursor: history.length > 1 ? "pointer" : "default" }}
+                                  >
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: 14, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise}</div>
+                                      <div style={{ fontSize: 11, color: "#a8a199" }}>
+                                        {fmtD(latest.date)}
+                                        {history.length > 1 ? ` · ${history.length} mesures ${isOpen ? "▾" : "▸"}` : ""}
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                                      <div style={{ fontSize: 18, fontWeight: 700, color: "#e0a13d" }}>
+                                        {latest.kg} <span style={{ fontSize: 12 }}>kg</span>
+                                        {latest.autoAdjusted && <span style={{ fontSize: 12, marginLeft: 4 }}>⚡</span>}
+                                      </div>
+                                      {diff !== null && diff !== 0 && (
+                                        <div style={{ fontSize: 11, color: diff > 0 ? "#4fae7d" : "#d9695a" }}>
+                                          {diff > 0 ? "▲ +" : "▼ "}{diff} kg
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {isOpen && history.length > 1 && (
+                                    <div style={{ paddingBottom: 10 }}>
+                                      <ResponsiveContainer width="100%" height={120}>
+                                        <LineChart
+                                          data={history.map((item) => ({
+                                            ...item,
+                                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                                          }))}
+                                        >
+                                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
+                                          <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
+                                          <Tooltip contentStyle={CHART_TOOLTIP} formatter={(value) => [`${value} kg`, "1RM"]} />
+                                          <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
+                                        </LineChart>
+                                      </ResponsiveContainer>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
-                          {history.length > 1 && (
-                            <ResponsiveContainer width="100%" height={120}>
-                              <LineChart
-                                data={history.map((item) => ({
-                                  ...item,
-                                  dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
-                                }))}
-                              >
-                                <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
-                                <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
-                                <Tooltip
-                                  contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
-                                  formatter={(value) => [`${value} kg`, "1RM"]}
-                                />
-                                <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   }
