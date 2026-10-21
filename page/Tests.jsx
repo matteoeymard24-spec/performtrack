@@ -732,7 +732,7 @@ export default function Tests() {
       const bj = tests.find((t) => t.testId === "broad_jump");
       const bRows = normRows("broad_jump", mergedBroad, bj ? bj.date : "").map((r) => ({ ...r, estNoteTxt: true }));
       const jumpRows = [...cRows, ...bRows];
-      out.cmj = { title: "🦘 Saut (CMJ + broad jump)", avg: avg(jumpRows.map((r) => r.note)), rows: jumpRows };
+      out.cmj = { title: "🦘 Saut", avg: avg(jumpRows.map((r) => r.note)), rows: jumpRows };
       const b = tests.find((t) => t.testId === "bronco");
       const eRows = b ? normRows("bronco", b.values, b.date) : [];
       out.endurance = { title: "🏃 Endurance", avg: avg(eRows.map((r) => r.note)), rows: eRows };
@@ -1238,7 +1238,7 @@ export default function Tests() {
                   </div>
 
                   <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>🦘 Standards de saut (CMJ) par niveau — {posteLabel(sport, poste)}</div>
+                    <div style={{ fontWeight: 700 }}>🦘 Standards de saut vertical par niveau — {posteLabel(sport, poste)}</div>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                       Hauteur de CMJ face à chaque niveau
                       {level ? ` (objectif : ${levelLabel(level)})` : ""}. Ton dernier CMJ saisi est comparé automatiquement.
@@ -1252,10 +1252,10 @@ export default function Tests() {
                   </div>
 
                   <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>↗️ Standards de saut horizontal (Broad jump) par niveau — {posteLabel(sport, poste)}</div>
+                    <div style={{ fontWeight: 700 }}>↗️ Standards de saut horizontal par niveau — {posteLabel(sport, poste)}</div>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                       Distance du meilleur essai face à chaque niveau
-                      {level ? ` (objectif : ${levelLabel(level)})` : ""}. Seule valeur publiée : moyennes de pros de Super Rugby (Posthumus et al. 2020, n = 39) — avants 252 cm, trois-quarts 269 cm ; le reste du tableau est estimé (~).
+                      {level ? ` (objectif : ${levelLabel(level)})` : ""}. Ton meilleur essai saisi est comparé automatiquement.
                     </div>
                     <LevelTable
                       rows={evaluateLadderRows("broad_jump", mergedBroad, sport, poste, level)}
@@ -1266,8 +1266,7 @@ export default function Tests() {
                   </div>
 
                   <div style={{ ...cardStyle, fontSize: 12, color: MUTED }}>
-                    Pas de norme dans ton projet pour la VMA, le Yo-Yo, le 30-15, la mobilité et la force isométrique
-                    (hors cervicales). Médailles : 🥉 bronze = moyenne du niveau, 🥈 argent et 🥇 or = au-dessus ; sous la moyenne = hors standard. Les niveaux Nationale, Fédérale, Régionale, Espoirs et U18 sont des estimations (~) tant que tu n'as pas tes propres valeurs : ajuste les coefficients dans rugbyLevels.js.
+                    Médailles : 🥉 bronze = moyenne du niveau, 🥈 argent et 🥇 or = au-dessus ; sous la moyenne = hors standard.
                   </div>
                 </>
               )}
