@@ -732,7 +732,7 @@ export default function Tests() {
       const bj = tests.find((t) => t.testId === "broad_jump");
       const bRows = normRows("broad_jump", mergedBroad, bj ? bj.date : "").map((r) => ({ ...r, estNoteTxt: true }));
       const jumpRows = [...cRows, ...bRows];
-      out.cmj = { title: "🦘 Saut", avg: avg(jumpRows.map((r) => r.note)), rows: jumpRows };
+      out.cmj = { title: "🦘 Puissance", avg: avg(jumpRows.map((r) => r.note)), rows: jumpRows };
       const b = tests.find((t) => t.testId === "bronco");
       const eRows = b ? normRows("bronco", b.values, b.date) : [];
       out.endurance = { title: "🏃 Endurance", avg: avg(eRows.map((r) => r.note)), rows: eRows };
@@ -760,7 +760,7 @@ export default function Tests() {
       <h2 style={{ margin: "0 0 4px 0", fontSize: 24, fontWeight: 700 }}>🧪 Tests</h2>
       <div style={{ color: MUTED, fontSize: 13, marginBottom: 14 }}>
         {isCoach
-          ? "Saisis les tests d'endurance, de mobilité, de force isométrique et de saut. Les séances énergétiques s'appuient sur le test de référence choisi pour chaque athlète."
+          ? "Saisis les tests d'endurance, de mobilité, de force isométrique et de puissance. Les séances énergétiques s'appuient sur le test de référence choisi pour chaque athlète."
           : "Consulte tes résultats, tes normes et ton bilan. La saisie des tests est faite par ton coach."}
       </div>
 
@@ -1238,7 +1238,7 @@ export default function Tests() {
                   </div>
 
                   <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>🦘 Standards de saut vertical par niveau — {posteLabel(sport, poste)}</div>
+                    <div style={{ fontWeight: 700 }}>🦘 Standards de puissance verticale par niveau — {posteLabel(sport, poste)}</div>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                       Hauteur de CMJ face à chaque niveau
                       {level ? ` (objectif : ${levelLabel(level)})` : ""}. Ton dernier CMJ saisi est comparé automatiquement.
@@ -1252,7 +1252,7 @@ export default function Tests() {
                   </div>
 
                   <div style={cardStyle}>
-                    <div style={{ fontWeight: 700 }}>↗️ Standards de saut horizontal par niveau — {posteLabel(sport, poste)}</div>
+                    <div style={{ fontWeight: 700 }}>↗️ Standards de puissance horizontale par niveau — {posteLabel(sport, poste)}</div>
                     <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                       Distance du meilleur essai face à chaque niveau
                       {level ? ` (objectif : ${levelLabel(level)})` : ""}. Ton meilleur essai saisi est comparé automatiquement.
