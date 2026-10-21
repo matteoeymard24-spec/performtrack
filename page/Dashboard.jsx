@@ -1758,24 +1758,6 @@ export default function Dashboard() {
             {foldHead("pain", "🩹 Douleur (aujourd'hui)")}
             {vis("pain") && (
             <>
-              <button
-                type="button"
-                onClick={() => navigate("/wellness")}
-                style={{
-                  width: "100%",
-                  padding: "10px 14px",
-                  marginBottom: 14,
-                  background: "rgba(224,161,61,0.12)",
-                  color: "#e0a13d",
-                  border: "1px solid rgba(224,161,61,0.4)",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
-              >
-                🧘 Ouvrir l'onglet Wellness →
-              </button>
               <BodyScan
                 painMap={todayWellness.painMap || {}}
                 painTypes={todayWellness.painTypes || {}}
