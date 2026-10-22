@@ -1291,7 +1291,21 @@ export default function Tests() {
                       <span style={{ fontSize: 11 }}>(enregistré dans le profil de l'athlète)</span>
                     </div>
                     {!selectedAthlete?.weight && (
-                      <div style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>Renseigne le poids de l'athlète (profil) : les standards de force sont affichés en kg pour son poids.</div>
+                      <div style={{ fontSize: 12, color: ACCENT, marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        {cycBilan?.bw ? `Poids pris dans ton dernier test : ${cycBilan.bw} kg.` : "Poids de l'athlète non renseigné : les seuils restent en × poids / W/kg."}
+                        <input
+                          placeholder="Poids (kg)"
+                          inputMode="decimal"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const v = Number(String(e.target.value).replace(",", "."));
+                              if (v > 0) saveProfile({ weight: v });
+                            }
+                          }}
+                          style={{ background: "#0d0c0a", color: TEXT, border: "1px solid #2a2620", borderRadius: 6, padding: "4px 8px", fontSize: 12, width: 100 }}
+                        />
+                        <span style={{ fontSize: 11, color: MUTED }}>Entrée pour enregistrer dans le profil</span>
+                      </div>
                     )}
                   </div>
                   <div style={cardStyle}>
@@ -1316,7 +1330,10 @@ export default function Tests() {
                   </div>
                   <div style={cardStyle}>
                     <FoldHead title="🚴 Sprint et endurance — référence" open={bf.isOpen("n_cyc_ref")} onToggle={() => bf.toggle("n_cyc_ref")} gap={2} />
-                    {bf.isOpen("n_cyc_ref") && <CyclingNorms level={level} sex={selectedAthlete?.sex} />}
+                    {bf.isOpen("n_cyc_ref") && (<>
+                      <LevelTable rows={[...(cycBilan?.sprint || []), ...(cycBilan?.endu || [])]} targetId={level} labelHeader="Test" valueHeader="Ton résultat" legend="Puissances en watts pour le poids de l'athlète (la note est calculée en W/kg, donc indépendante du poids) · VO2max en ml/kg/min · bronze = standard du niveau, argent = +1 écart-type, or = +2" />
+                      <CyclingNorms level={level} sex={selectedAthlete?.sex} />
+                    </>)}
                   </div>
                 </>
               ) : !normsOn ? (
@@ -1430,7 +1447,7 @@ export default function Tests() {
                 <div style={cardStyle}>
                   <FoldHead title="🕸️ Radar des qualités physiques — cyclisme sur route" open={bf.isOpen("radar")} onToggle={() => bf.toggle("radar")} gap={2} />
                   {bf.isOpen("radar") && (
-                    <CyclingRadar tests={tests} rmDocs={rmDocs} level={level} rider={poste} weight={selectedAthlete?.weight} sex={selectedAthlete?.sex} onSaveSex={(v) => saveProfile({ sex: v })} domainNotes={domainNotes} />
+                    <CyclingRadar level={level} rider={poste} sex={selectedAthlete?.sex} domainNotes={domainNotes} />
                   )}
                 </div>
               )}

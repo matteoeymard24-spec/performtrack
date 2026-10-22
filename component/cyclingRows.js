@@ -53,7 +53,10 @@ const latestBy = (tests, pred) =>
   [...(tests || [])].filter(pred).sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0] || null;
 
 /* Renvoie { strength, cmj, sprint, endu } : listes de lignes */
-export function cyclingBilan({ tests, rmDocs, bw, level, sex }) {
+export function cyclingBilan({ tests, rmDocs, bw: bw0, level, sex }) {
+  // poids : profil, sinon dernier poids saisi dans un test
+  const wTest = [...(tests || [])].sort((a, b) => (b.date || "").localeCompare(a.date || "")).map((t) => num(t.values?.weight)).find((w) => w);
+  const bw = bw0 || wTest || null;
   const lvl = CYCLING_LEVELS.some((l) => l.id === level) ? level : null;
   const kg = (x) => String(Math.round(x * 2) / 2);
 
@@ -95,36 +98,52 @@ export function cyclingBilan({ tests, rmDocs, bw, level, sex }) {
     },
   ];
 
-  const wkg = (testId, key) => {
+  /* Puissances en watts (seuils = W/kg × poids du corps) ; la note reste calculée en W/kg */
+  const pw = (testId, key) => {
     const t = latestBy(tests, (x) => x.testId === testId);
     if (!t) return null;
     const p = num(t.values?.[key]);
     const w = num(t.values?.weight) || bw;
-    return p && w ? { v: r2(p / w), date: t.date } : null;
+    return p ? { p, w, v: w ? r2(p / w) : null, date: t.date } : null;
   };
-  const mk = (id, label, unit, got, std0) => {
-    const v = got ? got.v : null;
+  const mkW = (id, label, got) => {
+    const w = got?.w || bw;
+    const unit = w ? "W" : "W/kg";
+    const conv = (x) => String(w ? Math.round(x) : r1(x));
     return {
       label,
-      display: v != null ? String(v) : null,
+      display: got ? (w ? String(Math.round(got.p)) : String(got.v)) : null,
       unit,
-      value: v,
-      note: lvl && v != null ? cyclingNote(id, lvl, sex, v) : null,
-      extra: got?.date || "",
+      value: got ? (w ? got.p : got.v) : null,
+      note: lvl && got && got.v != null ? cyclingNote(id, lvl, sex, got.v) : null,
+      extra: [got?.v != null ? `${got.v} W/kg` : "", got?.date || ""].filter(Boolean).join(" · "),
       lv: makeLv(
-        (lid) => ({ std: CYCLING_STD[sex][lid][id], sd: cyclingSd(id, lid, sex), tag: CYCLING_TAGS(lid, sex)[id] }),
-        v,
+        (lid) => {
+          const std = CYCLING_STD[sex][lid][id];
+          const sd = cyclingSd(id, lid, sex);
+          return { std: w ? std * w : std, sd: w ? sd * w : sd, tag: CYCLING_TAGS(lid, sex)[id] };
+        },
+        got ? (w ? got.p : got.v) : null,
         lvl,
-        (x) => String(r1(x))
+        conv
       ),
     };
   };
-  const sprint = [mk("p5s", "Sprint 5 s", "W/kg", wkg("cycle_p5s", "p"))];
+  const sprint = [mkW("p5s", "Sprint 5 s", pw("cycle_p5s", "p"))];
   const vo2T = latestBy(tests, (t) => t.result?.vo2max != null);
+  const vo2v = vo2T ? Number(vo2T.result.vo2max) : null;
   const endu = [
-    mk("p20", "Seuil 20 min / FTP", "W/kg", wkg("ftp", "p20")),
-    mk("p5m", "PMA 5 min", "W/kg", wkg("cycle_p5m", "p5")),
-    mk("vo2", "VO2max (estimée)", "ml/kg/min", vo2T ? { v: Number(vo2T.result.vo2max), date: vo2T.date } : null),
+    mkW("p20", "Seuil 20 min / FTP", pw("ftp", "p20")),
+    mkW("p5m", "PMA 5 min", pw("cycle_p5m", "p5")),
+    {
+      label: "VO2max (estimée)",
+      display: vo2v != null ? String(vo2v) : null,
+      unit: "ml/kg/min",
+      value: vo2v,
+      note: lvl && vo2v != null ? cyclingNote("vo2", lvl, sex, vo2v) : null,
+      extra: vo2T?.date || "",
+      lv: makeLv((lid) => ({ std: CYCLING_STD[sex][lid].vo2, sd: cyclingSd("vo2", lid, sex), tag: CYCLING_TAGS(lid, sex).vo2 }), vo2v, lvl, (x) => String(r1(x))),
+    },
   ];
-  return { strength, cmj, sprint, endu };
+  return { strength, cmj, sprint, endu, bw };
 }
