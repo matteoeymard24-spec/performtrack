@@ -2543,7 +2543,7 @@ export default function Dashboard() {
           },
           {
             key: "fatigue",
-            label: `😌 Fatigue (${
+            label: `😓 Fatigue (${
               athletes.filter(
                 (a) => a.status?.level === "fatigue" || a.status?.level === "watch"
               ).length

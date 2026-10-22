@@ -533,6 +533,8 @@ export const NEURAL_DROP_THRESHOLD = 0.15;
 export const NEURAL_RM_FLOOR = 0.8;
 export const NEURAL_WINDOW_DAYS = 4;
 export const NEURAL_PREV_LOOKBACK_DAYS = 28;
+export const NEURAL_MIN_SETS_PREV = 2;
+export const NEURAL_MAX_PLAUSIBLE_CHANGE = 0.5;
 
 // % du 1RM pour n répétitions maximales (RPE 10), table RPE standard.
 const PCT_AT_FAILURE = { 1: 100, 2: 95.5, 3: 92.2, 4: 89.2, 5: 86.3, 6: 83.7, 7: 81.1, 8: 78.6, 9: 76.2, 10: 73.9, 11: 70.7, 12: 68.0 };
@@ -584,7 +586,7 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
       (s.exercises || []).forEach((e) => {
         const vals = (e.sets || []).map((st) => e1rmFromSet(st.weight, st.reps, st.rpe)).filter((v) => v !== null);
         const m = medianOf(vals);
-        if (m !== null) ex[e.key] = { name: e.name, e1rm: m };
+        if (m !== null) ex[e.key] = { name: e.name, e1rm: m, n: vals.length };
       });
       return { date: s.date, ex };
     })
@@ -599,8 +601,20 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
   const exercises = Object.entries(current.ex).map(([key, cur]) => {
     const prev = [...perSession]
       .reverse()
-      .find((s) => s.date < current.date && dayDiff(current.date, s.date) <= NEURAL_PREV_LOOKBACK_DAYS && s.ex[key]);
-    const dropPct = prev ? (prev.ex[key].e1rm - cur.e1rm) / prev.ex[key].e1rm : null;
+      .find(
+        (s) =>
+          s.date < current.date &&
+          dayDiff(current.date, s.date) <= NEURAL_PREV_LOOKBACK_DAYS &&
+          s.ex[key] &&
+          // Séance de référence fiable : au moins 2 séries exploitables (une
+          // 1re séance d'un exo, souvent 1 série légère / RPE approximatif,
+          // donnait un e1RM trop bas → "+257 % vs préc.").
+          s.ex[key].n >= NEURAL_MIN_SETS_PREV
+      );
+    let dropPct = prev ? (prev.ex[key].e1rm - cur.e1rm) / prev.ex[key].e1rm : null;
+    // Un écart > 50 % en moins de 4 semaines n'est pas physiologique : c'est
+    // une donnée de référence incomplète, pas de la fatigue ni un progrès.
+    if (dropPct !== null && Math.abs(dropPct) > NEURAL_MAX_PLAUSIBLE_CHANGE) dropPct = null;
     const rm = rmByKey ? Number(rmByKey[key]) : null;
     const rmRatio = rm > 0 ? cur.e1rm / rm : null;
     const reasons = [];
@@ -610,7 +624,7 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
       key,
       name: cur.name,
       e1rm: Math.round(cur.e1rm * 10) / 10,
-      prevDate: prev ? prev.date : null,
+      prevDate: prev && dropPct !== null ? prev.date : null,
       dropPct: dropPct !== null ? Math.round(dropPct * 1000) / 10 : null,
       rmRatio: rmRatio !== null ? Math.round(rmRatio * 1000) / 10 : null,
       reasons,

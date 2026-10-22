@@ -2520,6 +2520,68 @@ export default function Workout() {
     }
   };
 
+  // Normalise les clés des fiches "Mes RM" de TOUS les athlètes (sans accents,
+  // minuscules) pour qu'elles correspondent à la banque d'exercices. Aucune
+  // donnée perdue : si la fiche normalisée existe déjà, les historiques sont
+  // fusionnés (sans doublon) ; l'ancienne fiche n'est supprimée qu'APRÈS
+  // l'écriture réussie de la nouvelle. VMA / CMJ ne sont pas touchées.
+  const [normalizingRM, setNormalizingRM] = useState(false);
+  const normalizeAllRMKeys = async () => {
+    if (
+      !window.confirm(
+        "Normaliser les noms de toutes les fiches Mes RM (accents, majuscules) ?\nLes valeurs et historiques sont conservés (fusion si doublon)."
+      )
+    )
+      return;
+    setNormalizingRM(true);
+    let moved = 0;
+    let merged = 0;
+    try {
+      const usersSnap = await getDocs(collection(db, "users"));
+      for (const u of usersSnap.docs) {
+        const rmSnap = await getDocs(collection(db, "users", u.id, "rm"));
+        for (const d of rmSnap.docs) {
+          if (d.id === "VMA" || d.id === "CMJ") continue;
+          const newKey = normalizeExerciseName(d.id);
+          if (!newKey || newKey === d.id) continue;
+          const old = d.data();
+          const targetRef = doc(db, "users", u.id, "rm", newKey);
+          const tSnap = await getDoc(targetRef);
+          const tgt = tSnap.exists() ? tSnap.data() : null;
+          const seen = new Set();
+          const history = [...(tgt?.history || []), ...(old.history || [])]
+            .filter((h) => {
+              const k = h.date + "|" + h.kg;
+              if (seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            })
+            .sort((a, b) => new Date(a.date) - new Date(b.date));
+          const lastHist = history.length ? history[history.length - 1] : null;
+          const data = { ...old, ...(tgt || {}), exerciseName: newKey };
+          if (history.length) {
+            data.history = history;
+            data.kg = lastHist.kg;
+          } else {
+            data.kg = tgt?.kg ?? old.kg ?? null;
+          }
+          if (tgt && tgt.kg == null && old.kg != null && !history.length) data.kg = old.kg;
+          data.autoCreated = data.kg == null;
+          await setDoc(targetRef, data);
+          await deleteDoc(d.ref);
+          moved++;
+          if (tgt) merged++;
+        }
+      }
+      alert(`✅ ${moved} fiche(s) normalisée(s) dont ${merged} fusionnée(s) avec un doublon. Aucune donnée perdue.`);
+    } catch (e) {
+      console.error("Erreur normalisation RM:", e);
+      alert("❌ Erreur pendant la normalisation (rien n'est supprimé avant écriture) : " + e.message);
+    } finally {
+      setNormalizingRM(false);
+    }
+  };
+
   const startRenameExercise = (entry) => {
     setRenamingKey(entry.key);
     setRenameDraft(entry.name);
@@ -4017,6 +4079,25 @@ export default function Workout() {
                 </p>
               )}
             </div>
+
+            <button
+              type="button"
+              onClick={normalizeAllRMKeys}
+              disabled={normalizingRM}
+              style={{
+                width: "100%",
+                padding: 10,
+                marginBottom: 10,
+                borderRadius: 8,
+                border: "1px solid #2a2620",
+                background: "#1a1814",
+                color: "#f3f0ea",
+                cursor: normalizingRM ? "wait" : "pointer",
+                fontSize: 13,
+              }}
+            >
+              {normalizingRM ? "⏳ Normalisation en cours…" : "🧹 Normaliser les noms de tous les Mes RM (garde les données)"}
+            </button>
 
             <input
               type="text"
