@@ -62,6 +62,14 @@ export const SENS = {
 /* Colonnes du référentiel : Pilier, Talonneur, 2e ligne, 3e ligne, 9, 10, Centre, Ailier/Arrière */
 export const GROUP = { PILIER: 0, TALON: 1, "2L": 2, "3L": 3, "9": 4, "10": 5, Centre: 6, Ailier: 7, Arriere: 7 };
 
+/* Bronco (solution 2) : le 30e centile Super Rugby sert de niveau Pro D2, le 10e centile reste le niveau
+   International, Top 14 = milieu des deux (calculé en secondes puis reconverti en min.ss). */
+const _bs = (x) => Math.floor(x + 1e-9) * 60 + Math.round((x - Math.floor(x + 1e-9)) * 100);
+const _bm = (sec) => Math.floor(sec / 60) + (sec % 60) / 100;
+const BRONCO_P30 = [5.22, 5.22, 5.06, 4.56, 4.39, 4.39, 4.56, 4.51];
+const BRONCO_P10 = [5.05, 5.05, 4.55, 4.43, 4.31, 4.31, 4.44, 4.38];
+const BRONCO_MID = BRONCO_P30.map((v, i) => _bm(Math.round((_bs(v) + _bs(BRONCO_P10[i])) / 2)));
+
 /* Valeurs sourcées du "Référentiel standards rugby" (Bronco en min.ss : 5.04 = 5'04") */
 export const SOURCED = {
   SQUAT: {
@@ -82,7 +90,8 @@ export const SOURCED = {
      Corroboré par Hamlin et al. (pros NZ, n = 133) : 3e ligne/avants 5:11, arrières 4:54. */
   Bronco: {
     international: { v: [5.05, 5.05, 4.55, 4.43, 4.31, 4.31, 4.44, 4.38], src: "Étude Weakley et al. 2026 (Super Rugby, 10e centile)" },
-    top14: { v: [5.22, 5.22, 5.06, 4.56, 4.39, 4.39, 4.56, 4.51], src: "Étude Weakley et al. 2026 (Super Rugby, 30e centile)" },
+    top14: { v: BRONCO_MID, src: "Estimé : milieu entre le 30e et le 10e centile Super Rugby (Weakley 2026)" },
+    prod2: { v: [5.22, 5.22, 5.06, 4.56, 4.39, 4.39, 4.56, 4.51], src: "Estimé : 30e centile Super Rugby (Weakley 2026) pris comme niveau Pro D2" },
   },
   CMJ: {
     international: { v: [50, 55, 55, 55, 55, 55, 60, 62], src: "Références physiques V3 World Class" },

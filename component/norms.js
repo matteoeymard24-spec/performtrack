@@ -107,38 +107,44 @@ const broadTable = () => {
   return out;
 };
 /* ===================== ENDURANCE : Yo-Yo IR1 et 30-15 IFT (VIFT) =====================
-   Aucune étude publiée ne donne ces tests poste par poste ET niveau par niveau : barèmes ESTIMÉS.
-   YO-YO IR1 : moyennes mesurées de l'équipe nationale brésilienne de rugby (avants 1 802 ± 361 m,
-   arrières 2 306 ± 231 m ; Physical and physiological differences of backs and forwards from the Brazilian
-   National rugby union team, J Sports Med Phys Fitness 2016). Écart entre postes : dans chaque groupe (avants /
-   arrières), la moyenne est multipliée par le rapport vitesse Bronco du poste / vitesse moyenne du groupe (10e centile publié par poste,
-   Weakley et al. 2026) — hypothèse, pas une mesure. Note 10 = cette moyenne ; chaque note = 60 m
-   (≈ écart-type 300 m / 5).
+   YO-YO IR1 : standards du CLUB (basés sur des clubs de Top 14), OR / AR / BR par poste. On les lit comme
+   or / argent / bronze du niveau Top 14 (bronze = seuil de base, argent, or). Pilier = moyenne Piliers D et G.
+   Niveaux voisins ESTIMÉS à partir de l'écart du club : d = (OR - BR) / 2.
+     Pro D2 : bronze BR - d, argent BR, or AR      International : bronze OR, argent OR + d, or OR + 2d.
    VIFT 30-15 : rugby union, 114 joueurs (Darrall-Jones et al., IJSPP 2016) : 18,9 à 19,2 km/h selon la
    catégorie d'âge, écart-type ≈ 1,1 ; l'étude ne distingue pas les postes → même barème pour tous.
    Note 10 = 19,0 km/h ; chaque note = 0,22 km/h (≈ écart-type / 5). */
-const YOYO_MEAN = { avants: 1802, arrieres: 2306 };
-const YOYO_STEP = 60;
+export const CLUB_YOYO = {
+  PILIER: { or: 1420, ar: 1280, br: 1160 },
+  TALON: { or: 1760, ar: 1600, br: 1480 },
+  "2L": { or: 1800, ar: 1640, br: 1520 },
+  "3L": { or: 2200, ar: 2000, br: 1840 },
+  "9": { or: 2200, ar: 2040, br: 1920 },
+  "10": { or: 2000, ar: 1840, br: 1680 },
+  Centre: { or: 2080, ar: 1920, br: 1840 },
+  Ailier: { or: 2000, ar: 1840, br: 1720 },
+  Arriere: { or: 2200, ar: 2000, br: 1840 },
+};
 const VIFT_MEAN = 19.0;
 const VIFT_STEP = 0.22;
 export const ENDURANCE_NOTE =
-  "Barème estimé : Yo-Yo IR1 = moyennes de l'équipe nationale du Brésil (avants / arrières) réparties par poste selon la vitesse au Bronco ; 30-15 = moyenne rugby union (Darrall-Jones 2016), sans distinction de poste. Aucune étude ne donne ces tests poste par poste et niveau par niveau.";
-const broncoSec = (v) => Math.floor(v + 1e-9) * 60 + Math.round((v - Math.floor(v + 1e-9)) * 100);
-export const yoyoPosteMean = (poste) => {
-  const bv = SOURCED.Bronco.international.v;
-  const keys = (POSTES.rugby || []).map((x) => x.key);
-  const idx = (k) => 1 / broncoSec(bv[GROUP[k]]);
-  const fw = BROAD_FORWARDS.includes(poste);
-  const grp = keys.filter((k) => BROAD_FORWARDS.includes(k) === fw);
-  const avgIdx = grp.reduce((a, k) => a + idx(k) * BROAD_COUNT[k], 0) / grp.reduce((a, k) => a + BROAD_COUNT[k], 0);
-  // Moyenne du groupe × (vitesse Bronco du poste / vitesse moyenne du groupe)
-  return (fw ? YOYO_MEAN.avants : YOYO_MEAN.arrieres) * (idx(poste) / avgIdx);
+  "Barème estimé : 30-15 = moyenne rugby union (Darrall-Jones 2016), sans distinction de poste.";
+/* Seuils des 3 niveaux pour un poste (bronze du niveau) */
+const yoyoLevels = (poste) => {
+  const c = CLUB_YOYO[poste];
+  if (!c) return null;
+  const d = (c.or - c.br) / 2;
+  return { d, prod2: c.br - d, top14: c.br, intl: c.or };
 };
 const yoyoTable = () => {
   const out = {};
   (POSTES.rugby || []).forEach(({ key }) => {
-    const m = yoyoPosteMean(key);
-    out[key] = Array.from({ length: 21 }, (_, n) => Math.round((m + (n - 10) * YOYO_STEP) / 10) * 10);
+    const L = yoyoLevels(key);
+    out[key] = Array.from({ length: 21 }, (_, n) => {
+      if (n <= 10) return Math.round(L.prod2 - ((10 - n) * L.d) / 5);
+      if (n <= 15) return Math.round(L.prod2 + ((n - 10) * (L.top14 - L.prod2)) / 5);
+      return Math.round(L.top14 + ((n - 15) * (L.intl - L.top14)) / 5);
+    });
   });
   return out;
 };
@@ -154,9 +160,9 @@ const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable(), "60m":
 /* Source affichée pour certaines échelles (sinon : texte par défaut du barème Agen) */
 const LADDER_META = {
   YOYO1: {
-    prod2: { tag: "estimé", src: "Moyennes avants / arrières de l'équipe nationale du Brésil, réparties par poste (vitesse Bronco)" },
-    top14: { tag: "estimé", src: "Moyenne du poste + 1 écart-type (≈ 300 m)" },
-    international: { tag: "estimé", src: "Moyenne du poste + 2 écarts-types (≈ 300 m)" },
+    prod2: { tag: "estimé", src: "Estimé : seuil bronze Top 14 du club moins un demi-écart OR-BR" },
+    top14: { tag: "doc", src: "Standards du club (clubs de Top 14) : bronze / argent / or" },
+    international: { tag: "estimé", src: "Estimé : or Top 14 du club comme seuil bronze" },
   },
   VIFT: {
     prod2: { tag: "estimé", src: "Moyenne rugby union 19,0 km/h (Darrall-Jones 2016), sans distinction de poste" },
@@ -246,13 +252,18 @@ export function buildLadder(sport, normKey, poste) {
     const near = table[n] != null ? n : defined.reduce((a, b) => (Math.abs(b - n) < Math.abs(a - n) ? b : a));
     return cv(table[near]);
   };
-  const p = W(at(10));
+  const srcOf0 = (lvl) => {
+    const e = SOURCED[normKey]?.[lvl];
+    return e && GROUP[poste] != null && e.v[GROUP[poste]] != null ? { w: W(cv(e.v[GROUP[poste]])), src: e.src, est: /^Estimé/.test(e.src) } : null;
+  };
+  const sp = srcOf0("prod2");
+  const p = sp ? sp.w : W(at(10));
   const n15 = W(at(15));
   const n20 = W(at(20));
   const gi = GROUP[poste];
   const srcOf = (lvl) => {
     const e = SOURCED[normKey]?.[lvl];
-    return e && gi != null && e.v[gi] != null ? { w: W(cv(e.v[gi])), src: e.src } : null;
+    return e && gi != null && e.v[gi] != null ? { w: W(cv(e.v[gi])), src: e.src, est: /^Estimé/.test(e.src) } : null;
   };
 
   const meta0 = LADDER_META[normKey] || {};
@@ -261,7 +272,7 @@ export function buildLadder(sport, normKey, poste) {
   const si = srcOf("international");
   if (si && si.w > p) {
     i = si.w;
-    iTag = { tag: "doc", src: si.src };
+    iTag = { tag: si.est ? "estimé" : "doc", src: si.src };
   }
   if (!(i > p)) i = p + Math.abs(p) * 0.08;
 
@@ -270,7 +281,7 @@ export function buildLadder(sport, normKey, poste) {
   const st = srcOf("top14");
   if (st && st.w > p && st.w < i) {
     t = st.w;
-    tTag = { tag: "doc", src: st.src };
+    tTag = { tag: st.est ? "estimé" : "doc", src: st.src };
   } else if (!(n15 > p && n15 < i)) {
     t = (p + i) / 2;
     tTag = { tag: "barème", src: "Milieu entre Pro D2 et International" };
@@ -283,7 +294,7 @@ export function buildLadder(sport, normKey, poste) {
     let w, meta;
     if (l.id === "international") [w, meta] = [i, iTag];
     else if (l.id === "top14") [w, meta] = [t, tTag];
-    else if (l.id === "prod2") [w, meta] = [p, meta0.prod2 || { tag: "barème", src: "Barème Agen, note 10/20 (≈ moyenne des tops Pro D2)" }];
+    else if (l.id === "prod2") [w, meta] = [p, sp ? { tag: "estimé", src: sp.src } : meta0.prod2 || { tag: "barème", src: "Barème Agen, note 10/20 (≈ moyenne des tops Pro D2)" }];
     else {
       const eff = 1 - (1 - l.f) * sens;
       const pReal = dir === "high" ? p : -p; // valeur réelle Pro D2 (secondes pour Bronco)
@@ -307,6 +318,50 @@ export function buildLadder(sport, normKey, poste) {
     r.silver = med(15);
     r.gold = med(20);
   });
+  // Yo-Yo IR1 : médailles du club (standards Top 14) + niveaux voisins estimés
+  const cy = normKey === "YOYO1" ? yoyoLevels(poste) : null;
+  if (cy) {
+    const c = CLUB_YOYO[poste];
+    const set = (id, silver, gold) => {
+      const r = rows.find((x) => x.id === id);
+      if (r) (r.silver = silver), (r.gold = gold);
+    };
+    rows.forEach((r) => {
+      r.thr = Math.round(r.thr);
+      const s = Math.min(1, r.thr / cy.top14);
+      r.silver = Math.round(r.thr + cy.d * s);
+      r.gold = Math.round(r.thr + 2 * cy.d * s);
+    });
+    const setThr = (id, thr) => {
+      const r = rows.find((x) => x.id === id);
+      if (r) (r.thr = thr), (r.w = thr);
+    };
+    setThr("prod2", cy.prod2); setThr("top14", c.br); setThr("international", c.or);
+    set("prod2", c.br, c.ar);
+    set("top14", c.ar, c.or);
+    set("international", c.or + cy.d, c.or + 2 * cy.d);
+  }
+  // Bronco : médailles déduites des écarts entre niveaux (et plus de l'écart du barème Agen, trop large).
+  // Pro D2 : argent = seuil Top 14, or = seuil International. Top 14 : argent = International, or = 1 pas plus vite.
+  // International : argent / or = 1 et 2 pas plus vite. Niveaux plus bas : pas réduit proportionnellement.
+  if (bronco) {
+    const rp = rows.find((r) => r.id === "prod2");
+    const rt = rows.find((r) => r.id === "top14");
+    const ri = rows.find((r) => r.id === "international");
+    if (rp && rt && ri) {
+      const P = cv(rp.thr), T = cv(rt.thr), I = cv(ri.thr);
+      const step = Math.max(2, (P - I) / 2);
+      rows.forEach((r) => {
+        const b = cv(r.thr);
+        const k = Math.min(1, P / b);
+        r.silver = back(Math.round(b - step * k));
+        r.gold = back(Math.round(b - 2 * step * k));
+      });
+      rp.silver = back(T); rp.gold = back(I);
+      rt.silver = back(I); rt.gold = back(Math.round(I - step));
+      ri.silver = back(Math.round(I - step)); ri.gold = back(Math.round(I - 2 * step));
+    }
+  }
   // Bronco : l'or ne peut pas être plus rapide que le meilleur temps connu (record ramené au poste), un peu
   // moins exigeant quand le niveau baisse ; l'argent est recalé proportionnellement.
   if (bronco && gi != null && BRONCO_POSTE_RATIO[gi]) {
@@ -446,7 +501,7 @@ export const TEST_NORMS = {
       fmt: fmtBronco,
     },
   ],
-  yoyo_ir1: [{ normKey: "YOYO1", label: "Yo-Yo IR1", unit: "m", get: (v) => num(v.distance), fmt: (x) => (x == null ? "—" : String(Math.round(x))), estimated: ENDURANCE_NOTE }],
+  yoyo_ir1: [{ normKey: "YOYO1", label: "Yo-Yo IR1", unit: "m", get: (v) => num(v.distance), fmt: (x) => (x == null ? "—" : String(Math.round(x))), estimated: null }],
   ift3015: [{ normKey: "VIFT", label: "30-15 IFT (VIFT)", unit: "km/h", get: (v) => num(v.speed), fmt: (x) => (x == null ? "—" : String(Math.round(x * 10) / 10)), estimated: ENDURANCE_NOTE }],
   cmj: [{ normKey: "CMJ", label: "CMJ", unit: "cm", get: (v) => num(v.height), fmt: fmtNum }],
   broad_jump: [{ normKey: "BROAD", label: "Broad jump", unit: "cm", get: (v) => { const a = [v.d1, v.d2, v.d3].map(num).filter((x) => x != null && x > 0); return a.length ? Math.max(...a) : null; }, fmt: (x) => (x == null ? "—" : String(Math.round(x))), estimated: BROAD_NOTE }],
