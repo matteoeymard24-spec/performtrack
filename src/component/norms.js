@@ -90,7 +90,7 @@ export const BROAD_USA_MID = { PILIER: 252.5, TALON: 262.5, "2L": 272.5, "3L": 2
 const BROAD_COUNT = { PILIER: 2, TALON: 1, "2L": 2, "3L": 3, "9": 1, "10": 1, Centre: 2, Ailier: 2, Arriere: 1 };
 const BROAD_FORWARDS = ["PILIER", "TALON", "2L", "3L"];
 export const BROAD_NOTE =
-  "Barème estimé : niveau = moyennes mesurées Super Rugby (Posthumus 2020), écart entre postes = standards USA Rugby (document fédéral, méthode non publiée). Aucune étude publiée ne donne le broad jump poste par poste.";
+  "Pro D2 = mesures du club (peu de joueurs par poste, combinées à la littérature). Top 14 / International = moyennes Super Rugby (Posthumus 2020) réparties par poste avec les standards USA Rugby (document fédéral, méthode non publiée).";
 export const broadPosteMean = (poste) => {
   const fw = BROAD_FORWARDS.includes(poste);
   const grp = (POSTES.rugby || []).map((x) => x.key).filter((k) => BROAD_FORWARDS.includes(k) === fw);
@@ -98,11 +98,45 @@ export const broadPosteMean = (poste) => {
   const avgUsa = grp.reduce((a, k) => a + BROAD_USA_MID[k] * BROAD_COUNT[k], 0) / wsum;
   return (fw ? BROAD_MEAN.avants : BROAD_MEAN.arrieres) + (BROAD_USA_MID[poste] - avgUsa);
 };
+/* Données du club (tableau blanc, 3 séries × 3 essais, meilleur essai de chaque joueur, cm) — joueurs dont le
+   poste est connu. Petits effectifs : on les combine avec la littérature (voir broadLevels). */
+export const CLUB_BROAD = {
+  PILIER: [212, 217, 224], TALON: [241], "2L": [270, 228, 213], "3L": [245, 263], "9": [298], "10": [250, 231],
+  Centre: [268, 236, 258], Ailier: [252, 244], Arriere: [252, 244],
+};
+const BROAD_K = 3; // poids de la littérature = 3 joueurs
+const clubDelta = (() => {
+  const seen = new Set();
+  let sum = 0, n = 0;
+  Object.keys(CLUB_BROAD).forEach((k) => {
+    if (k === "Arriere") return; // même échantillon que Ailier
+    CLUB_BROAD[k].forEach((v) => { sum += v - broadPosteMean(k); n++; });
+    seen.add(k);
+  });
+  return n ? sum / n : 0; // écart moyen club - littérature (cm)
+})();
+/* Pro D2 = moyenne du poste au club, tirée vers (littérature + écart moyen du club) quand l'effectif est petit.
+   Top 14 = moyenne Super Rugby du poste (au moins Pro D2 + 7 cm). International = Super Rugby + 1 écart-type. */
+export const broadLevels = (poste) => {
+  const lit = broadPosteMean(poste);
+  const c = CLUB_BROAD[poste] || [];
+  const n = c.length;
+  const clubMean = n ? c.reduce((a, b) => a + b, 0) / n : 0;
+  const prior = lit + clubDelta;
+  const prod2 = (n * clubMean + BROAD_K * prior) / (n + BROAD_K);
+  const top14 = Math.max(lit, prod2 + 7);
+  const intl = Math.max(lit + BROAD_SD, top14 + 12);
+  return { prod2, top14, intl, n, clubMean };
+};
 const broadTable = () => {
   const out = {};
   (POSTES.rugby || []).forEach(({ key }) => {
-    const mean = broadPosteMean(key);
-    out[key] = Array.from({ length: 21 }, (_, n) => Math.round(mean + (n - 10) * (BROAD_SD / 5)));
+    const L = broadLevels(key);
+    out[key] = Array.from({ length: 21 }, (_, n) => {
+      if (n <= 10) return Math.round(L.prod2 + (n - 10) * (BROAD_SD / 5));
+      if (n <= 15) return Math.round(L.prod2 + ((n - 10) * (L.top14 - L.prod2)) / 5);
+      return Math.round(L.top14 + ((n - 15) * (L.intl - L.top14)) / 5);
+    });
   });
   return out;
 };
@@ -170,9 +204,9 @@ const LADDER_META = {
     international: { tag: "estimé", src: "Moyenne + 2 écarts-types (≈ 1,1 km/h)" },
   },
   BROAD: {
-    prod2: { tag: "estimé", src: "Moyenne Super Rugby (Posthumus 2020) ajustée au poste avec les standards USA Rugby" },
-    top14: { tag: "estimé", src: "Moyenne du poste + 1 écart-type (18,6 cm)" },
-    international: { tag: "estimé", src: "Moyenne du poste + 2 écarts-types (18,6 cm)" },
+    prod2: { tag: "doc", src: "Mesures du club (broad jump, 16 joueurs au poste connu), tirées vers la littérature quand le poste compte peu de joueurs" },
+    top14: { tag: "estimé", src: "Moyenne pros Super Rugby du poste (Posthumus 2020 + écart entre postes USA Rugby)" },
+    international: { tag: "estimé", src: "Moyenne Super Rugby du poste + 1 écart-type (18,6 cm)" },
   },
 };
 

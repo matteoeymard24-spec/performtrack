@@ -46,10 +46,9 @@ export const SENS = {
   "1080 R30": 1,
   "1080 R30 - 10m Pmax": 1,
   CMJ: 1,
-  BROAD: 1, // comme le CMJ : le saut suit tout l’écart de niveau
   CMJB: 1,
   Bronco: 0.5,
-  BROAD: 0.5,
+  BROAD: 1,
   YOYO1: 0.5,
   VIFT: 0.5,
   "Vitesse GPS": 0.6,
