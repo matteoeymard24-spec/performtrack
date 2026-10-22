@@ -5727,6 +5727,149 @@ export default function Workout() {
             )}
           </div>
 
+          {/* Détail : quel athlète est dans quel groupe / sous-groupe */}
+          {(() => {
+            const people = [...athletes];
+            const nameOf = (id) => {
+              const a = people.find((x) => x.id === id);
+              return a ? getAthleteDisplayName(a) : "Athlète inconnu";
+            };
+            const selSub = findTargetSubGroup(group, customGroups);
+            const selGroupId = typeof group === "string" && group.startsWith(SUBGROUP_PREFIX)
+              ? group.slice(SUBGROUP_PREFIX.length).split(":")[0]
+              : group;
+            const inAnyGroup = new Set(customGroups.flatMap((g) => g.athleteIds || []));
+            const noGroup = people.filter((a) => !inAnyGroup.has(a.id));
+            const chip = (id, color) => (
+              <span
+                key={id}
+                style={{
+                  display: "inline-block",
+                  padding: "3px 10px",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  background: "#1d1a15",
+                  border: `1px solid ${color || "#3a342a"}`,
+                  color: "#f3f0ea",
+                }}
+              >
+                {nameOf(id)}
+              </span>
+            );
+            const fKey = "form_groups_detail";
+            const open = blockFold.isOpen(fKey);
+            let headline = "";
+            if (group === "total") headline = `Tous les athlètes (${people.length})`;
+            else if (group === "moi") headline = "Séance privée : visible par toi seul";
+            else if (group === "individuel")
+              headline = targetUserId ? `Athlète : ${nameOf(targetUserId)}` : "Choisis un athlète ci-dessous";
+            else if (selSub)
+              headline = `${selSub.name} (${(selSub.athleteIds || []).length})`;
+            else {
+              const g = customGroups.find((x) => x.id === group);
+              headline = g ? `${g.name} (${(g.athleteIds || []).length})` : "";
+            }
+            return (
+              <div
+                style={{
+                  marginBottom: 18,
+                  background: "#0d0c0a",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: 10,
+                  padding: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flex: 1, fontSize: 13, color: "#a8a199" }}>
+                    👀 Qui est dans quel groupe ?{" "}
+                    <span style={{ color: "#e0a13d", fontWeight: 600 }}>{headline}</span>
+                  </div>
+                  <FoldBtn open={open} onClick={() => blockFold.toggle(fKey)} />
+                </div>
+                {open && (
+                  <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+                    {customGroups.length === 0 && (
+                      <div style={{ fontSize: 12, color: "#a8a199" }}>Aucun groupe personnalisé.</div>
+                    )}
+                    {customGroups.map((g) => {
+                      const selected = g.id === selGroupId;
+                      const subs = g.subGroups || [];
+                      const inSub = new Set(subs.flatMap((sg) => sg.athleteIds || []));
+                      const rest = (g.athleteIds || []).filter((id) => !inSub.has(id));
+                      return (
+                        <div
+                          key={g.id}
+                          style={{
+                            padding: 10,
+                            borderRadius: 8,
+                            background: selected ? "rgba(224,161,61,0.08)" : "#151310",
+                            border: `1px solid ${selected ? "rgba(224,161,61,0.6)" : "#2a2620"}`,
+                          }}
+                        >
+                          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6, color: g.color || "#f3f0ea" }}>
+                            👥 {g.name}{" "}
+                            <span style={{ color: "#a8a199", fontWeight: 400 }}>
+                              · {(g.athleteIds || []).length} athlète(s)
+                            </span>
+                          </div>
+                          {subs.length === 0 ? (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              {(g.athleteIds || []).map((id) => chip(id))}
+                              {(g.athleteIds || []).length === 0 && (
+                                <span style={{ fontSize: 12, color: "#a8a199" }}>Vide</span>
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gap: 8 }}>
+                              {subs.map((sg) => (
+                                <div
+                                  key={sg.id}
+                                  style={{
+                                    paddingLeft: 10,
+                                    borderLeft: `3px solid ${sg.color || g.color || "#3a342a"}`,
+                                    opacity: selSub && selSub.id !== sg.id ? 0.55 : 1,
+                                  }}
+                                >
+                                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 4 }}>
+                                    ↳ {sg.name} · {(sg.athleteIds || []).length}
+                                  </div>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                    {(sg.athleteIds || []).map((id) => chip(id, sg.color || g.color))}
+                                  </div>
+                                </div>
+                              ))}
+                              {rest.length > 0 && (
+                                <div style={{ paddingLeft: 10, borderLeft: "3px solid #3a342a" }}>
+                                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 4 }}>
+                                    Sans sous-groupe · {rest.length}
+                                  </div>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                    {rest.map((id) => chip(id))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {noGroup.length > 0 && (
+                      <div style={{ padding: 10, borderRadius: 8, background: "#151310", border: "1px dashed #3a342a" }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                          ❔ Sans groupe{" "}
+                          <span style={{ color: "#a8a199", fontWeight: 400 }}>· {noGroup.length}</span>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {noGroup.map((a) => chip(a.id))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {group === "individuel" && (
             <div style={{ marginBottom: 18 }}>
               <label
