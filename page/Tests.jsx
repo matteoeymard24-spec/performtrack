@@ -699,6 +699,11 @@ export default function Tests() {
     return c ? c.values : null;
   }, [tests]);
 
+  const enduVals = useMemo(() => {
+    const g = (id) => tests.find((t) => t.testId === id)?.values || null;
+    return { bronco: g("bronco"), yoyo_ir1: g("yoyo_ir1"), ift3015: g("ift3015") };
+  }, [tests]);
+
   const mergedBroad = useMemo(() => {
     const b = tests.find((t) => t.testId === "broad_jump");
     return b ? b.values : null;
@@ -749,7 +754,13 @@ export default function Tests() {
       const jumpRows = [...cRows, ...bRows];
       out.cmj = { title: "🦘 Puissance", avg: avg(jumpRows.map((r) => r.note)), rows: jumpRows };
       const b = tests.find((t) => t.testId === "bronco");
-      const eRows = b ? normRows("bronco", b.values, b.date) : [];
+      const yy = tests.find((t) => t.testId === "yoyo_ir1");
+      const ift = tests.find((t) => t.testId === "ift3015");
+      const eRows = [
+        ...(b ? normRows("bronco", b.values, b.date) : []),
+        ...(yy ? normRows("yoyo_ir1", yy.values, yy.date).map((r) => ({ ...r, estNoteTxt: true })) : []),
+        ...(ift ? normRows("ift3015", ift.values, ift.date).map((r) => ({ ...r, estNoteTxt: true })) : []),
+      ];
       out.endurance = { title: "🏃 Endurance", avg: avg(eRows.map((r) => r.note)), rows: eRows };
     }
     return out;
@@ -1306,6 +1317,26 @@ export default function Tests() {
                     </>)}
                   </div>
 
+                  <div style={cardStyle}>
+                    <FoldHead title={<>🏃 Standards d'endurance par niveau — {posteLabel(sport, poste)}</>} open={bf.isOpen("n_endu")} onToggle={() => bf.toggle("n_endu")} gap={2} />
+                    {bf.isOpen("n_endu") && (<>
+                    <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                      Bronco (temps), Yo-Yo IR1 (distance) et 30-15 IFT (VIFT) face à chaque niveau
+                      {level ? ` (objectif : ${levelLabel(level)})` : ""}. Ton dernier résultat saisi est comparé automatiquement.
+                    </div>
+                    <LevelTable
+                      rows={[
+                        ...evaluateLadderRows("bronco", enduVals.bronco, sport, poste, level),
+                        ...evaluateLadderRows("yoyo_ir1", enduVals.yoyo_ir1, sport, poste, level),
+                        ...evaluateLadderRows("ift3015", enduVals.ift3015, sport, poste, level),
+                      ]}
+                      targetId={level}
+                      labelHeader="Test"
+                      valueHeader="Ton résultat"
+                    />
+                    </>)}
+                  </div>
+
                   <div style={{ ...cardStyle, fontSize: 12, color: MUTED }}>
                     Médailles : 🥉 bronze = moyenne du niveau, 🥈 argent et 🥇 or = au-dessus ; sous la moyenne = hors standard.
                   </div>
@@ -1399,7 +1430,7 @@ export default function Tests() {
                 })}
                 {normsOn && (
                   <div style={{ fontSize: 11, color: MUTED, marginTop: 14 }}>
-                    Pas de barème pour la VMA, le Yo-Yo et le 30-15 : l'endurance n'est notée que via le Bronco.
+                    L'endurance est notée avec le Bronco, le Yo-Yo IR1 et le 30-15 IFT (barèmes Yo-Yo et 30-15 estimés). Pas de barème pour la VMA ni le Yo-Yo IR2.
                   </div>
                 )}
                 </>)}

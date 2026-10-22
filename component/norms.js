@@ -106,10 +106,63 @@ const broadTable = () => {
   });
   return out;
 };
-const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable(), "60m": sprint60Table(), BROAD: broadTable() };
+/* ===================== ENDURANCE : Yo-Yo IR1 et 30-15 IFT (VIFT) =====================
+   Aucune étude publiée ne donne ces tests poste par poste ET niveau par niveau : barèmes ESTIMÉS.
+   YO-YO IR1 : moyennes mesurées de l'équipe nationale brésilienne de rugby (avants 1 802 ± 361 m,
+   arrières 2 306 ± 231 m ; Physical and physiological differences of backs and forwards from the Brazilian
+   National rugby union team, J Sports Med Phys Fitness 2016). Écart entre postes : dans chaque groupe (avants /
+   arrières), la moyenne est multipliée par le rapport vitesse Bronco du poste / vitesse moyenne du groupe (10e centile publié par poste,
+   Weakley et al. 2026) — hypothèse, pas une mesure. Note 10 = cette moyenne ; chaque note = 60 m
+   (≈ écart-type 300 m / 5).
+   VIFT 30-15 : rugby union, 114 joueurs (Darrall-Jones et al., IJSPP 2016) : 18,9 à 19,2 km/h selon la
+   catégorie d'âge, écart-type ≈ 1,1 ; l'étude ne distingue pas les postes → même barème pour tous.
+   Note 10 = 19,0 km/h ; chaque note = 0,22 km/h (≈ écart-type / 5). */
+const YOYO_MEAN = { avants: 1802, arrieres: 2306 };
+const YOYO_STEP = 60;
+const VIFT_MEAN = 19.0;
+const VIFT_STEP = 0.22;
+export const ENDURANCE_NOTE =
+  "Barème estimé : Yo-Yo IR1 = moyennes de l'équipe nationale du Brésil (avants / arrières) réparties par poste selon la vitesse au Bronco ; 30-15 = moyenne rugby union (Darrall-Jones 2016), sans distinction de poste. Aucune étude ne donne ces tests poste par poste et niveau par niveau.";
+const broncoSec = (v) => Math.floor(v + 1e-9) * 60 + Math.round((v - Math.floor(v + 1e-9)) * 100);
+export const yoyoPosteMean = (poste) => {
+  const bv = SOURCED.Bronco.international.v;
+  const keys = (POSTES.rugby || []).map((x) => x.key);
+  const idx = (k) => 1 / broncoSec(bv[GROUP[k]]);
+  const fw = BROAD_FORWARDS.includes(poste);
+  const grp = keys.filter((k) => BROAD_FORWARDS.includes(k) === fw);
+  const avgIdx = grp.reduce((a, k) => a + idx(k) * BROAD_COUNT[k], 0) / grp.reduce((a, k) => a + BROAD_COUNT[k], 0);
+  // Moyenne du groupe × (vitesse Bronco du poste / vitesse moyenne du groupe)
+  return (fw ? YOYO_MEAN.avants : YOYO_MEAN.arrieres) * (idx(poste) / avgIdx);
+};
+const yoyoTable = () => {
+  const out = {};
+  (POSTES.rugby || []).forEach(({ key }) => {
+    const m = yoyoPosteMean(key);
+    out[key] = Array.from({ length: 21 }, (_, n) => Math.round((m + (n - 10) * YOYO_STEP) / 10) * 10);
+  });
+  return out;
+};
+const iftTable = () => {
+  const out = {};
+  (POSTES.rugby || []).forEach(({ key }) => {
+    out[key] = Array.from({ length: 21 }, (_, n) => Math.round((VIFT_MEAN + (n - 10) * VIFT_STEP) * 10) / 10);
+  });
+  return out;
+};
+const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable(), "60m": sprint60Table(), BROAD: broadTable(), YOYO1: yoyoTable(), VIFT: iftTable() };
 
 /* Source affichée pour certaines échelles (sinon : texte par défaut du barème Agen) */
 const LADDER_META = {
+  YOYO1: {
+    prod2: { tag: "estimé", src: "Moyennes avants / arrières de l'équipe nationale du Brésil, réparties par poste (vitesse Bronco)" },
+    top14: { tag: "estimé", src: "Moyenne du poste + 1 écart-type (≈ 300 m)" },
+    international: { tag: "estimé", src: "Moyenne du poste + 2 écarts-types (≈ 300 m)" },
+  },
+  VIFT: {
+    prod2: { tag: "estimé", src: "Moyenne rugby union 19,0 km/h (Darrall-Jones 2016), sans distinction de poste" },
+    top14: { tag: "estimé", src: "Moyenne + 1 écart-type (≈ 1,1 km/h)" },
+    international: { tag: "estimé", src: "Moyenne + 2 écarts-types (≈ 1,1 km/h)" },
+  },
   BROAD: {
     prod2: { tag: "estimé", src: "Moyenne Super Rugby (Posthumus 2020) ajustée au poste avec les standards USA Rugby" },
     top14: { tag: "estimé", src: "Moyenne du poste + 1 écart-type (18,6 cm)" },
@@ -393,6 +446,8 @@ export const TEST_NORMS = {
       fmt: fmtBronco,
     },
   ],
+  yoyo_ir1: [{ normKey: "YOYO1", label: "Yo-Yo IR1", unit: "m", get: (v) => num(v.distance), fmt: (x) => (x == null ? "—" : String(Math.round(x))), estimated: ENDURANCE_NOTE }],
+  ift3015: [{ normKey: "VIFT", label: "30-15 IFT (VIFT)", unit: "km/h", get: (v) => num(v.speed), fmt: (x) => (x == null ? "—" : String(Math.round(x * 10) / 10)), estimated: ENDURANCE_NOTE }],
   cmj: [{ normKey: "CMJ", label: "CMJ", unit: "cm", get: (v) => num(v.height), fmt: fmtNum }],
   broad_jump: [{ normKey: "BROAD", label: "Broad jump", unit: "cm", get: (v) => { const a = [v.d1, v.d2, v.d3].map(num).filter((x) => x != null && x > 0); return a.length ? Math.max(...a) : null; }, fmt: (x) => (x == null ? "—" : String(Math.round(x))), estimated: BROAD_NOTE }],
   sprint: [

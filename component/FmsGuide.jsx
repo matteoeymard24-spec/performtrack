@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { FoldBtn, useFold } from "./ui";
+import FmsFigure from "./FmsFigure";
 
 /* Guide de notation FMS : critères écrits pour 3 / 2 / 1 / 0 par mouvement,
    avec un emplacement photo à côté de chaque note. Les critères sont une
@@ -71,7 +72,7 @@ export const FMS_CRITERIA = {
   },
 };
 
-function PhotoSlot({ url, canEdit, onSave, label }) {
+function PhotoSlot({ url, canEdit, onSave, label, compact }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(url || "");
   const box = {
@@ -95,7 +96,7 @@ function PhotoSlot({ url, canEdit, onSave, label }) {
         <a href={url} target="_blank" rel="noreferrer" style={{ ...box, border: "1px solid #2a2620" }}>
           <img src={url} alt={label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         </a>
-      ) : (
+      ) : compact ? null : (
         <div style={box}>{canEdit ? "📷 photo" : "—"}</div>
       )}
       {canEdit && (
@@ -103,7 +104,7 @@ function PhotoSlot({ url, canEdit, onSave, label }) {
           onClick={() => { setVal(url || ""); setEditing(!editing); }}
           style={{ background: "transparent", border: "none", color: ACCENT, fontSize: 11, cursor: "pointer", padding: 0 }}
         >
-          {editing ? "Fermer" : url ? "Changer" : "Ajouter"}
+          {editing ? "Fermer" : url ? "Changer la photo" : "📷 Mettre ma photo"}
         </button>
       )}
       {editing && (
@@ -165,12 +166,27 @@ export default function FmsGuide({ measures, media, canEdit, onSavePhotos }) {
                     <div style={{ fontSize: 12, color: MUTED, lineHeight: 1.5 }}>{c.tip}</div>
                     {[3, 2, 1].map((n) => (
                       <div key={n} style={{ display: "flex", gap: 10, alignItems: "flex-start", borderLeft: `4px solid ${SCORE_COLOR[n]}`, paddingLeft: 10 }}>
-                        <PhotoSlot
-                          url={photos[`${m.key}_${n}`]}
-                          canEdit={canEdit}
-                          label={`${m.label} — note ${n}`}
-                          onSave={(u) => setPhoto(`${m.key}_${n}`, u)}
-                        />
+                        {photos[`${m.key}_${n}`] ? (
+                          <PhotoSlot
+                            url={photos[`${m.key}_${n}`]}
+                            canEdit={canEdit}
+                            label={`${m.label} — note ${n}`}
+                            onSave={(u) => setPhoto(`${m.key}_${n}`, u)}
+                          />
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            <FmsFigure move={m.key} score={n} size={96} />
+                            {canEdit && (
+                              <PhotoSlot
+                                url=""
+                                canEdit
+                                label={`${m.label} — note ${n}`}
+                                onSave={(u) => setPhoto(`${m.key}_${n}`, u)}
+                                compact
+                              />
+                            )}
+                          </div>
+                        )}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 800, color: SCORE_COLOR[n], marginBottom: 2 }}>Note {n}</div>
                           <div style={{ fontSize: 13, lineHeight: 1.5 }}>{c.scores[n]}</div>
@@ -187,7 +203,7 @@ export default function FmsGuide({ measures, media, canEdit, onSavePhotos }) {
             );
           })}
           <div style={{ fontSize: 11, color: MUTED }}>
-            Critères reformulés d'après le protocole FMS standard. Pour des photos de référence, ajoute les tiennes (lien) : celles du manuel officiel sont protégées.
+            Schémas originaux (silhouettes simplifiées, pas des photos) et critères reformulés d'après le protocole FMS standard. Tu peux remplacer un schéma par ta propre photo (lien) : celles du manuel officiel sont protégées.
           </div>
         </div>
       )}
