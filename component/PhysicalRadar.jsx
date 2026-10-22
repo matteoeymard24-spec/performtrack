@@ -1,18 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { evaluateStrength, groupByPattern, posteLabel, levelLabel, noteColor } from "./norms";
+import { REF_MASS, massLevelFactor, hasMorph, evaluateMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "./morphology";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
 const ACCENT = "#e0a13d";
 const BLUE = "#7aa6e8";
 const BORDER = "#1d1a16";
+const EXP = 2 / 3; // exposant allométrique (force ∝ masse^(2/3)) — Jaric 2002
 
-/* Masse corporelle TYPE par poste (rugby pro, ordre de grandeur) — sert à ramener la force au poids du corps.
-   ESTIMATION indicative : à ajuster ici si le staff a ses propres moyennes. */
-export const TYPICAL_MASS = { PILIER: 115, TALON: 108, "2L": 112, "3L": 106, "9": 84, "10": 88, Centre: 98, Ailier: 92, Arriere: 90 };
-
-/* Axes du radar. Priorité (0 à 3) de chaque qualité selon le poste, indicatif : sert à tracer la « cible » du poste
-   (cible = 10 + 2 × priorité, soit 10 à 16 / 20) et à dire quoi travailler en premier. */
+/* Axes du radar. Priorité (0 à 3) de chaque qualité selon le poste : INDICATIF (avis, pas une donnée publiée) ;
+   sert à tracer la « cible » du poste (cible = 10 + 2 × priorité, soit 10 à 16 / 20) et à classer les qualités à travailler. */
 const AXES = [
   { id: "mobilite", label: "Mobilité" },
   { id: "force_haut", label: "Force haut" },
@@ -21,26 +19,31 @@ const AXES = [
   { id: "vitesse", label: "Vitesse" },
   { id: "puissance", label: "Puissance" },
   { id: "endurance", label: "Endurance" },
+  { id: "masse", label: "Masse" },
 ];
 const PRIORITY = {
-  //            mob fHaut fBas tir  vit  puis end
-  PILIER: [2, 3, 3, 3, 0, 1, 1],
-  TALON: [2, 3, 3, 3, 1, 2, 2],
-  "2L": [2, 3, 3, 3, 1, 2, 2],
-  "3L": [2, 2, 2, 2, 2, 3, 3],
-  "9": [2, 1, 1, 1, 3, 2, 3],
-  "10": [2, 1, 1, 1, 2, 2, 3],
-  Centre: [2, 2, 2, 2, 3, 3, 2],
-  Ailier: [2, 1, 2, 1, 3, 3, 2],
-  Arriere: [2, 1, 2, 1, 3, 3, 2],
+  //            mob fHaut fBas tir  vit  puis end  masse
+  PILIER: [2, 3, 3, 3, 0, 1, 1, 3],
+  TALON: [2, 3, 3, 3, 1, 2, 2, 3],
+  "2L": [2, 3, 3, 3, 1, 2, 2, 3],
+  "3L": [2, 2, 2, 2, 2, 3, 3, 2],
+  "9": [2, 1, 1, 1, 3, 2, 3, 1],
+  "10": [2, 1, 1, 1, 2, 2, 3, 1],
+  Centre: [2, 2, 2, 2, 3, 3, 2, 2],
+  Ailier: [2, 1, 2, 1, 3, 3, 2, 1],
+  Arriere: [2, 1, 2, 1, 3, 3, 2, 1],
 };
 const avg = (arr) => {
   const n = arr.filter((x) => x != null);
   return n.length ? Math.round((n.reduce((a, b) => a + b, 0) / n.length) * 10) / 10 : null;
 };
+const num = (v) => {
+  const x = Number(String(v ?? "").replace(",", "."));
+  return isFinite(x) && x > 0 ? x : null;
+};
 
 function Radar({ axes, values, targets }) {
-  const S = 340, C = S / 2, R = 108, n = axes.length;
+  const S = 360, C = S / 2, R = 108, n = axes.length;
   const pt = (i, v) => {
     const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
     const r = (Math.max(0, Math.min(20, v)) / 20) * R;
@@ -48,7 +51,7 @@ function Radar({ axes, values, targets }) {
   };
   const poly = (vals) => vals.map((v, i) => pt(i, v ?? 0).join(",")).join(" ");
   return (
-    <svg viewBox={`0 0 ${S} ${S}`} style={{ width: "100%", maxWidth: 420, display: "block", margin: "0 auto" }} role="img" aria-label="Radar des qualités physiques">
+    <svg viewBox={`0 0 ${S} ${S}`} style={{ width: "100%", maxWidth: 440, display: "block", margin: "0 auto" }} role="img" aria-label="Radar des qualités physiques">
       {[5, 10, 15, 20].map((g) => (
         <polygon key={g} points={axes.map((_, i) => pt(i, g).join(",")).join(" ")} fill="none" stroke="#2a2620" strokeWidth={g === 20 ? 1.4 : 1} />
       ))}
@@ -82,30 +85,52 @@ function Radar({ axes, values, targets }) {
   );
 }
 
-/* Radar des qualités physiques par poste + profil + lien avec le poids du corps.
-   domainNotes : notes /20 par domaine (Tests.jsx) ; rmDocs : [{name, kg}] ; weight : poids du corps (kg) */
-export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level, weight }) {
-  const [mode, setMode] = useState("rel"); // "rel" = ramené au poids type du poste, "abs" = kg bruts
-  const [localW, setLocalW] = useState("");
-  const bw = Number(String(localW).replace(",", ".")) || Number(weight) || null;
-  const typ = TYPICAL_MASS[poste] || null;
-  const useRel = mode === "rel" && bw && typ;
+const inputSt = { background: "#0d0c0a", color: TEXT, border: "1px solid #2a2620", borderRadius: 6, padding: "4px 6px", fontSize: 12, width: 64 };
 
-  const forceAxes = useMemo(() => {
-    const docs = useRel ? (rmDocs || []).map((d) => ({ ...d, kg: d.kg * (typ / bw) })) : rmDocs || [];
+/* Radar des qualités physiques par poste et par niveau + profil + morphologie (masse, masse maigre, masse grasse).
+   domainNotes : notes /20 par domaine (Tests.jsx) ; rmDocs : [{name, kg}] ; weight / height / bodyFat : profil athlète ;
+   onSaveProfile(patch) : enregistre taille / % masse grasse dans le profil (facultatif). */
+export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level, weight, height, bodyFat, bodyFatMethod, onSaveProfile = null }) {
+  const [mode, setMode] = useState("rel"); // "rel" = force ramenée à la masse (allométrique), "abs" = kg bruts
+  const [localW, setLocalW] = useState("");
+  const [hIn, setHIn] = useState(height ? String(height) : "");
+  const [bfIn, setBfIn] = useState(bodyFat ? String(bodyFat) : "");
+  const [mIn, setMIn] = useState(bodyFatMethod || "dxa");
+  useEffect(() => {
+    setHIn(height ? String(height) : "");
+    setBfIn(bodyFat ? String(bodyFat) : "");
+    setMIn(bodyFatMethod || "dxa");
+    setLocalW("");
+  }, [height, bodyFat, bodyFatMethod, poste]);
+
+  const bw = num(localW) || num(weight);
+  const hCm = num(hIn);
+  const bf = num(bfIn);
+  const refMass = REF_MASS[poste] ? REF_MASS[poste] * massLevelFactor(level) : null;
+  const scale = bw && refMass ? Math.pow(refMass / bw, EXP) : null;
+  const useRel = mode === "rel" && scale != null;
+
+  const forceOf = (factor) => {
+    const docs = (rmDocs || []).map((d) => ({ ...d, kg: d.kg * factor }));
     const pats = Object.fromEntries(groupByPattern(evaluateStrength(docs, sport, poste, level)).map((g) => [g.id, g.avg]));
     return {
       force_haut: avg([pats.push_v_upper, pats.push_h_upper]),
       force_bas: avg([pats.push_v_lower, pats.push_h_lower]),
       tirage: avg([pats.pull_v, pats.pull_h]),
     };
-  }, [rmDocs, sport, poste, level, bw, typ, useRel]);
+  };
+  const forceAbs = useMemo(() => forceOf(1), [rmDocs, sport, poste, level]); // eslint-disable-line react-hooks/exhaustive-deps
+  const forceRel = useMemo(() => (scale != null ? forceOf(scale) : null), [rmDocs, sport, poste, level, scale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const forceAxes = useRel ? forceRel : forceAbs;
+
+  const morph = useMemo(() => (hasMorph(poste) && bw ? evaluateMorph(poste, level, bw, bf) : null), [poste, level, bw, bf]);
 
   const values = AXES.map((a) => {
     if (a.id === "mobilite") return domainNotes?.mobilite?.avg ?? null;
     if (a.id === "vitesse") return domainNotes?.vitesse?.avg ?? null;
     if (a.id === "puissance") return domainNotes?.cmj?.avg ?? null;
     if (a.id === "endurance") return domainNotes?.endurance?.avg ?? null;
+    if (a.id === "masse") return morph ? morph.note : null;
     return forceAxes[a.id] ?? null;
   });
   const prio = PRIORITY[poste] || AXES.map(() => 1);
@@ -118,17 +143,40 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
   const strong = rated.filter((x) => x.v >= x.t).sort((a, b) => b.v - a.v).slice(0, 3);
   const keyQ = AXES.filter((_, i) => prio[i] >= 3).map((a) => a.label.toLowerCase());
 
-  /* Tableau ratio poids du corps */
+  /* Conseil masse : hypertrophie / recomposition */
+  const fw = FORWARDS.includes(poste);
+  const bfRef = fw ? BF_DXA.forwards : BF_DXA.backs;
+  const bfHigh = bf != null && (mIn === "dxa" ? bf > bfRef[0] + bfRef[1] : bf > (fw ? BF_SKINFOLD.forwards : BF_SKINFOLD.backs) + 3);
+  const massIdx = AXES.findIndex((a) => a.id === "masse");
+  const massLow = morph && morph.note < targets[massIdx] - 1;
+  const fAbsAvg = avg(["force_haut", "force_bas", "tirage"].map((k) => forceAbs[k]));
+  const fRelAvg = forceRel ? avg(["force_haut", "force_bas", "tirage"].map((k) => forceRel[k])) : null;
+  const forceOkForWeight = fAbsAvg != null && fRelAvg != null && fRelAvg - fAbsAvg >= 1.5;
+
+  /* Tableau force relative */
   const ratioRows = useMemo(
     () =>
       evaluateStrength(rmDocs || [], sport, poste, level)
         .filter((r) => r.value != null)
-        .map((r) => ({ label: r.label, kg: r.value, ratio: bw ? r.value / bw : null, eq: bw && typ ? (r.value * typ) / bw : null })),
-    [rmDocs, sport, poste, level, bw, typ]
+        .map((r) => ({
+          label: r.label,
+          kg: r.value,
+          ratio: bw ? r.value / bw : null,
+          eq: scale != null ? r.value * scale : null,
+        })),
+    [rmDocs, sport, poste, level, bw, scale]
   );
 
   if (!poste) return null;
   const nData = values.filter((v) => v != null).length;
+  const FFMI = morph && morph.ffm && hCm ? morph.ffm / Math.pow(hCm / 100, 2) : null;
+  const dirty = onSaveProfile && ((hIn || "") !== (height ? String(height) : "") || (bfIn || "") !== (bodyFat ? String(bodyFat) : "") || mIn !== (bodyFatMethod || "dxa"));
+  const saveBody = () => {
+    const patch = { height: hCm || "", bodyFat: bf || "", bodyFatMethod: mIn };
+    if (num(localW)) patch.weight = num(localW);
+    onSaveProfile(patch);
+  };
+  const posteShort = posteLabel(sport, poste).replace(/\s*\(.*\)/, "").toLowerCase();
 
   return (
     <div>
@@ -143,10 +191,41 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
         </div>
       )}
 
+      {/* Morphologie : saisie */}
+      <div style={{ background: "#0d0c0a", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>📏 Morphologie</div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", fontSize: 11, color: MUTED }}>
+          <label>
+            Poids <input value={localW} onChange={(e) => setLocalW(e.target.value)} inputMode="decimal" placeholder={weight ? String(weight) : "kg"} style={inputSt} /> kg
+          </label>
+          <label>
+            Taille <input value={hIn} onChange={(e) => setHIn(e.target.value)} inputMode="decimal" placeholder="cm" style={inputSt} /> cm
+          </label>
+          <label>
+            Masse grasse <input value={bfIn} onChange={(e) => setBfIn(e.target.value)} inputMode="decimal" placeholder="%" style={inputSt} /> %
+          </label>
+          <label>
+            Mesurée par{" "}
+            <select value={mIn} onChange={(e) => setMIn(e.target.value)} style={{ ...inputSt, width: "auto" }}>
+              <option value="dxa">DXA</option>
+              <option value="plis">Plis cutanés</option>
+              <option value="impedance">Impédancemètre</option>
+            </select>
+          </label>
+          {dirty && (
+            <button type="button" onClick={saveBody} style={{ background: ACCENT, color: "#1a1814", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+              Enregistrer
+            </button>
+          )}
+        </div>
+        {!bw && <div style={{ fontSize: 11, color: "#d9a441", marginTop: 6 }}>Renseigne le poids pour activer la morphologie et le ratio de force.</div>}
+        {bw && !bf && <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>Sans % de masse grasse, la note « Masse » ne repose que sur le poids (elle ne distingue pas muscle et gras).</div>}
+      </div>
+
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
         <span style={{ color: MUTED, fontSize: 11 }}>Force :</span>
         {[
-          { id: "rel", label: "⚖️ Ramenée au poids du corps" },
+          { id: "rel", label: "⚖️ Ramenée à la masse" },
           { id: "abs", label: "kg bruts" },
         ].map((m) => (
           <button
@@ -167,17 +246,6 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
             {m.label}
           </button>
         ))}
-        <span style={{ color: MUTED, fontSize: 11, marginLeft: 6 }}>
-          Poids du corps :{" "}
-          <input
-            value={localW}
-            onChange={(e) => setLocalW(e.target.value)}
-            inputMode="decimal"
-            placeholder={weight ? String(weight) : "kg"}
-            style={{ width: 62, background: "#0d0c0a", color: TEXT, border: "1px solid #2a2620", borderRadius: 6, padding: "3px 6px", fontSize: 12 }}
-          />{" "}
-          kg
-        </span>
       </div>
 
       {nData < 2 ? (
@@ -186,18 +254,13 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
         <Radar axes={AXES} values={values} targets={targets} />
       )}
 
-      {!bw && (
-        <div style={{ fontSize: 11, color: "#d9a441", marginTop: 6 }}>
-          Poids du corps inconnu : la force est notée en kg bruts. Renseigne le poids de l'athlète (profil / « Mon poids ») ou tape-le ci-dessus pour activer le ratio.
-        </div>
-      )}
-      {bw && typ && (
+      {useRel && (
         <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
-          {useRel
-            ? `Ratio activé : chaque charge est ramenée à un ${posteLabel(sport, poste).replace(/\s*\(.*\)/, "").toLowerCase()} type de ${typ} kg (charge × ${typ} / ${bw} = ×${(typ / bw).toFixed(2)}). Un athlète plus léger que le poste n'est plus pénalisé, un plus lourd n'est plus avantagé. Masse type = estimation.`
-            : "Force notée en kg bruts (sans tenir compte du poids du corps)."}
+          Force ramenée à un {posteShort} de {Math.round(refMass)} kg avec un exposant 2/3 (charge × ({Math.round(refMass)} / {bw})^0,67 = ×{scale.toFixed(2)}). Un athlète plus léger
+          que la référence est relevé, un plus lourd est abaissé, mais moins qu'avec un simple ratio kg/kg, qui avantage trop les légers.
         </div>
       )}
+      {mode === "rel" && !useRel && <div style={{ fontSize: 11, color: "#d9a441", marginTop: 6 }}>Poids inconnu : la force est notée en kg bruts.</div>}
 
       {nData >= 2 && (
         <div style={{ background: "#0d0c0a", borderRadius: 10, padding: "10px 12px", marginTop: 12, fontSize: 13, lineHeight: 1.55 }}>
@@ -205,24 +268,59 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
           <div style={{ color: TEXT }}>
             Profil dominant : <strong style={{ color: ACCENT }}>{dominant.map((d) => `${d.label} (${d.v})`).join(" + ")}</strong>.
           </div>
-          {keyQ.length > 0 && (
-            <div style={{ color: MUTED }}>
-              Qualités clés pour ce poste : {keyQ.join(", ")}.
-            </div>
-          )}
-          {strong.length > 0 && (
-            <div style={{ color: "#4fae7d" }}>✓ Au niveau de la cible : {strong.map((x) => x.label).join(", ")}.</div>
-          )}
+          {keyQ.length > 0 && <div style={{ color: MUTED }}>Qualités clés pour ce poste : {keyQ.join(", ")}.</div>}
+          {strong.length > 0 && <div style={{ color: "#4fae7d" }}>✓ Au niveau de la cible : {strong.map((x) => x.label).join(", ")}.</div>}
           {gaps.length > 0 ? (
-            <div style={{ color: "#e08a3d" }}>
-              ▲ À développer en priorité : {gaps.map((x) => `${x.label} (${x.v} → cible ${x.t})`).join(", ")}.
-            </div>
+            <div style={{ color: "#e08a3d" }}>▲ À développer en priorité : {gaps.map((x) => `${x.label} (${x.v} → cible ${x.t})`).join(", ")}.</div>
           ) : (
             <div style={{ color: "#4fae7d" }}>Toutes les qualités testées atteignent la cible du poste.</div>
           )}
+          {massLow && (
+            <div style={{ color: "#e08a3d", marginTop: 4 }}>
+              🏋️ <strong>Masse sous le standard du poste.</strong>{" "}
+              {bfHigh
+                ? `La masse grasse (${bf} %) est élevée pour ce groupe : priorité à la recomposition (perdre du gras tout en gardant ou gagnant du muscle), pas à la prise de poids brute.`
+                : morph.gapFfm != null && morph.gapFfm > 0
+                ? `Il manque environ ${morph.gapFfm} kg de masse maigre pour atteindre le standard du poste (${morph.target.ffm} kg) : priorité à un bloc d'hypertrophie avec surplus calorique contrôlé.`
+                : morph.gapBm > 0
+                ? `Il manque environ ${morph.gapBm} kg pour atteindre le poids standard du poste (${morph.target.bm} kg) : priorité à un bloc d'hypertrophie. Renseigne le % de masse grasse pour savoir si c'est du muscle qu'il faut gagner.`
+                : ""}
+              {forceOkForWeight ? " Sa force est correcte pour son poids : c'est la masse qui limite, pas la qualité de force." : ""}
+            </div>
+          )}
           {rated.length < AXES.length && (
-            <div style={{ color: MUTED, fontSize: 11, marginTop: 4 }}>
-              Non testé : {AXES.filter((_, i) => values[i] == null).map((a) => a.label).join(", ")}.
+            <div style={{ color: MUTED, fontSize: 11, marginTop: 4 }}>Non testé : {AXES.filter((_, i) => values[i] == null).map((a) => a.label).join(", ")}.</div>
+          )}
+        </div>
+      )}
+
+      {morph && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>📏 Masse vs standard du poste{level ? ` (${levelLabel(level)})` : ""}</div>
+          {[
+            { k: "Poids", v: `${bw} kg`, ref: `standard ${morph.target.bm} kg`, n: morph.noteBm },
+            morph.ffm != null && { k: "Masse maigre", v: `${morph.ffm} kg`, ref: `standard ${morph.target.ffm} kg`, n: morph.noteFfm },
+            morph.fatKg != null && {
+              k: "Masse grasse",
+              v: `${bf} % (${morph.fatKg} kg)`,
+              ref: `réf. pros ${mIn === "dxa" ? `DXA ${bfRef[0]} ± ${bfRef[1]} %` : `plis ≈ ${fw ? BF_SKINFOLD.forwards : BF_SKINFOLD.backs} %`}`,
+              n: null,
+            },
+            FFMI != null && { k: "Indice de masse maigre", v: `${FFMI.toFixed(1)} kg/m²`, ref: "information (pas de repère rugby retenu)", n: null },
+          ]
+            .filter(Boolean)
+            .map((r) => (
+              <div key={r.k} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, padding: "6px 0", borderTop: `1px solid ${BORDER}`, color: MUTED }}>
+                <span>{r.k}</span>
+                <span style={{ color: TEXT, textAlign: "right" }}>
+                  <strong style={{ color: ACCENT }}>{r.v}</strong> · {r.ref}
+                  {r.n != null ? <strong style={{ color: noteColor(r.n) }}> · {r.n}/20</strong> : ""}
+                </span>
+              </div>
+            ))}
+          {mIn !== "dxa" && bf != null && (
+            <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+              Attention : la masse grasse dépend beaucoup de la méthode (plis et impédance donnent des valeurs plus basses que la DXA). Compare avec la même méthode dans le temps.
             </div>
           )}
         </div>
@@ -231,19 +329,30 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
       {ratioRows.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>⚖️ Force relative (RM ÷ poids du corps)</div>
-          <div style={{ display: "grid", gap: 0 }}>
-            {ratioRows.map((r) => (
-              <div key={r.label} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, padding: "6px 0", borderTop: `1px solid ${BORDER}`, color: MUTED }}>
-                <span>{r.label}</span>
-                <span style={{ color: TEXT, whiteSpace: "nowrap" }}>
-                  {r.kg} kg{r.ratio != null ? <strong style={{ color: ACCENT }}> · {r.ratio.toFixed(2)} × PdC</strong> : ""}
-                  {r.eq != null ? <span style={{ color: MUTED }}> · ≈ {Math.round(r.eq)} kg au poids type</span> : ""}
-                </span>
-              </div>
-            ))}
-          </div>
+          {ratioRows.map((r) => (
+            <div key={r.label} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, padding: "6px 0", borderTop: `1px solid ${BORDER}`, color: MUTED }}>
+              <span>{r.label}</span>
+              <span style={{ color: TEXT, textAlign: "right" }}>
+                {r.kg} kg{r.ratio != null ? <strong style={{ color: ACCENT }}> · {r.ratio.toFixed(2)} × PdC</strong> : ""}
+                {r.eq != null ? <span style={{ color: MUTED }}> · ≈ {Math.round(r.eq)} kg à {Math.round(refMass)} kg</span> : ""}
+              </span>
+            </div>
+          ))}
         </div>
       )}
+
+      <details style={{ marginTop: 12 }}>
+        <summary style={{ fontSize: 11, color: MUTED, cursor: "pointer" }}>Sources et limites</summary>
+        <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 6 }}>
+          • Standards de poids et de masse maigre par poste : « USA Rugby Player Profiles and Performance Standards » (note USA × 2 = note /20 ; vert = 16/20). Pour les niveaux
+          inférieurs au Pro D2, les seuils sont multipliés par le coefficient du niveau : estimation (la revue 2026 donne ≈ 91 kg pour des avants amateurs contre ≈ 116 kg en élite).
+          <br />• Poids de référence pour ramener la force : ceux des standards de squat USA Rugby (pilier 125, talonneur 115, 2e ligne 110, 3e ligne 110, 9 : 85, 10 : 90, centre 105, ailier et arrière 95).
+          <br />• Normalisation de la force : exposant 2/3 (Jaric 2002). En rugby union, le ratio simple avantage les légers (r = −0,53 à −0,57) et l'allométrique supprime l'effet de masse
+          (Crewther et al. 2011, 2012). L'exposant 2/3 est théorique : les exposants dérivés de ces études n'ont pas pu être relus.
+          <br />• Masse grasse : Posthumus et al. 2020 (Sports 8(6):85), DXA, pros : avants 17,8 ± 2,4 %, arrières 14,8 ± 1,2 %.
+          <br />• Les priorités par poste (cibles bleues) sont un avis indicatif, pas une donnée publiée.
+        </div>
+      </details>
     </div>
   );
 }

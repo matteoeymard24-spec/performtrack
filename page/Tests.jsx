@@ -1360,6 +1360,10 @@ export default function Tests() {
                       poste={poste}
                       level={level}
                       weight={selectedAthlete?.weight}
+                      height={selectedAthlete?.height}
+                      bodyFat={selectedAthlete?.bodyFat}
+                      bodyFatMethod={selectedAthlete?.bodyFatMethod}
+                      onSaveProfile={saveProfile}
                     />
                   )}
                 </div>
