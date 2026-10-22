@@ -41,6 +41,7 @@ import {
 import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
 import { FoldBtn, useFold } from "../component/ui";
+import FmsGuide from "../component/FmsGuide";
 
 const ACCENT = "#e0a13d";
 const SURFACE = "#151310";
@@ -1031,6 +1032,15 @@ export default function Tests() {
                           })}
                         </div>
                       </div>
+                    )}
+
+                    {test.id === "fms" && (
+                      <FmsGuide
+                        measures={activeMeasures}
+                        media={media.fmsguide}
+                        canEdit={isCoach}
+                        onSavePhotos={(photos) => saveMedia("fmsguide", { photos })}
+                      />
                     )}
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>

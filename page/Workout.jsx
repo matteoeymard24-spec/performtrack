@@ -891,6 +891,37 @@ export default function Workout() {
     fetch();
   }, [userRole]);
 
+  // Nettoyage automatique : un athlète supprimé de l'app ne doit plus figurer
+  // dans un groupe / sous-groupe (sinon "Athlète supprimé" s'affiche sans
+  // pouvoir le retirer). Comparaison avec TOUS les comptes existants.
+  useEffect(() => {
+    if (userRole !== "admin" || customGroups.length === 0) return;
+    if (athletes.length + adminUsers.length === 0) return; // pas encore chargés
+    const known = new Set([...athletes, ...adminUsers].map((u) => u.id));
+    const dirty = customGroups.filter(
+      (g) =>
+        (g.athleteIds || []).some((id) => !known.has(id)) ||
+        (g.subGroups || []).some((sg) => (sg.athleteIds || []).some((id) => !known.has(id)))
+    );
+    if (dirty.length === 0) return;
+    (async () => {
+      try {
+        for (const g of dirty) {
+          await updateDoc(doc(db, "groups", g.id), {
+            athleteIds: (g.athleteIds || []).filter((id) => known.has(id)),
+            subGroups: (g.subGroups || []).map((sg) => ({
+              ...sg,
+              athleteIds: (sg.athleteIds || []).filter((id) => known.has(id)),
+            })),
+          });
+        }
+        await fetchGroupsList();
+      } catch (e) {
+        console.warn("Nettoyage groupes:", e);
+      }
+    })();
+  }, [userRole, customGroups, athletes, adminUsers]);
+
   /* ===================== CALCULS ===================== */
   const calculateWeight = (rmName, percent) => {
     if (!rmName || !percent) return "-";
@@ -4656,6 +4687,20 @@ export default function Workout() {
                     const a = athletes.find((ath) => ath.id === id);
                     return a ? getAthleteDisplayName(a) : "Athlète supprimé";
                   };
+                  const removeFromGroup = async (id) => {
+                    try {
+                      await updateDoc(doc(db, "groups", g.id), {
+                        athleteIds: (g.athleteIds || []).filter((x) => x !== id),
+                        subGroups: (g.subGroups || []).map((sg) => ({
+                          ...sg,
+                          athleteIds: (sg.athleteIds || []).filter((x) => x !== id),
+                        })),
+                      });
+                      await fetchGroupsList();
+                    } catch (e) {
+                      alert("❌ " + e.message);
+                    }
+                  };
                   const pill = (id, color) => (
                     <span
                       key={id}
@@ -4669,6 +4714,15 @@ export default function Workout() {
                       }}
                     >
                       {nameOf(id)}
+                      {!athletes.some((a) => a.id === id) && (
+                        <button
+                          onClick={() => removeFromGroup(id)}
+                          title="Retirer du groupe"
+                          style={{ marginLeft: 6, background: "none", border: "none", color: "#d9695a", cursor: "pointer", fontSize: 12 }}
+                        >
+                          ✕
+                        </button>
+                      )}
                     </span>
                   );
                   const act = (color) => ({
