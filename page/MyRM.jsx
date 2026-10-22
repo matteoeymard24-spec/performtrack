@@ -195,6 +195,44 @@ export default function MyRM() {
         }
       });
 
+      // Auto-synchro avec la banque d'exercices : tout exercice catégorisé
+      // (hors échauffement / poids du corps) qui n'a pas encore de fiche chez
+      // cet utilisateur est ajouté en "attente" (kg: null). Rattrape les
+      // exercices marqués après coup, les comptes admin et les nouveaux
+      // athlètes, que la diffusion depuis la banque ne touchait pas.
+      const existingIds = new Set(rmSnap.docs.map((d) => d.id));
+      const toCreate = [];
+      exerciseMediaSnap.docs.forEach((d) => {
+        const m = d.data();
+        const key = d.id;
+        const lk = key.toLowerCase();
+        if (!m.category || m.isWarmup || m.isPDC) return;
+        if (existingIds.has(key) || grouped[lk] || lk === "vma" || lk === "cmj") return;
+        toCreate.push({ key, lk, category: normalizeCategoryValue(m.category) || "autre" });
+      });
+      toCreate.forEach(({ lk, category }) => {
+        grouped[lk] = [];
+        categories[lk] = category;
+        autoCreatedMap[lk] = true;
+      });
+      if (toCreate.length > 0) {
+        Promise.all(
+          toCreate.map(({ key, category }) =>
+            setDoc(
+              doc(db, "users", currentUser.uid, "rm", key),
+              {
+                kg: null,
+                exerciseName: key,
+                category,
+                autoCreated: true,
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            )
+          )
+        ).catch((e) => console.warn("Synchro RM (écriture) :", e));
+      }
+
       // Trier par date pour chaque exercice
       Object.keys(grouped).forEach((ex) => {
         grouped[ex].sort((a, b) => new Date(a.date) - new Date(b.date));
