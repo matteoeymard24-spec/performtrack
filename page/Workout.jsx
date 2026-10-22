@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { getWorkoutDocs } from "../component/workoutQueries";
+import { FoldBtn, useFold } from "../component/ui";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -326,6 +327,7 @@ const MIN_MEDIA_ZOOM = 40;
 const MAX_MEDIA_ZOOM = 250;
 
 export default function Workout() {
+  const blockFold = useFold("workout_blocks");
   const { currentUser, userRole, userGroup, isSuperAdmin } = useAuth();
   const isAdminLike = userRole === "admin" || isSuperAdmin;
 
@@ -7308,7 +7310,20 @@ export default function Workout() {
             ➕ Ajouter un bloc
           </button>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          {/* Barre collée en bas de l'écran : on peut enregistrer / annuler
+              depuis n'importe où dans le formulaire, sans redescendre. */}
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              position: "sticky",
+              bottom: 0,
+              zIndex: 50,
+              margin: "0 -4px",
+              padding: "10px 4px calc(10px + env(safe-area-inset-bottom))",
+              background: "linear-gradient(to top, #151310 75%, rgba(21,19,16,0))",
+            }}
+          >
             <button
               onClick={handleSubmit}
               style={{
@@ -7612,7 +7627,7 @@ export default function Workout() {
             >
               <h4
                 style={{
-                  margin: "0 0 12px 0",
+                  margin: blockFold.isOpen(`blk_${selectedSession.id}_${bIdx}`) ? "0 0 12px 0" : 0,
                   fontSize: 17,
                   display: "flex",
                   alignItems: "baseline",
@@ -7621,6 +7636,12 @@ export default function Workout() {
                 }}
               >
                 {block.name}
+                <span style={{ marginLeft: "auto", order: 99 }}>
+                  <FoldBtn
+                    open={blockFold.isOpen(`blk_${selectedSession.id}_${bIdx}`)}
+                    onClick={() => blockFold.toggle(`blk_${selectedSession.id}_${bIdx}`)}
+                  />
+                </span>
                 {sessionType === "muscu" &&
                   !block.timerMode && (
                     <span style={{ fontSize: 13, color: "#e0a13d", fontWeight: "normal" }}>
@@ -7645,6 +7666,8 @@ export default function Workout() {
                   </span>
                 )}
               </h4>
+              {blockFold.isOpen(`blk_${selectedSession.id}_${bIdx}`) && (
+              <>
 
               {(block.timerMode === "emom" || block.timerMode === "amrap") &&
                 (() => {
@@ -8177,6 +8200,8 @@ export default function Workout() {
                   </div>
                 );
               })}
+              </>
+              )}
             </div>
           ))}
         </div>
