@@ -7,11 +7,15 @@
    ===================================================================== */
 import { RUGBY_BAREME, RUGBY_MATCH_REF } from "./rugbyBareme";
 import { parseTime, num } from "./testsCalc";
+import { CYCLING_TYPES } from "./cycling";
 import { LEVELS, SENS, SOURCED, GROUP, levelLabel, BRONCO_RECORD_S, BRONCO_POSTE_RATIO } from "./rugbyLevels";
 
 export { LEVELS, levelLabel } from "./rugbyLevels";
 
-export const SPORTS = [{ id: "rugby", label: "Rugby" }];
+export const SPORTS = [
+  { id: "rugby", label: "Rugby" },
+  { id: "cyclisme", label: "Cyclisme sur route" },
+];
 
 export const POSTES = {
   rugby: [
@@ -25,6 +29,7 @@ export const POSTES = {
     { key: "Ailier", label: "Ailier (11 / 14)" },
     { key: "Arriere", label: "Arrière (15)" },
   ],
+  cyclisme: CYCLING_TYPES.map((t) => ({ key: t.key, label: t.label })),
 };
 
 /* Hip thrust : AUCUN barème Agen. Barème ESTIMÉ = barème du squat du même poste × HIP_THRUST_FACTOR

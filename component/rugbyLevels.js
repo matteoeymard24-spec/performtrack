@@ -27,7 +27,8 @@ export const LEVELS = [
   { id: "u18", label: "U18", f: 0.7, jeunes: true },
 ];
 
-export const levelLabel = (id) => LEVELS.find((l) => l.id === id)?.label || id;
+import { CYCLING_LEVELS } from "./cycling";
+export const levelLabel = (id) => LEVELS.find((l) => l.id === id)?.label || CYCLING_LEVELS.find((l) => l.id === id)?.label || id;
 
 /* Sensibilité de chaque qualité à l'écart de niveau :
    1 = suit tout l'écart (force), 0.6 = vitesse (réglé à 0.6 : les joueurs de Fédérale courent nettement moins vite que Pro D2). */

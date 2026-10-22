@@ -41,6 +41,8 @@ import {
 import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
 import PhysicalRadar from "../component/PhysicalRadar";
+import CyclingRadar from "../component/CyclingRadar";
+import { CYCLING_LEVELS } from "../component/cycling";
 import { FoldBtn, useFold } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
 
@@ -662,6 +664,7 @@ export default function Tests() {
   const poste = selectedAthlete?.position || "";
   const level = selectedAthlete?.level || "";
   const normsOn = hasNorms(sport, poste);
+  const levelOptions = sport === "cyclisme" ? CYCLING_LEVELS : LEVELS;
 
   const saveProfile = async (patch) => {
     if (!uid) return;
@@ -879,7 +882,7 @@ export default function Tests() {
             <select
               style={{ ...inputStyle, flex: 1, minWidth: 140 }}
               value={sport}
-              onChange={(e) => saveProfile({ sport: e.target.value, position: "" })}
+              onChange={(e) => saveProfile({ sport: e.target.value, position: "", level: "" })}
             >
               <option value="">Sport…</option>
               {SPORTS.map((s) => (
@@ -908,7 +911,7 @@ export default function Tests() {
               onChange={(e) => saveProfile({ level: e.target.value })}
             >
               <option value="">Niveau visé…</option>
-              {LEVELS.map((l) => (
+              {levelOptions.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.label}
                 </option>
@@ -924,7 +927,7 @@ export default function Tests() {
               <select
                 style={{ ...inputStyle, flex: 1, minWidth: 140 }}
                 value={sport}
-                onChange={(e) => saveProfile({ sport: e.target.value, position: "" })}
+                onChange={(e) => saveProfile({ sport: e.target.value, position: "", level: "" })}
               >
                 <option value="">Sport…</option>
                 {SPORTS.map((s) => (
@@ -953,7 +956,7 @@ export default function Tests() {
                 onChange={(e) => saveProfile({ level: e.target.value })}
               >
                 <option value="">Niveau visé…</option>
-                {LEVELS.map((l) => (
+                {levelOptions.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.label}
                   </option>
@@ -1246,8 +1249,9 @@ export default function Tests() {
                   <FoldHead title="📐 Comparaison aux normes" open={bf.isOpen("nonorm")} onToggle={() => bf.toggle("nonorm")} />
                   {bf.isOpen("nonorm") && (
                   <div style={{ fontSize: 13, color: MUTED }}>
-                    Choisis le sport et le poste de l'athlète en haut de la page. Les normes viennent de ton barème
-                    (rugby : barème SU Agen, par poste).
+                    {sport === "cyclisme"
+                      ? "Pour le cyclisme, les standards par niveau et le radar sont dans l'onglet Bilan (carte « Radar des qualités physiques »)."
+                      : "Choisis le sport et le poste de l'athlète en haut de la page. Les normes viennent de ton barème (rugby : barème SU Agen, par poste)."}
                   </div>
                   )}
                 </div>
@@ -1349,6 +1353,14 @@ export default function Tests() {
           {/* ------------ BILAN ------------ */}
           {effTab === "bilan" && (
             <>
+              {sport === "cyclisme" && (
+                <div style={cardStyle}>
+                  <FoldHead title="🕸️ Radar des qualités physiques — cyclisme sur route" open={bf.isOpen("radar")} onToggle={() => bf.toggle("radar")} gap={2} />
+                  {bf.isOpen("radar") && (
+                    <CyclingRadar tests={tests} rmDocs={rmDocs} level={level} rider={poste} weight={selectedAthlete?.weight} sex={selectedAthlete?.sex} onSaveSex={(v) => saveProfile({ sex: v })} domainNotes={domainNotes} />
+                  )}
+                </div>
+              )}
               {normsOn && (
                 <div style={cardStyle}>
                   <FoldHead title="🕸️ Radar des qualités physiques" open={bf.isOpen("radar")} onToggle={() => bf.toggle("radar")} gap={2} />

@@ -185,6 +185,37 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = f
         </div>
       )}
 
+      {(() => {
+        const withVo2 = tests.filter((t) => t.result?.vo2max != null);
+        const withHr = tests.filter((t) => t.result?.fcmax != null);
+        if (withVo2.length === 0 && withHr.length === 0) return null;
+        const vo2 = withVo2[0];
+        const hrMeasured = withHr.filter((t) => t.result.fcmaxBasis === "mesurée").sort((a, b) => b.result.fcmax - a.result.fcmax)[0];
+        const hr = hrMeasured || withHr[0];
+        return (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            {vo2 && (
+              <div style={{ background: "#0d0c0a", padding: "10px 14px", borderRadius: 8, minWidth: 150 }}>
+                <div style={{ fontSize: 11, color: MUTED }}>VO2max estimée</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: ACCENT }}>
+                  {vo2.result.vo2max} <span style={{ fontSize: 11, color: MUTED }}>ml/kg/min</span>
+                </div>
+                <div style={{ fontSize: 11, color: MUTED }}>{getTest(vo2.testId)?.name || vo2.testId} · {vo2.date}</div>
+              </div>
+            )}
+            {hr && (
+              <div style={{ background: "#0d0c0a", padding: "10px 14px", borderRadius: 8, minWidth: 150 }}>
+                <div style={{ fontSize: 11, color: MUTED }}>FCmax {hr.result.fcmaxBasis || ""}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: ACCENT }}>
+                  {hr.result.fcmax} <span style={{ fontSize: 11, color: MUTED }}>bpm</span>
+                </div>
+                <div style={{ fontSize: 11, color: MUTED }}>{getTest(hr.testId)?.name || hr.testId} · {hr.date}</div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       <div style={{ marginBottom: 16 }}>
         <RegionProfile tests={tests} title="🧭 Profil par région" />
       </div>

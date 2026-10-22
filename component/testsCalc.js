@@ -464,6 +464,84 @@ export const TESTS = [
     },
   },
 
+  {
+    id: "cycle_p5m",
+    group: "endurance",
+    name: "Vélo — puissance max 5 min",
+    sports: "Cyclisme sur route, Wattbike",
+    equipment: "Vélo avec capteur de puissance (ou Wattbike / home-trainer)",
+    howTo:
+      "Après échauffement, rouler 5 minutes à la puissance moyenne maximale, effort le plus régulier possible. Noter la puissance moyenne et le poids du corps. Sert de référence pour la capacité aérobie maximale (type VO2max) et pour estimer la VO2max.",
+    ...ytSearch("test 5 minutes puissance maximale vélo PMA"),
+    fields: [
+      { key: "p5", label: "Puissance moyenne 5 min", unit: "W", placeholder: "ex : 380" },
+      { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "ex : 70" },
+    ],
+    compute: (v) => {
+      const p = num(v.p5);
+      if (!p) return null;
+      const w = num(v.weight);
+      const res = { main: { label: "Puissance 5 min", value: Math.round(p), unit: "W" }, power: Math.round(p), lines: [] };
+      if (w) {
+        res.wkg = r2(p / w);
+        res.lines.push(`${r2(p / w)} W/kg`);
+        res.vo2max = r1(16.6 + 8.87 * (p / w));
+        res.lines.push(`VO2max estimée ≈ ${res.vo2max} ml/kg/min (16,6 + 8,87 × W/kg sur 5 min : test de 5 min en cyclisme sur route, Int J Sports Physiol Perform 2021). Estimation : ± plusieurs ml/kg/min.`);
+      }
+      return res;
+    },
+  },
+  {
+    id: "cycle_p5s",
+    group: "vitesse",
+    name: "Vélo — puissance max 5 s (sprint)",
+    sports: "Cyclisme sur route / piste, Wattbike",
+    equipment: "Vélo avec capteur de puissance (ou Wattbike)",
+    howTo:
+      "Après échauffement, sprint maximal de 5 secondes départ lancé (ou arrêté sur Wattbike), pignon adapté. Noter la puissance moyenne maximale sur 5 s et le poids du corps. Répéter 2 à 3 fois avec récupération complète : garder le meilleur.",
+    ...ytSearch("test sprint 5 secondes puissance maximale vélo"),
+    fields: [
+      { key: "p", label: "Puissance moyenne max 5 s", unit: "W", placeholder: "ex : 1250" },
+      { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "ex : 70" },
+    ],
+    compute: (v) => {
+      const p = num(v.p);
+      if (!p) return null;
+      const w = num(v.weight);
+      const res = { main: { label: "Puissance 5 s", value: Math.round(p), unit: "W" }, power: Math.round(p), lines: [] };
+      if (w) {
+        res.wkg = r2(p / w);
+        res.lines.push(`${r2(p / w)} W/kg`);
+      }
+      return res;
+    },
+  },
+  {
+    id: "cycle_p1m",
+    group: "endurance",
+    name: "Vélo — puissance max 1 min",
+    sports: "Cyclisme sur route, Wattbike",
+    equipment: "Vélo avec capteur de puissance (ou Wattbike)",
+    howTo:
+      "Après échauffement, effort maximal de 1 minute (capacité anaérobie). Noter la puissance moyenne et le poids du corps.",
+    ...ytSearch("test 1 minute puissance maximale vélo capacité anaérobie"),
+    fields: [
+      { key: "p", label: "Puissance moyenne 1 min", unit: "W", placeholder: "ex : 650" },
+      { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "ex : 70" },
+    ],
+    compute: (v) => {
+      const p = num(v.p);
+      if (!p) return null;
+      const w = num(v.weight);
+      const res = { main: { label: "Puissance 1 min", value: Math.round(p), unit: "W" }, power: Math.round(p), lines: [] };
+      if (w) {
+        res.wkg = r2(p / w);
+        res.lines.push(`${r2(p / w)} W/kg`);
+      }
+      return res;
+    },
+  },
+
   /* ======================= SAUT ======================= */
   {
     id: "cmj",
@@ -811,6 +889,97 @@ export const TESTS = [
   },
 ];
 
+/* ---------------------------------------------------------------------
+   FCmax et VO2max estimées sur les tests d'endurance
+   - FCmax : valeur mesurée au test si fournie (c'est la plus fiable si l'effort est maximal), sinon
+     formule de Tanaka et al. 2001 (J Am Coll Cardiol 37:153-6) : 208 − 0,7 × âge (méta-analyse de
+     18 712 sujets). Erreur individuelle ≈ ± 10 bpm : une formule ne remplace pas une mesure.
+   - VO2max : formules publiées propres à chaque test (voir les lignes affichées). Ce sont des
+     ESTIMATIONS ; seul un test avec analyse des gaz donne la valeur réelle.
+   --------------------------------------------------------------------- */
+const HR_FIELDS = [
+  { key: "age", label: "Âge (pour la FCmax estimée)", unit: "ans", placeholder: "optionnel" },
+  { key: "hrmax", label: "FC max atteinte au test", unit: "bpm", placeholder: "optionnel (ceinture / montre)" },
+];
+export const tanakaHrmax = (age) => Math.round(208 - 0.7 * age);
+export function fcmaxFrom(v) {
+  const m = num(v?.hrmax);
+  const a = num(v?.age);
+  if (m && m > 100 && m < 230) {
+    return {
+      value: Math.round(m),
+      basis: "mesurée",
+      line: `FCmax mesurée au test : ${Math.round(m)} bpm${a ? ` (formule de Tanaka : ${tanakaHrmax(a)} bpm)` : ""}. Fiable seulement si l'effort était maximal.`,
+    };
+  }
+  if (a && a > 10 && a < 90) {
+    return {
+      value: tanakaHrmax(a),
+      basis: "estimée",
+      line: `FCmax estimée ≈ ${tanakaHrmax(a)} bpm (Tanaka 2001 : 208 − 0,7 × âge, écart-type ≈ 10 bpm).`,
+    };
+  }
+  return null;
+}
+const addHr = (res, v) => {
+  if (!res) return res;
+  const h = fcmaxFrom(v);
+  if (h) {
+    res.fcmax = h.value;
+    res.fcmaxBasis = h.basis;
+    res.lines = [...(res.lines || []), h.line];
+  }
+  return res;
+};
+const HR_TESTS = ["leger", "vameval", "cooper", "six_min", "ift3015", "yoyo_ir1", "yoyo_ir2", "ftp", "pma", "cycle_p5m", "cycle_p1m", "vc", "bronco", "rfu", "rower2000"];
+TESTS.forEach((t) => {
+  if (!HR_TESTS.includes(t.id)) return;
+  // 30-15 IFT : VO2max estimée par la régression de Buchheit (2008) → il faut âge, poids, sexe
+  if (t.id === "ift3015") {
+    t.fields = [
+      ...t.fields,
+      { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "optionnel (VO2max estimée)" },
+      { key: "sex", label: "Sexe (H / F)", unit: "", placeholder: "optionnel (H par défaut)" },
+    ];
+  }
+  // vélo : VO2max de la PMA par l'équation ACSM (leg ergometry) si le poids est donné
+  if (t.id === "pma") {
+    // le champ « weight » existe déjà
+  }
+  t.fields = [...t.fields, ...HR_FIELDS];
+  const inner = t.compute;
+  t.compute = (v) => {
+    const res = inner(v);
+    if (!res) return res;
+    if (t.id === "ift3015") {
+      const s = num(v.speed);
+      const a = num(v.age);
+      const w = num(v.weight);
+      if (s && a && w) {
+        const g = /^f/i.test(String(v.sex || "")) ? 2 : 1;
+        const vo2 = 28.3 - 2.15 * g - 0.741 * a - 0.0357 * w + 0.0586 * a * s + 1.03 * s;
+        res.vo2max = r1(vo2);
+        res.lines = [
+          ...(res.lines || []),
+          `VO2max estimée ≈ ${res.vo2max} ml/kg/min (régression de Buchheit 2008, établie chez des jeunes sportifs : erreur moyenne ≈ 5 ml/kg/min, à prendre comme un ordre de grandeur).`,
+        ];
+      }
+    }
+    if (t.id === "pma") {
+      const p = num(v.pma);
+      const w = num(v.weight);
+      if (p && w) {
+        res.vo2max = r1(10.8 * (p / w) + 7);
+        res.lines = [
+          ...(res.lines || []),
+          `VO2max estimée ≈ ${res.vo2max} ml/kg/min (équation ACSM de l'ergocycle : 10,8 × W/kg + 7). Équation générale (pas établie sur des cyclistes de haut niveau) : à prendre comme un ordre de grandeur.`,
+        ];
+      }
+    }
+    return addHr(res, v);
+  };
+});
+
 export const getTest = (id) => TESTS.find((t) => t.id === id);
 
 /* Calcule le résultat d'un test (endurance/saut → compute ; mobilité/force → evaluateMeasures) */
@@ -839,7 +1008,7 @@ export function toStoredResult(res) {
     main: res.main,
     lines: res.lines || [],
   };
-  ["vma", "vmi", "cs", "vo2max", "cmj", "status"].forEach((k) => {
+  ["vma", "vmi", "cs", "vo2max", "fcmax", "fcmaxBasis", "wkg", "power", "cmj", "status"].forEach((k) => {
     if (res[k] !== undefined) out[k] = res[k];
   });
   if (res.zones) out.zones = res.zones;

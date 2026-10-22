@@ -101,6 +101,68 @@ const FMS_LABELS = {
   rotary: "Rotary stability",
 };
 
+/* ---------------------------------------------------------------------
+   CLASSEMENT DES TESTS PAR RÉGION (du plus au moins pertinent pour juger la région).
+   Critères : ce que le test mesure vraiment dans la région (mobilité > contrôle), fiabilité de la mesure
+   (reproductible d'un jour / d'un testeur à l'autre) et simplicité sur le terrain.
+   C'est MA synthèse des études de fiabilité et de validité citées ci-dessous (résumés lus, pas de classement
+   officiel publié) ; les coefficients de fiabilité (ICC) n'ont pas été relevés ici.
+   --------------------------------------------------------------------- */
+export const TEST_RANKING = {
+  hanche: {
+    ranked: [
+      { id: "hip_rot", why: "Rotations de hanche : mesure directe de l'amplitude, fiable à l'inclinomètre, plus fiable dans une position standardisée (assis ou allongé, mêmes repères à chaque fois)." },
+      { id: "thomas", why: "Test de Thomas modifié : le test de longueur des fléchisseurs de hanche le plus étudié ; fiabilité correcte, surtout à l'inclinomètre ou avec la méthode trigonométrique." },
+      { id: "slr", why: "Lever de jambe tendue : bon pour la flexion de hanche et les ischios, mais mélange hanche, ischios et bascule du bassin." },
+      { id: "cop_plank", why: "Gainage / contrôle du bassin : ce n'est pas une mobilité, il confirme le contrôle moteur, pas l'amplitude." },
+    ],
+    notInApp: "Pas de test de rotation de hanche en flexion plus complet (FABER) dans l'app : à ajouter seulement si le staff a l'habitude de le chiffrer.",
+    sources: "Fiabilité rotation de hanche : J Sport Rehabil 2018 (PMID 29364046) ; inclinomètre : Knee Surg Sports Traumatol Arthrosc 2014 (PMID 24912575) ; Thomas : revue systématique PM&R 2025 (PMID 41420517).",
+  },
+  genou: {
+    ranked: [
+      { id: "thomas", why: "Angle du genou au test de Thomas : longueur du quadriceps / droit fémoral." },
+      { id: "bridge_sl", why: "Pont unilatéral : force / contrôle de la chaîne postérieure autour du genou." },
+      { id: "sl_chair", why: "Se lever d'une chaise sur une jambe : force fonctionnelle du quadriceps." },
+    ],
+    notInApp: "Aucun test de mobilité de genou dédié : le genou se juge surtout par la longueur du quadriceps et la force.",
+    sources: "Jugement de conception : pas de revue de référence retenue pour le genou.",
+  },
+  cheville: {
+    ranked: [
+      { id: "ktw", why: "Knee-to-wall (fente en charge) : la mesure la plus étudiée de la dorsiflexion, reproductible ; à noter en angle (inclinomètre) pour comparer des joueurs différents, la distance dépendant du pied." },
+      { id: "reach_ant", why: "Atteinte antérieure sur une jambe : test fonctionnel, mélange mobilité de cheville et équilibre." },
+      { id: "calf_raise", why: "Montées de mollets : force-endurance du triceps sural, pas une mobilité." },
+    ],
+    notInApp: "",
+    sources: "Revue systématique de fiabilité du weight-bearing lunge test : Man Ther 2015 (PMID 25704110) ; validité de l'inclinomètre : J Sci Med Sport 2017 (PMID 28108266).",
+  },
+  thoracique: {
+    ranked: [{ id: "thoracic", why: "Rotation thoracique assise bassin bloqué : la rotation du tronc vient surtout du thoracique ; le blocage du bassin et du lombaire est ce qui rend la mesure valide." }],
+    notInApp: "Variante possible : rotation en quadrupédie (lombaire verrouillé), estimée à l'œil par un évaluateur formé.",
+    sources: "Fiabilité de 5 techniques : J Athl Train 2012 (PMID 22488230) ; inclinomètre numérique / iPhone : J Athl Train 2017 (PMID 28787176).",
+  },
+  cervicales: {
+    ranked: [
+      { id: "cervical", why: "Rotation cervicale mesurée (CROM ou inclinomètre) : plus fiable que l'estimation visuelle." },
+      { id: "neck_dnf", why: "Endurance des fléchisseurs profonds : contrôle, pas amplitude." },
+    ],
+    notInApp: "",
+    sources: "Comparaison CROM, goniomètre et estimation visuelle : Phys Ther 1991 (PMID 1989013).",
+  },
+  epaule: {
+    ranked: [{ id: "shoulder_mob", why: "Rotations externe / interne mesurées à l'inclinomètre dans un protocole standardisé : fiabilité bonne, à condition de stabiliser la scapula." }],
+    notInApp: "",
+    sources: "Fiabilité de plusieurs protocoles : J Shoulder Elbow Surg 2014 (PMID 24726484).",
+  },
+  tronc: { ranked: [], notInApp: "Le tronc se juge au FMS (push-up de stabilité, stabilité rotatoire) et aux tests de gainage.", sources: "" },
+};
+export const rankOf = (regionId, testId) => {
+  const r = TEST_RANKING[regionId]?.ranked || [];
+  const i = r.findIndex((x) => x.id === testId);
+  return i < 0 ? 99 : i;
+};
+
 const num = (v) => {
   const n = parseFloat(String(v ?? "").replace(",", "."));
   return Number.isNaN(n) ? null : n;
@@ -180,6 +242,8 @@ export function computeRegionProfiles(latestByTest) {
       specific.push({ id: tid, name: def.name, group: def.group, date: res.date, items, asym, status });
     });
 
+    missing.sort((a, b) => rankOf(reg.id, a.id) - rankOf(reg.id, b.id));
+    specific.sort((a, b) => rankOf(reg.id, a.id) - rankOf(reg.id, b.id));
     const specStatus = worst(specific.map((s) => s.status));
     const hasSpec = specific.length > 0;
     const judged = specStatus != null; // au moins une mesure avec seuil ou asymétrie calculable

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
-import { computeRegionProfiles, latestByTestId, REGION_STATE } from "./regionProfile";
+import { computeRegionProfiles, latestByTestId, REGION_STATE, TEST_RANKING } from "./regionProfile";
+import { getTest } from "./testsCalc";
 import { STATUS } from "./testsCalc";
 
 const MUTED = "#a8a199";
@@ -115,6 +116,30 @@ export default function RegionProfile({ tests, onPickTest = null, title = "🧭 
                       </div>
                     </div>
                   ))}
+
+                  {TEST_RANKING[p.id] && TEST_RANKING[p.id].ranked.length > 0 && (
+                    <details style={{ marginTop: 8 }}>
+                      <summary style={{ fontSize: 11, color: MUTED, cursor: "pointer" }}>Quel test choisir ? (classement)</summary>
+                      <div style={{ marginTop: 6 }}>
+                        {TEST_RANKING[p.id].ranked.map((r, i) => {
+                          const done = p.specific.some((x) => x.id === r.id);
+                          return (
+                            <div key={r.id} style={{ fontSize: 12, color: MUTED, padding: "3px 0", lineHeight: 1.5 }}>
+                              <span style={{ color: TEXT, fontWeight: 700 }}>
+                                {i + 1}. {getTest(r.id)?.name || r.id}
+                              </span>
+                              {done ? " ✓" : ""} — {r.why}
+                            </div>
+                          );
+                        })}
+                        {TEST_RANKING[p.id].notInApp && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{TEST_RANKING[p.id].notInApp}</div>}
+                        {TEST_RANKING[p.id].sources && <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Sources : {TEST_RANKING[p.id].sources}</div>}
+                        <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+                          Classement = ma synthèse des études de fiabilité (résumés lus), pas un classement officiel publié.
+                        </div>
+                      </div>
+                    </details>
+                  )}
 
                   {p.missing.length > 0 && (
                     <div style={{ marginTop: 8 }}>
