@@ -7336,57 +7336,72 @@ export default function Workout() {
           </button>
 
           <div style={{ height: 80 }} />
-          {/* Barre collée en bas de l'écran : on peut enregistrer / annuler
-              depuis n'importe où dans le formulaire, sans redescendre. */}
+          {/* Barre flottante en bas de l'écran : enregistrer / annuler depuis
+              n'importe où dans le formulaire, sans redescendre. */}
           <div
             style={{
-              display: "flex",
-              gap: 10,
               position: "fixed",
               left: 0,
               right: 0,
-              bottom: 0,
+              bottom: "calc(14px + env(safe-area-inset-bottom))",
               zIndex: 1000,
-              boxSizing: "border-box",
-              maxWidth: 900,
-              margin: "0 auto",
-              padding: "10px 16px calc(10px + env(safe-area-inset-bottom))",
-              background: "rgba(21,19,16,0.96)",
-              borderTop: "1px solid #2a2620",
-              boxShadow: "0 -6px 18px rgba(0,0,0,0.45)",
+              display: "flex",
+              justifyContent: "center",
+              pointerEvents: "none",
+              padding: "0 14px",
             }}
           >
-            <button
-              onClick={handleSubmit}
+            <div
               style={{
-                flex: 1,
-                padding: 14,
-                background: "#4fae7d",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 16,
-                fontWeight: "bold",
-                cursor: "pointer",
+                pointerEvents: "auto",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                width: "100%",
+                maxWidth: 440,
+                padding: 8,
+                borderRadius: 18,
+                background: "rgba(21,19,16,0.88)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                border: "1px solid #2f2a22",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
               }}
             >
-              {isEdit ? "💾 Enregistrer" : "✅ Créer"}
-            </button>
-            <button
-              onClick={resetForm}
-              style={{
-                flex: 1,
-                padding: 14,
-                background: "#a8a199",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 16,
-                cursor: "pointer",
-              }}
-            >
-              Annuler
-            </button>
+              <button
+                onClick={resetForm}
+                style={{
+                  flex: "0 0 auto",
+                  padding: "12px 18px",
+                  background: "transparent",
+                  color: "#a8a199",
+                  border: "1px solid #3a342a",
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleSubmit}
+                style={{
+                  flex: 1,
+                  padding: "12px 18px",
+                  background: "linear-gradient(135deg, #5cc08c, #3f9b6c)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: 12,
+                  fontSize: 15,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 14px rgba(79,174,125,0.35)",
+                }}
+              >
+                {isEdit ? "💾 Enregistrer" : "✅ Créer"}
+              </button>
+            </div>
           </div>
         </div>
       )}
