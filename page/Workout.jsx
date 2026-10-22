@@ -772,6 +772,55 @@ export default function Workout() {
     }
   };
 
+  // Renommer / supprimer un sous-groupe directement depuis la liste.
+  const renameSubGroup = async (g, sg) => {
+    const name = window.prompt("Nouveau nom du sous-groupe :", sg.name);
+    if (name === null) return;
+    if (!name.trim()) {
+      alert("Le nom ne peut pas être vide");
+      return;
+    }
+    try {
+      const newSubs = (g.subGroups || []).map((x) => (x.id === sg.id ? { ...x, name: name.trim() } : x));
+      await updateDoc(doc(db, "groups", g.id), { subGroups: newSubs });
+      await fetchGroupsList();
+    } catch (e) {
+      alert("❌ Erreur lors du renommage : " + e.message);
+    }
+  };
+
+  const deleteSubGroup = async (g, sg) => {
+    if (
+      !window.confirm(
+        `Supprimer le sous-groupe "${sg.name}" ? Les athlètes restent dans "${g.name}". Les séances déjà créées pour ce sous-groupe ne seront plus visibles par personne.`
+      )
+    )
+      return;
+    try {
+      const newSubs = (g.subGroups || []).filter((x) => x.id !== sg.id);
+      await updateDoc(doc(db, "groups", g.id), { subGroups: newSubs });
+      if (editingGroupId === g.id) setGroupSubGroups(newSubs);
+      await fetchGroupsList();
+    } catch (e) {
+      alert("❌ Erreur lors de la suppression : " + e.message);
+    }
+  };
+
+  const renameGroup = async (g) => {
+    const name = window.prompt("Nouveau nom du groupe :", g.name);
+    if (name === null) return;
+    if (!name.trim()) {
+      alert("Le nom ne peut pas être vide");
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "groups", g.id), { name: name.trim() });
+      await fetchGroupsList();
+    } catch (e) {
+      alert("❌ Erreur lors du renommage : " + e.message);
+    }
+  };
+
   const deleteGroup = async (groupId) => {
     if (!window.confirm("Supprimer ce groupe ? Les séances déjà créées pour ce groupe resteront mais ne seront plus visibles par personne.")) return;
     try {
@@ -4535,141 +4584,162 @@ export default function Workout() {
 
             {/* Liste des groupes existants */}
             {customGroups.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                {customGroups.map((g) => (
-                  <div
-                    key={g.id}
-                    style={{
-                      background: "#0d0c0a",
-                      borderRadius: 8,
-                      padding: 12,
-                      marginBottom: 8,
-                      border:
-                        editingGroupId === g.id
-                          ? "1px solid #e0a13d"
-                          : "1px solid rgba(255,255,255,0.16)",
-                    }}
-                  >
-                    <div
+              <div style={{ marginBottom: 20, display: "grid", gap: 12 }}>
+                {customGroups.map((g) => {
+                  const gColor = g.color || "#8a8378";
+                  const fKey = `grp_${g.id}`;
+                  const open = blockFold.isOpen(fKey);
+                  const subs = g.subGroups || [];
+                  const inSub = new Set(subs.flatMap((sg) => sg.athleteIds || []));
+                  const rest = (g.athleteIds || []).filter((id) => !inSub.has(id));
+                  const nameOf = (id) => {
+                    const a = athletes.find((ath) => ath.id === id);
+                    return a ? getAthleteDisplayName(a) : "Athlète supprimé";
+                  };
+                  const pill = (id, color) => (
+                    <span
+                      key={id}
                       style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
+                        padding: "3px 10px",
+                        borderRadius: 999,
+                        fontSize: 12,
+                        background: "#1d1a15",
+                        border: `1px solid ${color || "#3a342a"}`,
+                        color: "#f3f0ea",
                       }}
                     >
-                      <div>
-                        <div style={{ fontWeight: "bold", fontSize: 14 }}>
-                          {g.color && (
-                            <span
-                              style={{
-                                display: "inline-block",
-                                width: 12,
-                                height: 12,
-                                borderRadius: "50%",
-                                background: g.color,
-                                marginRight: 6,
-                              }}
-                            />
-                          )}
-                          {g.name}
+                      {nameOf(id)}
+                    </span>
+                  );
+                  const act = (color) => ({
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${color}`,
+                    background: "transparent",
+                    color,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  });
+                  return (
+                    <div
+                      key={g.id}
+                      style={{
+                        background: "#0d0c0a",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        border: editingGroupId === g.id ? "1px solid #e0a13d" : "1px solid #2a2620",
+                        borderLeft: `5px solid ${gColor}`,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 12px 10px" }}>
+                        <FoldBtn open={open} onClick={() => blockFold.toggle(fKey)} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 15 }}>{g.name}</div>
+                          <div style={{ fontSize: 12, color: "#a8a199" }}>
+                            {(g.athleteIds || []).length} athlète(s)
+                            {subs.length > 0 && ` · ${subs.length} sous-groupe(s)`}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 12, color: "#a8a199" }}>
-                          {(g.athleteIds || [])
-                            .map((id) => {
-                              const a = athletes.find((ath) => ath.id === id);
-                              if (!a) return "?";
-                              return a.firstName && a.lastName
-                                ? `${a.firstName} ${a.lastName}`
-                                : a.displayName || a.email || "?";
-                            })
-                            .join(", ")}
-                        </div>
-                        {(g.subGroups || []).map((sg) => (
-                          <div
-                            key={sg.id}
-                            style={{ fontSize: 12, color: "#9fd4b0", marginTop: 4 }}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          <button
+                            onClick={() => { startEditGroup(g); addGroupSubGroup(); }}
+                            title="Ajouter un sous-groupe"
+                            style={act("#4fae7d")}
                           >
-                            ↳ <strong>{sg.name}</strong> :{" "}
-                            {(sg.athleteIds || [])
-                              .map((id) => {
-                                const a = athletes.find((ath) => ath.id === id);
-                                return a ? getAthleteDisplayName(a) : "?";
-                              })
-                              .join(", ") || "aucun athlète"}
-                            <div style={{ marginTop: 4 }}>
-                              <ColorSwatches
-                                value={sg.color || ""}
-                                onChange={(c) => quickSetGroupColor(g, sg.id, c)}
-                                emptyLabel="Comme le groupe"
-                              />
-                            </div>
-                          </div>
-                        ))}
-                        <div style={{ marginTop: 8 }}>
-                          <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
-                            🎨 Couleur du groupe
-                          </div>
-                          <ColorSwatches
-                            value={g.color || ""}
-                            onChange={(c) => quickSetGroupColor(g, null, c)}
-                            emptyLabel="Par type"
-                          />
+                            ➕ Sous-groupe
+                          </button>
+                          <button onClick={() => renameGroup(g)} title="Renommer" style={act("#a8a199")}>
+                            🏷️
+                          </button>
+                          <button onClick={() => startEditGroup(g)} title="Modifier (athlètes, sous-groupes)" style={act("#e0a13d")}>
+                            ✏️ Modifier
+                          </button>
+                          <button onClick={() => deleteGroup(g.id)} title="Supprimer le groupe" style={act("#d9695a")}>
+                            🗑️
+                          </button>
                         </div>
                       </div>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button
-                          onClick={() => {
-                            // Ouvre ce groupe en édition avec un nouveau
-                            // sous-groupe vide prêt à être rempli.
-                            startEditGroup(g);
-                            addGroupSubGroup();
-                          }}
-                          title="Ajouter un sous-groupe à ce groupe"
-                          style={{
-                            padding: "5px 10px",
-                            borderRadius: 6,
-                            border: "1px solid #4fae7d",
-                            background: "transparent",
-                            color: "#4fae7d",
-                            fontSize: 12,
-                            cursor: "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          ➕ Sous-groupe
-                        </button>
-                        <button
-                          onClick={() => startEditGroup(g)}
-                          style={{
-                            padding: "5px 10px",
-                            borderRadius: 6,
-                            border: "1px solid #e0a13d",
-                            background: "transparent",
-                            color: "#e0a13d",
-                            fontSize: 12,
-                            cursor: "pointer",
-                          }}
-                        >
-                          ✏️
-                        </button>
-                        <button
-                          onClick={() => deleteGroup(g.id)}
-                          style={{
-                            padding: "5px 10px",
-                            borderRadius: 6,
-                            border: "1px solid #d9695a",
-                            background: "transparent",
-                            color: "#d9695a",
-                            fontSize: 12,
-                            cursor: "pointer",
-                          }}
-                        >
-                          🗑️
-                        </button>
-                      </div>
+
+                      {open && (
+                        <div style={{ padding: "0 12px 12px", display: "grid", gap: 10 }}>
+                          {subs.length === 0 ? (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                              {(g.athleteIds || []).map((id) => pill(id, gColor))}
+                            </div>
+                          ) : (
+                            <>
+                              {subs.map((sg) => {
+                                const sColor = sg.color || gColor;
+                                return (
+                                  <div
+                                    key={sg.id}
+                                    style={{
+                                      background: "#151310",
+                                      borderRadius: 10,
+                                      padding: 10,
+                                      borderLeft: `4px solid ${sColor}`,
+                                    }}
+                                  >
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                                      <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>
+                                        ↳ {sg.name}{" "}
+                                        <span style={{ color: "#a8a199", fontWeight: 400 }}>
+                                          · {(sg.athleteIds || []).length}
+                                        </span>
+                                      </div>
+                                      <button onClick={() => renameSubGroup(g, sg)} title="Renommer" style={act("#a8a199")}>
+                                        🏷️
+                                      </button>
+                                      <button onClick={() => startEditGroup(g)} title="Modifier les athlètes" style={act("#e0a13d")}>
+                                        ✏️
+                                      </button>
+                                      <button onClick={() => deleteSubGroup(g, sg)} title="Supprimer le sous-groupe" style={act("#d9695a")}>
+                                        🗑️
+                                      </button>
+                                    </div>
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                      {(sg.athleteIds || []).length === 0 ? (
+                                        <span style={{ fontSize: 12, color: "#a8a199" }}>Aucun athlète</span>
+                                      ) : (
+                                        (sg.athleteIds || []).map((id) => pill(id, sColor))
+                                      )}
+                                    </div>
+                                    <div style={{ marginTop: 8 }}>
+                                      <ColorSwatches
+                                        value={sg.color || ""}
+                                        onChange={(c) => quickSetGroupColor(g, sg.id, c)}
+                                        emptyLabel="Comme le groupe"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                              {rest.length > 0 && (
+                                <div style={{ background: "#151310", borderRadius: 10, padding: 10, borderLeft: "4px solid #3a342a" }}>
+                                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
+                                    Sans sous-groupe · {rest.length}
+                                  </div>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                    {rest.map((id) => pill(id))}
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+                          <div>
+                            <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>🎨 Couleur du groupe</div>
+                            <ColorSwatches
+                              value={g.color || ""}
+                              onChange={(c) => quickSetGroupColor(g, null, c)}
+                              emptyLabel="Par type"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
