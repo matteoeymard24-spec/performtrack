@@ -48,7 +48,7 @@ export const SENS = {
   CMJ: 1,
   CMJB: 1,
   Bronco: 0.5,
-  BROAD: 0.5,
+  BROAD: 1,
   YOYO1: 0.5,
   VIFT: 0.5,
   "Vitesse GPS": 0.6,
