@@ -81,12 +81,41 @@ function LevelBlock({ lv }) {
 
 /* Tableau : une ligne par exercice, une colonne par niveau (standards de force du poste) */
 export function LevelTable({ rows, targetId, labelHeader = "Exercice", valueHeader = "Ton RM" }) {
+  const [medalMode, setMedalMode] = React.useState("bronze");
   const withLv = (rows || []).filter((r) => r.lv);
   if (withLv.length === 0) return null;
+  const MODES = [
+    { id: "bronze", label: "🥉 Bronze", key: "thr" },
+    { id: "silver", label: "🥈 Argent", key: "silver" },
+    { id: "gold", label: "🥇 Or", key: "gold" },
+  ];
+  const valKey = (MODES.find((m) => m.id === medalMode) || MODES[0]).key;
   const cols = withLv[0].lv.items;
   const th = { padding: "6px 8px", fontSize: 11, color: MUTED, textAlign: "right", whiteSpace: "nowrap", fontWeight: 600 };
   return (
     <div style={{ overflowX: "auto" }}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ color: MUTED, fontSize: 11 }}>Seuil affiché :</span>
+        {MODES.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => setMedalMode(m.id)}
+            style={{
+              background: medalMode === m.id ? "#1c2a40" : "transparent",
+              color: medalMode === m.id ? ACCENT : MUTED,
+              border: `1px solid ${medalMode === m.id ? ACCENT : "#2a2620"}`,
+              borderRadius: 999,
+              padding: "4px 12px",
+              fontSize: 11,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
         <thead>
           <tr>
@@ -114,7 +143,7 @@ export function LevelTable({ rows, targetId, labelHeader = "Exercice", valueHead
                     background: it.id === targetId ? "#16243a" : "transparent",
                   }}
                 >
-                  {it.thr}
+                  {it[valKey]}
                   <span style={{ color: MUTED }}>{it.tag === "estimé" ? "~" : it.tag === "doc" ? "*" : ""}</span>
                   {it.medal ? ` ${MEDALS[it.medal].icon}` : ""}
                 </td>
@@ -127,7 +156,7 @@ export function LevelTable({ rows, targetId, labelHeader = "Exercice", valueHead
         </tbody>
       </table>
       <div style={{ color: MUTED, fontSize: 10, marginTop: 6 }}>
-        * référentiel / étude publiée (FFR 2020, World Class, Top 14, Super Rugby 2026) · ~ estimé (le référentiel ne contient rien pour ce niveau) · sinon barème Agen · vert = niveau atteint · valeur affichée = 🥉 bronze (moyenne du niveau)
+        * référentiel / étude publiée (FFR 2020, World Class, Top 14, Super Rugby 2026) · ~ estimé (le référentiel ne contient rien pour ce niveau) · sinon barème Agen · vert = niveau atteint · valeur affichée = {medalMode === "gold" ? "🥇 or" : medalMode === "silver" ? "🥈 argent" : "🥉 bronze (moyenne du niveau)"} du niveau (boutons ci-dessus)
         {(rows || []).filter((r) => r.estNote).map((r) => (
           <div key={r.label} style={{ color: "#d9a441" }}>⚠ {r.label} : {r.estNote}</div>
         ))}
