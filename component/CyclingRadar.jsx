@@ -198,8 +198,8 @@ export function CyclingNorms({ level, sex }) {
       <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
         <span style={{ color: "#4fae7d" }}>doc</span> = relevé dans une étude · <span style={{ color: ACCENT }}>estimé</span> = calculé à partir d'une étude · <span style={{ color: "#d9604a" }}>provisoire</span> = aucune donnée publiée trouvée.
       </div>
-      <div style={{ marginTop: 10 }}>
-        <div style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>Sources et limites</div>
+      <details style={{ marginTop: 10 }}>
+        <summary style={{ fontSize: 12, color: TEXT, fontWeight: 700, cursor: "pointer" }}>Sources et limites</summary>
         <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 6 }}>
           • Hommes pros : Valenzuela et al. 2022, Int J Sports Physiol Perform 17(5):701-710 (144 pros) : médiane par durée, relevée dans un tableau relayé par un site tiers (article complet non consulté).
           <br />• Femmes pros : Mateo-March et al. 2022, Int J Sports Physiol Perform (44 coureuses, PMID 35168197) : médiane et percentiles 10 / 90 par durée.
@@ -211,7 +211,7 @@ export function CyclingNorms({ level, sex }) {
           <br />• VO2max estimée : 16,6 + 8,87 × W/kg sur 5 min (IJSPP 2021, PMID 34225254) ou autres équations indiquées dans chaque test ; elle ne remplace pas une mesure avec analyse des gaz.
           <br />• {CYCLING_NOTE}
         </div>
-      </div>
+      </details>
     </div>
   );
 }
