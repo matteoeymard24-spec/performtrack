@@ -5424,9 +5424,34 @@ export default function Workout() {
             marginBottom: 25,
           }}
         >
-          <h3 style={{ margin: "0 0 20px 0", fontSize: 18 }}>
-            {isEdit ? "✏️ Modifier séance" : "➕ Nouvelle séance"}
-          </h3>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              margin: "0 0 20px 0",
+              gap: 10,
+            }}
+          >
+            <h3 style={{ margin: 0, fontSize: 18 }}>
+              {isEdit ? "✏️ Modifier séance" : "➕ Nouvelle séance"}
+            </h3>
+            <button
+              onClick={resetForm}
+              title="Fermer sans enregistrer"
+              style={{
+                padding: "6px 12px",
+                background: "#2a2620",
+                color: "#f3f0ea",
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontSize: 14,
+              }}
+            >
+              ✕ Fermer
+            </button>
+          </div>
 
           {/* Type de séance */}
           <div style={{ marginBottom: 18 }}>
@@ -7310,18 +7335,25 @@ export default function Workout() {
             ➕ Ajouter un bloc
           </button>
 
+          <div style={{ height: 80 }} />
           {/* Barre collée en bas de l'écran : on peut enregistrer / annuler
               depuis n'importe où dans le formulaire, sans redescendre. */}
           <div
             style={{
               display: "flex",
               gap: 10,
-              position: "sticky",
+              position: "fixed",
+              left: 0,
+              right: 0,
               bottom: 0,
-              zIndex: 50,
-              margin: "0 -4px",
-              padding: "10px 4px calc(10px + env(safe-area-inset-bottom))",
-              background: "linear-gradient(to top, #151310 75%, rgba(21,19,16,0))",
+              zIndex: 1000,
+              boxSizing: "border-box",
+              maxWidth: 900,
+              margin: "0 auto",
+              padding: "10px 16px calc(10px + env(safe-area-inset-bottom))",
+              background: "rgba(21,19,16,0.96)",
+              borderTop: "1px solid #2a2620",
+              boxShadow: "0 -6px 18px rgba(0,0,0,0.45)",
             }}
           >
             <button
