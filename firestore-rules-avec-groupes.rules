@@ -147,6 +147,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ========== ARCHIVED ATHLETES (RM / tests / poids gardés à la suppression
+    // d'un athlète, restaurés s'il revient) — admins uniquement ==========
+    match /archivedAthletes/{userId} {
+      allow read, write: if isAdmin();
+    }
+
     // ========== EXERCISE MEDIA (photos/gifs de démonstration, une seule
     // fois par nom d'exercice — voir Workout.jsx) ==========
     match /exerciseMedia/{exerciseKey} {

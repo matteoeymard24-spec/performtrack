@@ -6,6 +6,11 @@ import { useAuth } from "../auth/AuthProvider";
 import { Page, CARD_STYLE, CARD_ACCENT_BORDER, CARD_TITLE, PAGE_TITLE, FIELD_STYLE, FoldBtn } from "../component/ui";
 import { Navigate } from "react-router-dom";
 
+// Durée de vie d'une archive d'athlète supprimé : passé ce délai, ses RM /
+// tests ne sont plus représentatifs (progrès ou régression) → supprimée.
+const ARCHIVE_TTL_DAYS = 60;
+const ARCHIVE_TTL_MS = ARCHIVE_TTL_DAYS * 86400000;
+
 export default function Athletes() {
   const { userRole, isSuperAdmin, currentUser } = useAuth();
   const [users, setUsers] = useState([]);
@@ -19,6 +24,23 @@ export default function Athletes() {
   const [pendingOpen, setPendingOpen] = useState(true);
 
   console.log("[Athletes] Render - userRole:", userRole, "isSuperAdmin:", isSuperAdmin);
+
+  // Nettoyage automatique : archives d'athlètes supprimés dépassant leur durée
+  // de vie → supprimées définitivement à l'ouverture de cette page.
+  useEffect(() => {
+    if (!currentUser || (userRole !== "admin" && !isSuperAdmin)) return;
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "archivedAthletes"));
+        for (const d of snap.docs) {
+          const exp = d.data().expiresAt;
+          if (!exp || new Date(exp).getTime() < Date.now()) await deleteDoc(d.ref);
+        }
+      } catch (e) {
+        console.warn("Purge archives:", e);
+      }
+    })();
+  }, [currentUser, userRole, isSuperAdmin]);
 
   useEffect(() => {
     let isMounted = true;
@@ -170,6 +192,28 @@ export default function Athletes() {
         prev.map((u) => (u.id === id ? { ...u, status: "approved" } : u))
       );
       await initRMForNewAthlete(id);
+      // Retour d'un athlète supprimé avec archive : on lui rend ses RM / tests / poids.
+      try {
+        const arch = await getDoc(doc(db, "archivedAthletes", id));
+        if (arch.exists()) {
+          const a = arch.data();
+          const expired = !a.expiresAt || new Date(a.expiresAt).getTime() < Date.now();
+          if (expired) {
+            await deleteDoc(arch.ref);
+            alert(`🗑️ Son archive datait de plus de ${ARCHIVE_TTL_DAYS} jours : supprimée, ses RM repartent de zéro.`);
+            return;
+          }
+          for (const sub of ["rm", "tests", "weight_history"]) {
+            for (const it of a[sub] || []) {
+              await setDoc(doc(db, "users", id, sub, it.id), it.data);
+            }
+          }
+          await deleteDoc(arch.ref);
+          alert("♻️ Ses anciens RM, tests et historique de poids ont été restaurés.");
+        }
+      } catch (e) {
+        console.error("Restauration archive:", e);
+      }
     } catch (err) {
       console.error("Erreur approveUser:", err);
       alert("Erreur lors de la validation de l'accès");
@@ -264,7 +308,8 @@ export default function Athletes() {
       `• L'utilisateur : ${userEmail}\n` +
       `• Toutes ses données wellness\n` +
       `• Tous ses workouts individuels\n` +
-      `• Tous ses RM\n` +
+      `• Tous ses RM, tests, blessures, cycles individuels\n` +
+      `• Il sera retiré de tous ses groupes\n` +
       `• Tout son historique de poids\n\n` +
       `Tapez "SUPPRIMER" en majuscules pour confirmer :`
     );
@@ -274,8 +319,58 @@ export default function Athletes() {
       return;
     }
 
+    // Option : garder une archive de ses RM / tests / poids. S'il revient
+    // (même compte), elle est restaurée automatiquement à la validation de
+    // son accès. OK = archiver, Annuler = tout effacer sans rien garder.
+    const keepArchive = window.confirm(
+      "Garder une ARCHIVE de ses RM, tests et historique de poids ?\n\n" +
+        `• OK : mis de côté ${ARCHIVE_TTL_DAYS} jours, restaurés s'il revient dans ce délai (même compte), puis supprimés définitivement.\n` +
+        "• Annuler : tout est effacé définitivement, rien n'est conservé."
+    );
+
     try {
       console.log("[DeleteAthlete] Début suppression pour:", userId);
+
+      // 0. Archive optionnelle (écrite AVANT toute suppression)
+      if (keepArchive) {
+        const dump = async (sub) =>
+          (await getDocs(collection(db, "users", userId, sub))).docs.map((d) => ({ id: d.id, data: d.data() }));
+        const [rmA, testsA, weightA] = await Promise.all([dump("rm"), dump("tests"), dump("weight_history")]);
+        await setDoc(doc(db, "archivedAthletes", userId), {
+          email: userEmail || "",
+          archivedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + ARCHIVE_TTL_MS).toISOString(),
+          rm: rmA,
+          tests: testsA,
+          weight_history: weightA,
+        });
+      }
+
+      // 0b. Sortir l'athlète de tous ses groupes / sous-groupes
+      const groupsSnap = await getDocs(collection(db, "groups"));
+      for (const g of groupsSnap.docs) {
+        const gd = g.data();
+        const inGroup = (gd.athleteIds || []).includes(userId);
+        const inSub = (gd.subGroups || []).some((sg) => (sg.athleteIds || []).includes(userId));
+        if (!inGroup && !inSub) continue;
+        await updateDoc(g.ref, {
+          athleteIds: (gd.athleteIds || []).filter((id) => id !== userId),
+          subGroups: (gd.subGroups || []).map((sg) => ({
+            ...sg,
+            athleteIds: (sg.athleteIds || []).filter((id) => id !== userId),
+          })),
+        });
+      }
+
+      // 0c. Blessures, tests, cycles / échéances individuels
+      const injSnap = await getDocs(query(collection(db, "injuries"), where("userId", "==", userId)));
+      for (const d of injSnap.docs) await deleteDoc(d.ref);
+      const testsSnap = await getDocs(collection(db, "users", userId, "tests"));
+      for (const d of testsSnap.docs) await deleteDoc(d.ref);
+      for (const col of ["cycles", "fixtures"]) {
+        const sn = await getDocs(query(collection(db, col), where("scope", "==", "user:" + userId)));
+        for (const d of sn.docs) await deleteDoc(d.ref);
+      }
       
       // 1. Supprimer wellness
       const wellnessSnap = await getDocs(
