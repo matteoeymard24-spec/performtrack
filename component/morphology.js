@@ -8,11 +8,9 @@
      (cible verte = 16 / 20, or = 20 / 20).
    • Poids de référence par poste utilisés pour ramener la force au poids : ceux du tableau « Standards - Squat »
      du même document (prop 125, talonneur 115, 2e ligne 110, 3e ligne 110, 9 85, 10 90, centre 105, ailier 95, arrière 95).
-   • Normalisation de la force : exposant 2/3 (la force musculaire varie comme la surface de section, donc ≈ masse^(2/3)) —
-     Jaric 2002, Sports Med. ; Folland 2009. En rugby union, le ratio simple (÷ masse) avantage les joueurs légers
-     (r = −0,53 à −0,57) alors que le scaling allométrique supprime l'effet de masse (Crewther et al. 2011 JSCR ;
-     Crewther et al. 2012 J Sports Med Phys Fit). Exposant 2/3 = valeur théorique ; je n'ai pas pu lire les exposants
-     dérivés par Crewther.
+   • Normalisation de la force : exposants dérivés chez des joueurs élite de rugby union — Crewther et al. 2009, J Sports Sci
+     27(14):1575-80 : box squat 0,33 ± 0,31 ; développé couché 0,45 ± 0,30 ; bench throw 0,46 ± 0,36 ; squat jump 0,64 ± 0,31 ;
+     exposant théorique 0,67 (Jaric 2002). Le ratio simple (÷ masse) avantage les légers (Crewther 2009, 2011, 2012).
    • Masse grasse : Posthumus et al. 2020 (Sports 8(6):85), pros, DXA : avants 17,8 ± 2,4 %, arrières 14,8 ± 1,2 %.
      Les plis cutanés donnent des valeurs plus basses (≈ 14,0 % avants / 10,5 % arrières en élite, revue J Funct Morphol
      Kinesiol 2026) : la méthode de mesure change beaucoup le chiffre.

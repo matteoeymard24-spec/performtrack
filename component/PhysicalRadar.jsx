@@ -7,7 +7,11 @@ const TEXT = "#f3f0ea";
 const ACCENT = "#e0a13d";
 const BLUE = "#7aa6e8";
 const BORDER = "#1d1a16";
-const EXP = 2 / 3; // exposant allométrique (force ∝ masse^(2/3)) — Jaric 2002
+/* Exposants allométriques (force ∝ masse^b). « rugby » = exposants DÉRIVÉS chez des joueurs élite de rugby union
+   (Crewther et al. 2009, J Sports Sci 27(14):1575-80, n = 38) : box squat 0,33 ± 0,31 (bas du corps), développé couché
+   0,45 ± 0,30 (haut du corps). Intervalles larges. « theo » = 0,67 théorique (Jaric 2002), testé aussi dans cette étude. */
+const EXPS = { rugby: { low: 0.33, up: 0.45 }, theo: { low: 2 / 3, up: 2 / 3 } };
+const isLower = (pattern) => /_lower$/.test(pattern || "");
 
 /* Axes du radar. Priorité (0 à 3) de chaque qualité selon le poste : INDICATIF (avis, pas une donnée publiée) ;
    sert à tracer la « cible » du poste (cible = 10 + 2 × priorité, soit 10 à 16 / 20) et à classer les qualités à travailler. */
@@ -91,6 +95,7 @@ const inputSt = { background: "#0d0c0a", color: TEXT, border: "1px solid #2a2620
    domainNotes : notes /20 par domaine (Tests.jsx) ; rmDocs : [{name, kg}] ; weight / height / bodyFat : profil athlète ;
    onSaveProfile(patch) : enregistre taille / % masse grasse dans le profil (facultatif). */
 export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level, weight, height, bodyFat, bodyFatMethod, onSaveProfile = null }) {
+  const [expMode, setExpMode] = useState("theo");
   const [mode, setMode] = useState("rel"); // "rel" = force ramenée à la masse (allométrique), "abs" = kg bruts
   const [localW, setLocalW] = useState("");
   const [hIn, setHIn] = useState(height ? String(height) : "");
@@ -107,12 +112,20 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
   const hCm = num(hIn);
   const bf = num(bfIn);
   const refMass = REF_MASS[poste] ? REF_MASS[poste] * massLevelFactor(level) : null;
-  const scale = bw && refMass ? Math.pow(refMass / bw, EXP) : null;
-  const useRel = mode === "rel" && scale != null;
+  const ex = EXPS[expMode];
+  const scaleLow = bw && refMass ? Math.pow(refMass / bw, ex.low) : null;
+  const scaleUp = bw && refMass ? Math.pow(refMass / bw, ex.up) : null;
+  const scale = scaleUp;
+  const useRel = mode === "rel" && scaleLow != null;
 
-  const forceOf = (factor) => {
+  const patsAt = (factor) => {
     const docs = (rmDocs || []).map((d) => ({ ...d, kg: d.kg * factor }));
-    const pats = Object.fromEntries(groupByPattern(evaluateStrength(docs, sport, poste, level)).map((g) => [g.id, g.avg]));
+    return Object.fromEntries(groupByPattern(evaluateStrength(docs, sport, poste, level)).map((g) => [g.id, g.avg]));
+  };
+  const forceOf = (fLow, fUp = fLow) => {
+    const lo = patsAt(fLow);
+    const up = fUp === fLow ? lo : patsAt(fUp);
+    const pats = { ...up, push_v_lower: lo.push_v_lower, push_h_lower: lo.push_h_lower };
     return {
       force_haut: avg([pats.push_v_upper, pats.push_h_upper]),
       force_bas: avg([pats.push_v_lower, pats.push_h_lower]),
@@ -120,7 +133,7 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
     };
   };
   const forceAbs = useMemo(() => forceOf(1), [rmDocs, sport, poste, level]); // eslint-disable-line react-hooks/exhaustive-deps
-  const forceRel = useMemo(() => (scale != null ? forceOf(scale) : null), [rmDocs, sport, poste, level, scale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const forceRel = useMemo(() => (scaleLow != null ? forceOf(scaleLow, scaleUp) : null), [rmDocs, sport, poste, level, scaleLow, scaleUp]); // eslint-disable-line react-hooks/exhaustive-deps
   const forceAxes = useRel ? forceRel : forceAbs;
 
   const morph = useMemo(() => (hasMorph(poste) && bw ? evaluateMorph(poste, level, bw, bf) : null), [poste, level, bw, bf]);
@@ -160,11 +173,12 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
         .filter((r) => r.value != null)
         .map((r) => ({
           label: r.label,
+          pattern: r.pattern,
           kg: r.value,
           ratio: bw ? r.value / bw : null,
-          eq: scale != null ? r.value * scale : null,
+          eq: scaleLow != null ? r.value * (isLower(r.pattern) ? scaleLow : scaleUp) : null,
         })),
-    [rmDocs, sport, poste, level, bw, scale]
+    [rmDocs, sport, poste, level, bw, scaleLow, scaleUp]
   );
 
   if (!poste) return null;
@@ -246,6 +260,33 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
             {m.label}
           </button>
         ))}
+        {mode === "rel" && (
+          <>
+            <span style={{ color: MUTED, fontSize: 11, marginLeft: 8 }}>Exposant :</span>
+            {[
+              { id: "theo", label: "0,67 (théorique)" },
+              { id: "rugby", label: "rugby (0,33 / 0,45)" },
+            ].map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setExpMode(m.id)}
+                style={{
+                  background: expMode === m.id ? "#3a2f1a" : "transparent",
+                  color: expMode === m.id ? ACCENT : MUTED,
+                  border: `1px solid ${expMode === m.id ? ACCENT : "#2a2620"}`,
+                  borderRadius: 999,
+                  padding: "4px 10px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {m.label}
+              </button>
+            ))}
+          </>
+        )}
       </div>
 
       {nData < 2 ? (
@@ -256,8 +297,8 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
 
       {useRel && (
         <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
-          Force ramenée à un {posteShort} de {Math.round(refMass)} kg avec un exposant 2/3 (charge × ({Math.round(refMass)} / {bw})^0,67 = ×{scale.toFixed(2)}). Un athlète plus léger
-          que la référence est relevé, un plus lourd est abaissé, mais moins qu'avec un simple ratio kg/kg, qui avantage trop les légers.
+          Force ramenée à un {posteShort} de {Math.round(refMass)} kg : charge × ({Math.round(refMass)} / {bw})^b, avec b = {ex.low.toFixed(2)} (bas du corps) et {ex.up.toFixed(2)} (haut du corps)
+          = ×{scaleLow.toFixed(2)} / ×{scaleUp.toFixed(2)}. Un athlète plus léger que la référence est relevé, un plus lourd est abaissé, mais moins qu'avec un simple ratio kg/kg, qui avantage trop les légers.
         </div>
       )}
       {mode === "rel" && !useRel && <div style={{ fontSize: 11, color: "#d9a441", marginTop: 6 }}>Poids inconnu : la force est notée en kg bruts.</div>}
@@ -347,8 +388,10 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
           • Standards de poids et de masse maigre par poste : « USA Rugby Player Profiles and Performance Standards » (note USA × 2 = note /20 ; vert = 16/20). Pour les niveaux
           inférieurs au Pro D2, les seuils sont multipliés par le coefficient du niveau : estimation (la revue 2026 donne ≈ 91 kg pour des avants amateurs contre ≈ 116 kg en élite).
           <br />• Poids de référence pour ramener la force : ceux des standards de squat USA Rugby (pilier 125, talonneur 115, 2e ligne 110, 3e ligne 110, 9 : 85, 10 : 90, centre 105, ailier et arrière 95).
-          <br />• Normalisation de la force : exposant 2/3 (Jaric 2002). En rugby union, le ratio simple avantage les légers (r = −0,53 à −0,57) et l'allométrique supprime l'effet de masse
-          (Crewther et al. 2011, 2012). L'exposant 2/3 est théorique : les exposants dérivés de ces études n'ont pas pu être relus.
+          <br />• Normalisation de la force : Crewther et al. 2009 (J Sports Sci, 38 joueurs élite de rugby union) : exposants dérivés box squat 0,33 ± 0,31, développé couché 0,45 ± 0,30,
+          bench throw 0,46 ± 0,36, squat jump 0,64 ± 0,31 ; exposant théorique 0,67 (Jaric 2002). Après normalisation allométrique (dérivée ou 0,67), plus de différence de force entre avants et arrières,
+          alors que le ratio simple kg/kg favorise les légers (Crewther 2009, 2011, 2012). Limites : intervalles de confiance larges, un seul groupe de joueurs. J'applique 0,33 aux exercices du bas du
+          corps et 0,45 à ceux du haut du corps (extension à d'autres exercices = hypothèse de ma part).
           <br />• Masse grasse : Posthumus et al. 2020 (Sports 8(6):85), DXA, pros : avants 17,8 ± 2,4 %, arrières 14,8 ± 1,2 %.
           <br />• Les priorités par poste (cibles bleues) sont un avis indicatif, pas une donnée publiée.
         </div>
