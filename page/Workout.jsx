@@ -467,6 +467,7 @@ export default function Workout() {
   const [customGroups, setCustomGroups] = useState([]);
   const [showGroupsManager, setShowGroupsManager] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState(null);
+  const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [groupNameInput, setGroupNameInput] = useState("");
   const [groupAthleteIds, setGroupAthleteIds] = useState([]);
   // Sous-groupes du groupe en cours d'édition : [{ id, name, athleteIds }],
@@ -641,6 +642,7 @@ export default function Workout() {
   }, [currentUser]);
 
   const resetGroupForm = () => {
+    setGroupEditorOpen(false);
     setEditingGroupId(null);
     setGroupNameInput("");
     setGroupAthleteIds([]);
@@ -649,6 +651,7 @@ export default function Workout() {
   };
 
   const startEditGroup = (g) => {
+    setGroupEditorOpen(true);
     setEditingGroupId(g.id);
     setGroupNameInput(g.name || "");
     setGroupAthleteIds(g.athleteIds || []);
@@ -729,6 +732,21 @@ export default function Workout() {
       }));
     try {
       if (editingGroupId) {
+        const before = customGroups.find((x) => x.id === editingGroupId);
+        const removed = (before?.subGroups || []).filter((o) => !cleanSubGroups.some((n) => n.id === o.id));
+        if (removed.length > 0) {
+          const targets = removed.map((r) => makeSubGroupTarget(editingGroupId, r.id));
+          const sess = await findSessionsForTargets((gv) => targets.includes(gv));
+          if (
+            sess.length > 0 &&
+            window.confirm(
+              `Sous-groupe(s) retiré(s) : ${removed.map((r) => r.name).join(", ")}.\n${sess.length} séance(s) liée(s) seront supprimées. OK pour les supprimer ? (Annuler = les garder)`
+            )
+          ) {
+            for (const d of sess) await deleteDoc(d.ref);
+            await fetchSessions();
+          }
+        }
         await updateDoc(doc(db, "groups", editingGroupId), {
           name: groupNameInput.trim(),
           athleteIds: groupAthleteIds,
@@ -790,17 +808,22 @@ export default function Workout() {
   };
 
   const deleteSubGroup = async (g, sg) => {
-    if (
-      !window.confirm(
-        `Supprimer le sous-groupe "${sg.name}" ? Les athlètes restent dans "${g.name}". Les séances déjà créées pour ce sous-groupe ne seront plus visibles par personne.`
-      )
-    )
-      return;
     try {
+      const target = makeSubGroupTarget(g.id, sg.id);
+      const sess = await findSessionsForTargets((gv) => gv === target);
+      if (
+        !window.confirm(
+          `Supprimer le sous-groupe "${sg.name}" ?\n\n` +
+            `Les athlètes restent dans "${g.name}". ${sess.length} séance(s) créée(s) pour ce sous-groupe seront aussi supprimées.`
+        )
+      )
+        return;
+      for (const d of sess) await deleteDoc(d.ref);
       const newSubs = (g.subGroups || []).filter((x) => x.id !== sg.id);
       await updateDoc(doc(db, "groups", g.id), { subGroups: newSubs });
       if (editingGroupId === g.id) setGroupSubGroups(newSubs);
       await fetchGroupsList();
+      await fetchSessions();
     } catch (e) {
       alert("❌ Erreur lors de la suppression : " + e.message);
     }
@@ -821,12 +844,31 @@ export default function Workout() {
     }
   };
 
+  // Séances (toutes) ciblant un groupe ou un sous-groupe : pour les supprimer
+  // avec lui (sinon elles restaient en base, grisées dans le calendrier).
+  const findSessionsForTargets = async (matcher) => {
+    const all = await getWorkoutDocs();
+    return all.docs.filter((d) => matcher(d.data().group));
+  };
+
   const deleteGroup = async (groupId) => {
-    if (!window.confirm("Supprimer ce groupe ? Les séances déjà créées pour ce groupe resteront mais ne seront plus visibles par personne.")) return;
+    const g = customGroups.find((x) => x.id === groupId);
     try {
+      const sess = await findSessionsForTargets(
+        (gv) => gv === groupId || (typeof gv === "string" && gv.startsWith(`${SUBGROUP_PREFIX}${groupId}:`))
+      );
+      if (
+        !window.confirm(
+          `Supprimer le groupe "${g?.name || ""}" avec ses sous-groupes ?\n\n` +
+            `${sess.length} séance(s) créée(s) pour ce groupe ou ses sous-groupes seront aussi supprimées.`
+        )
+      )
+        return;
+      for (const d of sess) await deleteDoc(d.ref);
       await deleteDoc(doc(db, "groups", groupId));
       if (editingGroupId === groupId) resetGroupForm();
       await fetchGroupsList();
+      await fetchSessions();
     } catch (e) {
       console.error("Erreur suppression groupe:", e);
       alert("❌ Erreur lors de la suppression du groupe : " + e.message);
@@ -4582,6 +4624,24 @@ export default function Workout() {
               apparaît dans la liste "Groupe cible" lors de la création d'une séance.
             </p>
 
+            <button
+              onClick={() => { resetGroupForm(); setGroupEditorOpen(true); }}
+              style={{
+                width: "100%",
+                padding: 12,
+                marginBottom: 14,
+                borderRadius: 12,
+                border: "1px dashed #4fae7d",
+                background: "rgba(79,174,125,0.08)",
+                color: "#4fae7d",
+                fontWeight: 700,
+                fontSize: 14,
+                cursor: "pointer",
+              }}
+            >
+              ➕ Nouveau groupe
+            </button>
+
             {/* Liste des groupes existants */}
             {customGroups.length > 0 && (
               <div style={{ marginBottom: 20, display: "grid", gap: 12 }}>
@@ -4743,16 +4803,48 @@ export default function Workout() {
               </div>
             )}
 
-            {/* Formulaire création / édition */}
-            <div
-              style={{
-                borderTop: "1px solid rgba(255,255,255,0.16)",
-                paddingTop: 16,
-              }}
-            >
-              <h4 style={{ fontSize: 14, marginBottom: 8 }}>
-                {editingGroupId ? "✏️ Modifier le groupe" : "➕ Nouveau groupe"}
-              </h4>
+            {/* Éditeur de groupe : fenêtre dédiée, boutons toujours visibles */}
+            {groupEditorOpen && (
+              <div
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  background: "rgba(0,0,0,0.78)",
+                  zIndex: 1100,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 12,
+                }}
+                onClick={resetGroupForm}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: "#151310",
+                    borderRadius: 16,
+                    width: "100%",
+                    maxWidth: 620,
+                    maxHeight: "92vh",
+                    display: "flex",
+                    flexDirection: "column",
+                    border: "1px solid #2f2a22",
+                    boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", borderBottom: "1px solid #2a2620" }}>
+                    <h4 style={{ margin: 0, fontSize: 16 }}>
+                      {editingGroupId ? "✏️ Modifier le groupe" : "➕ Nouveau groupe"}
+                    </h4>
+                    <button
+                      onClick={resetGroupForm}
+                      style={{ background: "none", border: "none", color: "#f3f0ea", fontSize: 20, cursor: "pointer" }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div style={{ padding: 18, overflowY: "auto", flex: 1 }}>
               <input
                 type="text"
                 placeholder="Nom du groupe (ex: Groupe 1)"
@@ -4779,43 +4871,59 @@ export default function Workout() {
                   emptyLabel="Par type"
                 />
               </div>
-              <div
-                style={{
-                  maxHeight: 200,
-                  overflowY: "auto",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                  borderRadius: 6,
-                  padding: 8,
-                  marginBottom: 10,
-                }}
-              >
-                {athletes.map((a) => (
-                  <label
-                    key={a.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "4px 2px",
-                      fontSize: 13,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={groupAthleteIds.includes(a.id)}
-                      onChange={() => toggleNewGroupAthlete(a.id)}
-                    />
-                    {a.firstName && a.lastName
-                      ? `${a.firstName} ${a.lastName}`
-                      : a.displayName || a.email || "Athlète sans nom"}
-                  </label>
-                ))}
-                {athletes.length === 0 && (
-                  <div style={{ fontSize: 12, color: "#a8a199" }}>
-                    Aucun athlète trouvé.
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>
+                    👤 Athlètes du groupe{" "}
+                    <span style={{ color: "#a8a199", fontWeight: 400 }}>
+                      · {groupAthleteIds.length}/{athletes.length}
+                    </span>
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setGroupAthleteIds(athletes.map((a) => a.id))}
+                    style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid #3a342a", background: "transparent", color: "#a8a199", fontSize: 12, cursor: "pointer" }}
+                  >
+                    Tous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGroupAthleteIds([]);
+                      setGroupSubGroups((prev) => prev.map((sg) => ({ ...sg, athleteIds: [] })));
+                    }}
+                    style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid #3a342a", background: "transparent", color: "#a8a199", fontSize: 12, cursor: "pointer" }}
+                  >
+                    Aucun
+                  </button>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {athletes.map((a) => {
+                    const on = groupAthleteIds.includes(a.id);
+                    return (
+                      <button
+                        type="button"
+                        key={a.id}
+                        onClick={() => toggleNewGroupAthlete(a.id)}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: 999,
+                          fontSize: 13,
+                          cursor: "pointer",
+                          color: "#f3f0ea",
+                          background: on ? "rgba(224,161,61,0.22)" : "#0d0c0a",
+                          border: on ? "1px solid #e0a13d" : "1px solid #2a2620",
+                        }}
+                      >
+                        {on ? "✓ " : ""}
+                        {getAthleteDisplayName(a)}
+                      </button>
+                    );
+                  })}
+                  {athletes.length === 0 && (
+                    <div style={{ fontSize: 12, color: "#a8a199" }}>Aucun athlète trouvé.</div>
+                  )}
+                </div>
               </div>
 
               {/* Sous-groupes du groupe (ex : Groupe 1 – cheville / bassin) */}
@@ -4956,40 +5064,24 @@ export default function Workout() {
                   </div>
                 ))}
               </div>
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  onClick={saveGroup}
-                  style={{
-                    flex: 1,
-                    padding: 10,
-                    borderRadius: 6,
-                    border: "none",
-                    background: "#4fae7d",
-                    color: "white",
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                  }}
-                >
-                  {editingGroupId ? "Enregistrer" : "Créer le groupe"}
-                </button>
-                {editingGroupId && (
-                  <button
-                    onClick={resetGroupForm}
-                    style={{
-                      padding: 10,
-                      borderRadius: 6,
-                      border: "1px solid #2a2620",
-                      background: "transparent",
-                      color: "#f3f0ea",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Annuler
-                  </button>
-                )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid #2a2620", background: "#110f0c" }}>
+                    <button
+                      onClick={resetGroupForm}
+                      style={{ padding: "12px 18px", borderRadius: 12, border: "1px solid #3a342a", background: "transparent", color: "#a8a199", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      onClick={saveGroup}
+                      style={{ flex: 1, padding: "12px 18px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #5cc08c, #3f9b6c)", color: "white", fontWeight: 700, fontSize: 15, cursor: "pointer" }}
+                    >
+                      {editingGroupId ? "💾 Enregistrer" : "✅ Créer le groupe"}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
