@@ -276,10 +276,10 @@ export default function PlanningPanel({
   }, [visible, showHidden, isAdmin]);
 
   /* ---------------- fenêtre affichée : zoom + déplacement libres ----------------
-     La frise est centrée sur aujourd'hui (≈ 9 mois). On peut zoomer / dézoomer (molette,
+     La frise est centrée sur aujourd'hui (≈ 6 mois). On peut zoomer / dézoomer (molette,
      pincement, boutons +/−) et se déplacer (glisser, flèches) vers les mois passés ou à venir.
      « Recentrer » revient à la vue de départ. */
-  const DEFAULT_SPAN = 270; // jours
+  const DEFAULT_SPAN = 180; // jours (≈ 6 mois)
   const MIN_SPAN = 14;
   const MAX_SPAN = 1500;
   const dnum = (str) => {
