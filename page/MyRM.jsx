@@ -42,6 +42,18 @@ const getExerciseCategoryLabel = (value) =>
   EXERCISE_CATEGORIES.find((c) => c.value === normalizeCategoryValue(value))?.label ||
   "📦 Autre";
 
+// Même normalisation que la banque d'exercices (Workout.jsx) : sans accents,
+// "/" "\\" "." remplacés par un espace. Sans ça, "épaulé" (Mes RM) et
+// "epaule" (banque) étaient deux clés différentes → catégories divergentes.
+const normKey = (name) =>
+  (name || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[/\\.]/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+
 export default function MyRM() {
   const { currentUser } = useAuth();
 
@@ -136,7 +148,7 @@ export default function MyRM() {
       const catalogCategoryByKey = {};
       exerciseMediaSnap.docs.forEach((d) => {
         const cat = d.data().category;
-        if (cat) catalogCategoryByKey[d.id] = normalizeCategoryValue(cat);
+        if (cat) catalogCategoryByKey[normKey(d.id)] = normalizeCategoryValue(cat);
       });
 
       // Séparer VMA, CMJ et RM
@@ -167,7 +179,8 @@ export default function MyRM() {
           // sans historique, ou fiche jamais testée avec kg:null), on
           // retombe sur un point unique tiré de kg/updatedAt.
           categories[name] =
-            catalogCategoryByKey[d.id] ||
+            catalogCategoryByKey[normKey(d.id)] ||
+            catalogCategoryByKey[normKey(data.exerciseName)] ||
             normalizeCategoryValue(data.category) ||
             "autre";
           autoCreatedMap[name] = data.kg === null || data.kg === undefined;
@@ -200,14 +213,14 @@ export default function MyRM() {
       // cet utilisateur est ajouté en "attente" (kg: null). Rattrape les
       // exercices marqués après coup, les comptes admin et les nouveaux
       // athlètes, que la diffusion depuis la banque ne touchait pas.
-      const existingIds = new Set(rmSnap.docs.map((d) => d.id));
+      const existingIds = new Set(rmSnap.docs.map((d) => normKey(d.id)));
       const toCreate = [];
       exerciseMediaSnap.docs.forEach((d) => {
         const m = d.data();
         const key = d.id;
         const lk = key.toLowerCase();
-        if (!m.category || m.isWarmup || m.isPDC) return;
-        if (existingIds.has(key) || grouped[lk] || lk === "vma" || lk === "cmj") return;
+        if (!m.category || m.isWarmup || m.isPDC || m.hidden) return;
+        if (existingIds.has(normKey(key)) || grouped[lk] || Object.keys(grouped).some((g) => normKey(g) === normKey(key)) || lk === "vma" || lk === "cmj") return;
         toCreate.push({ key, lk, category: normalizeCategoryValue(m.category) || "autre" });
       });
       toCreate.forEach(({ lk, category }) => {
@@ -386,7 +399,7 @@ export default function MyRM() {
       return;
     }
 
-    const normalizedName = exerciseName.trim().toLowerCase();
+    const normalizedName = normKey(exerciseName);
     const rm1 = calculate1RM(testWeight, testReps);
 
     try {
