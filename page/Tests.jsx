@@ -41,7 +41,7 @@ import {
 import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
 import PhysicalRadar from "../component/PhysicalRadar";
-import CyclingRadar from "../component/CyclingRadar";
+import CyclingRadar, { CyclingNorms } from "../component/CyclingRadar";
 import { CYCLING_LEVELS } from "../component/cycling";
 import { FoldBtn, useFold } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
@@ -1250,7 +1250,7 @@ export default function Tests() {
                   {bf.isOpen("nonorm") && (
                   <div style={{ fontSize: 13, color: MUTED }}>
                     {sport === "cyclisme"
-                      ? "Pour le cyclisme, les standards par niveau et le radar sont dans l'onglet Bilan (carte « Radar des qualités physiques »)."
+                      ? <CyclingNorms level={level} sex={selectedAthlete?.sex} />
                       : "Choisis le sport et le poste de l'athlète en haut de la page. Les normes viennent de ton barème (rugby : barème SU Agen, par poste)."}
                   </div>
                   )}

@@ -175,11 +175,7 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
   const sub = (label, measure, std, tag, note) => (
     <tr key={label} style={{ borderTop: `1px solid ${BORDER}` }}>
       <td style={{ padding: "3px 6px 3px 18px", color: MUTED }}>{label}</td>
-      <td style={{ padding: "3px 6px", color: measure ? TEXT : MUTED }}>{measure || "—"}</td>
-      <td style={{ padding: "3px 6px", color: MUTED }}>
-        {std != null ? std : "—"}
-        {tag && std != null ? <span style={{ marginLeft: 6, fontSize: 10, color: tagColor(tag) }}>{tag}</span> : null}
-      </td>
+      <td style={{ padding: "3px 6px", color: measure ? TEXT : "#d9604a" }}>{measure || "à tester"}</td>
       <td style={{ padding: "3px 6px", color: note == null ? MUTED : noteColor(note) }}>{note == null ? "—" : `${note}/20`}</td>
     </tr>
   );
@@ -198,7 +194,7 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
     rows.push(
       <tr key={ax.id} style={{ borderTop: `1px solid ${BORDER}` }}>
         <td style={{ padding: "5px 6px", color: TEXT, fontWeight: 600 }}>{ax.label}</td>
-        <td colSpan={2} style={{ padding: "5px 6px", color: MUTED }}>{DESC[ax.id]}</td>
+        <td style={{ padding: "5px 6px", color: notes[i] == null ? "#d9604a" : MUTED }}>{notes[i] == null ? "manque : à tester" : DESC[ax.id]}</td>
         <td style={{ padding: "5px 6px", fontWeight: 700, color: notes[i] == null ? MUTED : noteColor(notes[i]) }}>{notes[i] == null ? "—" : `${notes[i]}/20`}</td>
       </tr>
     );
@@ -222,9 +218,8 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
   return (
     <div>
       <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
-        Mêmes qualités que le rugby, notées /20 par rapport au standard du niveau
-        {lvl ? <strong style={{ color: TEXT }}> {CYCLING_LEVELS.find((l) => l.id === lvl)?.label}</strong> : null} et du sexe choisis. 10/20 = le standard
-        (+1 écart-type = 15, +2 = 20). Tirets bleus = cible selon le type de coureur{typeLabel ? ` (${typeLabel})` : ""} ; l'endurance est la qualité la plus haute. Pas de détail par filière énergétique.
+        Profil des qualités physiques, notées /20 par rapport au standard du niveau
+        {lvl ? <strong style={{ color: TEXT }}> {CYCLING_LEVELS.find((l) => l.id === lvl)?.label}</strong> : null} et du sexe choisis. 10/20 = le standard (détail des normes : onglet Normes). Tirets bleus = cible selon le type de coureur{typeLabel ? ` (${typeLabel})` : ""} ; l'endurance est la qualité la plus haute. Pas de détail par filière énergétique.
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8, fontSize: 12, color: MUTED }}>
         Normes :
@@ -267,16 +262,11 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
             <tr style={{ color: MUTED, textAlign: "left" }}>
               <th style={{ padding: "4px 6px" }}>Qualité</th>
               <th style={{ padding: "4px 6px" }}>Mesure</th>
-              <th style={{ padding: "4px 6px" }}>Standard</th>
               <th style={{ padding: "4px 6px" }}>Note</th>
             </tr>
           </thead>
           <tbody>{rows}</tbody>
         </table>
-        <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
-          <span style={{ color: "#4fae7d" }}>doc</span> = relevé dans une étude · <span style={{ color: ACCENT }}>estimé</span> = calculé à partir d'une étude ·{" "}
-          <span style={{ color: "#d9604a" }}>provisoire</span> = aucune donnée publiée trouvée, valeur de travail à corriger avec tes propres références.
-        </div>
       </div>
 
       {gaps.length > 0 && (
@@ -297,8 +287,29 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
         <div style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>Choisis le type de coureur dans « Poste » pour afficher la cible et les priorités.</div>
       )}
 
-      <details style={{ marginTop: 12 }}>
-        <summary style={{ fontSize: 11, color: MUTED, cursor: "pointer" }}>Standards de tous les niveaux ({sx === "F" ? "femmes" : "hommes"})</summary>
+    </div>
+  );
+}
+
+/* Onglet Normes du cyclisme : standards par niveau (hommes / femmes) + sources */
+export function CyclingNorms({ level, sex }) {
+  const [localSex, setLocalSex] = useState("");
+  const sx = normSex(localSex || sex);
+  const lvl = isCyclingLevel(level) ? level : null;
+  const selSt = { background: "#0d0c0a", color: TEXT, border: "1px solid #2a2620", borderRadius: 6, padding: "3px 6px", fontSize: 12, cursor: "pointer" };
+  const exos = Object.keys(CYCLING_LIFTS);
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8, fontSize: 12, color: MUTED }}>
+        Normes :
+        {CYCLING_SEXES.map((o) => (
+          <button key={o.id} onClick={() => setLocalSex(o.id)} style={{ ...selSt, borderColor: sx === o.id ? ACCENT : "#2a2620", color: sx === o.id ? ACCENT : TEXT, fontWeight: sx === o.id ? 700 : 400 }}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+      <div style={{ marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>Standards de tous les niveaux ({sx === "F" ? "femmes" : "hommes"})</div>
         <div style={{ overflowX: "auto", marginTop: 6 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
@@ -336,10 +347,41 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
           </table>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>Puissances en W/kg, VO2max en ml/kg/min.</div>
         </div>
-      </details>
+      </div>
 
-      <details style={{ marginTop: 10 }}>
-        <summary style={{ fontSize: 11, color: MUTED, cursor: "pointer" }}>Sources et limites</summary>
+
+      <div style={{ overflowX: "auto", marginTop: 10 }}>
+        <div style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>Force (× poids du corps) — {sx === "F" ? "femmes" : "hommes"}</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginTop: 4 }}>
+          <thead>
+            <tr style={{ color: MUTED, textAlign: "left" }}>
+              <th style={{ padding: "4px 6px" }}>Exercice</th>
+              {CYCLING_LEVELS.map((l) => (
+                <th key={l.id} style={{ padding: "4px 6px" }}>{l.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {exos.map((k) => (
+              <tr key={k} style={{ borderTop: `1px solid ${BORDER}` }}>
+                <td style={{ padding: "5px 6px", color: TEXT }}>
+                  {k}
+                  <span style={{ marginLeft: 6, fontSize: 10, color: tagColor(liftTag(k, sx)) }}>{liftTag(k, sx)}</span>
+                </td>
+                {CYCLING_LEVELS.map((l) => (
+                  <td key={l.id} style={{ padding: "5px 6px", color: l.id === lvl ? TEXT : MUTED }}>{liftStd(k, l.id, sx).toFixed(2)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
+          <span style={{ color: "#4fae7d" }}>doc</span> = relevé dans une étude · <span style={{ color: ACCENT }}>estimé</span> = calculé à partir d'une étude ·{" "}
+          <span style={{ color: "#d9604a" }}>provisoire</span> = aucune donnée publiée trouvée, valeur de travail.
+        </div>
+      </div>
+      <div style={{ marginTop: 10 }}>
+        <div style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>Sources et limites</div>
         <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 6 }}>
           • Hommes pros : Valenzuela et al. 2022, Int J Sports Physiol Perform 17(5):701-710 (144 pros) : médiane par durée, relevée dans un tableau relayé par un site tiers (article complet non consulté).
           <br />• Femmes pros : Mateo-March et al. 2022, Int J Sports Physiol Perform (44 coureuses, PMID 35168197) : médiane et percentiles 10 / 90 par durée.
@@ -351,7 +393,7 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
           <br />• VO2max estimée : 16,6 + 8,87 × W/kg sur 5 min (IJSPP 2021, PMID 34225254) ou autres équations indiquées dans chaque test ; elle ne remplace pas une mesure avec analyse des gaz.
           <br />• {CYCLING_NOTE}
         </div>
-      </details>
+      </div>
     </div>
   );
 }
