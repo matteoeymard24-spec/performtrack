@@ -40,6 +40,7 @@ import {
 } from "../component/norms";
 import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
+import PhysicalRadar from "../component/PhysicalRadar";
 import { FoldBtn, useFold } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
 
@@ -1348,6 +1349,21 @@ export default function Tests() {
           {/* ------------ BILAN ------------ */}
           {effTab === "bilan" && (
             <>
+              {normsOn && (
+                <div style={cardStyle}>
+                  <FoldHead title="🕸️ Radar des qualités physiques" open={bf.isOpen("radar")} onToggle={() => bf.toggle("radar")} gap={2} />
+                  {bf.isOpen("radar") && (
+                    <PhysicalRadar
+                      domainNotes={domainNotes}
+                      rmDocs={rmDocs}
+                      sport={sport}
+                      poste={poste}
+                      level={level}
+                      weight={selectedAthlete?.weight}
+                    />
+                  )}
+                </div>
+              )}
               <div style={cardStyle}>
                 <FoldHead title="🏅 Notes /20 par domaine" open={bf.isOpen("notes")} onToggle={() => bf.toggle("notes")} gap={2} />
                 {bf.isOpen("notes") && (<>
