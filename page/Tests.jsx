@@ -42,7 +42,8 @@ import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
 import PhysicalRadar from "../component/PhysicalRadar";
 import CyclingRadar, { CyclingNorms } from "../component/CyclingRadar";
-import { CYCLING_LEVELS } from "../component/cycling";
+import { CYCLING_LEVELS, CYCLING_SEXES, normSex } from "../component/cycling";
+import { cyclingBilan } from "../component/cyclingRows";
 import { FoldBtn, useFold } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
 
@@ -713,6 +714,10 @@ export default function Tests() {
     return b ? b.values : null;
   }, [tests]);
 
+  const cycBilan = useMemo(
+    () => (sport === "cyclisme" ? cyclingBilan({ tests, rmDocs, bw: Number(String(selectedAthlete?.weight ?? "").replace(",", ".")) || null, level, sex: normSex(selectedAthlete?.sex) }) : null),
+    [tests, rmDocs, sport, level, selectedAthlete?.weight, selectedAthlete?.sex]
+  );
   const domainNotes = useMemo(() => {
     const avg = (arr) => {
       const n = arr.filter((x) => x != null);
@@ -735,7 +740,28 @@ export default function Tests() {
       .map((t) => ({ label: getTest(t.testId)?.name || t.testId, note: score20(getTest(t.testId), t.values), extra: t.date }))
       .filter((r) => r.note != null);
     out.mobilite = { title: "🤸 Mobilité + force isométrique", avg: avg(miRows.map((r) => r.note)), rows: miRows };
-    if (normsOn) {
+    if (sport === "cyclisme") {
+      const cb = cycBilan;
+      const pats = groupByPattern(cb.strength).filter((g) => g.id !== "autre");
+      out.force = {
+        title: "💪 Force — par pattern de mouvement",
+        avg: avg(pats.map((g) => g.avg)),
+        rows: pats.map((g) => ({
+          id: g.id,
+          label: g.label,
+          note: g.avg,
+          extra: g.avg == null ? "pas de 1RM trouvé" : "",
+          sub: g.rows.filter((x) => x.note != null).map((x) => ({ label: x.label, kg: x.display, note: x.note, matched: x.matched, estNote: !!x.estNote })),
+        })),
+      };
+      const toRows = (rs) => rs.filter((r) => r.note != null).map((r) => ({ label: r.label, note: r.note, extra: `${r.display} ${r.unit || ""}${r.extra ? " · " + r.extra : ""}`.trim() }));
+      const sp = toRows(cb.sprint);
+      out.vitesse = { title: "⚡ Vitesse — sprint 5 s", avg: avg(sp.map((r) => r.note)), rows: sp };
+      const cm = toRows(cb.cmj);
+      out.cmj = { title: "🦘 Puissance — CMJ", avg: avg(cm.map((r) => r.note)), rows: cm };
+      const en = toRows(cb.endu);
+      out.endurance = { title: "🏃 Endurance", avg: avg(en.map((r) => r.note)), rows: en };
+    } else if (normsOn) {
       const pats = groupByPattern(strengthNorms).filter((g) => g.id !== "autre");
       out.force = {
         title: "💪 Force — par pattern de mouvement",
@@ -768,7 +794,7 @@ export default function Tests() {
       out.endurance = { title: "🏃 Endurance", avg: avg(eRows.map((r) => r.note)), rows: eRows };
     }
     return out;
-  }, [tests, strengthNorms, mergedSprint, mergedCmj, mergedBroad, sport, poste, level, normsOn]);
+  }, [tests, strengthNorms, mergedSprint, mergedCmj, mergedBroad, sport, poste, level, normsOn, cycBilan]);
 
   const field = (key, label, unit, ph) => (
     <div key={key}>
@@ -1244,14 +1270,61 @@ export default function Tests() {
           {/* ------------ NORMES ------------ */}
           {effTab === "normes" && (
             <>
-              {!normsOn ? (
+              {sport === "cyclisme" ? (
+                <>
+                  <div style={cardStyle}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13, color: MUTED }}>
+                      Normes :
+                      {CYCLING_SEXES.map((o) => {
+                        const on = normSex(selectedAthlete?.sex) === o.id;
+                        return (
+                          <button
+                            key={o.id}
+                            type="button"
+                            onClick={() => saveProfile({ sex: o.id })}
+                            style={{ background: on ? "#1c2a40" : "transparent", color: on ? "#7aa6e8" : MUTED, border: `1px solid ${on ? "#7aa6e8" : "#2a2620"}`, borderRadius: 999, padding: "4px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                          >
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                      <span style={{ fontSize: 11 }}>(enregistré dans le profil de l'athlète)</span>
+                    </div>
+                    {!selectedAthlete?.weight && (
+                      <div style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>Renseigne le poids de l'athlète (profil) : les standards de force sont affichés en kg pour son poids.</div>
+                    )}
+                  </div>
+                  <div style={cardStyle}>
+                    <FoldHead title="💪 Standards de force par niveau — par pattern" open={bf.isOpen("n_force")} onToggle={() => bf.toggle("n_force")} gap={2} />
+                    {bf.isOpen("n_force") && (<>
+                      <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                        Tes 1RM de « Mes RM » face à chaque niveau du cyclisme sur route (kg pour {selectedAthlete?.weight ? `${selectedAthlete.weight} kg` : "ton poids"}).
+                      </div>
+                      {groupByPattern(cycBilan?.strength || []).filter((g) => g.id !== "autre").map((g) => (
+                        <div key={g.id} style={{ marginBottom: 14 }}>
+                          <div style={{ fontSize: 13, color: TEXT, fontWeight: 700, marginBottom: 4 }}>{g.label}</div>
+                          <LevelTable rows={g.rows} targetId={level} legend="* valeur d'une étude · ~ estimé à partir d'une étude · ⚠ provisoire : aucune norme cycliste publiée trouvée · vert = niveau atteint · bronze = standard du niveau, argent = +1 écart-type, or = +2" />
+                        </div>
+                      ))}
+                    </>)}
+                  </div>
+                  <div style={cardStyle}>
+                    <FoldHead title="🦘 Standards de puissance (CMJ) par niveau" open={bf.isOpen("n_vert")} onToggle={() => bf.toggle("n_vert")} gap={2} />
+                    {bf.isOpen("n_vert") && (
+                      <LevelTable rows={cycBilan?.cmj || []} targetId={level} labelHeader="Test" valueHeader="Ton CMJ" legend="Barème provisoire : aucune norme cycliste publiée trouvée pour le CMJ · bronze = standard du niveau, argent = +1 écart-type, or = +2" />
+                    )}
+                  </div>
+                  <div style={cardStyle}>
+                    <FoldHead title="🚴 Sprint et endurance — référence" open={bf.isOpen("n_cyc_ref")} onToggle={() => bf.toggle("n_cyc_ref")} gap={2} />
+                    {bf.isOpen("n_cyc_ref") && <CyclingNorms level={level} sex={selectedAthlete?.sex} />}
+                  </div>
+                </>
+              ) : !normsOn ? (
                 <div style={cardStyle}>
                   <FoldHead title="📐 Comparaison aux normes" open={bf.isOpen("nonorm")} onToggle={() => bf.toggle("nonorm")} />
                   {bf.isOpen("nonorm") && (
                   <div style={{ fontSize: 13, color: MUTED }}>
-                    {sport === "cyclisme"
-                      ? <CyclingNorms level={level} sex={selectedAthlete?.sex} />
-                      : "Choisis le sport et le poste de l'athlète en haut de la page. Les normes viennent de ton barème (rugby : barème SU Agen, par poste)."}
+                    {"Choisis le sport et le poste de l'athlète en haut de la page. Les normes viennent de ton barème (rugby : barème SU Agen, par poste)."}
                   </div>
                   )}
                 </div>
@@ -1414,7 +1487,7 @@ export default function Tests() {
                     </div>
                   );
                 })()}
-                {!normsOn && (
+                {!normsOn && sport !== "cyclisme" && (
                   <div style={{ fontSize: 12, color: ACCENT, marginBottom: 8 }}>
                     Choisis le sport et le poste de l'athlète en haut de la page pour obtenir les notes de force, vitesse, CMJ et endurance.
                   </div>
@@ -1460,6 +1533,11 @@ export default function Tests() {
                     </div>
                   );
                 })}
+                {sport === "cyclisme" && (
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 14 }}>
+                    Cyclisme : force notée sur tes 1RM rapportés au poids du corps, vitesse = puissance max 5 s, puissance = CMJ, endurance = seuil 20 min, PMA 5 min et VO2max estimée. Barèmes détaillés (et valeurs provisoires) dans l'onglet Normes.
+                  </div>
+                )}
                 {normsOn && (
                   <div style={{ fontSize: 11, color: MUTED, marginTop: 14 }}>
                     L'endurance est notée avec le Bronco, le Yo-Yo IR1 et le 30-15 IFT (barèmes Yo-Yo et 30-15 estimés). Pas de barème pour la VMA ni le Yo-Yo IR2.

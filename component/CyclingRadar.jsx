@@ -1,24 +1,16 @@
-import React, { useMemo, useState } from "react";
+import React from "react";
 import {
   CYCLING_AXES,
   CYCLING_LEVELS,
   CYCLING_PRIORITY,
-  CYCLING_SEXES,
-  CYCLING_LIFTS,
   CYCLING_TYPES,
   CYCLING_NOTE,
   CYCLING_STD,
   CYCLING_TAGS,
-  cyclingNote,
-  cmjNote,
-  cmjStd,
-  liftNote,
-  liftStd,
-  liftTag,
   isCyclingLevel,
   normSex,
 } from "./cycling";
-import { noteColor, STRENGTH_NORMS, findRM } from "./norms";
+import { noteColor } from "./norms";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -92,73 +84,27 @@ const avgN = (arr) => {
 };
 const tagColor = (t) => (t === "doc" ? "#4fae7d" : t === "provisoire" ? "#d9604a" : ACCENT);
 
-/* Radar du cycliste (mêmes qualités que le rugby, l'endurance en un seul axe) : notes /20 par rapport au standard du niveau
-   et du sexe choisis, cible selon le type de coureur. tests : tests de l'athlète ; rmDocs : [{name, kg}] ;
-   sex : "H" / "F" (profil) ; onSaveSex(sex) : enregistre le sexe dans le profil ; domainNotes : notes par domaine (mobilité). */
-export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex, onSaveSex = null, domainNotes }) {
-  const [localW, setLocalW] = useState("");
-  const [localSex, setLocalSex] = useState("");
-  const sx = normSex(sex || localSex);
+/* Radar du cycliste : uniquement le profil visuel (7 qualités, notes /20 issues de « Notes /20 par domaine »).
+   Le détail des mesures est dans la carte des notes du Bilan, les normes dans l'onglet Normes. */
+export default function CyclingRadar({ level, rider, sex, domainNotes }) {
   const lvl = isCyclingLevel(level) ? level : null;
-  const bw = num(localW) || num(weight);
-
-  const latest = useMemo(() => {
-    const out = {};
-    [...(tests || [])]
-      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
-      .forEach((t) => {
-        if (t.testId && !out[t.testId]) out[t.testId] = t;
-      });
-    return out;
-  }, [tests]);
-
-  const wkgOf = (testId, powerKey) => {
-    const t = latest[testId];
-    if (!t) return null;
-    const p = num(t.values?.[powerKey]);
-    const w = num(t.values?.weight) || bw;
-    return p && w ? r2(p / w) : null;
-  };
-  const vo2Test = (tests || []).filter((t) => t.result?.vo2max != null).sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
-  const cmjTest = (tests || []).filter((t) => t.result?.cmj != null).sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
-  const val = {
-    p5s: wkgOf("cycle_p5s", "p"),
-    p5m: wkgOf("cycle_p5m", "p5"),
-    p20: wkgOf("ftp", "p20"),
-    vo2: vo2Test ? vo2Test.result.vo2max : null,
-    cmj: cmjTest ? Number(cmjTest.result.cmj) : null,
-  };
-  const nt = (id) => (lvl ? cyclingNote(id, lvl, sx, val[id]) : null);
-
-  const lifts = STRENGTH_NORMS.filter((sp) => CYCLING_LIFTS[sp.normKey]).map((sp) => {
-    const rm = findRM(rmDocs, sp);
-    const ratio = rm && bw ? r2(rm.kg / bw) : null;
-    return {
-      sp,
-      axis: CYCLING_LIFTS[sp.normKey].axis,
-      rm,
-      ratio,
-      std: lvl ? liftStd(sp.normKey, lvl, sx) : null,
-      tag: liftTag(sp.normKey, sx),
-      note: lvl && ratio != null ? liftNote(sp.normKey, lvl, sx, ratio) : null,
-    };
-  });
-  const liftAvg = (axis) => avgN(lifts.filter((l) => l.axis === axis).map((l) => l.note));
-
-  const endu = { p20: nt("p20"), p5m: nt("p5m"), vo2: nt("vo2") };
+  const sx = normSex(sex);
+  const forceRows = domainNotes?.force?.rows || [];
+  const byPat = (re) => avgN(forceRows.filter((r) => re.test(r.id || "")).map((r) => r.note));
   const notesById = {
     mobilite: domainNotes?.mobilite?.avg ?? null,
-    force_haut: liftAvg("force_haut"),
-    force_bas: liftAvg("force_bas"),
-    tirage: liftAvg("tirage"),
-    vitesse: nt("p5s"),
-    puissance: lvl && val.cmj != null ? cmjNote(lvl, sx, val.cmj) : null,
-    endurance: avgN(Object.values(endu)),
+    force_haut: byPat(/_upper$/),
+    force_bas: byPat(/_lower$/),
+    tirage: byPat(/^pull_/),
+    vitesse: domainNotes?.vitesse?.avg ?? null,
+    puissance: domainNotes?.cmj?.avg ?? null,
+    endurance: domainNotes?.endurance?.avg ?? null,
   };
   const notes = CYCLING_AXES.map((ax) => notesById[ax.id]);
   const prio = CYCLING_PRIORITY[rider] || null;
   const targets = CYCLING_AXES.map((_, i) => (prio ? 10 + 2 * prio[i] : null));
   const nData = notes.filter((n) => n != null).length;
+  const missing = CYCLING_AXES.filter((_, i) => notes[i] == null);
   const gaps = prio
     ? CYCLING_AXES.map((ax, i) => ({ ax, i, note: notes[i], gap: notes[i] == null ? null : targets[i] - notes[i] }))
         .filter((g) => g.gap != null && g.gap > 1)
@@ -166,109 +112,30 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
         .slice(0, 3)
     : [];
   const typeLabel = CYCLING_TYPES.find((t) => t.key === rider)?.label;
-  const tags = lvl ? CYCLING_TAGS(lvl, sx) : null;
-  const setSex = (v) => {
-    setLocalSex(v);
-    if (onSaveSex) onSaveSex(v);
-  };
-
-  const sub = (label, measure, std, tag, note) => (
-    <tr key={label} style={{ borderTop: `1px solid ${BORDER}` }}>
-      <td style={{ padding: "3px 6px 3px 18px", color: MUTED }}>{label}</td>
-      <td style={{ padding: "3px 6px", color: measure ? TEXT : "#d9604a" }}>{measure || "à tester"}</td>
-      <td style={{ padding: "3px 6px", color: note == null ? MUTED : noteColor(note) }}>{note == null ? "—" : `${note}/20`}</td>
-    </tr>
-  );
-
-  const DESC = {
-    mobilite: "moyenne des tests de mobilité",
-    force_haut: "moyenne des exercices ci-dessous",
-    force_bas: "moyenne des exercices ci-dessous",
-    tirage: "moyenne des exercices ci-dessous",
-    vitesse: "puissance max sur 5 s",
-    puissance: "saut vertical (CMJ)",
-    endurance: "moyenne seuil 20 min, PMA 5 min, VO2max estimée",
-  };
-  const rows = [];
-  CYCLING_AXES.forEach((ax, i) => {
-    rows.push(
-      <tr key={ax.id} style={{ borderTop: `1px solid ${BORDER}` }}>
-        <td style={{ padding: "5px 6px", color: TEXT, fontWeight: 600 }}>{ax.label}</td>
-        <td style={{ padding: "5px 6px", color: notes[i] == null ? "#d9604a" : MUTED }}>{notes[i] == null ? "manque : à tester" : DESC[ax.id]}</td>
-        <td style={{ padding: "5px 6px", fontWeight: 700, color: notes[i] == null ? MUTED : noteColor(notes[i]) }}>{notes[i] == null ? "—" : `${notes[i]}/20`}</td>
-      </tr>
-    );
-    lifts
-      .filter((l) => l.axis === ax.id)
-      .forEach((l) =>
-        rows.push(sub(l.sp.label, l.rm ? `${l.rm.kg} kg${l.ratio != null ? ` (${l.ratio} × poids)` : ""}` : null, l.std != null ? `${l.std} × poids` : null, l.tag, l.note))
-      );
-    const std = (k) => (lvl ? `${r1(CYCLING_STD[sx][lvl][k])} W/kg` : null);
-    if (ax.id === "vitesse") rows.push(sub("Sprint 5 s", val.p5s != null ? `${val.p5s} W/kg` : null, std("p5s"), tags?.p5s, nt("p5s")));
-    if (ax.id === "puissance") rows.push(sub("CMJ", val.cmj != null ? `${val.cmj} cm` : null, lvl ? `${cmjStd(lvl, sx)} cm` : null, tags?.cmj, notesById.puissance));
-    if (ax.id === "endurance") {
-      rows.push(sub("Seuil 20 min / FTP", val.p20 != null ? `${val.p20} W/kg` : null, std("p20"), tags?.p20, endu.p20));
-      rows.push(sub("PMA 5 min", val.p5m != null ? `${val.p5m} W/kg` : null, std("p5m"), tags?.p5m, endu.p5m));
-      rows.push(sub("VO2max (estimée)", val.vo2 != null ? `${val.vo2} ml/kg/min` : null, lvl ? `${r1(CYCLING_STD[sx][lvl].vo2)} ml/kg/min` : null, tags?.vo2, endu.vo2));
-    }
-  });
-
-  const selSt = { background: "#0d0c0a", color: TEXT, border: "1px solid #2a2620", borderRadius: 6, padding: "3px 6px", fontSize: 12 };
 
   return (
     <div>
       <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
-        Profil des qualités physiques, notées /20 par rapport au standard du niveau
-        {lvl ? <strong style={{ color: TEXT }}> {CYCLING_LEVELS.find((l) => l.id === lvl)?.label}</strong> : null} et du sexe choisis. 10/20 = le standard (détail des normes : onglet Normes). Tirets bleus = cible selon le type de coureur{typeLabel ? ` (${typeLabel})` : ""} ; l'endurance est la qualité la plus haute. Pas de détail par filière énergétique.
+        Profil des qualités physiques (notes /20 par rapport au niveau{lvl ? ` ${CYCLING_LEVELS.find((l) => l.id === lvl)?.label}` : ""}, normes {sx === "F" ? "femmes" : "hommes"}).
+        Ligne pleine = l'athlète, tirets bleus = cible selon le type de coureur{typeLabel ? ` (${typeLabel})` : ""}.
       </div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8, fontSize: 12, color: MUTED }}>
-        Normes :
-        {CYCLING_SEXES.map((o) => (
-          <button
-            key={o.id}
-            onClick={() => setSex(o.id)}
-            style={{ ...selSt, cursor: "pointer", borderColor: sx === o.id ? ACCENT : "#2a2620", color: sx === o.id ? ACCENT : TEXT, fontWeight: sx === o.id ? 700 : 400 }}
-          >
-            {o.label}
-          </button>
-        ))}
-        {!sex && !localSex && <span style={{ fontSize: 11 }}>(par défaut : homme)</span>}
-      </div>
-
       {!lvl && (
         <div style={{ fontSize: 12, color: ACCENT, marginBottom: 8 }}>
-          Choisis un niveau cycliste en haut de la page (pro, élite / U23, compétiteur, cyclosportif, loisir) : sans niveau, le radar ne peut pas noter.
+          Choisis un niveau cycliste en haut de la page : sans niveau, le radar ne peut pas noter.
         </div>
       )}
-      {!bw && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8, fontSize: 12, color: MUTED }}>
-          Poids du corps non renseigné :
-          <input value={localW} onChange={(e) => setLocalW(e.target.value)} placeholder="kg" style={{ ...selSt, width: 64 }} />
-          (utilisé pour les W/kg et la force relative)
-        </div>
-      )}
-
       {nData < 2 ? (
         <div style={{ color: MUTED, fontSize: 13, padding: "10px 0" }}>
-          Pas assez de données : passe au moins deux qualités (tests de puissance 5 s / 5 min / 20 min, CMJ, mobilité, ou 1RM dans « Mes RM ») pour tracer le radar.
+          Pas assez de données : passe au moins deux qualités (tests de puissance, CMJ, mobilité, ou 1RM dans « Mes RM ») pour tracer le radar.
         </div>
       ) : (
         <Radar axes={CYCLING_AXES} values={notes} targets={targets} />
       )}
-
-      <div style={{ marginTop: 10, overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr style={{ color: MUTED, textAlign: "left" }}>
-              <th style={{ padding: "4px 6px" }}>Qualité</th>
-              <th style={{ padding: "4px 6px" }}>Mesure</th>
-              <th style={{ padding: "4px 6px" }}>Note</th>
-            </tr>
-          </thead>
-          <tbody>{rows}</tbody>
-        </table>
-      </div>
-
+      {missing.length > 0 && (
+        <div style={{ fontSize: 12, color: "#d9604a", marginTop: 8 }}>
+          Ce qui manque : {missing.map((m) => m.label).join(", ")}.
+        </div>
+      )}
       {gaps.length > 0 && (
         <div style={{ marginTop: 12, background: "#151310", borderRadius: 10, padding: "10px 12px" }}>
           <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>À développer en priorité{typeLabel ? ` (${typeLabel})` : ""}</div>
@@ -286,30 +153,18 @@ export default function CyclingRadar({ tests, rmDocs, level, rider, weight, sex,
       {!rider && lvl && (
         <div style={{ fontSize: 12, color: ACCENT, marginTop: 8 }}>Choisis le type de coureur dans « Poste » pour afficher la cible et les priorités.</div>
       )}
-
     </div>
   );
 }
 
 /* Onglet Normes du cyclisme : standards par niveau (hommes / femmes) + sources */
 export function CyclingNorms({ level, sex }) {
-  const [localSex, setLocalSex] = useState("");
-  const sx = normSex(localSex || sex);
+  const sx = normSex(sex);
   const lvl = isCyclingLevel(level) ? level : null;
-  const selSt = { background: "#0d0c0a", color: TEXT, border: "1px solid #2a2620", borderRadius: 6, padding: "3px 6px", fontSize: 12, cursor: "pointer" };
-  const exos = Object.keys(CYCLING_LIFTS);
   return (
     <div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8, fontSize: 12, color: MUTED }}>
-        Normes :
-        {CYCLING_SEXES.map((o) => (
-          <button key={o.id} onClick={() => setLocalSex(o.id)} style={{ ...selSt, borderColor: sx === o.id ? ACCENT : "#2a2620", color: sx === o.id ? ACCENT : TEXT, fontWeight: sx === o.id ? 700 : 400 }}>
-            {o.label}
-          </button>
-        ))}
-      </div>
-      <div style={{ marginTop: 4 }}>
-        <div style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>Standards de tous les niveaux ({sx === "F" ? "femmes" : "hommes"})</div>
+<div style={{ marginTop: 4 }}>
+        <div style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>Sprint 5 s, endurance (référence, {sx === "F" ? "femmes" : "hommes"})</div>
         <div style={{ overflowX: "auto", marginTop: 6 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
@@ -319,8 +174,6 @@ export function CyclingNorms({ level, sex }) {
                 <th style={{ padding: "4px 6px" }}>PMA 5 min</th>
                 <th style={{ padding: "4px 6px" }}>Seuil 20 min</th>
                 <th style={{ padding: "4px 6px" }}>VO2max</th>
-                <th style={{ padding: "4px 6px" }}>Squat × poids</th>
-                <th style={{ padding: "4px 6px" }}>CMJ cm</th>
               </tr>
             </thead>
             <tbody>
@@ -333,14 +186,6 @@ export function CyclingNorms({ level, sex }) {
                       <span style={{ marginLeft: 4, fontSize: 10, color: tagColor(CYCLING_TAGS(l.id, sx)[k]) }}>{CYCLING_TAGS(l.id, sx)[k]}</span>
                     </td>
                   ))}
-                  <td style={{ padding: "5px 6px", color: MUTED }}>
-                    {liftStd("SQUAT", l.id, sx).toFixed(2)}
-                    <span style={{ marginLeft: 4, fontSize: 10, color: tagColor(liftTag("SQUAT", sx)) }}>{liftTag("SQUAT", sx)}</span>
-                  </td>
-                  <td style={{ padding: "5px 6px", color: MUTED }}>
-                    {cmjStd(l.id, sx)}
-                    <span style={{ marginLeft: 4, fontSize: 10, color: tagColor("provisoire") }}>provisoire</span>
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -350,35 +195,8 @@ export function CyclingNorms({ level, sex }) {
       </div>
 
 
-      <div style={{ overflowX: "auto", marginTop: 10 }}>
-        <div style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>Force (× poids du corps) — {sx === "F" ? "femmes" : "hommes"}</div>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginTop: 4 }}>
-          <thead>
-            <tr style={{ color: MUTED, textAlign: "left" }}>
-              <th style={{ padding: "4px 6px" }}>Exercice</th>
-              {CYCLING_LEVELS.map((l) => (
-                <th key={l.id} style={{ padding: "4px 6px" }}>{l.label}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {exos.map((k) => (
-              <tr key={k} style={{ borderTop: `1px solid ${BORDER}` }}>
-                <td style={{ padding: "5px 6px", color: TEXT }}>
-                  {k}
-                  <span style={{ marginLeft: 6, fontSize: 10, color: tagColor(liftTag(k, sx)) }}>{liftTag(k, sx)}</span>
-                </td>
-                {CYCLING_LEVELS.map((l) => (
-                  <td key={l.id} style={{ padding: "5px 6px", color: l.id === lvl ? TEXT : MUTED }}>{liftStd(k, l.id, sx).toFixed(2)}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
-          <span style={{ color: "#4fae7d" }}>doc</span> = relevé dans une étude · <span style={{ color: ACCENT }}>estimé</span> = calculé à partir d'une étude ·{" "}
-          <span style={{ color: "#d9604a" }}>provisoire</span> = aucune donnée publiée trouvée, valeur de travail.
-        </div>
+      <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
+        <span style={{ color: "#4fae7d" }}>doc</span> = relevé dans une étude · <span style={{ color: ACCENT }}>estimé</span> = calculé à partir d'une étude · <span style={{ color: "#d9604a" }}>provisoire</span> = aucune donnée publiée trouvée.
       </div>
       <div style={{ marginTop: 10 }}>
         <div style={{ fontSize: 12, color: TEXT, fontWeight: 700 }}>Sources et limites</div>

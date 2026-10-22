@@ -80,7 +80,7 @@ function LevelBlock({ lv }) {
 }
 
 /* Tableau : une ligne par exercice, une colonne par niveau (standards de force du poste) */
-export function LevelTable({ rows, targetId, labelHeader = "Exercice", valueHeader = "Ton RM" }) {
+export function LevelTable({ rows, targetId, labelHeader = "Exercice", valueHeader = "Ton RM", legend = null }) {
   const [medalMode, setMedalMode] = React.useState("bronze");
   const withLv = (rows || []).filter((r) => r.lv);
   if (withLv.length === 0) return null;
@@ -155,12 +155,21 @@ export function LevelTable({ rows, targetId, labelHeader = "Exercice", valueHead
           ))}
         </tbody>
       </table>
+      {legend ? (
+        <div style={{ color: MUTED, fontSize: 10, marginTop: 6 }}>
+          {legend}
+          {(rows || []).filter((r) => r.estNote).map((r) => (
+            <div key={r.label} style={{ color: "#d9a441" }}>⚠ {r.label} : {r.estNote}</div>
+          ))}
+        </div>
+      ) : (
       <div style={{ color: MUTED, fontSize: 10, marginTop: 6 }}>
         * référentiel / étude publiée (FFR 2020, World Class, Top 14, Super Rugby 2026) · ~ estimé (le référentiel ne contient rien pour ce niveau) · sinon barème Agen · vert = niveau atteint · valeur affichée = {medalMode === "gold" ? "🥇 or" : medalMode === "silver" ? "🥈 argent" : "🥉 bronze (moyenne du niveau)"} du niveau (boutons ci-dessus)
         {(rows || []).filter((r) => r.estNote).map((r) => (
           <div key={r.label} style={{ color: "#d9a441" }}>⚠ {r.label} : {r.estNote}</div>
         ))}
       </div>
+      )}
     </div>
   );
 }
