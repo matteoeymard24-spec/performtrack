@@ -275,26 +275,98 @@ export default function PlanningPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, showHidden, isAdmin]);
 
-  /* ---------------- période affichée : année civile (janv. → déc.) ----------------
-     Les mois vides AVANT le début de la planification sont masqués, pour que
-     l'athlète voie réellement où elle commence. */
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [showWholeYear, setShowWholeYear] = useState(false);
-  const yearStart = `${year}-01-01`;
-  const yearEnd = `${year + 1}-01-01`;
-  const firstPlanned = useMemo(() => {
-    const starts = [
-      ...shown.filter((c) => c.endDate >= yearStart && c.startDate < yearEnd).map((c) => c.startDate),
-      ...visibleFixtures.filter((f) => fixtureEnd(f) >= yearStart && f.date < yearEnd).map((f) => f.date),
-    ].map((d) => (d < yearStart ? yearStart : d));
-    return starts.length ? starts.sort()[0] : null;
-  }, [visible, showHidden, visibleFixtures, yearStart, yearEnd]); // eslint-disable-line react-hooks/exhaustive-deps
-  const rangeStart = !showWholeYear && firstPlanned ? `${firstPlanned.slice(0, 7)}-01` : yearStart;
-  const rangeEnd = yearEnd;
-  const SPAN_MONTHS = 12 - (Number(rangeStart.slice(5, 7)) - 1);
-  const hiddenMonths = Number(rangeStart.slice(5, 7)) - 1;
-  const totalDays = Math.max(1, diffDays(rangeStart, rangeEnd));
-  const pct = (day) => (diffDays(rangeStart, day) / totalDays) * 100;
+  /* ---------------- fenêtre affichée : zoom + déplacement libres ----------------
+     La frise est centrée sur aujourd'hui (≈ 9 mois). On peut zoomer / dézoomer (molette,
+     pincement, boutons +/−) et se déplacer (glisser, flèches) vers les mois passés ou à venir.
+     « Recentrer » revient à la vue de départ. */
+  const DEFAULT_SPAN = 270; // jours
+  const MIN_SPAN = 14;
+  const MAX_SPAN = 1500;
+  const dnum = (str) => {
+    const [y, m, d] = str.split("-").map(Number);
+    return Date.UTC(y, m - 1, d) / 86400000;
+  };
+  const numToDay = (n) => new Date(Math.round(n) * 86400000).toISOString().slice(0, 10);
+  const defaultView = () => ({ start: dnum(dayStr(new Date())) - DEFAULT_SPAN / 2, span: DEFAULT_SPAN });
+  const [view, setView] = useState(defaultView);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const frameRef = useRef(null);
+  const dragMoved = useRef(false);
+  const clampSpan = (v) => Math.min(MAX_SPAN, Math.max(MIN_SPAN, v));
+  // zoom autour d'un point de la frise (frac = 0 à gauche … 1 à droite)
+  const zoomAt = (frac, factor) =>
+    setView((v) => {
+      const span = clampSpan(v.span * factor);
+      const anchor = v.start + frac * v.span;
+      return { start: anchor - frac * span, span };
+    });
+  const panBy = (days) => setView((v) => ({ ...v, start: v.start + days }));
+  const recenter = () => setView(defaultView());
+
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return undefined;
+    const ptrs = new Map();
+    const onWheel = (e) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && !e.ctrlKey) {
+        panBy((e.deltaX / r.width) * viewRef.current.span);
+      } else {
+        zoomAt((e.clientX - r.left) / r.width, Math.exp(e.deltaY * 0.0015));
+      }
+    };
+    const onDown = (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      ptrs.set(e.pointerId, { x: e.clientX });
+      if (ptrs.size === 1) dragMoved.current = false;
+    };
+    const onMove = (e) => {
+      const prev = ptrs.get(e.pointerId);
+      if (!prev) return;
+      const r = el.getBoundingClientRect();
+      if (ptrs.size === 1) {
+        const dx = e.clientX - prev.x;
+        if (Math.abs(dx) > 0) {
+          if (!dragMoved.current && Math.abs(dx) < 1) return;
+          dragMoved.current = dragMoved.current || Math.abs(dx) >= 1;
+          panBy((-dx / r.width) * viewRef.current.span);
+        }
+        ptrs.set(e.pointerId, { x: e.clientX });
+      } else if (ptrs.size >= 2) {
+        const [a, b] = [...ptrs.entries()].slice(0, 2);
+        const oldD = Math.abs(a[1].x - b[1].x);
+        ptrs.set(e.pointerId, { x: e.clientX });
+        const [a2, b2] = [...ptrs.entries()].slice(0, 2);
+        const newD = Math.abs(a2[1].x - b2[1].x);
+        dragMoved.current = true;
+        if (oldD > 8 && newD > 8) zoomAt(((a2[1].x + b2[1].x) / 2 - r.left) / r.width, oldD / newD);
+      }
+    };
+    const onUp = (e) => {
+      ptrs.delete(e.pointerId);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const totalDays = view.span;
+  const rangeStart = numToDay(Math.floor(view.start));
+  const rangeEnd = numToDay(Math.ceil(view.start + view.span));
+  const pct = (day) => ((dnum(day) - view.start) / view.span) * 100;
+  const monthYear = (n) => new Date(Math.round(n) * 86400000).toLocaleDateString("fr-FR", { month: "short", year: "numeric", timeZone: "UTC" });
 
   const myScope = currentUser ? userScope(currentUser.uid) : "total";
   // Un athlète ne gère que SES matchs perso (portée "user:<son uid>") ; un admin gère tout.
@@ -356,17 +428,43 @@ export default function PlanningPanel({
       : (customGroups || []).find((g) => g.id === scope)?.name || scope;
   const groupsOfUser = (uid) => (customGroups || []).filter((g) => (g.athleteIds || []).includes(uid)).map((g) => g.id);
 
-  /* ---------------- frise : mois + 3 niveaux ---------------- */
-  const months = useMemo(() => {
+  /* ---------------- frise : repères de temps + 3 niveaux ---------------- */
+  // Repères adaptés au zoom : semaines (vue serrée), mois, trimestres ou semestres (vue large).
+  const ticks = (() => {
     const out = [];
-    const d = parseDay(rangeStart);
-    d.setDate(1);
-    for (let i = 0; i < SPAN_MONTHS; i++) {
-      const m = new Date(d.getFullYear(), d.getMonth() + i, 1, 12);
-      out.push({ day: dayStr(m), label: m.toLocaleDateString("fr-FR", { month: "short" }), year: m.getFullYear() });
+    const first = Math.floor(view.start);
+    const last = Math.ceil(view.start + view.span);
+    if (view.span <= 75) {
+      for (let n = first - 7; n <= last; n++) {
+        const d = new Date(n * 86400000);
+        if (d.getUTCDay() !== 1) continue;
+        out.push({ key: n, at: n, label: d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" }) });
+      }
+      return out;
+    }
+    const step = view.span > 1000 ? 6 : view.span > 500 ? 3 : 1;
+    const d0 = new Date(first * 86400000);
+    let y = d0.getUTCFullYear();
+    let m = d0.getUTCMonth();
+    m -= m % step;
+    for (let i = 0; i < 400; i++) {
+      const at = Date.UTC(y, m, 1) / 86400000;
+      if (at > last) break;
+      const dt = new Date(at * 86400000);
+      const showYear = dt.getUTCMonth() === 0 || step > 1 || out.length === 0;
+      out.push({
+        key: at,
+        at,
+        label: dt.toLocaleDateString("fr-FR", { month: "short", ...(showYear ? { year: step > 1 ? "2-digit" : "numeric" } : {}), timeZone: "UTC" }),
+      });
+      m += step;
+      if (m > 11) {
+        y += 1;
+        m -= 12;
+      }
     }
     return out;
-  }, [rangeStart]);
+  })();
 
   const lanes = CYCLE_LEVELS.map((lv) => {
     const inRange = shown.filter(
@@ -607,19 +705,16 @@ export default function PlanningPanel({
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 18, color: TEXT }}>🗂️ Planification</h3>
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => setYear((y) => y - 1)} style={btn("#2a2620")}>◀</button>
-          <span style={{ color: TEXT, fontSize: 14, fontWeight: 700, minWidth: 44, textAlign: "center" }}>{year}</span>
-          <button onClick={() => setYear((y) => y + 1)} style={btn("#2a2620")}>▶</button>
-          {hiddenMonths > 0 && (
-            <button onClick={() => setShowWholeYear(true)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }} title="Afficher aussi les mois sans planification">
-              + {hiddenMonths} mois masqué{hiddenMonths > 1 ? "s" : ""}
-            </button>
-          )}
-          {showWholeYear && firstPlanned && (
-            <button onClick={() => setShowWholeYear(false)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
-              Masquer les mois vides
-            </button>
-          )}
+          <button onClick={() => panBy(-view.span * 0.25)} style={btn("#2a2620")} title="Reculer dans le temps">◀</button>
+          <span style={{ color: TEXT, fontSize: 12, fontWeight: 700, minWidth: 110, textAlign: "center" }}>
+            {monthYear(view.start)} → {monthYear(view.start + view.span)}
+          </span>
+          <button onClick={() => panBy(view.span * 0.25)} style={btn("#2a2620")} title="Avancer dans le temps">▶</button>
+          <button onClick={() => zoomAt(0.5, 1.5)} style={btn("#2a2620")} title="Dézoomer (voir plus large)">−</button>
+          <button onClick={() => zoomAt(0.5, 1 / 1.5)} style={btn("#2a2620")} title="Zoomer (voir plus de détails)">+</button>
+          <button onClick={recenter} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }} title="Revenir à la vue centrée sur aujourd'hui">
+            🎯 Recentrer
+          </button>
           {!isAdmin && currentUser && (
             <button onClick={() => { setForm(null); setFForm(blankFixture()); }} style={btn("#d9534f")}>
               🏉 Mon match / compétition
@@ -639,17 +734,26 @@ export default function PlanningPanel({
       </div>
 
       {/* Frise */}
-      <div style={{ marginTop: 14, overflowX: "auto" }}>
-        <div style={{ minWidth: 640, position: "relative" }}>
-          {/* mois */}
-          <div style={{ position: "relative", height: 20, borderBottom: "1px solid #2a2620" }}>
-            {months.map((m) => (
+      <div
+        ref={frameRef}
+        onClickCapture={(e) => {
+          if (dragMoved.current) {
+            e.stopPropagation();
+            e.preventDefault();
+            dragMoved.current = false;
+          }
+        }}
+        style={{ marginTop: 14, overflow: "hidden", touchAction: "pan-y", cursor: "grab", userSelect: "none" }}
+      >
+        <div style={{ position: "relative" }}>
+          {/* repères de temps */}
+          <div style={{ position: "relative", height: 20, borderBottom: "1px solid #2a2620", overflow: "hidden" }}>
+            {ticks.map((m) => (
               <div
-                key={m.day}
-                style={{ position: "absolute", left: `${pct(m.day)}%`, fontSize: 10, color: MUTED, borderLeft: "1px solid #2a2620", paddingLeft: 3, height: 20 }}
+                key={m.key}
+                style={{ position: "absolute", left: `${pct(numToDay(m.at))}%`, fontSize: 10, color: MUTED, borderLeft: "1px solid #2a2620", paddingLeft: 3, height: 20, whiteSpace: "nowrap" }}
               >
                 {m.label}
-                {m === months[0] ? ` ${m.year}` : ""}
               </div>
             ))}
           </div>
@@ -777,6 +881,10 @@ export default function PlanningPanel({
             </div>
           )}
         </div>
+      </div>
+
+      <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
+        Molette ou pincement : zoom · glisser : se déplacer · 🎯 pour revenir à aujourd'hui
       </div>
 
       {/* légende des phases */}
