@@ -107,10 +107,10 @@ const broadTable = () => {
   return out;
 };
 /* ===================== ENDURANCE : Yo-Yo IR1 et 30-15 IFT (VIFT) =====================
-   YO-YO IR1 : standards du CLUB (basés sur des clubs de Top 14), OR / AR / BR par poste. On les lit comme
-   or / argent / bronze du niveau Top 14 (bronze = seuil de base, argent, or). Pilier = moyenne Piliers D et G.
-   Niveaux voisins ESTIMÉS à partir de l'écart du club : d = (OR - BR) / 2.
-     Pro D2 : bronze BR - d, argent BR, or AR      International : bronze OR, argent OR + d, or OR + 2d.
+   YO-YO IR1 : standards du CLUB (basés sur des clubs de Top 14), OR / AR / BR par poste. Lecture :
+   BR = moyenne du niveau Top 14, AR = moyenne du niveau International, OR = or du niveau International.
+   Pilier = moyenne Piliers D et G. Règle des médailles : or d'un niveau = moyenne du niveau au-dessus,
+   argent = à mi-chemin. Pro D2 = BR - (AR - BR), estimé.
    VIFT 30-15 : rugby union, 114 joueurs (Darrall-Jones et al., IJSPP 2016) : 18,9 à 19,2 km/h selon la
    catégorie d'âge, écart-type ≈ 1,1 ; l'étude ne distingue pas les postes → même barème pour tous.
    Note 10 = 19,0 km/h ; chaque note = 0,22 km/h (≈ écart-type / 5). */
@@ -129,12 +129,12 @@ const VIFT_MEAN = 19.0;
 const VIFT_STEP = 0.22;
 export const ENDURANCE_NOTE =
   "Barème estimé : 30-15 = moyenne rugby union (Darrall-Jones 2016), sans distinction de poste.";
-/* Seuils des 3 niveaux pour un poste (bronze du niveau) */
+/* Seuils des 3 niveaux pour un poste : BR = moyenne Top 14, AR = moyenne International, OR = or International */
 const yoyoLevels = (poste) => {
   const c = CLUB_YOYO[poste];
   if (!c) return null;
-  const d = (c.or - c.br) / 2;
-  return { d, prod2: c.br - d, top14: c.br, intl: c.or };
+  const d = c.ar - c.br;
+  return { d, d2: c.or - c.ar, prod2: c.br - d, top14: c.br, intl: c.ar };
 };
 const yoyoTable = () => {
   const out = {};
@@ -160,9 +160,9 @@ const RUGBY_BAREME_X = { ...RUGBY_BAREME, "HIP THRUST": hipThrustTable(), "60m":
 /* Source affichée pour certaines échelles (sinon : texte par défaut du barème Agen) */
 const LADDER_META = {
   YOYO1: {
-    prod2: { tag: "estimé", src: "Estimé : seuil bronze Top 14 du club moins un demi-écart OR-BR" },
-    top14: { tag: "doc", src: "Standards du club (clubs de Top 14) : bronze / argent / or" },
-    international: { tag: "estimé", src: "Estimé : or Top 14 du club comme seuil bronze" },
+    prod2: { tag: "estimé", src: "Estimé : moyenne Top 14 du club moins l'écart BR → AR" },
+    top14: { tag: "doc", src: "Standard du club (clubs de Top 14) : BR = moyenne Top 14" },
+    international: { tag: "doc", src: "Standard du club (clubs de Top 14) : AR = moyenne International" },
   },
   VIFT: {
     prod2: { tag: "estimé", src: "Moyenne rugby union 19,0 km/h (Darrall-Jones 2016), sans distinction de poste" },
@@ -318,28 +318,23 @@ export function buildLadder(sport, normKey, poste) {
     r.silver = med(15);
     r.gold = med(20);
   });
-  // Yo-Yo IR1 : médailles du club (standards Top 14) + niveaux voisins estimés
+  // Yo-Yo IR1 : niveaux et médailles à partir des standards du club
   const cy = normKey === "YOYO1" ? yoyoLevels(poste) : null;
   if (cy) {
-    const c = CLUB_YOYO[poste];
-    const set = (id, silver, gold) => {
+    const setR = (id, thr, silver, gold) => {
       const r = rows.find((x) => x.id === id);
-      if (r) (r.silver = silver), (r.gold = gold);
+      if (r) (r.thr = thr), (r.w = thr), (r.silver = silver), (r.gold = gold);
     };
     rows.forEach((r) => {
+      const k = Math.min(1, r.thr / cy.prod2);
       r.thr = Math.round(r.thr);
-      const s = Math.min(1, r.thr / cy.top14);
-      r.silver = Math.round(r.thr + cy.d * s);
-      r.gold = Math.round(r.thr + 2 * cy.d * s);
+      r.silver = Math.round(r.thr + (cy.d / 2) * k);
+      r.gold = Math.round(r.thr + cy.d * k);
     });
-    const setThr = (id, thr) => {
-      const r = rows.find((x) => x.id === id);
-      if (r) (r.thr = thr), (r.w = thr);
-    };
-    setThr("prod2", cy.prod2); setThr("top14", c.br); setThr("international", c.or);
-    set("prod2", c.br, c.ar);
-    set("top14", c.ar, c.or);
-    set("international", c.or + cy.d, c.or + 2 * cy.d);
+    const c = CLUB_YOYO[poste];
+    setR("prod2", cy.prod2, Math.round(cy.prod2 + cy.d / 2), c.br);
+    setR("top14", c.br, Math.round(c.br + cy.d / 2), c.ar);
+    setR("international", c.ar, Math.round(c.ar + cy.d2 / 2), c.or);
   }
   // Bronco : médailles déduites des écarts entre niveaux (et plus de l'écart du barème Agen, trop large).
   // Pro D2 : argent = seuil Top 14, or = seuil International. Top 14 : argent = International, or = 1 pas plus vite.
