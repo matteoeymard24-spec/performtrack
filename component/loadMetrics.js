@@ -772,7 +772,7 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
 // 2016 : les mesures subjectives réagissent plus que les objectives, d'où
 // l'intérêt de croiser les deux).
 export const FORM_LEVELS = {
-  risk: { label: "Risque élevé", color: "#d9695a", emoji: "⚠️", rank: 0 },
+  risk: { label: "Risque de blessure", color: "#d9695a", emoji: "⚠️", rank: 0 },
   fatigue: { label: "Fatigué", color: "#e08a3d", emoji: "😓", rank: 1 },
   watch: { label: "À surveiller", color: "#d9a441", emoji: "😌", rank: 2 },
   fit: { label: "En forme", color: "#4fae7d", emoji: "💪", rank: 3 },

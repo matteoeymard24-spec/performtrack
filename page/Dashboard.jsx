@@ -138,6 +138,11 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [customGroups, setCustomGroups] = useState([]);
   const [wellnessFilter, setWellnessFilter] = useState("total");
+  // Affichage de la liste : par groupe (défaut) ou liste simple ; groupes repliés
+  const [listView, setListView] = useState(() => {
+    try { return localStorage.getItem("dash_listView") || "groups"; } catch (e) { return "groups"; }
+  });
+  const [collapsedGroups, setCollapsedGroups] = useState({});
 
   // Repli/dépli par partie dans la fiche détail d'un athlète — même
   // mécanisme que le repli des blocs dans la création de séance (Workout) :
@@ -1069,6 +1074,25 @@ export default function Dashboard() {
           };
         });
 
+        // Mémorise l'état de forme calculé (lu par l'aide à la planification de Workout).
+        // En arrière-plan : une erreur d'écriture ne doit jamais bloquer le Dashboard.
+        if (userRole === "admin") {
+          result.forEach((r) => {
+            if (!r.status) return;
+            setDoc(
+              doc(db, "users", r.id, "formStatus", "latest"),
+              {
+                date: today,
+                level: r.status.level || "nodata",
+                label: r.status.label || "",
+                reasons: (r.status.reasons || []).slice(0, 8),
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            ).catch(() => {});
+          });
+        }
+
         result.sort((a, b) => {
           const ra = (FORM_LEVELS[a.status.level] || FORM_LEVELS.nodata).rank;
           const rb = (FORM_LEVELS[b.status.level] || FORM_LEVELS.nodata).rank;
@@ -1289,8 +1313,8 @@ export default function Dashboard() {
 
     if (wellnessFilter === "total") return true;
     if (wellnessFilter === "risque") return a.status?.level === "risk";
-    if (wellnessFilter === "fatigue")
-      return a.status?.level === "fatigue" || a.status?.level === "watch";
+    if (wellnessFilter === "fatigue") return a.status?.level === "fatigue";
+    if (wellnessFilter === "surveiller") return a.status?.level === "watch";
     if (wellnessFilter === "forme") return a.status?.level === "fit";
     return true;
   });
@@ -2538,25 +2562,22 @@ export default function Dashboard() {
           },
           {
             key: "risque",
-            label: `⚠️ Risque (${
-              athletes.filter((a) => a.status?.level === "risk").length
-            })`,
+            label: `⚠️ Risque de blessure (${athletes.filter((a) => a.status?.level === "risk").length})`,
             color: "#d9695a",
           },
           {
             key: "fatigue",
-            label: `😓 Fatigue (${
-              athletes.filter(
-                (a) => a.status?.level === "fatigue" || a.status?.level === "watch"
-              ).length
-            })`,
+            label: `😓 Fatigué (${athletes.filter((a) => a.status?.level === "fatigue").length})`,
+            color: "#e08a3d",
+          },
+          {
+            key: "surveiller",
+            label: `😌 À surveiller (${athletes.filter((a) => a.status?.level === "watch").length})`,
             color: "#d9a441",
           },
           {
             key: "forme",
-            label: `💪 En forme (${
-              athletes.filter((a) => a.status?.level === "fit").length
-            })`,
+            label: `💪 En forme (${athletes.filter((a) => a.status?.level === "fit").length})`,
             color: "#4fae7d",
           },
         ].map((f) => (
@@ -2594,10 +2615,10 @@ export default function Dashboard() {
           <h3 style={{ color: "#d9695a" }}>⚠️ Aucun athlète trouvé</h3>
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 12 }}>
-          {filtered.map((athlete) => (
+        (() => {
+          const renderCard = (athlete, kp) => (
             <div
-              key={athlete.id}
+              key={kp + athlete.id}
               onClick={() => loadAthleteDetail(athlete)}
               style={{
                 background: "#151310",
@@ -2761,8 +2782,135 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-          ))}
-        </div>
+          );
+
+          const memberOf = (g, a) =>
+            (g.athleteIds || []).includes(a.id) || (g.subGroups || []).some((sg) => (sg.athleteIds || []).includes(a.id));
+          const levelOrder = ["risk", "fatigue", "watch", "fit", "nodata"];
+          const summary = (list) =>
+            levelOrder
+              .map((lv) => ({ lv, n: list.filter((a) => (a.status?.level || "nodata") === lv).length }))
+              .filter((x) => x.n > 0);
+
+          const setView = (v) => {
+            setListView(v);
+            try { localStorage.setItem("dash_listView", v); } catch (e) {}
+          };
+          const toggleBtn = (v, text) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              style={{
+                padding: "8px 14px",
+                background: listView === v ? "#e0a13d" : "#2a2a2a",
+                color: listView === v ? "#1a1306" : "#f3f0ea",
+                border: "1px solid rgba(255,255,255,0.16)",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: "bold",
+                cursor: "pointer",
+              }}
+            >
+              {text}
+            </button>
+          );
+          const toggles = (
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              {toggleBtn("groups", "👥 Par groupe")}
+              {toggleBtn("flat", "📋 Liste simple")}
+            </div>
+          );
+
+          if (listView === "flat") {
+            return (
+              <div>
+                {toggles}
+                <div style={{ display: "grid", gap: 12 }}>{filtered.map((a) => renderCard(a, "f-"))}</div>
+              </div>
+            );
+          }
+
+          const sections = (customGroups || [])
+            .map((g) => ({ g, members: filtered.filter((a) => memberOf(g, a)), all: athletes.filter((a) => memberOf(g, a)) }))
+            .filter((x) => x.members.length > 0);
+          const grouped = new Set(sections.flatMap((x) => x.members.map((a) => a.id)));
+          const loose = filtered.filter((a) => !grouped.has(a.id));
+          const multi = filtered.filter((a) => sections.filter((x) => x.members.some((m) => m.id === a.id)).length > 1).length;
+
+          const header = (key, title, members, all) => {
+            const collapsed = !!collapsedGroups[key];
+            return (
+              <div
+                onClick={() => setCollapsedGroups((c) => ({ ...c, [key]: !c[key] }))}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, cursor: "pointer", padding: "10px 4px", borderBottom: "1px solid rgba(224,161,61,0.35)", marginBottom: 10 }}
+              >
+                <div style={{ fontSize: 17, fontWeight: 800 }}>
+                  {collapsed ? "▶" : "▼"} {title} <span style={{ color: "#a8a199", fontWeight: 400, fontSize: 13 }}>({members.length})</span>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {summary(all).map(({ lv, n }) => {
+                    const fl = FORM_LEVELS[lv] || FORM_LEVELS.nodata;
+                    return (
+                      <span key={lv} title={fl.label} style={{ fontSize: 12, fontWeight: "bold", color: fl.color, border: `1px solid ${fl.color}`, borderRadius: 6, padding: "2px 8px" }}>
+                        {fl.emoji} {n}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          };
+
+          return (
+            <div>
+              {toggles}
+              {multi > 0 && (
+                <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10 }}>
+                  {multi} athlète{multi > 1 ? "s" : ""} dans plusieurs groupes : affiché{multi > 1 ? "s" : ""} dans chacun.
+                </div>
+              )}
+              {sections.map(({ g, members, all }) => {
+                const key = "g:" + g.id;
+                const inSub = new Set();
+                const subs = (g.subGroups || [])
+                  .map((sg) => {
+                    const ms = members.filter((a) => (sg.athleteIds || []).includes(a.id));
+                    ms.forEach((a) => inSub.add(a.id));
+                    return { sg, ms };
+                  })
+                  .filter((x) => x.ms.length > 0);
+                const rest = members.filter((a) => !inSub.has(a.id));
+                return (
+                  <div key={key} style={{ marginBottom: 22 }}>
+                    {header(key, g.name || "Groupe", members, all)}
+                    {!collapsedGroups[key] && (
+                      <div style={{ display: "grid", gap: 12 }}>
+                        {rest.map((a) => renderCard(a, key + "-"))}
+                        {subs.map(({ sg, ms }) => (
+                          <div key={sg.id}>
+                            <div style={{ fontSize: 13, color: "#e0a13d", fontWeight: 700, margin: "4px 0 8px 4px" }}>
+                              ↳ {sg.name || "Sous-groupe"} ({ms.length})
+                            </div>
+                            <div style={{ display: "grid", gap: 12 }}>{ms.map((a) => renderCard(a, key + "-" + sg.id + "-"))}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {loose.length > 0 && (
+                <div style={{ marginBottom: 22 }}>
+                  {header("g:none", "Sans groupe", loose, loose)}
+                  {!collapsedGroups["g:none"] && <div style={{ display: "grid", gap: 12 }}>{loose.map((a) => renderCard(a, "none-"))}</div>}
+                </div>
+              )}
+              {sections.length === 0 && loose.length === 0 && (
+                <div style={{ color: "#a8a199", padding: 20, textAlign: "center" }}>Aucun athlète pour ce filtre.</div>
+              )}
+            </div>
+          );
+        })()
       )}
 
       {showAthleteDetail && athleteDetails && (

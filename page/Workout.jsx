@@ -6,6 +6,7 @@ import { getWorkoutDocs } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
 import RepsRpeTable from "../component/RepsRpeTable";
 import VbtTable from "../component/VbtTable";
+import PlanningRefsModal from "../component/PlanningRefsModal";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -614,6 +615,7 @@ export default function Workout() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [showRepsTable, setShowRepsTable] = useState(false);
   const [showVbtTable, setShowVbtTable] = useState(false);
+  const [showPlanRefs, setShowPlanRefs] = useState(false);
   const autoOpenedSessionRef = useRef(false);
 
   useEffect(() => {
@@ -4053,6 +4055,28 @@ export default function Workout() {
         </div>
       )}
 
+      {showPlanRefs && (() => {
+        const people = athletes;
+        const nameOfP = (id) => {
+          const a = people.find((x) => x.id === id);
+          return a ? getAthleteDisplayName(a) : "Athlète inconnu";
+        };
+        const idsFor = (g) => {
+          if (g === "total") return people.map((a) => a.id);
+          if (g === "moi") return [];
+          if (g === "individuel") return targetUserId ? [targetUserId] : [];
+          const sub = findTargetSubGroup(g, customGroups);
+          if (sub) return sub.athleteIds || [];
+          const cg = customGroups.find((x) => x.id === g);
+          if (cg) return cg.athleteIds || [];
+          return people.filter((a) => (a.group || "total") === g).map((a) => a.id);
+        };
+        const ids = Array.from(new Set([group, ...(extraGroups || [])].flatMap(idsFor)));
+        const cgName = customGroups.find((x) => x.id === group)?.name;
+        const label = group === "total" ? "Tous les athlètes" : group === "individuel" ? (targetUserId ? nameOfP(targetUserId) : "Aucun athlète choisi") : group === "moi" ? "Séance privée" : cgName || String(group);
+        return <PlanningRefsModal onClose={() => setShowPlanRefs(false)} athleteIds={ids} nameOf={nameOfP} targetLabel={`${label} (${ids.length})`} />;
+      })()}
+
       {showVbtTable && (
         <div
           onClick={() => setShowVbtTable(false)}
@@ -5722,6 +5746,13 @@ export default function Workout() {
             <h3 style={{ margin: 0, fontSize: 18 }}>
               {isEdit ? "✏️ Modifier séance" : "➕ Nouvelle séance"}
             </h3>
+            <button
+              onClick={() => setShowPlanRefs(true)}
+              title="Tables RPE / %RM, vitesse de barre et état de forme des athlètes ciblés"
+              style={{ padding: "6px 12px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: "bold", marginLeft: "auto" }}
+            >
+              🧭 Repères
+            </button>
             <button
               onClick={resetForm}
               title="Fermer sans enregistrer"
