@@ -312,53 +312,6 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
         </div>
       )}
 
-      {morph && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>📏 Masse vs standard du poste{level ? ` (${levelLabel(level)})` : ""}</div>
-          {[
-            { k: "Poids", v: `${bw} kg`, ref: `standard ${morph.target.bm} kg`, n: morph.noteBm },
-            morph.ffm != null && { k: "Masse maigre", v: `${morph.ffm} kg`, ref: `standard ${morph.target.ffm} kg`, n: morph.noteFfm },
-            morph.fatKg != null && {
-              k: "Masse grasse",
-              v: `${bf} % (${morph.fatKg} kg)`,
-              ref: `réf. pros ${mIn === "dxa" ? `DXA ${bfRef[0]} ± ${bfRef[1]} %` : `plis ≈ ${fw ? BF_SKINFOLD.forwards : BF_SKINFOLD.backs} %`}`,
-              n: null,
-            },
-            FFMI != null && { k: "Indice de masse maigre", v: `${FFMI.toFixed(1)} kg/m²`, ref: "information (pas de repère rugby retenu)", n: null },
-          ]
-            .filter(Boolean)
-            .map((r) => (
-              <div key={r.k} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, padding: "6px 0", borderTop: `1px solid ${BORDER}`, color: MUTED }}>
-                <span>{r.k}</span>
-                <span style={{ color: TEXT, textAlign: "right" }}>
-                  <strong style={{ color: ACCENT }}>{r.v}</strong> · {r.ref}
-                  {r.n != null ? <strong style={{ color: noteColor(r.n) }}> · {r.n}/20</strong> : ""}
-                </span>
-              </div>
-            ))}
-          {mIn !== "dxa" && bf != null && (
-            <div style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>
-              Attention : la masse grasse dépend beaucoup de la méthode (plis et impédance donnent des valeurs plus basses que la DXA). Compare avec la même méthode dans le temps.
-            </div>
-          )}
-        </div>
-      )}
-
-      {ratioRows.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>⚖️ Force relative (RM ÷ poids du corps)</div>
-          {ratioRows.map((r) => (
-            <div key={r.label} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12, padding: "6px 0", borderTop: `1px solid ${BORDER}`, color: MUTED }}>
-              <span>{r.label}</span>
-              <span style={{ color: TEXT, textAlign: "right" }}>
-                {r.kg} kg{r.ratio != null ? <strong style={{ color: ACCENT }}> · {r.ratio.toFixed(2)} × PdC</strong> : ""}
-                {r.eq != null ? <span style={{ color: MUTED }}> · ≈ {Math.round(r.eq)} kg à {Math.round(refMass)} kg</span> : ""}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-
       <details style={{ marginTop: 12 }}>
         <summary style={{ fontSize: 11, color: MUTED, cursor: "pointer" }}>Sources et limites</summary>
         <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 6 }}>

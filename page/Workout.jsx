@@ -4,8 +4,6 @@ import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { getWorkoutDocs } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
-import RepsRpeTable from "../component/RepsRpeTable";
-import VbtTable from "../component/VbtTable";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
@@ -613,8 +611,7 @@ export default function Workout() {
      &autostart=1) pour ouvrir directement la séance du jour en vue complète,
      sans que l'athlète ait à la rechercher dans le calendrier. */
   const [searchParams, setSearchParams] = useSearchParams();
-  const [showRepsTable, setShowRepsTable] = useState(false);
-  const [showVbtTable, setShowVbtTable] = useState(false);
+  const [showAdminRefs, setShowAdminRefs] = useState(false);
   const [showPlanRefs, setShowPlanRefs] = useState(false);
   const [showAthleteRefs, setShowAthleteRefs] = useState(false);
   const autoOpenedSessionRef = useRef(false);
@@ -4035,7 +4032,7 @@ export default function Workout() {
             🔤 Noms d'exercices
           </button>
           <button
-            onClick={() => setShowRepsTable(true)}
+            onClick={() => setShowAdminRefs(true)}
             style={{
               padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
               background: "#e0a13d",
@@ -4047,24 +4044,21 @@ export default function Workout() {
               cursor: "pointer",
             }}
           >
-            📊 Table %RM / reps / RPE
-          </button>
-          <button
-            onClick={() => setShowVbtTable(true)}
-            style={{
-              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "#e0a13d",
-              color: "#1a1306",
-              border: "none",
-              borderRadius: 8,
-              fontSize: window.innerWidth <= 768 ? 13 : 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            ⚡ Table vitesse de barre (VBT)
+            🧭 Repères (RPE, VBT, forme)
           </button>
         </div>
+      )}
+
+      {showAdminRefs && (
+        <PlanningRefsModal
+          onClose={() => setShowAdminRefs(false)}
+          athleteIds={athletes.map((a) => a.id)}
+          nameOf={(id) => {
+            const a = athletes.find((x) => x.id === id);
+            return a ? getAthleteDisplayName(a) : "Athlète inconnu";
+          }}
+          targetLabel={`Tous les athlètes (${athletes.length})`}
+        />
       )}
 
       {showAthleteRefs && (
@@ -4092,42 +4086,6 @@ export default function Workout() {
         const label = group === "total" ? "Tous les athlètes" : group === "individuel" ? (targetUserId ? nameOfP(targetUserId) : "Aucun athlète choisi") : group === "moi" ? "Séance privée" : cgName || String(group);
         return <PlanningRefsModal onClose={() => setShowPlanRefs(false)} athleteIds={ids} nameOf={nameOfP} targetLabel={`${label} (${ids.length})`} />;
       })()}
-
-      {showVbtTable && (
-        <div
-          onClick={() => setShowVbtTable(false)}
-          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: "#151310", borderRadius: 12, padding: 24, width: "100%", maxWidth: 760, maxHeight: "85vh", overflowY: "auto", border: "1px solid rgba(224,161,61,0.4)" }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h3 style={{ margin: 0, fontSize: 18 }}>⚡ Repère vitesse de barre</h3>
-              <button onClick={() => setShowVbtTable(false)} style={{ background: "none", border: "none", color: "#a8a199", fontSize: 20, cursor: "pointer" }}>✕</button>
-            </div>
-            <VbtTable defaultOpen />
-          </div>
-        </div>
-      )}
-
-      {showRepsTable && (
-        <div
-          onClick={() => setShowRepsTable(false)}
-          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ background: "#151310", borderRadius: 12, padding: 24, width: "100%", maxWidth: 760, maxHeight: "85vh", overflowY: "auto", border: "1px solid rgba(224,161,61,0.4)" }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <h3 style={{ margin: 0, fontSize: 18 }}>📊 Repère de planification</h3>
-              <button onClick={() => setShowRepsTable(false)} style={{ background: "none", border: "none", color: "#a8a199", fontSize: 20, cursor: "pointer" }}>✕</button>
-            </div>
-            <RepsRpeTable defaultOpen />
-          </div>
-        </div>
-      )}
 
       {/* Modal Gestion des noms d'exercices : harmonise la casse et corrige
           les fautes d'orthographe — le renommage se répercute automatiquement

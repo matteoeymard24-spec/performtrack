@@ -41,6 +41,8 @@ import {
 import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
 import PhysicalRadar from "../component/PhysicalRadar";
+import { morphTargets, hasMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "../component/morphology";
+import { LEVELS as RUGBY_LEVELS } from "../component/rugbyLevels";
 import CyclingRadar, { CyclingNorms } from "../component/CyclingRadar";
 import { CYCLING_LEVELS, CYCLING_SEXES, normSex } from "../component/cycling";
 import { cyclingBilan } from "../component/cyclingRows";
@@ -1347,6 +1349,52 @@ export default function Tests() {
                 </div>
               ) : (
                 <>
+                  {sport === "rugby" && hasMorph(poste) && (
+                    <div style={cardStyle}>
+                      <FoldHead title={<>📏 Standards anthropométriques par niveau — {posteLabel(sport, poste)}</>} open={bf.isOpen("n_morph")} onToggle={() => bf.toggle("n_morph")} gap={2} />
+                      {bf.isOpen("n_morph") && (<>
+                        <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
+                          Poids et masse maigre à viser pour ce poste, niveau par niveau{level ? ` (objectif : ${levelLabel(level)})` : ""}. Un athlète à ce standard a la note « verte » (16/20).
+                        </div>
+                        <div style={{ overflowX: "auto" }}>
+                          <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+                            <thead>
+                              <tr style={{ color: MUTED, textAlign: "right" }}>
+                                <th style={{ padding: "5px 8px", textAlign: "left" }}>Niveau</th>
+                                <th style={{ padding: "5px 8px" }}>Poids standard</th>
+                                <th style={{ padding: "5px 8px" }}>Masse maigre standard</th>
+                                <th style={{ padding: "5px 8px" }}>Source</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {RUGBY_LEVELS.map((l) => {
+                                const t = morphTargets(poste, l.id);
+                                const isT = l.id === level;
+                                const est = !!l.f;
+                                return (
+                                  <tr key={l.id} style={{ borderTop: "1px solid #1d1a16", textAlign: "right", background: isT ? "rgba(224,161,61,0.12)" : "transparent" }}>
+                                    <td style={{ padding: "5px 8px", textAlign: "left", color: isT ? "#e0a13d" : "#f3f0ea", fontWeight: 700 }}>{l.label}{isT ? " 🎯" : ""}</td>
+                                    <td style={{ padding: "5px 8px", color: "#f3f0ea", fontWeight: 700 }}>{t.bm} kg</td>
+                                    <td style={{ padding: "5px 8px", color: "#f3f0ea", fontWeight: 700 }}>{t.ffm} kg</td>
+                                    <td style={{ padding: "5px 8px", color: est ? "#d9a441" : "#a8a199" }}>{est ? "estimé" : "document"}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div style={{ fontSize: 12, color: "#a8a199", marginTop: 10, lineHeight: 1.6 }}>
+                          <strong style={{ color: "#f3f0ea" }}>Masse grasse (pros)</strong> : {FORWARDS.includes(poste)
+                            ? `avants ${BF_DXA.forwards[0]} ± ${BF_DXA.forwards[1]} % à la DXA (≈ ${BF_SKINFOLD.forwards} % aux plis cutanés)`
+                            : `arrières ${BF_DXA.backs[0]} ± ${BF_DXA.backs[1]} % à la DXA (≈ ${BF_SKINFOLD.backs} % aux plis cutanés)`}. La méthode de mesure change beaucoup le chiffre : compare toujours avec la même méthode.
+                        </div>
+                        <div style={{ fontSize: 11, color: "#a8a199", marginTop: 8, lineHeight: 1.6 }}>
+                          Sources : « USA Rugby Player Profiles and Performance Standards » (poids et masse maigre par poste, niveau Pro D2 et au-dessus) ; masse grasse : Posthumus et al. 2020, Sports 8(6):85 (DXA, pros) et revue J Funct Morphol Kinesiol 2026 (plis). Les niveaux marqués « estimé » (Nationale et en dessous, U18, Espoirs) sont le standard du poste multiplié par un coefficient de niveau (de 0,95 à 0,70), cohérent avec la revue 2026 (avants amateurs ≈ 91 kg contre ≈ 116 kg en élite) : ce n'est pas une mesure poste par poste.
+                        </div>
+                      </>)}
+                    </div>
+                  )}
+
                   <div style={cardStyle}>
                     <FoldHead title={<>🏅 Standards de force par niveau — {posteLabel(sport, poste)}</>} open={bf.isOpen("n_force")} onToggle={() => bf.toggle("n_force")} gap={2} />
                     {bf.isOpen("n_force") && (<>
