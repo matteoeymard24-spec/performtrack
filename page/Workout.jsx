@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { getWorkoutDocs } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
+import TargetPicker from "../component/TargetPicker";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -447,6 +448,7 @@ export default function Workout() {
   // Groupe (et athlète si "individuel") visé par la duplication : permet de
   // copier une séance directement vers un autre groupe, sans la modifier après.
   const [duplicateTargetGroup, setDuplicateTargetGroup] = useState("total");
+  const [duplicateExtraGroups, setDuplicateExtraGroups] = useState([]);
   const [duplicateTargetUser, setDuplicateTargetUser] = useState("");
   const [duplicateTargetDate, setDuplicateTargetDate] = useState(null);
   const [showDuplicateDayModal, setShowDuplicateDayModal] = useState(false);
@@ -1782,32 +1784,42 @@ export default function Workout() {
       alert("⚠️ Veuillez sélectionner une date");
       return;
     }
-    const targetGroup = duplicateTargetGroup || sessionToDuplicate.group || "total";
-    if (targetGroup === "individuel" && !duplicateTargetUser) {
+    const targets = [duplicateTargetGroup || sessionToDuplicate.group || "total", ...duplicateExtraGroups].filter(
+      (t, i, arr) => arr.indexOf(t) === i
+    );
+    if (targets.includes("individuel") && !duplicateTargetUser) {
       alert("⚠️ Choisis l'athlète pour une séance individuelle");
       return;
     }
     duplicatingSessionLock.current = true;
     setIsDuplicatingSession(true);
     try {
-      // Créer la nouvelle séance dupliquée (dans le groupe choisi dans la
-      // fenêtre de duplication, par défaut celui de la séance d'origine).
-      const newData = {
-        title: sessionToDuplicate.title,
-        date: duplicateTargetDate,
-        group: targetGroup,
-        targetUserId: targetGroup === "individuel" ? duplicateTargetUser : null,
-        blocks: sessionToDuplicate.blocks,
-        type: sessionToDuplicate.type || "muscu",
-        estimatedDuration: sessionToDuplicate.estimatedDuration,
-        createdBy: currentUser.uid,
-        createdAt: serverTimestamp(),
-        duplicatedFrom: sessionToDuplicate.id,
-        userProgress: {},
-      };
-      const newRef = await addDoc(collection(db, "workout"), newData);
+      // Une copie par case cochée (et seulement celles-là : la séance d'origine
+      // reste telle quelle, aucun groupe n'est ajouté automatiquement).
+      let newRef = null;
+      let newData = null;
+      for (const targetGroup of targets) {
+        const data = {
+          title: sessionToDuplicate.title,
+          date: duplicateTargetDate,
+          group: targetGroup,
+          targetUserId: targetGroup === "individuel" ? duplicateTargetUser : null,
+          blocks: sessionToDuplicate.blocks,
+          type: sessionToDuplicate.type || "muscu",
+          estimatedDuration: sessionToDuplicate.estimatedDuration,
+          createdBy: currentUser.uid,
+          createdAt: serverTimestamp(),
+          duplicatedFrom: sessionToDuplicate.id,
+          userProgress: {},
+        };
+        const ref = await addDoc(collection(db, "workout"), data);
+        if (!newRef) {
+          newRef = ref;
+          newData = data;
+        }
+      }
 
-      alert("✅ Séance dupliquée avec succès !");
+      alert(targets.length > 1 ? `✅ Séance dupliquée pour ${targets.length} groupes !` : "✅ Séance dupliquée avec succès !");
       setShowDuplicateSessionModal(false);
       setSessionToDuplicate(null);
       setDuplicateTargetDate(null);
@@ -3513,6 +3525,8 @@ export default function Workout() {
       const isMobile = window.innerWidth <= 768;
       const dayCycles = cyclesOnDay(calendarCycles, dateStr).slice(0, 3);
       const dayFixtures = fixturesOnDay(calendarFixtures, dateStr);
+      // Jour de match : case teintée + bordure de la couleur du type + grande icône
+      const fxMain = dayFixtures.length > 0 ? kindOf(dayFixtures[0].kind) : null;
 
       cells.push(
         <div
@@ -3525,9 +3539,12 @@ export default function Workout() {
           }
           onClick={() => setSelectedDate(isSelected ? null : dateStr)}
           style={{
-            background: isToday ? "rgba(79,174,125,0.14)" : "#1a1815",
+            position: "relative",
+            background: fxMain ? `${fxMain.color}2e` : isToday ? "rgba(79,174,125,0.14)" : "#1a1815",
             border: isSelected
               ? "2px solid #4fae7d"
+              : fxMain
+              ? `2px solid ${fxMain.color}`
               : isToday
               ? "2px solid #4fae7d"
               : "1px solid rgba(255,255,255,0.16)",
@@ -3541,6 +3558,24 @@ export default function Workout() {
             overflow: "hidden",  // Empêcher le débordement
           }}
         >
+          {fxMain && (
+            <div
+              style={{
+                position: "absolute",
+                top: isMobile ? 1 : 3,
+                right: isMobile ? 2 : 6,
+                fontSize: isMobile ? 15 : 24,
+                lineHeight: 1,
+                filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.6))",
+                pointerEvents: "none",
+              }}
+            >
+              {fxMain.icon}
+              {dayFixtures.length > 1 && (
+                <span style={{ fontSize: isMobile ? 8 : 10, fontWeight: "bold", color: "#f3f0ea", marginLeft: 1 }}>×{dayFixtures.length}</span>
+              )}
+            </div>
+          )}
           {dayCycles.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 1, marginBottom: isMobile ? 1 : 3, flexShrink: 0 }}>
               {dayCycles.map((c) => (
@@ -3560,7 +3595,6 @@ export default function Workout() {
             }}
           >
             {day}
-            {isMobile && dayFixtures.length > 0 && <span> {kindOf(dayFixtures[0].kind).icon}</span>}
             {!isMobile &&
               dayCycles
                 .filter((c) => c.startDate === dateStr)
@@ -5274,7 +5308,9 @@ export default function Workout() {
           <div
             style={{
               background: "#151310",
-              padding: 30,
+              padding: window.innerWidth <= 768 ? 16 : 30,
+              maxHeight: "90vh",
+              overflowY: "auto",
               borderRadius: 12,
               maxWidth: 460,
               width: "100%",
@@ -5367,7 +5403,9 @@ export default function Workout() {
           <div
             style={{
               background: "#151310",
-              padding: 30,
+              padding: window.innerWidth <= 768 ? 16 : 30,
+              maxHeight: "90vh",
+              overflowY: "auto",
               borderRadius: 12,
               maxWidth: 460,
               width: "100%",
@@ -5477,7 +5515,9 @@ export default function Workout() {
           <div
             style={{
               background: "#151310",
-              padding: 30,
+              padding: window.innerWidth <= 768 ? 16 : 30,
+              maxHeight: "90vh",
+              overflowY: "auto",
               borderRadius: 12,
               maxWidth: 500,
               width: "100%",
@@ -5524,73 +5564,26 @@ export default function Workout() {
                 fontWeight: "bold",
               }}
             >
-              👥 Groupe de la copie :
+              👥 Pour qui est la copie ?
             </label>
-            <select
-              value={duplicateTargetGroup}
-              onChange={(e) => setDuplicateTargetGroup(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "2px solid rgba(79, 174, 125, 0.3)",
-                background: "#151310",
-                color: "#f3f0ea",
-                fontSize: 16,
-                marginBottom: duplicateTargetGroup === "individuel" ? 10 : 20,
-                cursor: "pointer",
-              }}
-            >
-              <option value="total">Total (tous)</option>
-              <option value="moi">🌟 Moi (privé)</option>
-              <option value="individuel">Individuel</option>
-              {customGroups.length > 0 && (
-                <optgroup label="Groupes personnalisés">
-                  {customGroups.map((g) => (
-                    <React.Fragment key={g.id}>
-                      <option value={g.id}>👥 {g.name}</option>
-                      {(g.subGroups || []).map((sg) => (
-                        <option key={sg.id} value={makeSubGroupTarget(g.id, sg.id)}>
-                          {"  ↳ "}
-                          {g.name} – {sg.name}
-                        </option>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-            {duplicateTargetGroup === "individuel" && (
-              <select
-                value={duplicateTargetUser}
-                onChange={(e) => setDuplicateTargetUser(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 8,
-                  border: "2px solid rgba(79, 174, 125, 0.3)",
-                  background: "#151310",
-                  color: "#f3f0ea",
-                  fontSize: 16,
-                  marginBottom: 20,
-                  cursor: "pointer",
+            <div style={{ marginBottom: 20 }}>
+              <TargetPicker
+                selected={[duplicateTargetGroup, ...duplicateExtraGroups]}
+                onChange={(list) => {
+                  setDuplicateTargetGroup(list[0] || "total");
+                  setDuplicateExtraGroups(list.slice(1));
                 }}
-              >
-                <option value="">-- Choisir l'athlète --</option>
-                <optgroup label="Athlètes">
-                  {athletes.map((a) => (
-                    <option key={a.id} value={a.id}>{getAthleteDisplayName(a)}</option>
-                  ))}
-                </optgroup>
-                {adminUsers.length > 0 && (
-                  <optgroup label="Admins">
-                    {adminUsers.map((a) => (
-                      <option key={a.id} value={a.id}>👤 {getAthleteDisplayName(a)}{a.id === currentUser?.uid ? " (moi)" : ""}</option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-            )}
+                customGroups={customGroups}
+                makeSubGroupTarget={makeSubGroupTarget}
+                athletes={athletes}
+                adminUsers={adminUsers}
+                userId={duplicateTargetUser}
+                onUserChange={setDuplicateTargetUser}
+                nameOf={getAthleteDisplayName}
+                accent="#4fae7d"
+                currentUid={currentUser?.uid}
+              />
+            </div>
 
             <label
               style={{
@@ -5702,7 +5695,7 @@ export default function Workout() {
         <div
           style={{
             background: "#151310",
-            padding: 25,
+            padding: window.innerWidth <= 768 ? 12 : 25,
             borderRadius: 12,
             border: "2px solid #4fae7d",
             marginBottom: 25,
@@ -5711,6 +5704,7 @@ export default function Workout() {
           <div
             style={{
               display: "flex",
+              flexWrap: "wrap",
               justifyContent: "space-between",
               alignItems: "center",
               margin: "0 0 20px 0",
@@ -5917,105 +5911,28 @@ export default function Workout() {
                 fontWeight: "bold",
               }}
             >
-              Groupe cible
+              Pour qui ?
             </label>
-            <select
-              value={group}
-              onChange={(e) => setGroup(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "2px solid rgba(224, 161, 61, 0.3)",
-                background: "#151310",
-                color: "#f3f0ea",
-                fontSize: 16,
-                cursor: "pointer",
-                transition: "all 0.3s ease",
-              }}
-              onFocus={(e) => {
-                e.target.style.border = "2px solid rgba(224, 161, 61, 0.6)";
-                e.target.style.boxShadow = "0 0 15px rgba(224, 161, 61, 0.3)";
-              }}
-              onBlur={(e) => {
-                e.target.style.border = "2px solid rgba(224, 161, 61, 0.3)";
-                e.target.style.boxShadow = "none";
-              }}
-            >
-              <option value="total">Total (tous)</option>
-              <option value="moi">🌟 Moi (privé)</option>
-              <option value="individuel">Individuel</option>
-              {customGroups.length > 0 && (
-                <optgroup label="Groupes personnalisés">
-                  {customGroups.map((g) => (
-                    <React.Fragment key={g.id}>
-                      <option value={g.id}>👥 {g.name}</option>
-                      {(g.subGroups || []).map((sg) => (
-                        <option key={sg.id} value={makeSubGroupTarget(g.id, sg.id)}>
-                          {"  ↳ "}
-                          {g.name} – {sg.name}
-                        </option>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </optgroup>
-              )}
-            </select>
-
-            {customGroups.length > 0 && (
-              <div
-                style={{
-                  marginTop: 10,
-                  padding: 10,
-                  borderRadius: 8,
-                  background: "#0d0c0a",
-                  border: "1px solid rgba(255,255,255,0.16)",
-                }}
-              >
-                <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
-                  {isEdit
-                    ? "➕ EN PLUS de cette séance (qui reste dans le groupe choisi ci-dessus), créer une copie pour — ne coche rien si tu veux juste changer de groupe :"
-                    : "➕ Créer aussi la même séance pour :"}
-                </div>
-                {customGroups.map((g) => {
-                  const options = [
-                    { value: g.id, label: `👥 ${g.name}` },
-                    ...(g.subGroups || []).map((sg) => ({
-                      value: makeSubGroupTarget(g.id, sg.id),
-                      label: `↳ ${g.name} – ${sg.name}`,
-                    })),
-                  ];
-                  return options.map((o) => (
-                    <label
-                      key={o.value}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        fontSize: 13,
-                        padding: "3px 0",
-                        opacity: o.value === group ? 0.4 : 1,
-                        cursor: o.value === group ? "default" : "pointer",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        disabled={o.value === group}
-                        checked={o.value === group || extraGroups.includes(o.value)}
-                        onChange={() =>
-                          setExtraGroups((prev) =>
-                            prev.includes(o.value)
-                              ? prev.filter((v) => v !== o.value)
-                              : [...prev, o.value]
-                          )
-                        }
-                      />
-                      {o.label}
-                    </label>
-                  ));
-                })}
+            {isEdit && (
+              <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8, lineHeight: 1.5 }}>
+                La séance modifiée va dans le 1er groupe coché ; chaque autre case cochée reçoit une copie.
               </div>
             )}
+            <TargetPicker
+              selected={[group, ...extraGroups]}
+              onChange={(list) => {
+                setGroup(list[0] || "total");
+                setExtraGroups(list.slice(1));
+              }}
+              customGroups={customGroups}
+              makeSubGroupTarget={makeSubGroupTarget}
+              athletes={athletes}
+              adminUsers={adminUsers}
+              userId={targetUserId}
+              onUserChange={setTargetUserId}
+              nameOf={getAthleteDisplayName}
+              currentUid={currentUser?.uid}
+            />
           </div>
 
           {/* Détail : quel athlète est dans quel groupe / sous-groupe */}
@@ -6161,58 +6078,6 @@ export default function Workout() {
             );
           })()}
 
-          {group === "individuel" && (
-            <div style={{ marginBottom: 18 }}>
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: 6,
-                  fontSize: 14,
-                  fontWeight: "bold",
-                }}
-              >
-                Athlète
-              </label>
-              <select
-                value={targetUserId}
-                onChange={(e) => setTargetUserId(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: 12,
-                  borderRadius: 8,
-                  border: "2px solid rgba(224, 161, 61, 0.3)",
-                  background: "#151310",
-                  color: "#f3f0ea",
-                  fontSize: 16,
-                  cursor: "pointer",
-                  transition: "all 0.3s ease",
-                }}
-                onFocus={(e) => {
-                  e.target.style.border = "2px solid rgba(224, 161, 61, 0.6)";
-                  e.target.style.boxShadow = "0 0 15px rgba(224, 161, 61, 0.3)";
-                }}
-                onBlur={(e) => {
-                  e.target.style.border = "2px solid rgba(224, 161, 61, 0.3)";
-                  e.target.style.boxShadow = "none";
-                }}
-              >
-                <option value="">-- Choisir --</option>
-                <optgroup label="Athlètes">
-                  {athletes.map((a) => (
-                    <option key={a.id} value={a.id}>{getAthleteDisplayName(a)}</option>
-                  ))}
-                </optgroup>
-                {adminUsers.length > 0 && (
-                  <optgroup label="Admins">
-                    {adminUsers.map((a) => (
-                      <option key={a.id} value={a.id}>👤 {getAthleteDisplayName(a)}{a.id === currentUser?.uid ? " (moi)" : ""}</option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
-            </div>
-          )}
-
           {/* Blocs */}
           {blocks.map((block, bIdx) => (
             <div
@@ -6261,6 +6126,7 @@ export default function Workout() {
                   onChange={(e) => updateBlock(bIdx, "name", e.target.value)}
                   style={{
                     flex: 1,
+                    minWidth: 0,
                     padding: 10,
                     borderRadius: 6,
                     border: "1px solid #2a2620",
@@ -6602,7 +6468,7 @@ export default function Workout() {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "auto 1fr auto",
+                      gridTemplateColumns: "auto minmax(0, 1fr) auto",
                       gap: 10,
                       marginBottom: 10,
                       alignItems: "center",
@@ -6934,7 +6800,7 @@ export default function Workout() {
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: isTimerBlock ? "1fr" : "repeat(2, 1fr)",
+                              gridTemplateColumns: isTimerBlock ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))",
                               gap: 10,
                               marginBottom: 10,
                             }}
@@ -7221,7 +7087,7 @@ export default function Workout() {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(3, 1fr)",
+                          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                           gap: 10,
                           marginBottom: 10,
                         }}
@@ -7305,7 +7171,7 @@ export default function Workout() {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(2, 1fr)",
+                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                           gap: 10,
                           marginBottom: 10,
                         }}
@@ -7428,7 +7294,7 @@ export default function Workout() {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: isTimerBlock ? "repeat(2, 1fr)" : "repeat(3, 1fr)",
+                          gridTemplateColumns: isTimerBlock ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
                           gap: 10,
                           marginBottom: 10,
                         }}
@@ -7542,7 +7408,7 @@ export default function Workout() {
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "1fr 1fr auto",
+                          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto",
                           gap: 10,
                           marginBottom: 10,
                         }}
@@ -7777,7 +7643,7 @@ export default function Workout() {
               position: "fixed",
               left: 0,
               right: 0,
-              bottom: "calc(14px + env(safe-area-inset-bottom))",
+              bottom: window.innerWidth <= 768 ? "calc(74px + env(safe-area-inset-bottom))" : "calc(14px + env(safe-area-inset-bottom))",
               zIndex: 1000,
               display: "flex",
               justifyContent: "center",
@@ -7934,6 +7800,7 @@ export default function Workout() {
                       setSessionToDuplicate(selectedSession);
                       setDuplicateTargetDate(selectedSession.date);
                       setDuplicateTargetGroup(selectedSession.group || "total");
+                      setDuplicateExtraGroups([]);
                       setDuplicateTargetUser(selectedSession.targetUserId || "");
                       setShowDuplicateSessionModal(true);
                     }}
