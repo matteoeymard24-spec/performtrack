@@ -119,11 +119,11 @@ export default function VbtTable({ defaultOpen = false }) {
       </div>
 
       <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.6, marginTop: 8 }}>
-        • Puissance max : Loturco et al. 2015, PLoS ONE 10(10):e0140102 — 109 athlètes élites (athlétisme, rugby/foot US, foot, course longue, combat, tennis) : la puissance moyenne propulsive en jump squat est maximale à une vitesse de 1,01 ± 0,07 m/s (saut ≈ 20 cm), quel que soit le sport. Ça confirme ton repère 0,8–1,0 m/s, mais mesuré en jump squat (charge ≈ pourcentage du poids de corps, pas du 1RM).
+        • Puissance max : Loturco et al. 2015, PLoS ONE 10(10):e0140102 — 109 athlètes élites (athlétisme, rugby/foot US, foot, course longue, combat, tennis) : la puissance moyenne propulsive en jump squat est maximale à une vitesse de 1,01 ± 0,07 m/s (saut ≈ 20 cm), quel que soit le sport. Ça correspond au repère usuel de 0,8–1,0 m/s, mais mesuré en jump squat (charge ≈ pourcentage du poids de corps, pas du 1RM).
         <br />• Développé couché : González-Badillo &amp; Sánchez-Medina 2010, Int J Sports Med 31:347-352 — vitesse au 1RM ≈ 0,16 ± 0,04 m/s ; %1RM = 110,893 − 64,187 × vitesse (r² = 0,96). Les % de la colonne « développé couché » sont calculés avec cette équation.
         <br />• Mesures squat / développé : Fernandez Ortega et al. 2022, Int J Environ Res Public Health 19(11):6756 — 355 jeunes sportifs récréatifs (96 F, 259 H), non entraînés en force : leurs vitesses sont plus lentes que celles d'athlètes entraînés au même %1RM. Écart homme-femme significatif (Torrejón 2019 : le profil charge-vitesse diffère plus entre sexes qu'entre niveaux de force).
         <br />• Noms des zones (vitesse pure, puissance-vitesse, puissance-force, force accélérative, force max) : convention de terrain (résumé Weakley et al. 2020, Strength Cond J 43:31-49), pas des seuils validés par des essais. Les bornes sont des repères.
-        <br />• Limites : la relation vitesse ↔ %1RM dépend de l'exercice, du matériel de mesure et de l'athlète, et c'est la vitesse <b>moyenne propulsive</b> (pas la moyenne ni le pic). Pour le squat, la fourchette est plus variable que pour le développé couché ; les fentes et exercices unilatéraux n'ont pas de table publiée. Idéalement établis ton propre profil charge-vitesse par athlète.
+        <br />• Limites : la relation vitesse ↔ %1RM dépend de l'exercice, du matériel de mesure et de l'athlète, et c'est la vitesse <b>moyenne propulsive</b> (pas la moyenne ni le pic). Pour le squat, la fourchette est plus variable que pour le développé couché ; les fentes et exercices unilatéraux n'ont pas de table publiée. Idéalement, le profil charge-vitesse se mesure individuellement pour chaque athlète.
       </div>
     </details>
   );

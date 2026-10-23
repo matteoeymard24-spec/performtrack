@@ -616,6 +616,7 @@ export default function Workout() {
   const [showRepsTable, setShowRepsTable] = useState(false);
   const [showVbtTable, setShowVbtTable] = useState(false);
   const [showPlanRefs, setShowPlanRefs] = useState(false);
+  const [showAthleteRefs, setShowAthleteRefs] = useState(false);
   const autoOpenedSessionRef = useRef(false);
 
   useEffect(() => {
@@ -3902,6 +3903,17 @@ export default function Workout() {
       )}
 
       {/* Boutons Admin */}
+      {userRole !== "admin" && !showForm && !selectedSession && (
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+          <button
+            onClick={() => setShowAthleteRefs(true)}
+            style={{ padding: "8px 14px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
+          >
+            🧭 Repères RPE / vitesse de barre
+          </button>
+        </div>
+      )}
+
       {userRole === "admin" && !showForm && !selectedSession && (
         <div
           style={{
@@ -4053,6 +4065,10 @@ export default function Workout() {
             ⚡ Table vitesse de barre (VBT)
           </button>
         </div>
+      )}
+
+      {showAthleteRefs && (
+        <PlanningRefsModal onClose={() => setShowAthleteRefs(false)} tabs={["rpe", "vbt"]} athleteIds={[]} nameOf={() => ""} />
       )}
 
       {showPlanRefs && (() => {
@@ -7876,6 +7892,14 @@ export default function Workout() {
             border: `2px solid ${getColor(selectedSession)}`,
           }}
         >
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+            <button
+            onClick={() => setShowAthleteRefs(true)}
+            style={{ padding: "8px 14px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
+          >
+            🧭 Repères RPE / vitesse de barre
+          </button>
+          </div>
           <div
             style={{
               display: "flex",

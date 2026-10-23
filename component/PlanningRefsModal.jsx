@@ -95,7 +95,7 @@ function FormTab({ athleteIds, nameOf }) {
   );
 }
 
-export default function PlanningRefsModal({ onClose, athleteIds, nameOf, targetLabel }) {
+export default function PlanningRefsModal({ onClose, athleteIds, nameOf, targetLabel, tabs = ["rpe", "vbt", "form"] }) {
   const [tab, setTab] = useState("rpe");
   const tabBtn = (k, text) => (
     <button
@@ -125,13 +125,13 @@ export default function PlanningRefsModal({ onClose, athleteIds, nameOf, targetL
         style={{ background: "#151310", borderRadius: 12, padding: 24, width: "100%", maxWidth: 780, maxHeight: "88vh", overflowY: "auto", border: "1px solid rgba(224,161,61,0.4)", color: TEXT }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <h3 style={{ margin: 0, fontSize: 18 }}>🧭 Aide à la planification</h3>
+          <h3 style={{ margin: 0, fontSize: 18 }}>{tabs.includes("form") ? "🧭 Aide à la planification" : "🧭 Repères d'entraînement"}</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 20, cursor: "pointer" }}>✕</button>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {tabBtn("rpe", "📊 %RM / reps / RPE")}
-          {tabBtn("vbt", "⚡ Vitesse de barre")}
-          {tabBtn("form", "💪 État de forme")}
+          {tabs.includes("rpe") && tabBtn("rpe", "📊 %RM / reps / RPE")}
+          {tabs.includes("vbt") && tabBtn("vbt", "⚡ Vitesse de barre")}
+          {tabs.includes("form") && tabBtn("form", "💪 État de forme")}
         </div>
         {tab === "rpe" && <RepsRpeTable defaultOpen />}
         {tab === "vbt" && <VbtTable defaultOpen />}
