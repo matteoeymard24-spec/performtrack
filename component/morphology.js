@@ -99,6 +99,21 @@ export function evaluateMorph(poste, levelId, bw, bf) {
   };
 }
 
+/* Profils d'un même poste : « athlétique » (plus mobile, plus léger) et « momentum » (plus de masse, plus de poids
+   dans les collisions). AUCUNE norme publiée ne sépare ces profils : écart ESTIMÉ de ± 4 % sur le poids et la masse
+   maigre du standard du poste (à corriger si tu as des données de club). */
+export const PROFILE_FACTOR = { athletique: 0.96, standard: 1, momentum: 1.04 };
+export const profileTargets = (poste, levelId) => {
+  const t = morphTargets(poste, levelId);
+  if (!t) return null;
+  const r1 = (x) => Math.round(x * 10) / 10;
+  const out = {};
+  Object.entries(PROFILE_FACTOR).forEach(([k, f]) => {
+    out[k] = { bm: r1(t.bm * f), ffm: r1(t.ffm * f) };
+  });
+  return out;
+};
+
 export const FORWARDS = ["PILIER", "TALON", "2L", "3L"];
 
 /* Références de masse grasse (%) : [moyenne, écart-type] — DXA pros (Posthumus 2020) */

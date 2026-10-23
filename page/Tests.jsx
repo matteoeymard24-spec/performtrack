@@ -41,7 +41,7 @@ import {
 import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
 import PhysicalRadar from "../component/PhysicalRadar";
-import { morphTargets, hasMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "../component/morphology";
+import { profileTargets, hasMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "../component/morphology";
 import { LEVELS as RUGBY_LEVELS } from "../component/rugbyLevels";
 import CyclingRadar, { CyclingNorms } from "../component/CyclingRadar";
 import { CYCLING_LEVELS, CYCLING_SEXES, normSex } from "../component/cycling";
@@ -1360,28 +1360,46 @@ export default function Tests() {
                           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                             <thead>
                               <tr style={{ color: MUTED, textAlign: "right" }}>
-                                <th style={{ padding: "5px 8px", textAlign: "left" }}>Niveau</th>
-                                <th style={{ padding: "5px 8px" }}>Poids standard</th>
-                                <th style={{ padding: "5px 8px" }}>Masse maigre standard</th>
-                                <th style={{ padding: "5px 8px" }}>Source</th>
+                                <th rowSpan={2} style={{ padding: "5px 8px", textAlign: "left", verticalAlign: "bottom" }}>Niveau</th>
+                                <th colSpan={3} style={{ padding: "5px 8px", textAlign: "center", borderBottom: "1px solid #1d1a16" }}>Poids (kg)</th>
+                                <th colSpan={3} style={{ padding: "5px 8px", textAlign: "center", borderBottom: "1px solid #1d1a16" }}>Masse maigre (kg)</th>
+                                <th rowSpan={2} style={{ padding: "5px 8px", verticalAlign: "bottom" }}>Source</th>
+                              </tr>
+                              <tr style={{ color: MUTED, textAlign: "right", fontSize: 11 }}>
+                                <th style={{ padding: "3px 8px" }}>Athlétique*</th>
+                                <th style={{ padding: "3px 8px" }}>Standard</th>
+                                <th style={{ padding: "3px 8px" }}>Momentum*</th>
+                                <th style={{ padding: "3px 8px" }}>Athlétique*</th>
+                                <th style={{ padding: "3px 8px" }}>Standard</th>
+                                <th style={{ padding: "3px 8px" }}>Momentum*</th>
                               </tr>
                             </thead>
                             <tbody>
                               {RUGBY_LEVELS.map((l) => {
-                                const t = morphTargets(poste, l.id);
+                                const t = profileTargets(poste, l.id);
                                 const isT = l.id === level;
                                 const est = !!l.f;
+                                const cell = (v, strong) => (
+                                  <td style={{ padding: "5px 8px", color: strong ? "#f3f0ea" : "#a8a199", fontWeight: strong ? 700 : 400 }}>{v}</td>
+                                );
                                 return (
                                   <tr key={l.id} style={{ borderTop: "1px solid #1d1a16", textAlign: "right", background: isT ? "rgba(224,161,61,0.12)" : "transparent" }}>
                                     <td style={{ padding: "5px 8px", textAlign: "left", color: isT ? "#e0a13d" : "#f3f0ea", fontWeight: 700 }}>{l.label}{isT ? " 🎯" : ""}</td>
-                                    <td style={{ padding: "5px 8px", color: "#f3f0ea", fontWeight: 700 }}>{t.bm} kg</td>
-                                    <td style={{ padding: "5px 8px", color: "#f3f0ea", fontWeight: 700 }}>{t.ffm} kg</td>
+                                    {cell(t.athletique.bm, false)}
+                                    {cell(t.standard.bm, true)}
+                                    {cell(t.momentum.bm, false)}
+                                    {cell(t.athletique.ffm, false)}
+                                    {cell(t.standard.ffm, true)}
+                                    {cell(t.momentum.ffm, false)}
                                     <td style={{ padding: "5px 8px", color: est ? "#d9a441" : "#a8a199" }}>{est ? "estimé" : "document"}</td>
                                   </tr>
                                 );
                               })}
                             </tbody>
                           </table>
+                          <div style={{ fontSize: 11, color: "#d9a441", marginTop: 6, lineHeight: 1.5 }}>
+                            * Profils ESTIMÉS : aucune norme publiée ne sépare le profil athlétique (plus mobile, plus léger) du profil momentum (plus de masse pour les collisions). J'applique −4 % / +4 % au standard du poste. La colonne « Standard » est celle du document.
+                          </div>
                         </div>
                         <div style={{ fontSize: 12, color: "#a8a199", marginTop: 10, lineHeight: 1.6 }}>
                           <strong style={{ color: "#f3f0ea" }}>Masse grasse (pros)</strong> : {FORWARDS.includes(poste)
