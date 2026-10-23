@@ -3285,7 +3285,7 @@ export default function Dashboard() {
                                       Prévu : {e.presc.pct}% × {e.presc.reps} reps = {e.presc.prescribedKg} kg · fait : {e.presc.actualKg} kg (
                                       {e.presc.loadGapPct > 0 ? "−" : "+"}
                                       {Math.abs(e.presc.loadGapPct)}%) · RPE {e.presc.rpe}
-                                      {e.presc.expectedRpe !== null ? ` (attendu ≈ ${e.presc.expectedRpe})` : ""}
+                                      {e.presc.expectedRpe !== null ? ` (attendu ≈ ${e.presc.expectedRpe} à ${e.presc.actualPct}% du RM ${e.presc.refSource === "recent" ? "récent" : "enregistré"} de ${e.presc.refRm} kg)` : ""}
                                       {e.reasons.includes("load") ? " → charge nettement sous le prévu avec effort élevé" : ""}
                                       {e.reasons.includes("rpe") ? " → effort trop élevé pour la charge prévue" : ""}
                                     </div>

@@ -605,7 +605,7 @@ function medianNum(values) {
 }
 
 /** sets : [{weight, reps, rpe}] ; rm : kg ; pct : % du RM prescrit ; prescReps : reps prévues */
-export function prescriptionSignals(sets, rm, pct, prescReps) {
+export function prescriptionSignals(sets, rm, pct, prescReps, rmRef) {
   const rmN = Number(rm);
   const pctN = Number(pct);
   if (!(rmN > 0) || !(pctN > 0)) return null;
@@ -615,11 +615,18 @@ export function prescriptionSignals(sets, rm, pct, prescReps) {
   const loadGap = medianNum(valid.map((st) => (prescribed - st.weight) / prescribed)); // > 0 : plus léger que prévu
   const rpe = medianNum(valid.map((st) => st.rpe));
   const reps = Number(prescReps) > 0 ? Number(prescReps) : medianNum(valid.map((st) => st.reps));
-  const expected = expectedRpe(pctN, reps);
+  // % de RM réellement utilisé = charge posée / RM : si l'athlète a chargé plus lourd que prévu,
+  // le RPE attendu est calculé sur ce % réel (un RPE plus haut est alors justifié).
+  const actualKgMed = medianNum(valid.map((st) => st.weight));
+  // RM de référence : niveau récent de l'athlète (e1RM de ses dernières séances) s'il est connu,
+  // sinon le RM enregistré. La charge prescrite reste calculée sur le RM enregistré (ce que l'athlète a vu).
+  const refN = Number(rmRef) > 0 ? Number(rmRef) : rmN;
+  const actualPct = (actualKgMed / refN) * 100;
+  const expected = expectedRpe(actualPct, reps);
   const rpeGap = expected !== null ? rpe - expected : null;
   const reasons = [];
   if (loadGap >= PRESC_LOAD_GAP && rpe >= PRESC_RPE_HIGH) reasons.push("load");
-  else if (Math.abs(loadGap) <= PRESC_LOAD_NEAR && rpe >= PRESC_RPE_HIGH && rpeGap !== null && rpeGap >= PRESC_RPE_GAP) reasons.push("rpe");
+  else if (loadGap > -PRESC_LOAD_GAP && rpe >= PRESC_RPE_HIGH && rpeGap !== null && rpeGap >= PRESC_RPE_GAP) reasons.push("rpe");
   const r1 = (x) => Math.round(x * 10) / 10;
   return {
     prescribedKg: r1(prescribed),
@@ -629,6 +636,9 @@ export function prescriptionSignals(sets, rm, pct, prescReps) {
     expectedRpe: expected !== null ? r1(expected) : null,
     rpeGap: rpeGap !== null ? r1(rpeGap) : null,
     pct: pctN,
+    actualPct: Math.round(actualPct * 10) / 10,
+    refRm: r1(refN),
+    refSource: Number(rmRef) > 0 ? "recent" : "saved",
     reps: r1(reps),
     reasons,
   };
@@ -698,7 +708,15 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
     // les exercices SANS prescription : il pénalisait à tort un athlète dont le
     // RM enregistré est ancien / trop haut (ou un exo unilatéral comme les fentes)
     // même quand ses charges progressent.
-    const presc = prescriptionSignals(cur.sets, rm, cur.rmPercent, cur.prescReps);
+    // RM récent = médiane des e1RM des 3 dernières séances précédentes (≤ 6 semaines, ≥ 2 séries exploitables chacune).
+    // Si au moins 2 séances : on l'utilise comme référence → le RM s'adapte à la forme réelle de l'athlète,
+    // même si le RM saisi est ancien (trop bas ou trop haut).
+    const priors = perSession
+      .filter((s) => s.date < current.date && dayDiff(current.date, s.date) <= 42 && s.ex[key] && s.ex[key].n >= 2)
+      .slice(-3)
+      .map((s) => s.ex[key].e1rm);
+    const recentRm = priors.length >= 2 ? medianOf(priors) : null;
+    const presc = prescriptionSignals(cur.sets, rm, cur.rmPercent, cur.prescReps, recentRm);
     if (dropPct !== null && dropPct > NEURAL_DROP_THRESHOLD) reasons.push("drop");
     if (presc) presc.reasons.forEach((r) => reasons.push(r));
     else if (rmRatio !== null && rmRatio < NEURAL_RM_FLOOR) reasons.push("rm");

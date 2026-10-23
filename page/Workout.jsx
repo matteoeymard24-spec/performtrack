@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { getWorkoutDocs } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
 import RepsRpeTable from "../component/RepsRpeTable";
+import VbtTable from "../component/VbtTable";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -612,6 +613,7 @@ export default function Workout() {
      sans que l'athlète ait à la rechercher dans le calendrier. */
   const [searchParams, setSearchParams] = useSearchParams();
   const [showRepsTable, setShowRepsTable] = useState(false);
+  const [showVbtTable, setShowVbtTable] = useState(false);
   const autoOpenedSessionRef = useRef(false);
 
   useEffect(() => {
@@ -4033,6 +4035,39 @@ export default function Workout() {
           >
             📊 Table %RM / reps / RPE
           </button>
+          <button
+            onClick={() => setShowVbtTable(true)}
+            style={{
+              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
+              background: "#e0a13d",
+              color: "#1a1306",
+              border: "none",
+              borderRadius: 8,
+              fontSize: window.innerWidth <= 768 ? 13 : 15,
+              fontWeight: "bold",
+              cursor: "pointer",
+            }}
+          >
+            ⚡ Table vitesse de barre (VBT)
+          </button>
+        </div>
+      )}
+
+      {showVbtTable && (
+        <div
+          onClick={() => setShowVbtTable(false)}
+          style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.75)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "#151310", borderRadius: 12, padding: 24, width: "100%", maxWidth: 760, maxHeight: "85vh", overflowY: "auto", border: "1px solid rgba(224,161,61,0.4)" }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <h3 style={{ margin: 0, fontSize: 18 }}>⚡ Repère vitesse de barre</h3>
+              <button onClick={() => setShowVbtTable(false)} style={{ background: "none", border: "none", color: "#a8a199", fontSize: 20, cursor: "pointer" }}>✕</button>
+            </div>
+            <VbtTable defaultOpen />
+          </div>
         </div>
       )}
 
