@@ -717,7 +717,21 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
       .map((s) => s.ex[key].e1rm);
     const recentRm = priors.length >= 2 ? medianOf(priors) : null;
     const presc = prescriptionSignals(cur.sets, rm, cur.rmPercent, cur.prescReps, recentRm);
-    if (dropPct !== null && dropPct > NEURAL_DROP_THRESHOLD) reasons.push("drop");
+    // Baseline individuelle : e1RM habituel de l'athlète sur cet exercice (≤ 8 semaines, ≥ 4 séances).
+    // Quand on la connaît, une chute n'est retenue que si elle sort aussi de sa variabilité normale (z ≤ −1,5),
+    // car l'e1RM issu du RPE bouge de plusieurs % d'une séance à l'autre sans fatigue.
+    const hist = perSession
+      .filter((s) => s.date < current.date && dayDiff(current.date, s.date) <= 56 && s.ex[key] && s.ex[key].n >= 2)
+      .map((s) => s.ex[key].e1rm);
+    let zE1rm = null;
+    if (hist.length >= 4) {
+      const mean = hist.reduce((a, b) => a + b, 0) / hist.length;
+      const sd = Math.sqrt(hist.reduce((a, b) => a + (b - mean) ** 2, 0) / (hist.length - 1));
+      // plancher de variabilité à 3 % du niveau habituel pour ne pas sur-réagir à une série très régulière
+      const sdEff = Math.max(sd, mean * 0.03);
+      zE1rm = (cur.e1rm - mean) / sdEff;
+    }
+    if (dropPct !== null && dropPct > NEURAL_DROP_THRESHOLD && (zE1rm === null || zE1rm <= -1.5)) reasons.push("drop");
     if (presc) presc.reasons.forEach((r) => reasons.push(r));
     else if (rmRatio !== null && rmRatio < NEURAL_RM_FLOOR) reasons.push("rm");
     return {
@@ -727,6 +741,7 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
       prevDate: prev && dropPct !== null ? prev.date : null,
       dropPct: dropPct !== null ? Math.round(dropPct * 1000) / 10 : null,
       rmRatio: rmRatio !== null ? Math.round(rmRatio * 1000) / 10 : null,
+      zE1rm: zE1rm !== null ? Math.round(zE1rm * 10) / 10 : null,
       presc,
       reasons,
     };
@@ -795,9 +810,12 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
     else if (wellnessScore < 6.5) { well = 1; reasons.push(`Wellness moyen (${wellnessScore.toFixed(1)}/10)`); }
   }
 
-  let neu = 0;
-  if (hasNeural && neural.level === "alert") neu = 2;
-  else if (hasNeural && neural.level === "watch") neu = 1;
+  // Les séries de force (RPE, e1RM) sont un signal bruité : seules, elles plafonnent à « vigilance ».
+  // Elles montent en alerte uniquement si un autre domaine (charge, bien-être, CMJ) confirme.
+  let neuForce = 0;
+  if (hasNeural && neural.level === "alert") neuForce = 2;
+  else if (hasNeural && neural.level === "watch") neuForce = 1;
+  let neu = neuForce;
   if (neural && neural.flagged) {
     neural.flagged.forEach((e) => {
       const parts = [];
@@ -813,6 +831,11 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
     else if (cmjPctChange <= -5) { neu = Math.max(neu, 1); reasons.push(`CMJ en baisse de ${Math.abs(cmjPctChange)}%`); }
   }
 
+  const cmjSignal = hasCmj && cmjPctChange <= -5;
+  if (neuForce === 2 && !(cmjSignal || load >= 1 || well >= 1)) {
+    neu = 1;
+    reasons.push("Signal de force isolé (non confirmé par charge, bien-être ou CMJ) : vigilance seulement");
+  }
   const vals = [load, well, neu];
   const count1 = vals.filter((v) => v >= 1).length;
   const count2 = vals.filter((v) => v === 2).length;

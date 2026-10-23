@@ -33,6 +33,7 @@ import {
 import BodyScan from "../component/BodyScan";
 import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
 import TestsSummary from "../component/TestsSummary";
+import FatigueFeedback from "../component/FatigueFeedback";
 import {
   rediRatio,
   rediRatioHistory,
@@ -3248,6 +3249,15 @@ export default function Dashboard() {
                           </div>
                         )}
                       </div>
+
+                      <FatigueFeedback
+                        athleteId={showAthleteDetail.id}
+                        date={getLocalDateStr(new Date())}
+                        level={cs.level}
+                        label={cs.label}
+                        reasons={cs.reasons}
+                        coachId={currentUser?.uid}
+                      />
 
                       {nl2 && nl2.evaluated > 0 && (
                         <div style={{ marginBottom: 12 }}>
