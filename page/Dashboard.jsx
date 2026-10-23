@@ -549,7 +549,7 @@ export default function Dashboard() {
           : f.actualWeight !== undefined
             ? [{ weight: Number(f.actualWeight), reps: Number(f.actualReps), rpe: Number(f.rpe) }]
             : [];
-        if (sets.length > 0) exercises.push({ key: normalizeExerciseKey(name), name, sets });
+        if (sets.length > 0) exercises.push({ key: normalizeExerciseKey(name), name, sets, rmPercent: Number(ex.rmPercent) > 0 ? Number(ex.rmPercent) : null, prescReps: parseFloat(ex.reps) > 0 ? parseFloat(ex.reps) : null });
       });
       if (exercises.length > 0) out.push({ date: w.date, exercises });
     });
@@ -1031,6 +1031,7 @@ export default function Dashboard() {
             wellnessScore: wScore,
             cmjPctChange: uCmjStatus.pctChange,
             neural,
+            sick: !!(todayW && todayW.sick),
           });
 
           const totalSessions = uWorkouts.length;
@@ -2642,6 +2643,14 @@ export default function Dashboard() {
                       {athlete.crossStatus.emoji} {athlete.crossStatus.label}
                     </span>
                   )}
+                  {athlete.lastWellness && athlete.lastWellness.sick && (
+                    <span
+                      title={athlete.lastWellness.sickType || "Malade"}
+                      style={{ display: "inline-block", fontSize: 11, fontWeight: "bold", color: "#d9695a", background: "rgba(217,105,90,0.12)", border: "1px solid #d9695a", borderRadius: 6, padding: "2px 8px", marginBottom: 6, marginLeft: 6 }}
+                    >
+                      🤒 Malade{athlete.lastWellness.sickType ? ` · ${athlete.lastWellness.sickType}` : ""}
+                    </span>
+                  )}
                   <div style={{ fontSize: 13, color: "#a8a199" }}>
                     Groupe : {athlete.group || "total"}
                     {athlete.todayWorkoutTitle && (
@@ -3265,15 +3274,25 @@ export default function Dashboard() {
                                   </div>
                                   {ratio !== null ? (
                                     <div style={{ position: "relative", height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 5 }}>
-                                      <div style={{ width: `${Math.min(100, ratio)}%`, height: "100%", borderRadius: 5, background: ratio < 80 ? "#d9695a" : "#4fae7d" }} />
-                                      <div style={{ position: "absolute", left: "80%", top: -3, bottom: -3, width: 2, background: "#f3f0ea" }} title="Seuil 80 % du RM" />
+                                      <div style={{ width: `${Math.min(100, ratio)}%`, height: "100%", borderRadius: 5, background: ratio < 80 && !e.presc ? "#d9695a" : "#4fae7d" }} />
+                                      {!e.presc && <div style={{ position: "absolute", left: "80%", top: -3, bottom: -3, width: 2, background: "#f3f0ea" }} title="Seuil 80 % du RM" />}
                                     </div>
                                   ) : (
                                     <div style={{ fontSize: 11, color: "#6f6a62" }}>RM non renseigné pour cet exercice</div>
                                   )}
-                                  {ratio !== null && (
+                                  {e.presc && (
+                                    <div style={{ fontSize: 11, color: e.reasons.includes("load") || e.reasons.includes("rpe") ? "#d9695a" : "#a8a199", marginTop: 3, lineHeight: 1.5 }}>
+                                      Prévu : {e.presc.pct}% × {e.presc.reps} reps = {e.presc.prescribedKg} kg · fait : {e.presc.actualKg} kg (
+                                      {e.presc.loadGapPct > 0 ? "−" : "+"}
+                                      {Math.abs(e.presc.loadGapPct)}%) · RPE {e.presc.rpe}
+                                      {e.presc.expectedRpe !== null ? ` (attendu ≈ ${e.presc.expectedRpe})` : ""}
+                                      {e.reasons.includes("load") ? " → charge nettement sous le prévu avec effort élevé" : ""}
+                                      {e.reasons.includes("rpe") ? " → effort trop élevé pour la charge prévue" : ""}
+                                    </div>
+                                  )}
+                                  {!e.presc && ratio !== null && (
                                     <div style={{ fontSize: 11, color: ratio < 80 ? "#d9695a" : "#a8a199", marginTop: 3 }}>
-                                      {ratio}% du RM enregistré (seuil 80 %)
+                                      {ratio}% du RM enregistré (seuil 80 %) — pas de prescription % RM pour cet exo
                                     </div>
                                   )}
                                 </div>
@@ -3284,7 +3303,7 @@ export default function Dashboard() {
                       )}
 
                       <div style={{ fontSize: 11, color: "#6f6a62", lineHeight: 1.5 }}>
-                        Fatigue nerveuse : 1RM estimé via charge × reps × RPE. Signal si chute &gt; 15 % vs séance précédente ou si le 1RM estimé est &lt; 80 % du RM enregistré.
+                        Fatigue nerveuse : si l'exercice a un % du RM prescrit, on compare la charge faite et le RPE au prévu (signal si ≥ 15 % sous la charge prévue avec RPE ≥ 8, ou RPE ≥ 8 alors que ≥ 3 points de moins étaient attendus à charge normale) ; sinon, 1RM estimé &lt; 80 % du RM enregistré. Dans tous les cas, chute du 1RM estimé &gt; 15 % vs séance précédente.
                       </div>
                     </>
                   )}

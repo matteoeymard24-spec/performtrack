@@ -559,6 +559,81 @@ export function e1rmFromSet(weight, reps, rpe) {
   return w / pct;
 }
 
+// ─── Signaux "prescription" : charge réalisée / RPE vs ce qui était prévu ───
+// Idée : l'entraîneur prescrit un % du RM × des reps. On en déduit la charge
+// prévue (RM × %) et le RPE attendu (reps max possibles à ce % − reps prévues
+// = reps en réserve). Deux signaux de fatigue nerveuse :
+//   • "load" : charge réalisée ≥ 15 % sous la charge prévue ET RPE ≥ 8.
+//   • "rpe"  : charge réalisée proche du prévu (±10 %), mais RPE ≥ 8 alors que
+//              le RPE attendu est ≥ 3 points plus bas (ex. 70 % × 3 reps).
+// Seuils = choix de l'entraîneur confrontés à la littérature : aucune étude
+// ne valide exactement ces valeurs. Le RPE est peu fiable loin de l'échec
+// (erreur de 2-3 reps, Hackett 2018 ; Casanova 2025), d'où l'écart de 3 pts.
+export const PRESC_LOAD_GAP = 0.15;
+export const PRESC_LOAD_NEAR = 0.1;
+export const PRESC_RPE_HIGH = 8;
+export const PRESC_RPE_GAP = 3;
+
+// Reps max possibles à un % du 1RM (inverse de la table RPE ; au-delà de 12
+// reps, extrapolation : ≈ 14 reps à 65 %, ≈ 18-26 reps à 50 %).
+export function maxRepsAtPct(pct) {
+  const p = Number(pct);
+  if (!p || p <= 0) return null;
+  if (p >= 100) return 1;
+  if (p < 68) return Math.min(30, 12 + (68 - p) * 0.5);
+  const keys = Object.keys(PCT_AT_FAILURE).map(Number).sort((a, b) => a - b);
+  for (let i = 0; i < keys.length - 1; i++) {
+    const hi = PCT_AT_FAILURE[keys[i]];
+    const lo = PCT_AT_FAILURE[keys[i + 1]];
+    if (p <= hi && p >= lo) return keys[i] + (hi - p) / (hi - lo);
+  }
+  return 12;
+}
+
+export function expectedRpe(pct, reps) {
+  const mx = maxRepsAtPct(pct);
+  const r = Number(reps);
+  if (mx === null || !r) return null;
+  return Math.max(1, Math.min(10, 10 - Math.max(0, mx - r)));
+}
+
+function medianNum(values) {
+  if (!values.length) return null;
+  const s = [...values].sort((a, b) => a - b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** sets : [{weight, reps, rpe}] ; rm : kg ; pct : % du RM prescrit ; prescReps : reps prévues */
+export function prescriptionSignals(sets, rm, pct, prescReps) {
+  const rmN = Number(rm);
+  const pctN = Number(pct);
+  if (!(rmN > 0) || !(pctN > 0)) return null;
+  const valid = (sets || []).filter((st) => st.weight > 0 && st.reps > 0 && st.rpe >= 1 && st.rpe <= 10);
+  if (!valid.length) return null;
+  const prescribed = (rmN * pctN) / 100;
+  const loadGap = medianNum(valid.map((st) => (prescribed - st.weight) / prescribed)); // > 0 : plus léger que prévu
+  const rpe = medianNum(valid.map((st) => st.rpe));
+  const reps = Number(prescReps) > 0 ? Number(prescReps) : medianNum(valid.map((st) => st.reps));
+  const expected = expectedRpe(pctN, reps);
+  const rpeGap = expected !== null ? rpe - expected : null;
+  const reasons = [];
+  if (loadGap >= PRESC_LOAD_GAP && rpe >= PRESC_RPE_HIGH) reasons.push("load");
+  else if (Math.abs(loadGap) <= PRESC_LOAD_NEAR && rpe >= PRESC_RPE_HIGH && rpeGap !== null && rpeGap >= PRESC_RPE_GAP) reasons.push("rpe");
+  const r1 = (x) => Math.round(x * 10) / 10;
+  return {
+    prescribedKg: r1(prescribed),
+    actualKg: r1(medianNum(valid.map((st) => st.weight))),
+    loadGapPct: Math.round(loadGap * 1000) / 10,
+    rpe: r1(rpe),
+    expectedRpe: expected !== null ? r1(expected) : null,
+    rpeGap: rpeGap !== null ? r1(rpeGap) : null,
+    pct: pctN,
+    reps: r1(reps),
+    reasons,
+  };
+}
+
 function medianOf(values) {
   if (!values.length) return null;
   const s = [...values].sort((a, b) => a - b);
@@ -586,7 +661,7 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
       (s.exercises || []).forEach((e) => {
         const vals = (e.sets || []).map((st) => e1rmFromSet(st.weight, st.reps, st.rpe)).filter((v) => v !== null);
         const m = medianOf(vals);
-        if (m !== null) ex[e.key] = { name: e.name, e1rm: m, n: vals.length };
+        if (m !== null) ex[e.key] = { name: e.name, e1rm: m, n: vals.length, sets: e.sets || [], rmPercent: e.rmPercent, prescReps: e.prescReps };
       });
       return { date: s.date, ex };
     })
@@ -618,8 +693,15 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
     const rm = rmByKey ? Number(rmByKey[key]) : null;
     const rmRatio = rm > 0 ? cur.e1rm / rm : null;
     const reasons = [];
+    // Prescription connue (% du RM + reps prévues) : on juge la charge réalisée
+    // et le RPE vs le prévu. Le seuil "e1RM < 80 % du RM" ne sert plus que pour
+    // les exercices SANS prescription : il pénalisait à tort un athlète dont le
+    // RM enregistré est ancien / trop haut (ou un exo unilatéral comme les fentes)
+    // même quand ses charges progressent.
+    const presc = prescriptionSignals(cur.sets, rm, cur.rmPercent, cur.prescReps);
     if (dropPct !== null && dropPct > NEURAL_DROP_THRESHOLD) reasons.push("drop");
-    if (rmRatio !== null && rmRatio < NEURAL_RM_FLOOR) reasons.push("rm");
+    if (presc) presc.reasons.forEach((r) => reasons.push(r));
+    else if (rmRatio !== null && rmRatio < NEURAL_RM_FLOOR) reasons.push("rm");
     return {
       key,
       name: cur.name,
@@ -627,6 +709,7 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
       prevDate: prev && dropPct !== null ? prev.date : null,
       dropPct: dropPct !== null ? Math.round(dropPct * 1000) / 10 : null,
       rmRatio: rmRatio !== null ? Math.round(rmRatio * 1000) / 10 : null,
+      presc,
       reasons,
     };
   });
@@ -663,18 +746,22 @@ export const FORM_LEVELS = {
   nodata: { label: "Données insuffisantes", color: "#a8a199", emoji: "❔", rank: 4 },
 };
 
-export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctChange, neural }) {
+export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctChange, neural, sick = false }) {
   const hasRedi = rediRatioValue !== null && rediRatioValue !== undefined;
   const hasZ = wellnessZ !== null && wellnessZ !== undefined;
   const hasScore = wellnessScore !== null && wellnessScore !== undefined;
   const hasCmj = cmjPctChange !== null && cmjPctChange !== undefined;
   const hasNeural = neural && neural.level && neural.level !== "none";
 
+  if (!hasRedi && !hasZ && !hasScore && !hasCmj && !hasNeural && sick) {
+    return { level: "watch", ...FORM_LEVELS.watch, detail: "🤒 Malade (déclaré dans le wellness)", reasons: ["🤒 Malade (déclaré dans le wellness)"], domains: { load: 0, wellness: 0, neural: 0 }, sick: true };
+  }
   if (!hasRedi && !hasZ && !hasScore && !hasCmj && !hasNeural) {
     return { level: "nodata", ...FORM_LEVELS.nodata, detail: "Pas assez de données (REDI, wellness, séances de force).", reasons: [], domains: { load: 0, wellness: 0, neural: 0 } };
   }
 
   const reasons = [];
+  if (sick) reasons.push("🤒 Malade (déclaré dans le wellness) : une baisse de performance peut venir de la maladie, pas seulement de la fatigue");
   let load = 0;
   if (hasRedi) {
     if (rediRatioValue > 1.5) { load = 2; reasons.push(`Charge très élevée (REDI ${rediRatioValue.toFixed(2)})`); }
@@ -698,6 +785,8 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
       const parts = [];
       if (e.reasons.includes("drop")) parts.push(`−${e.dropPct}% vs séance précédente`);
       if (e.reasons.includes("rm")) parts.push(`e1RM à ${e.rmRatio}% du RM`);
+      if (e.reasons.includes("load")) parts.push(`${e.presc.actualKg} kg au lieu de ${e.presc.prescribedKg} kg prévus (−${e.presc.loadGapPct}%) avec RPE ${e.presc.rpe}`);
+      if (e.reasons.includes("rpe")) parts.push(`RPE ${e.presc.rpe} alors que ~${e.presc.expectedRpe} attendu (${e.presc.pct}% × ${e.presc.reps} reps)`);
       reasons.push(`Force ${e.name} : ${parts.join(", ")}`);
     });
   }
@@ -711,9 +800,11 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
   const count2 = vals.filter((v) => v === 2).length;
 
   let level = "fit";
+  if (sick) level = "watch";
   if (count2 >= 2 || (count1 === 3 && count2 >= 1)) level = "risk";
   else if ((count2 === 1 && count1 >= 2) || count1 === 3 || neu === 2) level = "fatigue";
   else if (count1 >= 1) level = "watch";
+  if (sick && level === "fit") level = "watch";
 
   const base = FORM_LEVELS[level];
   let label = base.label;
@@ -724,5 +815,5 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
     reasons.length > 0
       ? reasons.join(" · ")
       : "REDI, wellness et performance de force dans la norme individuelle.";
-  return { level, label, color: base.color, emoji: base.emoji, detail, reasons, domains: { load, wellness: well, neural: neu } };
+  return { level, label, color: base.color, emoji: base.emoji, detail, reasons, domains: { load, wellness: well, neural: neu }, sick: !!sick };
 }

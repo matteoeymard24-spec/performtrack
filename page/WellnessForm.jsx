@@ -27,6 +27,8 @@ export default function WellnessForm() {
   const [sommeil, setSommeil] = useState(5);
   const [motivation, setMotivation] = useState(5);
 
+  const [sick, setSick] = useState(false);
+  const [sickType, setSickType] = useState("");
   const [painMap, setPainMap] = useState({});
   const [painTypes, setPainTypes] = useState({});
   const [selectedZone, setSelectedZone] = useState(null);
@@ -55,6 +57,8 @@ export default function WellnessForm() {
         setHydratation(docData.hydratation || 5);
         setSommeil(docData.sommeil || 5);
         setMotivation(docData.motivation || 5);
+        setSick(!!docData.sick);
+        setSickType(docData.sickType || "");
         setPainMap(docData.painMap || {});
         setPainTypes(docData.painTypes || {});
       }
@@ -87,6 +91,8 @@ export default function WellnessForm() {
         hydratation,
         sommeil,
         motivation,
+        sick,
+        sickType: sick ? sickType : "",
         painMap,
         painTypes,
         updatedAt: Timestamp.now(),
@@ -211,6 +217,65 @@ export default function WellnessForm() {
           leftLabel="Pas motivé"
           rightLabel="Très motivé"
         />
+      </div>
+
+      {/* Malade ou non (en plus des douleurs / blessures) */}
+      <div
+        style={{
+          marginBottom: 30,
+          padding: 16,
+          background: sick ? "rgba(217,105,90,0.12)" : "#1a1815",
+          borderRadius: 12,
+          border: `1px solid ${sick ? "rgba(217,105,90,0.6)" : "rgba(255,255,255,0.16)"}`,
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 700, color: "#f3f0ea", fontSize: 16 }}>🤒 Malade aujourd'hui ?</div>
+            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 2 }}>
+              Rhume, fièvre, gastro… (à part des douleurs et blessures). Ton coach le voit dans le tableau de bord.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSick(!sick)}
+            style={{
+              padding: "10px 18px",
+              borderRadius: 999,
+              border: "none",
+              fontWeight: 700,
+              fontSize: 14,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              background: sick ? "#d9695a" : "#4fae7d",
+              color: "white",
+            }}
+          >
+            {sick ? "Oui, malade" : "Non"}
+          </button>
+        </div>
+        {sick && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
+            {["Rhume / mal de gorge", "Fièvre / courbatures", "Digestif", "Autre"].map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setSickType(sickType === t ? "" : t)}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  fontSize: 12,
+                  cursor: "pointer",
+                  background: sickType === t ? "#d9695a" : "transparent",
+                  color: sickType === t ? "white" : "#a8a199",
+                  border: `1px solid ${sickType === t ? "#d9695a" : "rgba(255,255,255,0.2)"}`,
+                }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* BodyScan si douleur */}

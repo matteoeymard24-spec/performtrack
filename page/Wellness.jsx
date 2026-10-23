@@ -226,6 +226,12 @@ export default function Wellness() {
         </div>
       </div>
 
+      {todayEntry && todayEntry.sick && (
+        <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 12, background: "rgba(217,105,90,0.12)", border: "1px solid rgba(217,105,90,0.5)", color: "#f0b3aa", fontSize: 14 }}>
+          🤒 Malade aujourd'hui{todayEntry.sickType ? ` — ${todayEntry.sickType}` : ""}
+        </div>
+      )}
+
       {/* Douleurs du jour (zone, intensité, type et sensation) */}
       {todayEntry && todayEntry.painMap && Object.values(todayEntry.painMap).some((v) => v > 0) && (
         <FoldCard
