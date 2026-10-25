@@ -78,6 +78,7 @@ export default function MyRM() {
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rmSearchQuery, setRmSearchQuery] = useState("");
+  const [showRmSuggest, setShowRmSuggest] = useState(false);
   const [rmCategoryFilter, setRmCategoryFilter] = useState("all");
   // Temps de sprint saisis ici (enregistrés comme un test « sprint » : visibles dans Tests, Dashboard et normes)
   const todayIso = () => {
@@ -486,6 +487,15 @@ export default function MyRM() {
     setCalculated1RM(null);
   };
 
+  const rmSuggestions = (() => {
+    const q = normKey(rmSearchQuery);
+    if (!q) return [];
+    return Object.keys(rmHistory)
+      .filter((ex) => ex !== "vma" && normKey(ex).includes(q) && normKey(ex) !== q)
+      .sort()
+      .slice(0, 8);
+  })();
+
   const exercises = Object.keys(rmHistory)
     .filter((ex) => ex !== "vma")
     .filter((ex) =>
@@ -493,7 +503,7 @@ export default function MyRM() {
     )
     .filter((ex) =>
       rmSearchQuery.trim()
-        ? ex.includes(rmSearchQuery.trim().toLowerCase())
+        ? normKey(ex).includes(normKey(rmSearchQuery))
         : true
     )
     .sort();
@@ -795,23 +805,67 @@ export default function MyRM() {
       {/* ==================== RECHERCHE + CATÉGORIES ==================== */}
       {Object.keys(rmHistory).length > 0 && (
         <div style={{ ...CARD_STYLE, padding: 14 }}>
-          <input
-            type="text"
-            placeholder="🔍 Rechercher un exercice..."
-            value={rmSearchQuery}
-            onChange={(e) => setRmSearchQuery(e.target.value)}
-            style={{
-              width: "100%",
-              padding: 12,
-              borderRadius: 8,
-              border: "1px solid #2a2620",
-              background: "#1a1815",
-              color: "#f3f0ea",
-              boxSizing: "border-box",
-              marginBottom: 12,
-              fontSize: 14,
-            }}
-          />
+          <div style={{ position: "relative", marginBottom: 12 }}>
+            <input
+              type="text"
+              placeholder="🔍 Rechercher un exercice..."
+              value={rmSearchQuery}
+              onChange={(e) => { setRmSearchQuery(e.target.value); setShowRmSuggest(true); }}
+              onFocus={() => setShowRmSuggest(true)}
+              onBlur={() => setTimeout(() => setShowRmSuggest(false), 150)}
+              style={{
+                width: "100%",
+                padding: 12,
+                borderRadius: 8,
+                border: "1px solid #2a2620",
+                background: "#1a1815",
+                color: "#f3f0ea",
+                boxSizing: "border-box",
+                fontSize: 16,
+              }}
+            />
+            {showRmSuggest && rmSuggestions.length > 0 && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "100%",
+                  left: 0,
+                  right: 0,
+                  zIndex: 20,
+                  background: "#1a1815",
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  borderRadius: 8,
+                  marginTop: 4,
+                  maxHeight: 260,
+                  overflowY: "auto",
+                  boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
+                }}
+              >
+                {rmSuggestions.map((name, i) => (
+                  <div
+                    key={name}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      setRmSearchQuery(name);
+                      setRmCategoryFilter("all");
+                      setSelectedExercise(name);
+                      setShowRmSuggest(false);
+                    }}
+                    style={{
+                      padding: "12px 12px",
+                      cursor: "pointer",
+                      fontSize: 14,
+                      color: "#f3f0ea",
+                      textTransform: "capitalize",
+                      borderBottom: i < rmSuggestions.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none",
+                    }}
+                  >
+                    {name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               onClick={() => setRmCategoryFilter("all")}

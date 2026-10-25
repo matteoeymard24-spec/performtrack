@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -8,6 +8,15 @@ const TEXT = "#f3f0ea";
    selected : tableau de valeurs (total, moi, individuel, idGroupe, "sg:idGroupe:idSousGroupe"). Au moins une. */
 export default function TargetPicker({ selected, onChange, customGroups, makeSubGroupTarget, athletes, adminUsers, userId, onUserChange, nameOf, accent = "#e0a13d", currentUid }) {
   const sel = selected && selected.length ? selected : ["total"];
+  const [hideGroups, setHideGroups] = useState(() => {
+    try { return localStorage.getItem("tp_hideGroups") === "1"; } catch { return false; }
+  });
+  const setHide = (v) => {
+    setHideGroups(v);
+    try { localStorage.setItem("tp_hideGroups", v ? "1" : "0"); } catch {}
+  };
+  const groupValues = customGroups.flatMap((g) => [g.id, ...(g.subGroups || []).map((sg) => makeSubGroupTarget(g.id, sg.id))]);
+  const nbSelGroups = sel.filter((v) => groupValues.includes(v)).length;
 
   const toggle = (v) => {
     if (sel.includes(v)) {
@@ -73,7 +82,17 @@ export default function TargetPicker({ selected, onChange, customGroups, makeSub
             )}
           </select>
         )}
-        {customGroups.map((g) => (
+        {customGroups.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setHide(!hideGroups)}
+            style={{ minHeight: 40, padding: "6px 10px", borderRadius: 8, border: "1px dashed rgba(255,255,255,0.25)", background: "transparent", color: MUTED, fontSize: 13, cursor: "pointer", textAlign: "left" }}
+          >
+            {hideGroups ? "▸ Afficher les groupes" : "▾ Masquer les groupes"} ({customGroups.length})
+            {hideGroups && nbSelGroups > 0 ? ` · ${nbSelGroups} coché${nbSelGroups > 1 ? "s" : ""}` : ""}
+          </button>
+        )}
+        {!hideGroups && customGroups.map((g) => (
           <React.Fragment key={g.id}>
             <Row value={g.id} label={`👥 ${g.name}`} />
             {(g.subGroups || []).map((sg) => (

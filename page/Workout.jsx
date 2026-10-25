@@ -952,11 +952,106 @@ export default function Workout() {
   }, [userRole, customGroups, athletes, adminUsers]);
 
   /* ===================== CALCULS ===================== */
+  /* --- RM de l'ATHLÈTE visé (vue admin) ---
+     Avant : l'admin voyait les poids calculés avec SON propre RM, donc trop
+     élevés. Maintenant : on charge le RM de l'athlète choisi (ou de l'unique
+     athlète visé) et on l'utilise pour tous les poids affichés. */
+  const [rmCache, setRmCache] = useState({});
+  const [rmViewId, setRmViewId] = useState("");
+  const rmCtx = showForm
+    ? { groups: [group, ...(extraGroups || [])], uid: targetUserId }
+    : selectedSession
+      ? { groups: [selectedSession.group], uid: selectedSession.targetUserId }
+      : null;
+  const rmCandidates = (() => {
+    if (!isAdminLike || !rmCtx) return [];
+    const out = new Map();
+    const everyone = [...athletes, ...adminUsers];
+    rmCtx.groups.forEach((g) => {
+      if (!g || g === "moi") return;
+      if (g === "individuel") {
+        const u = everyone.find((x) => x.id === rmCtx.uid);
+        if (u) out.set(u.id, u);
+        return;
+      }
+      if (g === "total") { athletes.forEach((a) => out.set(a.id, a)); return; }
+      const sub = findTargetSubGroup(g, customGroups);
+      if (sub) {
+        (sub.athleteIds || []).forEach((id) => { const a = athletes.find((x) => x.id === id); if (a) out.set(id, a); });
+        return;
+      }
+      const cg = customGroups.find((x) => x.id === g);
+      if (cg) (cg.athleteIds || []).forEach((id) => { const a = athletes.find((x) => x.id === id); if (a) out.set(id, a); });
+      athletes.filter((a) => a.group === g).forEach((a) => out.set(a.id, a));
+    });
+    return [...out.values()];
+  })();
+  const rmCandKey = rmCandidates.map((a) => a.id).join(",");
+  const adminOwnSession = isAdminLike && rmCtx && rmCtx.groups.every((g) => g === "moi");
+  useEffect(() => {
+    if (!isAdminLike) return;
+    const ids = rmCandKey ? rmCandKey.split(",") : [];
+    setRmViewId((cur) => (ids.includes(cur) ? cur : ids.length === 1 ? ids[0] : ""));
+  }, [rmCandKey, isAdminLike]);
+  useEffect(() => {
+    if (!isAdminLike || !rmViewId || rmCache[rmViewId]) return;
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "users", rmViewId, "rm"));
+        const m = {};
+        snap.docs.forEach((d) => {
+          const data = d.data();
+          if (d.id === "VMA" || data.exerciseName === "VMA") return;
+          m[normalizeExerciseName(d.id)] = data.kg;
+        });
+        setRmCache((c) => ({ ...c, [rmViewId]: m }));
+      } catch (e) {
+        console.warn("RM athlète:", e);
+        setRmCache((c) => ({ ...c, [rmViewId]: {} }));
+      }
+    })();
+  }, [rmViewId, isAdminLike]);
+  // RM effectivement utilisé pour afficher les poids (null = aucun athlète choisi)
+  const activeRM = !isAdminLike || adminOwnSession ? userRM : rmCandidates.length === 0 ? userRM : rmCache[rmViewId] || null;
+  const rmPicker =
+    isAdminLike && !adminOwnSession && rmCandidates.length > 0 ? (
+      <div style={{ position: "sticky", top: 0, zIndex: 5, background: "#0d0c0a", padding: "8px 0", marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
+          ⚖️ Poids cible calculés avec le RM de :{!rmViewId ? " (choisis un athlète)" : ""}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {rmCandidates.map((a) => {
+            const on = a.id === rmViewId;
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setRmViewId(on && rmCandidates.length > 1 ? "" : a.id)}
+                style={{
+                  padding: "8px 12px",
+                  minHeight: 36,
+                  borderRadius: 999,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  border: on ? "1px solid #e0a13d" : "1px solid #2a2620",
+                  background: on ? "rgba(224,161,61,0.18)" : "#151310",
+                  color: on ? "#e0a13d" : "#f3f0ea",
+                  fontWeight: on ? 700 : 400,
+                }}
+              >
+                {(a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète")}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    ) : null;
+
   const calculateWeight = (rmName, percent) => {
     if (!rmName || !percent) return "-";
     // Normaliser le nom recherché
     const normalizedName = normalizeExerciseName(rmName);
-    const rm = userRM[normalizedName];
+    const rm = activeRM ? activeRM[normalizedName] : null;
     if (!rm) return "-";
     return Math.round((rm * percent) / 100);
   };
@@ -6196,6 +6291,7 @@ export default function Workout() {
           })()}
 
           {/* Blocs */}
+          {workoutType === "muscu" && rmPicker}
           {blocks.map((block, bIdx) => (
             <div
               key={bIdx}
@@ -7145,7 +7241,14 @@ export default function Workout() {
                         (() => {
                           const lookupName = ex.rmName || ex.name;
                           const normalizedName = normalizeExerciseName(lookupName);
-                          const rm = userRM[normalizedName];
+                          if (!activeRM) {
+                            return (
+                              <div style={{ fontSize: 12, color: "#a8a199" }}>
+                                ⚖️ Choisis un athlète ci-dessus pour voir son poids cible.
+                              </div>
+                            );
+                          }
+                          const rm = activeRM[normalizedName];
                           if (rm) {
                             const targetWeight = Math.round(
                               (rm * ex.rmPercent) / 100
@@ -8116,6 +8219,7 @@ export default function Workout() {
           )}
 
           {/* Blocs exercices */}
+          {rmPicker}
           {selectedSession.blocks?.map((block, bIdx) => (
             <div
               key={bIdx}
@@ -8460,7 +8564,16 @@ export default function Workout() {
                             <strong style={{ color: "#e0a13d" }}>Élastique</strong>
                           ) : (
                             <>
-                              {ex.rmPercent}% ({calculateWeight(ex.rmName || ex.name, ex.rmPercent)} kg)
+                              {ex.rmPercent}%{" "}
+                              {activeRM
+                                ? `(${calculateWeight(ex.rmName || ex.name, ex.rmPercent)} kg)`
+                                : "(choisis un athlète)"}
+                              {ex.rmName &&
+                                normalizeExerciseName(ex.rmName) !== normalizeExerciseName(ex.name) && (
+                                  <span style={{ color: "#d9695a" }}>
+                                    {" "}⚠️ calculé sur le RM « {ex.rmName} » (ancien réglage de la séance)
+                                  </span>
+                                )}
                             </>
                           )}
                           {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
