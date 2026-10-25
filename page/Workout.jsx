@@ -1047,6 +1047,54 @@ export default function Workout() {
       </div>
     ) : null;
 
+  // Unilatéral : réglage de la séance s'il existe, sinon celui mémorisé pour ce
+  // NOM d'exercice dans la banque d'exercices (exerciseMedia.unilateral).
+  const isUniEx = (ex) =>
+    !ex ? false : ex.unilateral !== undefined ? !!ex.unilateral : !!exerciseMediaLibrary[normalizeExerciseName(ex.name)]?.unilateral;
+
+  // À l'enregistrement d'une séance : mémorise (ou retire) « unilatéral » sur le
+  // nom de chaque exercice, pour que les prochaines séances le reprennent seules.
+  const syncUnilateralBank = async (blocksToSave) => {
+    try {
+      for (const b of blocksToSave || []) {
+        for (const ex of b.exercises || []) {
+          const key = normalizeExerciseName(ex.name);
+          if (!key || ex.unilateral === undefined) continue;
+          const want = !!ex.unilateral;
+          const lib = exerciseMediaLibrary[key];
+          if (!!lib?.unilateral === want && (lib?.unilateral !== undefined || !want)) {
+            if (lib || !want) continue;
+          }
+          if (!want && !lib) continue;
+          await setDoc(
+            doc(db, "exerciseMedia", key),
+            { name: lib?.name || formatExerciseDisplayName(ex.name), unilateral: want, updatedAt: serverTimestamp() },
+            { merge: true }
+          );
+          setExerciseMediaLibrary((prev) => ({ ...prev, [key]: { ...(prev[key] || { name: ex.name }), unilateral: want } }));
+        }
+      }
+    } catch (e) {
+      console.warn("Sync unilatéral:", e);
+    }
+  };
+
+  // Exo aux haltères bilatéral : le poids cible est le TOTAL des deux, on
+  // ajoute la charge par haltère (arrondie au 0,5 kg).
+  const dbSplit = (ex, total) => {
+    if (!ex || !total || total === "-" || isUniEx(ex)) return "";
+    if (!/halt[eè]re|dumbbell|\bdb\b/i.test(ex.name || "")) return "";
+    return ` = 2 × ${Math.round((Number(total) / 2) * 2) / 2} kg`;
+  };
+
+  // Poids cible d'après MES propres RM (saisie de séance par l'utilisateur
+  // connecté) — jamais ceux de l'athlète affiché en vue admin.
+  const calcOwnWeight = (rmName, percent) => {
+    if (!rmName || !percent) return "-";
+    const rm = userRM[normalizeExerciseName(rmName)];
+    return rm ? Math.round((rm * percent) / 100) : "-";
+  };
+
   const calculateWeight = (rmName, percent) => {
     if (!rmName || !percent) return "-";
     // Normaliser le nom recherché
@@ -1244,13 +1292,13 @@ export default function Workout() {
         series = normalized.series;
       } else {
         // Créer de nouvelles séries
-        const defaultWeight = calculateWeight(exercise.name, exercise.rmPercent) || 0;
+        const defaultWeight = Number(calcOwnWeight(exercise.name, exercise.rmPercent)) || 0;
         for (let i = 0; i < numSeries; i++) {
           series.push({
             set: i + 1,
             actualWeight: defaultWeight,
             actualReps: exercise.reps || 0,
-            ...(exercise.unilateral
+            ...(isUniEx(exercise)
               ? { actualRepsR: exercise.reps || 0, actualRepsL: exercise.reps || 0 }
               : {}),
             rpe: 5
@@ -1996,6 +2044,7 @@ export default function Workout() {
     };
 
     try {
+      if (isAdminLike) await syncUnilateralBank(blocks);
       if (isEdit && editId) {
         // En modification, on ne touche pas à createdBy / createdAt (l'auteur
         // et la date de création d'origine restent ceux de la séance).
@@ -2524,7 +2573,12 @@ export default function Workout() {
               // Le RM suit toujours le NOM de l'exercice : on retire tout
               // ancien « rmName » figé (sinon un DC haltère restait calculé
               // sur le RM du Squat d'avant).
-              if (field === "name") delete updated.rmName;
+              if (field === "name") {
+                delete updated.rmName;
+                // Nom déjà connu comme unilatéral (ou non) : on reprend le réglage mémorisé.
+                const known = exerciseMediaLibrary[normalizeExerciseName(val)];
+                if (known && known.unilateral !== undefined) updated.unilateral = !!known.unilateral;
+              }
               return updated;
             }),
           }
@@ -7087,14 +7141,14 @@ export default function Workout() {
                           gap: 8,
                           marginBottom: 10,
                           fontSize: 13,
-                          color: ex.unilateral ? "#e0a13d" : "#a8a199",
+                          color: isUniEx(ex) ? "#e0a13d" : "#a8a199",
                           cursor: "pointer",
                           minHeight: 36,
                         }}
                       >
                         <input
                           type="checkbox"
-                          checked={!!ex.unilateral}
+                          checked={isUniEx(ex)}
                           onChange={(e) =>
                             updateExercise(bIdx, eIdx, "unilateral", e.target.checked)
                           }
@@ -7102,7 +7156,7 @@ export default function Workout() {
                         />
                         <span>
                           Unilatéral — reps <strong>par côté</strong>
-                          {ex.unilateral
+                          {isUniEx(ex)
                             ? ` (${ex.reps || 0} D + ${ex.reps || 0} G, même charge)`
                             : ""}
                         </span>
@@ -7281,6 +7335,9 @@ export default function Workout() {
                                 <div>
                                   • {ex.rmPercent}% de {rm} kg ={" "}
                                   <strong>{targetWeight} kg</strong>
+                                  {dbSplit(ex, targetWeight) && (
+                                    <strong style={{ color: "#e0a13d" }}>{dbSplit(ex, targetWeight)} par haltère</strong>
+                                  )}
                                 </div>
                               </div>
                             );
@@ -8560,7 +8617,7 @@ export default function Workout() {
                         >
                           {block.timerMode === "emom" || block.timerMode === "amrap"
                             ? ex.reps
-                            : `${ex.series} × ${ex.reps}${ex.unilateral ? " /côté (D+G)" : ""}`}{" "}
+                            : `${ex.series} × ${ex.reps}${isUniEx(ex) ? " /côté (D+G)" : ""}`}{" "}
                           @{" "}
                           {ex.rmPercent === "PDC" ? (
                             <strong style={{ color: "#e0a13d" }}>PDC</strong>
@@ -8570,7 +8627,7 @@ export default function Workout() {
                             <>
                               {ex.rmPercent}%{" "}
                               {activeRM
-                                ? `(${calculateWeight(ex.name, ex.rmPercent)} kg)`
+                                ? `(${calculateWeight(ex.name, ex.rmPercent)} kg${dbSplit(ex, calculateWeight(ex.name, ex.rmPercent))})`
                                 : "(choisis un athlète)"}
                             </>
                           )}
@@ -9357,27 +9414,37 @@ export default function Workout() {
                       {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
                         // Exercices aux haltères : la charge saisie est le
                         // TOTAL des deux haltères (30 kg par main = 60 kg).
-                        const isDb = /halt[eè]re|dumbbell|\bdb\b/i.test(
-                          currentExerciseFeedback.exercise.name || ""
-                        );
+                        const exo = currentExerciseFeedback.exercise;
+                        const isDb = /halt[eè]re|dumbbell|\bdb\b/i.test(exo.name || "");
+                        const uni = isUniEx(exo);
+                        const w = Number(serie.actualWeight) || 0;
+                        const target = Number(calcOwnWeight(exo.name, exo.rmPercent)) || 0;
+                        const suspicious = isDb && !uni && target > 0 && w > 0 && w < target * 0.6;
                         return (
-                          <div
-                            style={{
-                              marginTop: 6,
-                              fontSize: 12,
-                              color: isDb ? "#e0a13d" : "#a8a199",
-                              fontWeight: isDb ? 600 : 400,
-                            }}
-                          >
-                            💡 Haltères : indique le total des deux (ex. 30 kg
-                            par main = 60 kg).
+                          <div style={{ marginTop: 6, fontSize: 12 }}>
+                            {isDb && !uni && (
+                              <div style={{ color: "#e0a13d", fontWeight: 600 }}>
+                                💡 Haltères : indique le total des deux (ex. 30 kg par main = 60 kg).
+                                {w > 0 ? ` Là : ${Math.round((w / 2) * 2) / 2} kg par main.` : ""}
+                              </div>
+                            )}
+                            {isDb && uni && (
+                              <div style={{ color: "#e0a13d", fontWeight: 600 }}>
+                                💡 Unilatéral : indique le poids d'UN seul haltère.
+                              </div>
+                            )}
+                            {suspicious && (
+                              <div style={{ color: "#d9695a", marginTop: 4 }}>
+                                ⚠️ Charge prévue ≈ {target} kg au total. As-tu saisi le poids d'une seule main ? Il faut le total des deux.
+                              </div>
+                            )}
                           </div>
                         );
                       })()}
                     </div>
 
                     {/* Répétitions */}
-                    {currentExerciseFeedback.exercise.unilateral ? (
+                    {isUniEx(currentExerciseFeedback.exercise) ? (
                       <div style={{ marginBottom: 14 }}>
                         <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: "bold" }}>
                           Répétitions effectuées (par côté)
@@ -9417,6 +9484,11 @@ export default function Workout() {
                         <div style={{ marginTop: 6, fontSize: 12, color: "#a8a199" }}>
                           💡 Charge = celle d'un côté. Le RPE ci-dessous = côté le plus dur.
                         </div>
+                        {(Number(serie.actualRepsR ?? serie.actualReps) === 0 || Number(serie.actualRepsL ?? serie.actualReps) === 0) && (
+                          <div style={{ marginTop: 4, fontSize: 12, color: "#d9695a" }}>
+                            ⚠️ Un côté est à 0 : cette série ne sera pas prise en compte pour ton RM. Remplis les deux côtés.
+                          </div>
+                        )}
                       </div>
                     ) : (
                     <div style={{ marginBottom: 14 }}>

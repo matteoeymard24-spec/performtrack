@@ -147,12 +147,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // ========== ARCHIVED ATHLETES (RM / tests / poids gardés à la suppression
-    // d'un athlète, restaurés s'il revient) — admins uniquement ==========
-    match /archivedAthletes/{userId} {
-      allow read, write: if isAdmin();
-    }
-
     // ========== EXERCISE MEDIA (photos/gifs de démonstration, une seule
     // fois par nom d'exercice — voir Workout.jsx) ==========
     match /exerciseMedia/{exerciseKey} {
@@ -176,31 +170,16 @@ service cloud.firestore {
       // Écriture : admins uniquement.
       allow write: if isAdmin();
     }
+    // ========== ARCHIVED ATHLETES (athlètes archivés, voir page/Athletes.jsx) ==========
+    // Réservé aux admins : contient une copie du profil archivé.
+    match /archivedAthletes/{athleteId} {
+      allow read, write: if isAdmin();
+    }
     // ========== FIXTURES (matchs et jours de compétition, voir
     // component/PlanningPanel.jsx) ==========
     match /fixtures/{fixtureId} {
       allow read: if isSignedIn();
-
-      // Admins : tout. Un athlète peut gérer SES matchs perso : portée
-      // "user:<son uid>" uniquement, créés par lui, sans pouvoir les
-      // réattribuer à quelqu'un d'autre.
-      allow create: if isAdmin() || (
-        isSignedIn() &&
-        request.resource.data.scope == ('user:' + request.auth.uid) &&
-        request.resource.data.createdBy == request.auth.uid
-      );
-      allow update: if isAdmin() || (
-        isSignedIn() &&
-        resource.data.createdBy == request.auth.uid &&
-        resource.data.scope == ('user:' + request.auth.uid) &&
-        request.resource.data.scope == ('user:' + request.auth.uid) &&
-        request.resource.data.createdBy == request.auth.uid
-      );
-      allow delete: if isAdmin() || (
-        isSignedIn() &&
-        resource.data.createdBy == request.auth.uid &&
-        resource.data.scope == ('user:' + request.auth.uid)
-      );
+      allow write: if isAdmin();
     }
   }
 }

@@ -66,6 +66,11 @@ export default function MyRM() {
   const [viewMode, setViewMode] = useState("moi"); // moi | admin | athlete
   const [viewGroup, setViewGroup] = useState(""); // "" = tous, "none" = sans groupe, idGroupe, "sg:gid:sid"
   const uid = viewUid || currentUser?.uid;
+  // Anti-mélange : si on change d'athlète pendant un chargement, la réponse
+  // tardive de l'ancien athlète est ignorée (sinon ses RM s'afficheraient sous
+  // le nom du nouveau, et « Modifier » écrirait sur le mauvais compte).
+  const uidRef = useRef(uid);
+  uidRef.current = uid;
   useEffect(() => {
     if (!isAdminLike) return;
     (async () => {
@@ -107,6 +112,7 @@ export default function MyRM() {
   const [selectedExercise, setSelectedExercise] = useState(null);
   const [loading, setLoading] = useState(true);
   const [rmSearchQuery, setRmSearchQuery] = useState("");
+  const [bankUni, setBankUni] = useState([]);
   const [showRmSuggest, setShowRmSuggest] = useState(false);
   const [rmCategoryFilter, setRmCategoryFilter] = useState("all");
   // Temps de sprint saisis ici (enregistrés comme un test « sprint » : visibles dans Tests, Dashboard et normes)
@@ -165,6 +171,7 @@ export default function MyRM() {
 
   const loadRM = async () => {
     if (!currentUser) return;
+    const loadedFor = uid;
 
     try {
       const [rmSnap, exerciseMediaSnap] = await Promise.all([
@@ -176,6 +183,7 @@ export default function MyRM() {
       // elle-même, qui peut être restée "autre" tant qu'elle n'a pas été
       // resynchronisée (voir bouton admin "Resynchroniser les catégories").
       const catalogCategoryByKey = {};
+      setBankUni(exerciseMediaSnap.docs.filter((d) => d.data().unilateral).map((d) => normKey(d.id)));
       exerciseMediaSnap.docs.forEach((d) => {
         const cat = d.data().category;
         if (cat) catalogCategoryByKey[normKey(d.id)] = normalizeCategoryValue(cat);
@@ -192,7 +200,7 @@ export default function MyRM() {
 
       rmSnap.docs.forEach((d) => {
         const data = d.data();
-        const name = (data.exerciseName || d.id).toLowerCase();
+        const name = normKey(data.exerciseName || d.id);
 
         // VMA
         if (name === "vma" || d.id === "VMA") {
@@ -204,6 +212,8 @@ export default function MyRM() {
           cmjData = data;
           cmjHist = data.history || [];
         } else {
+          // Doublon accentué / non accentué du même exo : on garde la fiche qui a des données.
+          if (grouped[name] && grouped[name].length > 0 && (data.kg === null || data.kg === undefined) && !(data.history || []).length) return;
           // RM normaux — l'historique complet (plusieurs points dans le
           // temps) vient du champ "history" ; à défaut (anciennes fiches
           // sans historique, ou fiche jamais testée avec kg:null), on
@@ -258,7 +268,7 @@ export default function MyRM() {
         categories[lk] = category;
         autoCreatedMap[lk] = true;
       });
-      if (toCreate.length > 0) {
+      if (toCreate.length > 0 && uid === currentUser.uid) {
         Promise.all(
           toCreate.map(({ key, category }) =>
             setDoc(
@@ -281,6 +291,7 @@ export default function MyRM() {
         grouped[ex].sort((a, b) => new Date(a.date) - new Date(b.date));
       });
 
+      if (uidRef.current !== loadedFor) return;
       setRmHistory(grouped);
       setRmCategories(categories);
       setRmAutoCreated(autoCreatedMap);
@@ -296,6 +307,8 @@ export default function MyRM() {
   };
 
   useEffect(() => {
+    setRmHistory({});
+    setFbEntries([]);
     loadRM();
   }, [currentUser, uid]);
 
@@ -319,8 +332,10 @@ export default function MyRM() {
 
   const loadSessionCmj = async () => {
     if (!currentUser) return;
+    const loadedFor = uid;
     try {
       const snap = await getWorkoutDocs();
+      if (uidRef.current !== loadedFor) return;
       setFbEntries(
         extractFeedbackExercises(
           snap.docs.map((d) => ({ id: d.id, ...d.data() })),
@@ -562,6 +577,50 @@ export default function MyRM() {
     }
   };
 
+  /* Remet UN exercice au calcul des retours (corrige un RM faussé) : la valeur
+     devient celle de la dernière séance exploitable et la courbe est refaite
+     à partir des séances (≤ 10 reps, RPE ≥ 7). Remplace aussi une valeur testée. */
+  const resetFromFeedback = async (name) => {
+    const key = normKey(name);
+    const pts = [];
+    fbEntries.forEach((e) => {
+      if (normKey(e.exercise) !== key) return;
+      const vals = (e.sets || [])
+        .filter((st) => st.reps && st.reps <= 10 && st.rpe && st.rpe >= 7)
+        .map((st) => e1rmFromSet(st.weight, st.reps, st.rpe))
+        .filter((v) => v !== null)
+        .sort((x, y) => x - y);
+      if (!vals.length) return;
+      const m = vals.length % 2 ? vals[(vals.length - 1) / 2] : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2;
+      pts.push({ date: e.date, kg: Math.round(m * 10) / 10, n: vals.length });
+    });
+    if (!pts.length) {
+      alert("Aucune série exploitable dans les retours (il faut au moins une série à 10 reps maximum avec RPE 7 ou plus).");
+      return;
+    }
+    pts.sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+    const last = pts[pts.length - 1];
+    if (!window.confirm(`Remettre « ${name} » à ${last.kg} kg (calculé depuis ${pts.length} séance(s)) ? La valeur actuelle et la courbe seront remplacées.`)) return;
+    try {
+      await setDoc(
+        doc(db, "users", uid, "rm", key),
+        {
+          exerciseName: key,
+          kg: last.kg,
+          updatedAt: new Date().toISOString(),
+          autoAdjusted: true,
+          autoCreated: false,
+          seriesUsedForRM: last.n,
+          history: pts.slice(-20).map((pt) => ({ date: `${pt.date}T12:00:00.000Z`, kg: pt.kg, autoAdjusted: true, rebuilt: true })),
+        },
+        { merge: true }
+      );
+      loadRM();
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
+  };
+
   const handleEditRM = (exerciseName) => {
     const history = rmHistory[exerciseName];
     const latest = history && history.length > 0 ? history[history.length - 1] : null;
@@ -589,7 +648,7 @@ export default function MyRM() {
 
   /* Précision de charge selon le type d'exercice (déduit du nom + du réglage
      « Unilatéral » des séances où l'exo a été fait). */
-  const uniKeys = new Set(fbEntries.filter((e) => e.unilateral).map((e) => normKey(e.exercise)));
+  const uniKeys = new Set([...fbEntries.filter((e) => e.unilateral).map((e) => normKey(e.exercise)), ...bankUni]);
   const loadNote = (name, kg) => {
     const isDb = /halt[eè]re|dumbbell|\bdb\b/i.test(name || "");
     const isUni = uniKeys.has(normKey(name)) || /unilat|bulgare|1 bras|un bras|single/i.test(name || "");
@@ -1303,6 +1362,15 @@ export default function MyRM() {
                   >
                     ✏️ Modifier
                   </button>
+                  {fbEntries.some((e) => normKey(e.exercise) === normKey(selectedExercise)) && (
+                    <button
+                      onClick={() => resetFromFeedback(selectedExercise)}
+                      title="Recalculer le RM depuis les retours de séance"
+                      style={{ padding: "8px 14px", background: "#2a2620", color: "#e0a13d", border: "1px solid #e0a13d", borderRadius: 8, cursor: "pointer", fontSize: 14 }}
+                    >
+                      🔄 Recalculer
+                    </button>
+                  )}
                   <button
                     onClick={() => setSelectedExercise(null)}
                     style={{
