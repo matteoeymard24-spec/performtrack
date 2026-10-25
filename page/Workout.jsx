@@ -351,6 +351,8 @@ export default function Workout() {
   const [extraGroups, setExtraGroups] = useState([]);
   const [targetUserId, setTargetUserId] = useState("");
   const [formDate, setFormDate] = useState(new Date());
+  // Horaire d'entraînement (facultatif, "HH:MM") : utile quand un athlète a plusieurs séances le même jour
+  const [sessionTime, setSessionTime] = useState("");
   const [workoutType, setWorkoutType] = useState("muscu");
 
   const [athletes, setAthletes] = useState([]);
@@ -465,6 +467,27 @@ export default function Workout() {
   const duplicatingDayLock = useRef(false);
   const duplicatingWeekLock = useRef(false);
   const duplicatingSessionLock = useRef(false);
+
+  /* ---- Dialogues internes (remplacent window.confirm / window.alert) ----
+     Chrome finit par bloquer les boîtes de dialogue d'une page ("Empêcher cette page d'en créer
+     d'autres") : confirm() renvoie alors « non » sans rien afficher et alert() n'affiche plus rien,
+     donc une suppression ou une duplication semble ne rien faire. Ces versions internes ne se bloquent pas. */
+  const [confirmDlg, setConfirmDlg] = useState(null);
+  const [toasts, setToasts] = useState([]);
+  const askConfirm = (message) =>
+    new Promise((resolve) => setConfirmDlg({ message: String(message), resolve }));
+  const closeConfirm = (value) => {
+    setConfirmDlg((d) => {
+      if (d) d.resolve(value);
+      return null;
+    });
+  };
+  const alert = (message) => {
+    const id = Date.now() + Math.random();
+    const text = String(message);
+    setToasts((prev) => [...prev.slice(-3), { id, text }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
+  };
 
   /* ===================== GROUPES PERSONNALISÉS ===================== */
   const [customGroups, setCustomGroups] = useState([]);
@@ -745,7 +768,7 @@ export default function Workout() {
           const sess = await findSessionsForTargets((gv) => targets.includes(gv));
           if (
             sess.length > 0 &&
-            window.confirm(
+            await askConfirm(
               `Sous-groupe(s) retiré(s) : ${removed.map((r) => r.name).join(", ")}.\n${sess.length} séance(s) liée(s) seront supprimées. OK pour les supprimer ? (Annuler = les garder)`
             )
           ) {
@@ -818,7 +841,7 @@ export default function Workout() {
       const target = makeSubGroupTarget(g.id, sg.id);
       const sess = await findSessionsForTargets((gv) => gv === target);
       if (
-        !window.confirm(
+        !await askConfirm(
           `Supprimer le sous-groupe "${sg.name}" ?\n\n` +
             `Les athlètes restent dans "${g.name}". ${sess.length} séance(s) créée(s) pour ce sous-groupe seront aussi supprimées.`
         )
@@ -864,7 +887,7 @@ export default function Workout() {
         (gv) => gv === groupId || (typeof gv === "string" && gv.startsWith(`${SUBGROUP_PREFIX}${groupId}:`))
       );
       if (
-        !window.confirm(
+        !await askConfirm(
           `Supprimer le groupe "${g?.name || ""}" avec ses sous-groupes ?\n\n` +
             `${sess.length} séance(s) créée(s) pour ce groupe ou ses sous-groupes seront aussi supprimées.`
         )
@@ -1527,7 +1550,7 @@ export default function Workout() {
         });
       });
       if (missing.length > 0) {
-        const confirmEnd = window.confirm(
+        const confirmEnd = await askConfirm(
           `⚠️ ${missing.length} exercice(s) n'ont pas de feedback enregistré (tu n'as pas cliqué sur "✅ Valider" dans leur popup) :\n\n${missing.join("\n")}\n\nSans ce feedback, ces exercices ne pourront pas mettre à jour tes RM dans "Mes RM".\n\nTerminer quand même la séance ?`
         );
         if (!confirmEnd) return;
@@ -1651,7 +1674,7 @@ export default function Workout() {
         existingSnap.docs
           .map((d) => d.data())
           .filter((w) => targetDates.has(w.date))
-          .map((w) => `${w.date}|${w.title}|${w.group}|${w.targetUserId || ""}`)
+          .map((w) => `${w.date}|${w.title}|${w.group}|${w.targetUserId || ""}|${w.time || ""}`)
       );
 
       let created = 0;
@@ -1660,7 +1683,7 @@ export default function Workout() {
         const origDate = new Date(s.date + "T12:00:00");
         origDate.setDate(origDate.getDate() + 7);
         const newDate = getLocalDateStr(origDate);
-        const key = `${newDate}|${s.title}|${s.group}|${s.targetUserId || ""}`;
+        const key = `${newDate}|${s.title}|${s.group}|${s.targetUserId || ""}|${s.time || ""}`;
         if (existingKeys.has(key)) {
           skipped++;
           continue;
@@ -1669,6 +1692,7 @@ export default function Workout() {
         await addDoc(collection(db, "workout"), {
           title: s.title,
           date: newDate,
+          time: s.time || null,
           group: s.group,
           targetUserId: s.targetUserId || null,
           blocks: s.blocks,
@@ -1732,13 +1756,13 @@ export default function Workout() {
         existingSnap.docs
           .map((d) => d.data())
           .filter((w) => w.date === duplicateDayTarget)
-          .map((w) => `${w.date}|${w.title}|${w.group}|${w.targetUserId || ""}`)
+          .map((w) => `${w.date}|${w.title}|${w.group}|${w.targetUserId || ""}|${w.time || ""}`)
       );
 
       let created = 0;
       let skipped = 0;
       for (const s of daySessions) {
-        const key = `${duplicateDayTarget}|${s.title}|${s.group}|${s.targetUserId || ""}`;
+        const key = `${duplicateDayTarget}|${s.title}|${s.group}|${s.targetUserId || ""}|${s.time || ""}`;
         if (existingKeys.has(key)) {
           skipped++;
           continue;
@@ -1747,6 +1771,7 @@ export default function Workout() {
         await addDoc(collection(db, "workout"), {
           title: s.title,
           date: duplicateDayTarget,
+          time: s.time || null,
           group: s.group,
           targetUserId: s.targetUserId || null,
           blocks: s.blocks,
@@ -1802,6 +1827,7 @@ export default function Workout() {
         const data = {
           title: sessionToDuplicate.title,
           date: duplicateTargetDate,
+          time: sessionToDuplicate.time || null,
           group: targetGroup,
           targetUserId: targetGroup === "individuel" ? duplicateTargetUser : null,
           blocks: sessionToDuplicate.blocks,
@@ -1858,6 +1884,7 @@ export default function Workout() {
     const payload = {
       title,
       date: getLocalDateStr(formDate),
+      time: sessionTime || null,
       group,
       targetUserId: group === "individuel" ? targetUserId : null,
       blocks,
@@ -1938,6 +1965,7 @@ export default function Workout() {
     setIsEdit(false);
     setEditId(null);
     setTitle("");
+    setSessionTime("");
     setGroup("total");
     setExtraGroups([]);
     setTargetUserId("");
@@ -1967,6 +1995,7 @@ export default function Workout() {
     setEditId(session.id);
     setTitle(session.title);
     setFormDate(new Date(session.date + "T12:00:00"));
+    setSessionTime(session.time || "");
     setGroup(session.group || "total");
     setRemovedItems([]);
     setExtraGroups([]);
@@ -2008,7 +2037,7 @@ export default function Workout() {
   };
 
   const deleteSession = async (id) => {
-    if (!window.confirm("Supprimer cette séance ?")) return;
+    if (!await askConfirm("Supprimer cette séance ?")) return;
     try {
       const toRemember = events.find((e) => e.id === id);
       await deleteDoc(doc(db, "workout", id));
@@ -2029,7 +2058,7 @@ export default function Workout() {
     const dayEvents = events.filter((e) => e.date === dateStr);
     if (dayEvents.length === 0) return;
     if (
-      !window.confirm(
+      !await askConfirm(
         `Supprimer les ${dayEvents.length} séance(s) du ${new Date(
           dateStr + "T12:00:00"
         ).toLocaleDateString("fr-FR")} ? Cette action est irréversible.`
@@ -2065,7 +2094,7 @@ export default function Workout() {
     );
     if (weekEvents.length === 0) return;
     if (
-      !window.confirm(
+      !await askConfirm(
         `Supprimer les ${weekEvents.length} séance(s) de la semaine du ${monday.toLocaleDateString(
           "fr-FR"
         )} au ${sunday.toLocaleDateString("fr-FR")} ? Cette action est irréversible.`
@@ -2668,7 +2697,7 @@ export default function Workout() {
   const [normalizingRM, setNormalizingRM] = useState(false);
   const normalizeAllRMKeys = async () => {
     if (
-      !window.confirm(
+      !await askConfirm(
         "Normaliser les noms de toutes les fiches Mes RM (accents, majuscules) ?\nLes valeurs et historiques sont conservés (fusion si doublon)."
       )
     )
@@ -2746,7 +2775,7 @@ export default function Workout() {
       return;
     }
     if (
-      !window.confirm(
+      !await askConfirm(
         `Renommer "${oldName}" en "${newName}" ?\n\nÇa mettra à jour TOUTES les séances (passées et futures) qui utilisent ce nom, ainsi que sa photo/gif partagé.`
       )
     ) {
@@ -3069,7 +3098,7 @@ export default function Workout() {
       : entry.usedInSessions || entry.fromRM
       ? `Retirer "${entry.name}" de cette liste ? Les séances existantes qui l'utilisent ne sont pas modifiées, mais il n'apparaîtra plus ici ni dans les suggestions tant que tu ne l'auras pas rajouté.`
       : `Supprimer "${entry.name}" de la liste ? Il n'est utilisé dans aucune séance pour l'instant, il disparaîtra complètement (tu pourras toujours le retaper à la main plus tard).`;
-    if (!window.confirm(msg)) return;
+    if (!await askConfirm(msg)) return;
     try {
       if (hasMedia && entry.usedInSessions) {
         await updateDoc(doc(db, "exerciseMedia", entry.key), {
@@ -3276,12 +3305,12 @@ export default function Workout() {
     saveExerciseMedia(exerciseName, file, `${bIdx}-${eIdx}`);
   };
 
-  const removeMedia = (bIdx, eIdx) => {
+  const removeMedia = async (bIdx, eIdx) => {
     const exerciseName = blocks[bIdx]?.exercises[eIdx]?.name?.trim();
     const mediaKey = normalizeExerciseName(exerciseName);
     if (!mediaKey || !exerciseMediaLibrary[mediaKey]) return;
     if (
-      !window.confirm(
+      !await askConfirm(
         `Supprimer la photo/gif de "${exerciseName}" ? Elle disparaîtra de TOUTES les séances qui utilisent cet exercice.`
       )
     ) {
@@ -3491,6 +3520,9 @@ export default function Workout() {
     cycleScopes ? cycleInScope(f, cycleScopes) : !isIndividual(f)
   );
 
+  // Tri d'une journée : séances avec horaire d'abord (par heure), puis sans horaire
+  const byTime = (a, b) => (a.time || "99:99").localeCompare(b.time || "99:99");
+
   /* ===================== CALENDRIER MENSUEL ===================== */
   const renderCalendar = () => {
     const year = currentMonth.getFullYear();
@@ -3519,9 +3551,9 @@ export default function Workout() {
       const dateStr = getLocalDateStr(new Date(year, month, day));
       const isToday = dateStr === todayStr;
       const isSelected = selectedDate === dateStr;
-      const dayEvents = events.filter(
-        (e) => e.date === dateStr && isEventVisibleToFilter(e)
-      );
+      const dayEvents = events
+        .filter((e) => e.date === dateStr && isEventVisibleToFilter(e))
+        .sort(byTime);
       const isMobile = window.innerWidth <= 768;
       const dayCycles = cyclesOnDay(calendarCycles, dateStr).slice(0, 3);
       const dayFixtures = fixturesOnDay(calendarFixtures, dateStr);
@@ -3656,7 +3688,7 @@ export default function Workout() {
                   flexShrink: 0,  // Les événements ne rétrécissent pas
                 }}
               >
-                {moiPrefix(evt)}{evt.title}
+                {evt.time ? `${evt.time} ` : ""}{moiPrefix(evt)}{evt.title}
               </div>
             ))}
             {isMobile && dayEvents.length > 1 && (
@@ -4080,6 +4112,49 @@ export default function Workout() {
           >
             🧭 Repères (RPE, VBT, forme)
           </button>
+        </div>
+      )}
+
+      {confirmDlg && (
+        <div
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+        >
+          <div style={{ background: "#151310", border: "2px solid #e0a13d", borderRadius: 12, padding: window.innerWidth <= 768 ? 16 : 24, maxWidth: 460, width: "100%", maxHeight: "85vh", overflowY: "auto", color: "#f3f0ea" }}>
+            <div style={{ whiteSpace: "pre-wrap", fontSize: 15, lineHeight: 1.5, marginBottom: 18 }}>{confirmDlg.message}</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => closeConfirm(true)}
+                style={{ flex: 1, padding: 14, background: "#d9695a", color: "white", border: "none", borderRadius: 8, fontSize: 15, fontWeight: "bold", cursor: "pointer" }}
+              >
+                Confirmer
+              </button>
+              <button
+                onClick={() => closeConfirm(false)}
+                style={{ flex: 1, padding: 14, background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 8, fontSize: 15, cursor: "pointer" }}
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toasts.length > 0 && (
+        <div
+          style={{ position: "fixed", left: 0, right: 0, top: "calc(12px + env(safe-area-inset-top))", zIndex: 3100, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "0 12px", pointerEvents: "none" }}
+        >
+          {toasts.map((t) => {
+            const bad = /^❌|erreur/i.test(t.text);
+            return (
+              <div
+                key={t.id}
+                onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+                style={{ pointerEvents: "auto", maxWidth: 520, width: "100%", boxSizing: "border-box", background: bad ? "#3a1a16" : "#16281f", border: `1px solid ${bad ? "#d9695a" : "#4fae7d"}`, color: "#f3f0ea", borderRadius: 10, padding: "10px 14px", fontSize: 14, lineHeight: 1.45, whiteSpace: "pre-wrap", boxShadow: "0 6px 20px rgba(0,0,0,0.5)", cursor: "pointer" }}
+              >
+                {t.text}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -5900,6 +5975,42 @@ export default function Workout() {
                 e.target.style.boxShadow = "none";
               }}
             />
+          </div>
+
+          <div style={{ marginBottom: 18 }}>
+            <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: "bold" }}>
+              🕒 Horaire <span style={{ color: "#a8a199", fontWeight: 400 }}>(facultatif)</span>
+            </label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <input
+                type="time"
+                value={sessionTime}
+                onChange={(e) => setSessionTime(e.target.value)}
+                style={{
+                  flex: "1 1 140px",
+                  minWidth: 0,
+                  padding: 12,
+                  borderRadius: 8,
+                  border: "2px solid rgba(224, 161, 61, 0.3)",
+                  background: "#151310",
+                  color: "#f3f0ea",
+                  fontSize: 16,
+                  boxSizing: "border-box",
+                }}
+              />
+              {sessionTime && (
+                <button
+                  type="button"
+                  onClick={() => setSessionTime("")}
+                  style={{ padding: "10px 14px", background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14 }}
+                >
+                  ✕ Sans horaire
+                </button>
+              )}
+            </div>
+            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
+              Pratique si l'athlète a plusieurs séances dans la journée : elles s'affichent dans l'ordre de l'heure.
+            </div>
           </div>
 
           <div style={{ marginBottom: 18 }}>
@@ -7775,6 +7886,7 @@ export default function Workout() {
                 {new Date(
                   selectedSession.date + "T12:00:00"
                 ).toLocaleDateString("fr-FR")}{" "}
+                {selectedSession.time ? `• 🕒 ${selectedSession.time} ` : ""}
                 • {selectedSession.estimatedDuration || "?"} min
               </div>
             </div>
@@ -8743,6 +8855,7 @@ export default function Workout() {
                     .filter(
                       (e) => e.date === selectedDate && isEventVisibleToFilter(e)
                     )
+                    .sort(byTime)
                     .map((session) => (
                       <div
                         key={session.id}
@@ -8772,6 +8885,7 @@ export default function Workout() {
                               : "Musculation"}
                           </span>
                           {" • "}
+                          {session.time ? `🕒 ${session.time} • ` : ""}
                           {session.estimatedDuration || "?"} min
                           {isUserSessionCompleted(session) && (
                             <span
