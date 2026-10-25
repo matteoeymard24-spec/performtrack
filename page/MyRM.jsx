@@ -984,15 +984,6 @@ export default function MyRM() {
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={rebuildFromFeedback}
-        disabled={rebuilding || fbEntries.length === 0}
-        style={{ width: "100%", minHeight: 44, marginBottom: 12, borderRadius: 10, border: "1px solid #2a2620", background: "#1a1815", color: "#e0a13d", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: rebuilding || fbEntries.length === 0 ? 0.5 : 1 }}
-      >
-        {rebuilding ? "⏳ Reconstruction…" : `🔄 Reconstruire les RM depuis les retours (${fbEntries.length})`}
-      </button>
-
       {/* ==================== RECHERCHE + CATÉGORIES ==================== */}
       {Object.keys(rmHistory).length > 0 && (
         <div style={{ ...CARD_STYLE, padding: 14 }}>
