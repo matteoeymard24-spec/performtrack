@@ -280,7 +280,7 @@ const estimateSessionDurationSeconds = (type, blocks) => {
       t +
       (b.exercises || []).reduce(
         (st, ex) =>
-          st + (ex.series || 3) * ((ex.reps || 8) * 3 + (ex.restMin ?? b.restMin ?? 2) * 60),
+          st + (ex.series || 3) * ((ex.reps || 8) * 3 * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + (ex.restMin ?? b.restMin ?? 2) * 60),
         0
       )
     );
@@ -1155,6 +1155,9 @@ export default function Workout() {
             set: i + 1,
             actualWeight: defaultWeight,
             actualReps: exercise.reps || 0,
+            ...(exercise.unilateral
+              ? { actualRepsR: exercise.reps || 0, actualRepsL: exercise.reps || 0 }
+              : {}),
             rpe: 5
           });
         }
@@ -6977,6 +6980,33 @@ export default function Workout() {
                           </div>
                         );
                       })()}
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          marginBottom: 10,
+                          fontSize: 13,
+                          color: ex.unilateral ? "#e0a13d" : "#a8a199",
+                          cursor: "pointer",
+                          minHeight: 36,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!ex.unilateral}
+                          onChange={(e) =>
+                            updateExercise(bIdx, eIdx, "unilateral", e.target.checked)
+                          }
+                          style={{ width: 18, height: 18 }}
+                        />
+                        <span>
+                          Unilatéral — reps <strong>par côté</strong>
+                          {ex.unilateral
+                            ? ` (${ex.reps || 0} D + ${ex.reps || 0} G, même charge)`
+                            : ""}
+                        </span>
+                      </label>
                       {/* Tempo inutile en EMOM/AMRAP : exécution rapide
                           imposée par le chrono, pas de cadence à respecter. */}
                       {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
@@ -8422,7 +8452,7 @@ export default function Workout() {
                         >
                           {block.timerMode === "emom" || block.timerMode === "amrap"
                             ? ex.reps
-                            : `${ex.series} × ${ex.reps}`}{" "}
+                            : `${ex.series} × ${ex.reps}${ex.unilateral ? " /côté (D+G)" : ""}`}{" "}
                           @{" "}
                           {ex.rmPercent === "PDC" ? (
                             <strong style={{ color: "#e0a13d" }}>PDC</strong>
@@ -8466,7 +8496,11 @@ export default function Workout() {
                                     </>
                                   )}
                                   {" • "}
-                                  <strong>Reps:</strong> {serie.actualReps} •{" "}
+                                  <strong>Reps:</strong>{" "}
+                                  {serie.actualRepsR !== undefined
+                                    ? `D ${serie.actualRepsR} / G ${serie.actualRepsL}`
+                                    : serie.actualReps}{" "}
+                                  •{" "}
                                   <strong>RPE:</strong> {serie.rpe}/10
                                 </div>
                               ))}
@@ -9232,6 +9266,48 @@ export default function Workout() {
                     </div>
 
                     {/* Répétitions */}
+                    {currentExerciseFeedback.exercise.unilateral ? (
+                      <div style={{ marginBottom: 14 }}>
+                        <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: "bold" }}>
+                          Répétitions effectuées (par côté)
+                        </label>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                          {[["actualRepsR", "Droite"], ["actualRepsL", "Gauche"]].map(([field, lab]) => (
+                            <div key={field}>
+                              <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 4 }}>{lab}</div>
+                              <input
+                                type="number"
+                                value={serie[field] ?? serie.actualReps}
+                                onChange={(e) => {
+                                  const newSeries = [...currentExerciseFeedback.series];
+                                  const cur = { ...newSeries[idx] };
+                                  cur[field] = Number(e.target.value);
+                                  const r = cur.actualRepsR ?? cur.actualReps;
+                                  const l = cur.actualRepsL ?? cur.actualReps;
+                                  // actualReps = côté le plus faible : c'est lui
+                                  // qui alimente le RM estimé et la fatigue.
+                                  cur.actualReps = Math.min(r, l);
+                                  newSeries[idx] = cur;
+                                  setCurrentExerciseFeedback({ ...currentExerciseFeedback, series: newSeries });
+                                }}
+                                style={{
+                                  width: "100%",
+                                  padding: 12,
+                                  borderRadius: 8,
+                                  border: "1px solid #2a2620",
+                                  background: "#0d0c0a",
+                                  color: "#f3f0ea",
+                                  fontSize: 16,
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 6, fontSize: 12, color: "#a8a199" }}>
+                          💡 Charge = celle d'un côté. Le RPE ci-dessous = côté le plus dur.
+                        </div>
+                      </div>
+                    ) : (
                     <div style={{ marginBottom: 14 }}>
                       <label
                         style={{
@@ -9268,6 +9344,7 @@ export default function Workout() {
                         }}
                       />
                     </div>
+                    )}
 
                     {/* RPE par série */}
                     <div style={{ marginBottom: 8 }}>

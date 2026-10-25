@@ -3880,7 +3880,7 @@ export default function Dashboard() {
                                               Série {s.set || i + 1} :{" "}
                                               {cmj
                                                 ? `${s.actualWeight} cm`
-                                                : `${s.actualWeight} kg × ${s.actualReps}`}
+                                                : `${s.actualWeight} kg × ${s.actualRepsR !== undefined ? `D${s.actualRepsR}/G${s.actualRepsL}` : s.actualReps}`}
                                               {" · "}RPE {s.rpe}/10
                                             </div>
                                           ))
