@@ -587,6 +587,21 @@ export default function MyRM() {
     setCalculated1RM(null);
   };
 
+  /* Précision de charge selon le type d'exercice (déduit du nom + du réglage
+     « Unilatéral » des séances où l'exo a été fait). */
+  const uniKeys = new Set(fbEntries.filter((e) => e.unilateral).map((e) => normKey(e.exercise)));
+  const loadNote = (name, kg) => {
+    const isDb = /halt[eè]re|dumbbell|\bdb\b/i.test(name || "");
+    const isUni = uniKeys.has(normKey(name)) || /unilat|bulgare|1 bras|un bras|single/i.test(name || "");
+    if (isUni && isDb) return "Unilatéral : la charge = UN haltère (un côté)";
+    if (isUni) return "Unilatéral : la charge = un seul côté";
+    if (isDb) {
+      const half = kg ? ` ≈ ${Math.round((kg / 2) * 2) / 2} kg par haltère` : "";
+      return `Haltères : la charge = total des deux${half}`;
+    }
+    return null;
+  };
+
   const rmSuggestions = (() => {
     const q = normKey(rmSearchQuery);
     if (!q) return [];
@@ -850,6 +865,11 @@ export default function MyRM() {
           <h3 style={{ margin: "0 0 20px 0", fontSize: 18, textTransform: "capitalize" }}>
             ✏️ Modifier — {editingRM}
           </h3>
+          {loadNote(editingRM, null) && (
+            <div style={{ fontSize: 13, color: "#e0a13d", margin: "-12px 0 14px" }}>
+              ⚖️ {loadNote(editingRM, null)}
+            </div>
+          )}
 
           <div style={{ marginBottom: 20 }}>
             <p style={{ fontSize: 12, color: "#a8a199", margin: "0 0 5px 0" }}>
@@ -1145,6 +1165,11 @@ export default function MyRM() {
                         <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
                           {getExerciseCategoryLabel(rmCategories[exercise])}
                         </div>
+                        {loadNote(exercise, hasData ? latest.kg : null) && (
+                          <div style={{ fontSize: 11, color: "#e0a13d", marginBottom: 4 }}>
+                            ⚖️ {loadNote(exercise, hasData ? latest.kg : null)}
+                          </div>
+                        )}
                         <div style={{ fontSize: 12, color: "#a8a199" }}>
                           {hasData
                             ? `${history.length} enregistrement${history.length > 1 ? "s" : ""}`

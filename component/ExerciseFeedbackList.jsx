@@ -56,6 +56,7 @@ export function extractFeedbackExercises(workouts, uid) {
       out.push({
         id: `${w.id || w.date}_${key}`,
         key: normName(name),
+        unilateral: !!ex.unilateral,
         exercise: name,
         date: w.date || "",
         workoutTitle: w.title || "",
