@@ -55,7 +55,35 @@ const normKey = (name) =>
     .replace(/\s+/g, " ");
 
 export default function MyRM() {
-  const { currentUser } = useAuth();
+  const { currentUser, userRole, isSuperAdmin } = useAuth();
+  const isAdminLike = userRole === "admin" || isSuperAdmin;
+  // Coach : peut consulter / modifier les RM d'un athlète ("" = les siens)
+  const [viewUid, setViewUid] = useState("");
+  const [rmAthletes, setRmAthletes] = useState([]);
+  const [rmAdmins, setRmAdmins] = useState([]);
+  const [rmGroups, setRmGroups] = useState([]);
+  const [viewMode, setViewMode] = useState("moi"); // moi | admin | athlete
+  const [viewGroup, setViewGroup] = useState(""); // "" = tous, "none" = sans groupe, idGroupe, "sg:gid:sid"
+  const uid = viewUid || currentUser?.uid;
+  useEffect(() => {
+    if (!isAdminLike) return;
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, "users"));
+        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setRmAthletes(all.filter((u) => u.id !== currentUser?.uid && u.role !== "admin"));
+        setRmAdmins(all.filter((u) => u.id !== currentUser?.uid && u.role === "admin"));
+        try {
+          const g = await getDocs(collection(db, "groups"));
+          setRmGroups(g.docs.map((d) => ({ id: d.id, ...d.data() })));
+        } catch (e) {
+          console.warn("Groupes:", e);
+        }
+      } catch (e) {
+        console.warn("Liste athlètes:", e);
+      }
+    })();
+  }, [isAdminLike, currentUser]);
 
   // États VMA
   const [vma, setVma] = useState(null);
@@ -139,7 +167,7 @@ export default function MyRM() {
 
     try {
       const [rmSnap, exerciseMediaSnap] = await Promise.all([
-        getDocs(collection(db, "users", currentUser.uid, "rm")),
+        getDocs(collection(db, "users", uid, "rm")),
         getDocs(collection(db, "exerciseMedia")),
       ]);
       // La banque d'exercices (exerciseMedia) est la source de vérité pour la
@@ -233,7 +261,7 @@ export default function MyRM() {
         Promise.all(
           toCreate.map(({ key, category }) =>
             setDoc(
-              doc(db, "users", currentUser.uid, "rm", key),
+              doc(db, "users", uid, "rm", key),
               {
                 kg: null,
                 exerciseName: key,
@@ -268,7 +296,7 @@ export default function MyRM() {
 
   useEffect(() => {
     loadRM();
-  }, [currentUser]);
+  }, [currentUser, uid]);
 
   // Arrivée depuis le Dashboard (« Voir tout ») : ouvre le bloc et descend dessus.
   useEffect(() => {
@@ -295,13 +323,13 @@ export default function MyRM() {
       setFbEntries(
         extractFeedbackExercises(
           snap.docs.map((d) => ({ id: d.id, ...d.data() })),
-          currentUser.uid
+          uid
         )
       );
       const map = {};
       snap.docs.forEach((docSnap) => {
         const w = docSnap.data();
-        const progress = w.userProgress?.[currentUser.uid];
+        const progress = w.userProgress?.[uid];
         if (!progress?.completedAt || !w.blocks) return;
         const feedback = progress.feedback || {};
         w.blocks.forEach((block, bIdx) => {
@@ -329,13 +357,13 @@ export default function MyRM() {
 
   useEffect(() => {
     loadSessionCmj();
-  }, [currentUser]);
+  }, [currentUser, uid]);
 
   /* ===================== SPRINT (10 / 20 / 60 m) ===================== */
   const loadSprints = async () => {
     if (!currentUser) return;
     try {
-      const snap = await getDocs(collection(db, "users", currentUser.uid, "tests"));
+      const snap = await getDocs(collection(db, "users", uid, "tests"));
       const all = snap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((t) => t.testId === "sprint")
@@ -348,7 +376,7 @@ export default function MyRM() {
   useEffect(() => {
     loadSprints();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser]);
+  }, [currentUser, uid]);
 
   const saveSprint = async () => {
     if (!currentUser) return;
@@ -362,7 +390,7 @@ export default function MyRM() {
     try {
       const test = getTest("sprint");
       const result = computeResult(test, clean);
-      await addDoc(collection(db, "users", currentUser.uid, "tests"), {
+      await addDoc(collection(db, "users", uid, "tests"), {
         testId: "sprint",
         group: test.group,
         date: sprintDate || todayIso(),
@@ -370,7 +398,7 @@ export default function MyRM() {
         result: toStoredResult(result),
         notes: "",
         createdAt: new Date().toISOString(),
-        createdBy: currentUser.uid,
+        createdBy: uid,
       });
       setSprintVals({ t10: "", t20: "", t60: "" });
       await loadSprints();
@@ -386,7 +414,7 @@ export default function MyRM() {
   const deleteSprint = async (id) => {
     if (!window.confirm("Supprimer cette saisie de sprint ?")) return;
     try {
-      await deleteDoc(doc(db, "users", currentUser.uid, "tests", id));
+      await deleteDoc(doc(db, "users", uid, "tests", id));
       await loadSprints();
     } catch (e) {
       alert("❌ Erreur : " + e.message);
@@ -406,7 +434,7 @@ export default function MyRM() {
     try {
       // Si on modifie et que le nom change, supprimer l'ancien
       if (editingRM && editingRM !== normalizedName) {
-        await deleteDoc(doc(db, "users", currentUser.uid, "rm", editingRM));
+        await deleteDoc(doc(db, "users", uid, "rm", editingRM));
       }
 
       // Relit la fiche existante pour ne jamais écraser son historique (le
@@ -414,7 +442,7 @@ export default function MyRM() {
       // dernier). Pour la catégorie, la banque d'exercices (gestionnaire
       // "🔤 Noms d'exercices") reste la référence — elle prime sur ce qui
       // était déjà écrit sur la fiche RM.
-      const targetRef = doc(db, "users", currentUser.uid, "rm", normalizedName);
+      const targetRef = doc(db, "users", uid, "rm", normalizedName);
       const [existingSnap, catalogSnap] = await Promise.all([
         getDoc(targetRef),
         getDoc(doc(db, "exerciseMedia", normalizedName)),
@@ -526,7 +554,89 @@ export default function MyRM() {
 
   return (
     <Page>
-      <h2 style={{ ...PAGE_TITLE, marginBottom: 16 }}>💪 Mes RM</h2>
+      <h2 style={{ ...PAGE_TITLE, marginBottom: 16 }}>💪 {viewUid ? "RM de l'athlète" : "Mes RM"}</h2>
+
+      {isAdminLike && (
+        <div style={{ ...CARD_STYLE, padding: 14, marginBottom: 12, ...(viewUid ? { border: CARD_ACCENT_BORDER } : {}) }}>
+          <label style={{ display: "block", fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
+            👤 Voir / modifier les RM de :
+          </label>
+          {(() => {
+            const nameOf = (a) => (a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || a.id);
+            const sortByName = (arr) => arr.slice().sort((x, y) => nameOf(x).localeCompare(nameOf(y)));
+            const selStyle = { width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 8, border: "1px solid #2a2620", background: "#1a1815", color: "#f3f0ea", fontSize: 16, marginTop: 8 };
+            const reset = () => { setSelectedExercise(null); setShowAddForm(false); setEditingRM(null); setRmSearchQuery(""); };
+            const pickMode = (m) => { setViewMode(m); setViewUid(""); setViewGroup(""); reset(); };
+            // athlètes selon le groupe / sous-groupe choisi
+            let list = rmAthletes;
+            if (viewGroup === "none") {
+              const inAny = new Set(rmGroups.flatMap((g) => g.athleteIds || []));
+              list = rmAthletes.filter((a) => !inAny.has(a.id));
+            } else if (viewGroup.startsWith("sg:")) {
+              const [, gid, sid] = viewGroup.split(":");
+              const sub = (rmGroups.find((g) => g.id === gid)?.subGroups || []).find((x) => x.id === sid);
+              list = rmAthletes.filter((a) => (sub?.athleteIds || []).includes(a.id));
+            } else if (viewGroup) {
+              const g = rmGroups.find((x) => x.id === viewGroup);
+              list = rmAthletes.filter((a) => (g?.athleteIds || []).includes(a.id));
+            }
+            return (
+              <>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {[["moi", "🌟 Moi"], ["admin", "👤 Admin"], ["athlete", "🏉 Athlète"]].map(([m, lab]) => {
+                    const on = viewMode === m;
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => pickMode(m)}
+                        style={{ flex: 1, minHeight: 44, borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: on ? 700 : 400, border: on ? "1px solid #e0a13d" : "1px solid #2a2620", background: on ? "rgba(224,161,61,0.18)" : "#1a1815", color: on ? "#e0a13d" : "#f3f0ea" }}
+                      >
+                        {lab}
+                      </button>
+                    );
+                  })}
+                </div>
+                {viewMode === "admin" && (
+                  <select value={viewUid} onChange={(e) => { setViewUid(e.target.value); reset(); }} style={selStyle}>
+                    <option value="">-- Choisir l'admin --</option>
+                    {sortByName(rmAdmins).map((a) => (
+                      <option key={a.id} value={a.id}>{nameOf(a)}</option>
+                    ))}
+                  </select>
+                )}
+                {viewMode === "athlete" && (
+                  <>
+                    <select value={viewGroup} onChange={(e) => { setViewGroup(e.target.value); setViewUid(""); reset(); }} style={selStyle}>
+                      <option value="">Tous les athlètes</option>
+                      {rmGroups.map((g) => (
+                        <React.Fragment key={g.id}>
+                          <option value={g.id}>👥 {g.name}</option>
+                          {(g.subGroups || []).map((sg) => (
+                            <option key={sg.id} value={`sg:${g.id}:${sg.id}`}>↳ {sg.name}</option>
+                          ))}
+                        </React.Fragment>
+                      ))}
+                      <option value="none">Sans groupe</option>
+                    </select>
+                    <select value={viewUid} onChange={(e) => { setViewUid(e.target.value); reset(); }} style={selStyle}>
+                      <option value="">-- Choisir l'athlète ({list.length}) --</option>
+                      {sortByName(list).map((a) => (
+                        <option key={a.id} value={a.id}>{nameOf(a)}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </>
+            );
+          })()}
+          {viewUid && (
+            <div style={{ fontSize: 12, color: "#e0a13d", marginTop: 6 }}>
+              Tu modifies les données de cet athlète : chaque changement est enregistré sur son compte.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Info */}
       <FoldCard id="info" fold={fold} title="💡 Comment ça fonctionne ?">

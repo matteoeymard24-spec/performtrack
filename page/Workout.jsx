@@ -1244,7 +1244,7 @@ export default function Workout() {
         series = normalized.series;
       } else {
         // Créer de nouvelles séries
-        const defaultWeight = calculateWeight(exercise.rmName || exercise.name, exercise.rmPercent) || 0;
+        const defaultWeight = calculateWeight(exercise.name, exercise.rmPercent) || 0;
         for (let i = 0; i < numSeries; i++) {
           series.push({
             set: i + 1,
@@ -1436,7 +1436,7 @@ export default function Workout() {
         // pour que TOUT exercice fait proche du max (filtré juste en dessous
         // sur reps≤6 et RPE≥8) alimente "Mes RM" automatiquement, sans
         // réglage manuel préalable.
-        const rmName = exercise.rmName || exercise.name;
+        const rmName = exercise.name;
         if (!rmName) continue;
 
         // Normaliser le feedback (rétrocompatibilité)
@@ -2521,6 +2521,10 @@ export default function Workout() {
                 delete updated.mediaType;
                 delete updated.mediaZoom;
               }
+              // Le RM suit toujours le NOM de l'exercice : on retire tout
+              // ancien « rmName » figé (sinon un DC haltère restait calculé
+              // sur le RM du Squat d'avant).
+              if (field === "name") delete updated.rmName;
               return updated;
             }),
           }
@@ -7236,10 +7240,10 @@ export default function Workout() {
                       {/* CALCUL POIDS CIBLE — basé sur ex.rmName s'il existe
                           encore (anciennes séances), sinon directement sur
                           le nom de l'exercice. */}
-                      {!isNoRmIntensity(ex.rmPercent) && (ex.rmName || ex.name) &&
+                      {!isNoRmIntensity(ex.rmPercent) && ex.name &&
                         ex.rmPercent &&
                         (() => {
-                          const lookupName = ex.rmName || ex.name;
+                          const lookupName = ex.name;
                           const normalizedName = normalizeExerciseName(lookupName);
                           if (!activeRM) {
                             return (
@@ -8566,14 +8570,8 @@ export default function Workout() {
                             <>
                               {ex.rmPercent}%{" "}
                               {activeRM
-                                ? `(${calculateWeight(ex.rmName || ex.name, ex.rmPercent)} kg)`
+                                ? `(${calculateWeight(ex.name, ex.rmPercent)} kg)`
                                 : "(choisis un athlète)"}
-                              {ex.rmName &&
-                                normalizeExerciseName(ex.rmName) !== normalizeExerciseName(ex.name) && (
-                                  <span style={{ color: "#d9695a" }}>
-                                    {" "}⚠️ calculé sur le RM « {ex.rmName} » (ancien réglage de la séance)
-                                  </span>
-                                )}
                             </>
                           )}
                           {block.timerMode !== "emom" && block.timerMode !== "amrap" && (

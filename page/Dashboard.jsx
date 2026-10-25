@@ -548,7 +548,7 @@ export default function Dashboard() {
         if (/échauffement|echauffement|warm.?up|activation/i.test(block.name || "")) return;
         if (ex.rmPercent === "PDC" || ex.rmPercent === "ELASTIQUE") return;
         if (/cmj/i.test(ex.name || "")) return;
-        const name = ex.rmName || ex.name;
+        const name = ex.name;
         if (!name) return;
         const sets = Array.isArray(f.series)
           ? f.series.map((st) => ({ weight: Number(st.actualWeight), reps: Number(st.actualReps), rpe: Number(st.rpe) }))
@@ -1377,8 +1377,8 @@ export default function Dashboard() {
       const vsRM = [];
       (todayWorkout.blocks || []).forEach((block, bIdx) => {
         (block.exercises || []).forEach((ex, eIdx) => {
-          if (!ex.rmName) return;
-          const rmKg = rmByName[normalizeExerciseNameLocal(ex.rmName)];
+          if (!ex.name) return;
+          const rmKg = rmByName[normalizeExerciseNameLocal(ex.name)];
           if (!rmKg) return;
           const fb = feedback[`${bIdx}-${eIdx}`];
           const series = fb?.series;

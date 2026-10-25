@@ -34,7 +34,7 @@ export function extractFeedbackExercises(workouts, uid) {
       const ex = block && Array.isArray(block.exercises) ? block.exercises[eIdx] : null;
       if (!ex) return;
       if (/échauffement|echauffement|warm.?up|activation/i.test(block.name || "")) return;
-      const name = ex.rmName || ex.name;
+      const name = ex.name;
       if (!name) return;
       const raw = Array.isArray(f.series)
         ? f.series
