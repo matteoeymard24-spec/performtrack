@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { e1rmFromSet } from "../component/loadMetrics";
 import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
@@ -490,6 +491,77 @@ export default function MyRM() {
     }
   };
 
+  /* Reconstruit les fiches RM (valeur + courbe) à partir des retours déjà saisis.
+     Pour chaque exercice et chaque séance : médiane des e1RM des séries
+     exploitables (≤ 10 reps, RPE ≥ 7). La fiche prend la valeur de la séance
+     la plus récente ; les points de la courbe manquants sont ajoutés. Une
+     valeur testée à la main (bouton Modifier) n'est jamais écrasée. */
+  const [rebuilding, setRebuilding] = useState(false);
+  const rebuildFromFeedback = async () => {
+    if (!uid || rebuilding) return;
+    if (!window.confirm("Reconstruire les RM à partir de tous les retours de séance ? Les valeurs testées à la main ne sont pas modifiées.")) return;
+    setRebuilding(true);
+    try {
+      const byEx = {};
+      fbEntries.forEach((e) => {
+        if (/^(cmj|counter movement jump)$/i.test((e.exercise || "").trim())) return;
+        const vals = (e.sets || [])
+          .filter((st) => st.reps && st.reps <= 10 && st.rpe && st.rpe >= 7)
+          .map((st) => e1rmFromSet(st.weight, st.reps, st.rpe))
+          .filter((v) => v !== null)
+          .sort((x, y) => x - y);
+        if (!vals.length) return;
+        const m = vals.length % 2 ? vals[(vals.length - 1) / 2] : (vals[vals.length / 2 - 1] + vals[vals.length / 2]) / 2;
+        const key = normKey(e.exercise);
+        (byEx[key] = byEx[key] || []).push({ date: e.date, kg: Math.round(m * 10) / 10, name: e.exercise, n: vals.length });
+      });
+      let created = 0, updated = 0, kept = 0;
+      for (const [key, pts] of Object.entries(byEx)) {
+        pts.sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+        const ref = doc(db, "users", uid, "rm", key);
+        const snap = await getDoc(ref);
+        const ex = snap.exists() ? snap.data() : null;
+        const manual = ex && ex.kg && ex.autoAdjusted === false && ex.autoCreated === false;
+        const hist = [...(ex?.history || [])];
+        const haveDays = new Set(hist.map((h) => String(h.date || "").slice(0, 10)));
+        pts.forEach((pt) => {
+          if (!haveDays.has(pt.date)) hist.push({ date: `${pt.date}T12:00:00.000Z`, kg: pt.kg, autoAdjusted: true, rebuilt: true });
+        });
+        hist.sort((x, y) => String(x.date).localeCompare(String(y.date)));
+        const last = pts[pts.length - 1];
+        const base = { history: hist.slice(-20) };
+        if (manual) {
+          await setDoc(ref, base, { merge: true });
+          kept++;
+          continue;
+        }
+        const cat = (await getDoc(doc(db, "exerciseMedia", key))).data()?.category;
+        await setDoc(
+          ref,
+          {
+            ...base,
+            kg: last.kg,
+            exerciseName: key,
+            category: normalizeCategoryValue(cat) || ex?.category || "autre",
+            updatedAt: new Date().toISOString(),
+            autoAdjusted: true,
+            autoCreated: false,
+            seriesUsedForRM: last.n,
+          },
+          { merge: true }
+        );
+        ex && ex.kg ? updated++ : created++;
+      }
+      alert(`RM reconstruits : ${created} créé(s), ${updated} mis à jour, ${kept} testé(s) à la main conservé(s). Exercices sans série exploitable (plus de 10 reps ou RPE < 7) ignorés.`);
+      loadRM();
+    } catch (e) {
+      console.error("Reconstruction RM:", e);
+      alert("Erreur pendant la reconstruction : " + e.message);
+    } finally {
+      setRebuilding(false);
+    }
+  };
+
   const handleEditRM = (exerciseName) => {
     const history = rmHistory[exerciseName];
     const latest = history && history.length > 0 ? history[history.length - 1] : null;
@@ -911,6 +983,15 @@ export default function MyRM() {
           </div>
         </div>
       )}
+
+      <button
+        type="button"
+        onClick={rebuildFromFeedback}
+        disabled={rebuilding || fbEntries.length === 0}
+        style={{ width: "100%", minHeight: 44, marginBottom: 12, borderRadius: 10, border: "1px solid #2a2620", background: "#1a1815", color: "#e0a13d", fontSize: 14, fontWeight: 600, cursor: "pointer", opacity: rebuilding || fbEntries.length === 0 ? 0.5 : 1 }}
+      >
+        {rebuilding ? "⏳ Reconstruction…" : `🔄 Reconstruire les RM depuis les retours (${fbEntries.length})`}
+      </button>
 
       {/* ==================== RECHERCHE + CATÉGORIES ==================== */}
       {Object.keys(rmHistory).length > 0 && (
