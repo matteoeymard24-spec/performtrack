@@ -1845,14 +1845,17 @@ export default function Workout() {
         }
       }
 
-      alert(targets.length > 1 ? `✅ Séance dupliquée pour ${targets.length} groupes !` : "✅ Séance dupliquée avec succès !");
+      const dupDay = new Date(duplicateTargetDate + "T12:00:00").toLocaleDateString("fr-FR");
+      alert(
+        (targets.length > 1 ? `✅ Séance dupliquée pour ${targets.length} groupes` : "✅ Séance dupliquée") +
+          ` le ${dupDay}. Tu es toujours sur la séance d'origine.`
+      );
       setShowDuplicateSessionModal(false);
       setSessionToDuplicate(null);
       setDuplicateTargetDate(null);
-      // On ouvre la COPIE : si on clique ensuite sur "Modifier", c'est elle
-      // qui est modifiée (avant, l'écran restait sur la séance d'origine et
-      // on modifiait l'original sans le voir).
-      setSelectedSession({ id: newRef.id, ...newData, createdAt: null });
+      // On reste sur la séance d'ORIGINE (celle qu'on vient de dupliquer) : ouvrir la copie à l'écran
+      // faisait supprimer / modifier la copie au clic suivant, alors qu'on visait l'original.
+      // La copie est visible à sa nouvelle date dans le calendrier.
       await fetchSessions();
     } catch (e) {
       console.error("[duplicateSession] Erreur:", e);
