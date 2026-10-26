@@ -7,9 +7,9 @@ import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
 import TacticalBoard from "../component/TacticalBoard";
-import DrillBankModal from "../component/DrillBankModal";
+import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
 import EnduranceProfile, { ZonesCard } from "../component/EnduranceProfile";
-import { zoneOf, pctCS, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO } from "../component/drillBank";
+import { zoneOf, pctCS, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK } from "../component/drillBank";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -55,6 +55,18 @@ const normalizeExerciseName = (name) => {
     .replace(/[/\\.]/g, " ")
     .trim()                                  // supprime espaces début/fin
     .replace(/\s+/g, " ");                  // normalise espaces multiples en un seul
+};
+
+// Modèle d'exo sprint / endurance pour la banque : les réglages de
+// l'exercice sans ce qui est propre à une séance (photo, ancien Nom RM…).
+const drillTemplate = (ex) => {
+  const { name, mediaUrl, mediaType, mediaZoom, rmName, ...rest } = ex || {};
+  void name; void mediaUrl; void mediaType; void mediaZoom; void rmName;
+  const out = {};
+  Object.entries(rest).forEach(([k, v]) => {
+    if (v !== undefined) out[k] = v;
+  });
+  return out;
 };
 
 // Catégories d'exercices pour "Mes RM" — utilisées pour classer la banque
@@ -2088,6 +2100,7 @@ export default function Workout() {
 
     try {
       if (isAdminLike) await syncUnilateralBank(blocks);
+      await saveDrillsFromBlocks(workoutType, blocks);
       if (isEdit && editId) {
         // En modification, on ne touche pas à createdBy / createdAt (l'auteur
         // et la date de création d'origine restent ceux de la séance).
@@ -2658,6 +2671,11 @@ export default function Workout() {
   const [exerciseNames, setExerciseNames] = useState({});
   const [exerciseMediaLibrary, setExerciseMediaLibrary] = useState({});
   const [mediaLibraryLoaded, setMediaLibraryLoaded] = useState(false);
+  // Banque sprint / endurance : exos enregistrés automatiquement à chaque
+  // séance créée (docs exerciseMedia "drill_<type>_<nom>") + ceux des séances.
+  const [savedDrills, setSavedDrills] = useState({ sprint: {}, endurance: {} });
+  const [drillsFromEvents, setDrillsFromEvents] = useState({ sprint: {}, endurance: {} });
+  const [bankTab, setBankTab] = useState("muscu");
   const [legacyExerciseMedia, setLegacyExerciseMedia] = useState({});
   const [openSuggestFor, setOpenSuggestFor] = useState(null);
   const migratedMediaKeysRef = useRef(new Set());
@@ -2669,12 +2687,21 @@ export default function Workout() {
     // (ex.mediaUrl). On les repère ici pour pouvoir (a) les afficher quand
     // même tout de suite, et (b) les migrer une fois vers "exerciseMedia".
     const legacy = {};
+    const drills = { sprint: {}, endurance: {} };
     events.forEach((w) => {
+      const wt = w.type || "muscu";
+      const dk = wt === "sprint" ? "sprint" : wt === "endurance" || wt === "vma" ? "endurance" : null;
       (w.blocks || []).forEach((block) => {
         (block.exercises || []).forEach((ex) => {
           if (!ex.name) return;
           const key = normalizeExerciseName(ex.name);
           if (!key) return;
+          if (dk) {
+            // exos sprint / endurance : banque à part (version la plus récente)
+            const prev = drills[dk][key];
+            if (!prev || (w.date || "") >= prev.date) drills[dk][key] = { name: ex.name, date: w.date || "", template: drillTemplate(ex) };
+            return;
+          }
           names[key] = { name: ex.name };
           if (ex.mediaUrl && !legacy[key]) {
             legacy[key] = {
@@ -2688,6 +2715,7 @@ export default function Workout() {
       });
     });
     setExerciseNames(names);
+    setDrillsFromEvents(drills);
     setLegacyExerciseMedia(legacy);
   }, [events]);
 
@@ -2695,13 +2723,21 @@ export default function Workout() {
     try {
       const snap = await getDocs(collection(db, "exerciseMedia"));
       const lib = {};
+      const drillMap = { sprint: {}, endurance: {} };
       snap.docs.forEach((d) => {
         // "test_<id>" = photo/vidéo d'un TEST (page Tests), pas un exercice :
         // sinon ces fiches apparaissaient dans la banque et les suggestions.
         if (d.id.startsWith("test_")) return;
+        if (d.id.startsWith("drill_")) {
+          const data = d.data();
+          const kind = data.kind === "sprint" ? "sprint" : "endurance";
+          drillMap[kind][normalizeExerciseName(data.name || d.id)] = { ...data, docId: d.id };
+          return;
+        }
         lib[d.id] = d.data();
       });
       setExerciseMediaLibrary(lib);
+      setSavedDrills(drillMap);
     } catch (e) {
       console.error("Erreur chargement bibliothèque média des exercices:", e);
     } finally {
@@ -2760,6 +2796,82 @@ export default function Workout() {
       };
     }
     return null;
+  };
+
+  /* ---------- Banque sprint / endurance (auto-alimentée) ---------- */
+  const drillDocId = (kind, key) => `drill_${kind}_${key}`.replace(/[/\\.#$[\]]/g, "_").slice(0, 140);
+  const getDrillEntries = (kind) => {
+    const out = {};
+    (kind === "sprint" ? SPRINT_BANK : ENDURANCE_BANK).forEach((b) => {
+      const { cat, ...tpl } = b;
+      out[normalizeExerciseName(b.name)] = { key: normalizeExerciseName(b.name), name: b.name, template: tpl, builtin: true, cat };
+    });
+    Object.entries(drillsFromEvents[kind] || {}).forEach(([key, v]) => {
+      out[key] = { ...(out[key] || {}), key, name: v.name, template: v.template, fromSessions: true, builtin: !!out[key]?.builtin, cat: out[key]?.cat };
+    });
+    Object.entries(savedDrills[kind] || {}).forEach(([key, v]) => {
+      if (v.hidden) {
+        delete out[key];
+        return;
+      }
+      out[key] = { ...(out[key] || {}), key, name: v.name, template: v.template || out[key]?.template, saved: true, docId: v.docId, cat: out[key]?.cat };
+    });
+    return Object.values(out).filter((e) => e.template).sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  };
+  // Enregistre automatiquement les exos sprint / endurance d'une séance dans la banque.
+  const saveDrillsFromBlocks = async (type, blocksToSave) => {
+    const kind = type === "sprint" ? "sprint" : type === "endurance" || type === "vma" ? "endurance" : null;
+    if (!kind || !isAdminLike) return;
+    const next = { ...(savedDrills[kind] || {}) };
+    for (const b of blocksToSave || []) {
+      for (const ex of b.exercises || []) {
+        const key = normalizeExerciseName(ex.name);
+        if (!key) continue;
+        const template = drillTemplate(ex);
+        const prev = next[key];
+        if (prev && !prev.hidden && JSON.stringify(prev.template) === JSON.stringify(template)) continue;
+        const docId = drillDocId(kind, key);
+        try {
+          const data = { kind, name: formatExerciseDisplayName(ex.name), template, hidden: false, updatedAt: serverTimestamp() };
+          await setDoc(doc(db, "exerciseMedia", docId), data, { merge: true });
+          next[key] = { ...data, docId };
+        } catch (e) {
+          console.warn("Banque exos (enregistrement) :", e);
+        }
+      }
+    }
+    setSavedDrills((sd) => ({ ...sd, [kind]: next }));
+  };
+  const deleteDrill = async (entry, kind = bankTab) => {
+    if (!await askConfirm(`Retirer « ${entry.name} » de la banque ${kind === "sprint" ? "vitesse" : "endurance"} ? Les séances déjà créées ne changent pas.`)) return;
+    const docId = entry.docId || drillDocId(kind, entry.key);
+    try {
+      await setDoc(doc(db, "exerciseMedia", docId), { kind, name: entry.name, hidden: true, updatedAt: serverTimestamp() }, { merge: true });
+      setSavedDrills((sd) => ({ ...sd, [kind]: { ...(sd[kind] || {}), [entry.key]: { ...(sd[kind]?.[entry.key] || {}), name: entry.name, hidden: true, docId } } }));
+    } catch (e) {
+      alert("❌ Erreur : " + e.message);
+    }
+  };
+  // Remplit un exo du formulaire avec un modèle de la banque (sprint / endurance).
+  const applyDrillTemplate = (bIdx, eIdx, entry) => {
+    setBlocks((prev) =>
+      prev.map((b, i) =>
+        i !== bIdx
+          ? b
+          : { ...b, exercises: (b.exercises || []).map((x, k) => (k === eIdx ? { ...x, ...entry.template, name: entry.name } : x)) }
+      )
+    );
+    setOpenSuggestFor(null);
+  };
+  const getSuggestionsFor = (typed) => {
+    if (workoutType === "sprint" || workoutType === "endurance") {
+      const q = normalizeExerciseName(typed);
+      if (!q) return [];
+      return getDrillEntries(workoutType)
+        .filter((e) => normalizeExerciseName(e.name).includes(q) && normalizeExerciseName(e.name) !== q)
+        .slice(0, 6);
+    }
+    return getExerciseSuggestions(typed);
   };
 
   const getExerciseSuggestions = (typed) => {
@@ -4464,6 +4576,20 @@ export default function Workout() {
                 ✕
               </button>
             </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              {[["muscu", "🏋️ Muscu"], ["endurance", "🫁 Endurance"], ["sprint", "⚡ Vitesse"]].map(([k, lab]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setBankTab(k)}
+                  style={{ flex: 1, minHeight: 42, borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: bankTab === k ? 700 : 400, border: bankTab === k ? "1px solid #e0a13d" : "1px solid #2a2620", background: bankTab === k ? "rgba(224,161,61,0.18)" : "#1a1815", color: bankTab === k ? "#e0a13d" : "#f3f0ea" }}
+                >
+                  {lab}
+                </button>
+              ))}
+            </div>
+            {bankTab === "muscu" ? (
+            <>
             <p style={{ fontSize: 13, color: "#a8a199", marginTop: 0, marginBottom: 16 }}>
               Renommer un exercice met à jour toutes les séances (passées et
               futures) qui l'utilisent, ainsi que sa photo/gif partagé — en
@@ -4968,6 +5094,14 @@ export default function Workout() {
                 </div>
               )}
             </div>
+            </>
+            ) : (
+              <DrillBankManager
+                kind={bankTab}
+                drills={getDrillEntries(bankTab)}
+                onDelete={deleteDrill}
+              />
+            )}
           </div>
         </div>
       )}
@@ -6831,7 +6965,7 @@ export default function Workout() {
                         }}
                       />
                       {openSuggestFor === `${bIdx}-${eIdx}` &&
-                        getExerciseSuggestions(ex.name).length > 0 && (
+                        getSuggestionsFor(ex.name).length > 0 && (
                           <div
                             style={{
                               position: "absolute",
@@ -6848,11 +6982,13 @@ export default function Workout() {
                               boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
                             }}
                           >
-                            {getExerciseSuggestions(ex.name).map((entry, i) => (
+                            {getSuggestionsFor(ex.name).map((entry, i) => (
                               <div
                                 key={i}
                                 onMouseDown={() =>
-                                  selectExerciseFromLibrary(bIdx, eIdx, entry)
+                                  entry.template
+                                    ? applyDrillTemplate(bIdx, eIdx, entry)
+                                    : selectExerciseFromLibrary(bIdx, eIdx, entry)
                                 }
                                 style={{
                                   display: "flex",
@@ -6861,7 +6997,7 @@ export default function Workout() {
                                   padding: "8px 10px",
                                   cursor: "pointer",
                                   borderBottom:
-                                    i < getExerciseSuggestions(ex.name).length - 1
+                                    i < getSuggestionsFor(ex.name).length - 1
                                       ? "1px solid rgba(255,255,255,0.08)"
                                       : "none",
                                 }}
@@ -8041,13 +8177,12 @@ export default function Workout() {
           {bankForBlock !== null && (
             <DrillBankModal
               type={workoutType === "sprint" ? "sprint" : "endurance"}
+              entries={getDrillEntries(workoutType === "sprint" ? "sprint" : "endurance")}
               ratio={csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO}
               onClose={() => setBankForBlock(null)}
               onPick={(item) => {
-                const { cat, ...fields } = item;
-                void cat;
-                const exo = { ...fields };
-                if (workoutType === "sprint") exo.diagram = defaultSprintDiagram(item.distance);
+                const exo = { ...(item.template || {}), name: item.name };
+                if (workoutType === "sprint" && !exo.diagram) exo.diagram = defaultSprintDiagram(exo.distance);
                 setBlocks((prev) =>
                   prev.map((b, i) => {
                     if (i !== bankForBlock) return b;
