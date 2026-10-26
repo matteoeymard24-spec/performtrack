@@ -48,6 +48,7 @@ import { CYCLING_LEVELS, CYCLING_SEXES, normSex } from "../component/cycling";
 import { cyclingBilan } from "../component/cyclingRows";
 import { FoldBtn, useFold } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
+import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 const ACCENT = "#e0a13d";
 const SURFACE = "#151310";
@@ -449,7 +450,7 @@ export default function Tests() {
   };
 
   const deleteTest = async (t) => {
-    if (!window.confirm("Supprimer ce résultat de test ?")) return;
+    if (!await appConfirm("Supprimer ce résultat de test ?")) return;
     try {
       await deleteDoc(doc(db, "users", uid, "tests", t.id));
       await loadTests(uid);
@@ -530,7 +531,8 @@ export default function Tests() {
   /* ---- Journal de blessures de l'athlète choisi ---- */
   const TISSUE_LABELS = { muscle: "Muscle", tendon: "Tendon", ligament: "Ligament", os: "Os / articulation", autre: "Autre" };
   const MECHANISM_LABELS = { contact: "Contact / traumatique", surcharge: "Surcharge / usure", autre: "Autre" };
-  const injToday = new Date().toISOString().slice(0, 10);
+  // Date LOCALE (toISOString donnait la date UTC : avant 1-2 h du matin en France, c'était encore « hier »).
+  const injToday = (() => { const _d = new Date(); return `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, "0")}-${String(_d.getDate()).padStart(2, "0")}`; })();
 
   const loadInjuries = async (id) => {
     if (!id) {
@@ -610,7 +612,7 @@ export default function Tests() {
   };
 
   const removeInjury = async (id) => {
-    if (!window.confirm("Supprimer cette blessure de l'historique ?")) return;
+    if (!await appConfirm("Supprimer cette blessure de l'historique ?")) return;
     try {
       await deleteDoc(doc(db, "injuries", id));
       setInjuries((prev) => prev.filter((i) => i.id !== id));

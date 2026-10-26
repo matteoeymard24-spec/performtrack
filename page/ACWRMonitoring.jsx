@@ -36,7 +36,8 @@ import {
 } from "../component/loadMetrics";
 
 export default function ACWRMonitoring() {
-  const { userRole, currentUser } = useAuth();
+  const { userRole, currentUser, isSuperAdmin } = useAuth();
+  const isAdminLike = userRole === "admin" || isSuperAdmin;
   const [athletes, setAthletes] = useState([]);
   const [pickMode, setPickMode] = useState(""); // "" | "athletes" | "admins" (carrés de choix, comme Tests / Workout)
   const [selectedAthlete, setSelectedAthlete] = useState(null);
@@ -47,10 +48,6 @@ export default function ACWRMonitoring() {
   const [customGroups, setCustomGroups] = useState([]);
   const fold = useFold("redi", ["intro", "interp"]);
 
-  // 🔒 Sécurité : Admin uniquement
-  if (userRole !== "admin") {
-    return <Navigate to="/" replace />;
-  }
 
   useEffect(() => {
     const fetchAthletes = async () => {
@@ -215,6 +212,12 @@ export default function ACWRMonitoring() {
       setLoadingAthlete(false);
     }
   };
+
+  // 🔒 Sécurité : admin (ou super admin) uniquement — vérifié APRÈS les hooks
+  // (un return avant les useEffect cassait l'ordre des hooks de React).
+  if (!isAdminLike) {
+    return <Navigate to="/" replace />;
+  }
 
   if (loading) {
     return (

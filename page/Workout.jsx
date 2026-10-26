@@ -467,6 +467,8 @@ export default function Workout() {
   const duplicatingDayLock = useRef(false);
   const duplicatingWeekLock = useRef(false);
   const duplicatingSessionLock = useRef(false);
+  // Verrou « Terminer la séance » : un double-tap ajustait les RM deux fois.
+  const endingSessionLock = useRef(false);
 
   /* ---- Dialogues internes (remplacent window.confirm / window.alert) ----
      Chrome finit par bloquer les boîtes de dialogue d'une page ("Empêcher cette page d'en créer
@@ -586,8 +588,10 @@ export default function Workout() {
       setEvents(filtered);
       // Garde la séance ouverte en détail synchronisée avec les données
       // fraîches (titre, exercices, etc.) après un rechargement.
+      // Séance supprimée entre-temps (ou plus visible) : on la referme, sinon
+      // un clic suivant (modifier / supprimer / dupliquer) visait un fantôme.
       setSelectedSession((prev) =>
-        prev ? filtered.find((w) => w.id === prev.id) || prev : prev
+        prev ? filtered.find((w) => w.id === prev.id) || null : prev
       );
     } catch (e) {
       console.error("Erreur séances:", e);
@@ -1249,10 +1253,10 @@ export default function Workout() {
       });
       
       // Mettre à jour l'état local
-      const userProgress = session.userProgress || {};
-      userProgress[currentUser.uid] = {
-        startedAt: startTime,
-        inProgress: true,
+      // copie (on ne modifie pas l'objet de la liste des séances en place)
+      const userProgress = {
+        ...(session.userProgress || {}),
+        [currentUser.uid]: { startedAt: startTime, inProgress: true },
       };
       
       const updatedSession = {
@@ -1653,6 +1657,16 @@ export default function Workout() {
   };
 
   const endSession = async () => {
+    if (endingSessionLock.current) return;
+    endingSessionLock.current = true;
+    try {
+      await endSessionInner();
+    } finally {
+      endingSessionLock.current = false;
+    }
+  };
+
+  const endSessionInner = async () => {
     // Utiliser sessionInProgress ou selectedSession comme fallback
     const workoutSession = sessionInProgress || selectedSession;
     
@@ -1754,7 +1768,11 @@ export default function Workout() {
       
       console.log("[endSession] ✅ Séance mise à jour avec succès dans Firestore");
       
-      await adjustRMFromFeedback(sessionFeedback, workoutSession);
+      // Feedback COMPLET (brouillon déjà en base + saisies de cet écran) : après un
+      // rechargement de page, certains exos n'étaient sinon pas pris en compte.
+      if (!userProgressData.completedAt) {
+        await adjustRMFromFeedback(newUserProgressData.feedback, { ...workoutSession, ...currentSessionData, id: workoutSession.id });
+      }
       alert("Séance terminée ! Bravo 🎉");
       setSessionInProgress(null);
       setSessionFeedback({});
@@ -1795,6 +1813,7 @@ export default function Workout() {
       const weekSessions = events.filter((s) => {
         const d = new Date(s.date + "T12:00:00");
         if (d < start || d > end) return false;
+        if (s.group === "moi" && s.createdBy !== currentUser.uid) return false;
         if (seenIds.has(s.id)) return false;
         seenIds.add(s.id);
         return true;
@@ -1885,6 +1904,8 @@ export default function Workout() {
       const seenIds = new Set();
       const daySessions = events.filter((s) => {
         if (s.date !== duplicateDaySource) return false;
+        // Séance perso d'un AUTRE admin (visible en vue « Admins ») : jamais recopiée à mon nom.
+        if (s.group === "moi" && s.createdBy !== currentUser.uid) return false;
         if (seenIds.has(s.id)) return false;
         seenIds.add(s.id);
         return true;
@@ -2151,7 +2172,9 @@ export default function Workout() {
     setExtraGroups([]);
     setTargetUserId(session.targetUserId || "");
     setWorkoutType(session.type || "muscu");
-    setBlocks(session.blocks || []);
+    // Copie PROFONDE : sinon modifier le formulaire (ajout d'exo, etc.) puis
+    // annuler modifiait quand même la séance affichée en mémoire.
+    setBlocks(JSON.parse(JSON.stringify(session.blocks || [])));
     setShowForm(true);
   };
 
@@ -2205,13 +2228,17 @@ export default function Workout() {
   // Suppression groupée : toutes les séances d'un jour donné, tous
   // athlètes/groupes confondus (celles visibles par l'admin dans "events").
   const deleteSessionsForDay = async (dateStr) => {
-    const dayEvents = events.filter((e) => e.date === dateStr);
+    // Uniquement ce qui est AFFICHÉ (filtre athlète / groupe / vue en cours), et
+    // jamais la séance perso d'un autre admin.
+    const dayEvents = events.filter(
+      (e) => e.date === dateStr && isEventVisibleToFilter(e) && !(e.group === "moi" && e.createdBy !== currentUser.uid)
+    );
     if (dayEvents.length === 0) return;
     if (
       !await askConfirm(
         `Supprimer les ${dayEvents.length} séance(s) du ${new Date(
           dateStr + "T12:00:00"
-        ).toLocaleDateString("fr-FR")} ? Cette action est irréversible.`
+        ).toLocaleDateString("fr-FR")} (celles affichées) ? Tu auras 30 secondes pour annuler.`
       )
     )
       return;
@@ -2240,14 +2267,18 @@ export default function Workout() {
     const mondayStr = getLocalDateStr(monday);
     const sundayStr = getLocalDateStr(sunday);
     const weekEvents = events.filter(
-      (e) => e.date >= mondayStr && e.date <= sundayStr
+      (e) =>
+        e.date >= mondayStr &&
+        e.date <= sundayStr &&
+        isEventVisibleToFilter(e) &&
+        !(e.group === "moi" && e.createdBy !== currentUser.uid)
     );
     if (weekEvents.length === 0) return;
     if (
       !await askConfirm(
         `Supprimer les ${weekEvents.length} séance(s) de la semaine du ${monday.toLocaleDateString(
           "fr-FR"
-        )} au ${sunday.toLocaleDateString("fr-FR")} ? Cette action est irréversible.`
+        )} au ${sunday.toLocaleDateString("fr-FR")} (celles affichées) ? Tu auras 30 secondes pour annuler.`
       )
     )
       return;
@@ -2527,7 +2558,7 @@ export default function Workout() {
         blockRecoverySec: 0,
       };
     }
-    nb[bIdx].exercises.push(newExercise);
+    nb[bIdx] = { ...nb[bIdx], exercises: [...(nb[bIdx].exercises || []), newExercise] };
     setBlocks(nb);
   };
 
@@ -2538,14 +2569,12 @@ export default function Workout() {
         [...prev, { kind: "exercise", bIdx, eIdx, exercise: removed }].slice(-20)
       );
     }
-    const nb = [...blocks];
-    nb[bIdx].exercises = nb[bIdx].exercises.filter((_, i) => i !== eIdx);
-    setBlocks(nb);
+    setBlocks(
+      blocks.map((b, i) => (i !== bIdx ? b : { ...b, exercises: (b.exercises || []).filter((_, k) => k !== eIdx) }))
+    );
   };
   const updateBlock = (bIdx, field, val) => {
-    const nb = [...blocks];
-    nb[bIdx][field] = val;
-    setBlocks(nb);
+    setBlocks(blocks.map((b, i) => (i !== bIdx ? b : { ...b, [field]: val })));
   };
   const updateExercise = (bIdx, eIdx, field, val) => {
     // Copie immutable (on ne modifie plus l'objet exercice partagé avec la
@@ -2645,6 +2674,9 @@ export default function Workout() {
       const snap = await getDocs(collection(db, "exerciseMedia"));
       const lib = {};
       snap.docs.forEach((d) => {
+        // "test_<id>" = photo/vidéo d'un TEST (page Tests), pas un exercice :
+        // sinon ces fiches apparaissaient dans la banque et les suggestions.
+        if (d.id.startsWith("test_")) return;
         lib[d.id] = d.data();
       });
       setExerciseMediaLibrary(lib);
@@ -2972,7 +3004,13 @@ export default function Workout() {
       // champs — photo, catégorie, lien vidéo... — en les recopiant sur la
       // nouvelle fiche avant de supprimer l'ancienne).
       if (exerciseMediaLibrary[oldKey]) {
-        const mediaEntry = { ...exerciseMediaLibrary[oldKey], name: newName };
+        // Si le nouveau nom a déjà sa fiche (fusion), on garde ses champs
+        // (photo, catégorie…) et on ne complète qu'avec ce qui lui manque.
+        const existingNew = newKey !== oldKey ? exerciseMediaLibrary[newKey] : null;
+        const keepNew = existingNew
+          ? Object.fromEntries(Object.entries(existingNew).filter(([, v]) => v !== undefined && v !== null && v !== ""))
+          : {};
+        const mediaEntry = { ...exerciseMediaLibrary[oldKey], ...keepNew, name: newName };
         if (newKey !== oldKey) {
           await setDoc(doc(db, "exerciseMedia", newKey), {
             ...mediaEntry,
@@ -2990,17 +3028,28 @@ export default function Workout() {
         });
       }
 
-      // 3) Déplace la fiche "Mes RM" correspondante chez CHAQUE athlète.
-      // Sans ça, l'ancienne fiche (toujours présente sous l'ancien nom chez
-      // tous les athlètes, créée automatiquement dès qu'un exercice est
-      // catégorisé) continuait d'apparaître dans ce gestionnaire — donnant
-      // l'impression que le renommage n'avait rien fait et que l'image avait
-      // disparu (en réalité déplacée sur une fiche différente).
+      // 3) Déplace la fiche "Mes RM" correspondante chez CHAQUE compte
+      // (athlètes ET admins, coach compris). Si une fiche existe déjà sous le
+      // nouveau nom (fusion de deux noms), on FUSIONNE au lieu de jeter
+      // l'ancienne : courbes réunies, valeur la plus récente conservée.
+      const mergeRm = (oldD, newD) => {
+        const hist = [...(newD.history || []), ...(oldD.history || [])]
+          .filter((h) => h && h.date)
+          .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+        const newer = String(oldD.updatedAt || "") > String(newD.updatedAt || "") ? oldD : newD;
+        const kg = newer.kg ?? newD.kg ?? oldD.kg ?? null;
+        return {
+          ...oldD,
+          ...newD,
+          ...(kg != null ? { kg } : {}),
+          exerciseName: newName,
+          history: hist.slice(-20),
+          updatedAt: new Date().toISOString(),
+        };
+      };
       const usersSnap = await getDocs(collection(db, "users"));
-      const athleteIds = usersSnap.docs
-        .filter((d) => d.data().role !== "admin" && d.data().superAdmin !== true)
-        .map((d) => d.id);
-      for (const uid of athleteIds) {
+      for (const u of usersSnap.docs) {
+        const uid = u.id;
         const oldRmRef = doc(db, "users", uid, "rm", oldKey);
         const oldRmSnap = await getDoc(oldRmRef);
         if (!oldRmSnap.exists()) continue;
@@ -3010,51 +3059,21 @@ export default function Workout() {
         }
         const newRmRef = doc(db, "users", uid, "rm", newKey);
         const newRmSnap = await getDoc(newRmRef);
-        if (!newRmSnap.exists()) {
-          await setDoc(newRmRef, {
-            ...oldRmSnap.data(),
-            exerciseName: newName,
-            updatedAt: new Date().toISOString(),
-          });
-        }
+        await setDoc(
+          newRmRef,
+          newRmSnap.exists()
+            ? mergeRm(oldRmSnap.data(), newRmSnap.data())
+            : { ...oldRmSnap.data(), exerciseName: newName, updatedAt: new Date().toISOString() }
+        );
         await deleteDoc(oldRmRef);
       }
-
-      // 3bis) Le compte du coach lui-même (currentUser) a sa PROPRE fiche
-      // "Mes RM" (users/{currentUser.uid}/rm), volontairement EXCLUE de la
-      // boucle ci-dessus (qui ne traite que les athlètes, pas les
-      // admins/superAdmin). Or c'est justement cette fiche qui alimente
-      // "rmExerciseNames" (voir le useEffect "RM + VMA" plus haut) — sans ce
-      // bloc, l'ancienne fiche du coach restait donc affichée sous l'ancien
-      // nom après un renommage, donnant l'impression que rien ne s'était
-      // passé (le renommage fonctionnait pourtant bien pour les séances et
-      // la photo partagée).
-      if (currentUser?.uid) {
-        const ownOldRmRef = doc(db, "users", currentUser.uid, "rm", oldKey);
-        const ownOldRmSnap = await getDoc(ownOldRmRef);
-        if (ownOldRmSnap.exists()) {
-          if (newKey === oldKey) {
-            await updateDoc(ownOldRmRef, { exerciseName: newName });
-          } else {
-            const ownNewRmRef = doc(db, "users", currentUser.uid, "rm", newKey);
-            const ownNewRmSnap = await getDoc(ownNewRmRef);
-            if (!ownNewRmSnap.exists()) {
-              await setDoc(ownNewRmRef, {
-                ...ownOldRmSnap.data(),
-                exerciseName: newName,
-                updatedAt: new Date().toISOString(),
-              });
-            }
-            await deleteDoc(ownOldRmRef);
-          }
-          setRmExerciseNames((prev) => {
-            const next = { ...prev };
-            delete next[oldKey];
-            next[newKey] = { name: newName };
-            return next;
-          });
-        }
-      }
+      setRmExerciseNames((prev) => {
+        if (!prev[oldKey]) return prev;
+        const next = { ...prev };
+        delete next[oldKey];
+        next[newKey] = { name: newName };
+        return next;
+      });
 
       await fetchSessions();
       cancelRenameExercise();

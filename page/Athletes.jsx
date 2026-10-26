@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { Page, CARD_STYLE, CARD_ACCENT_BORDER, CARD_TITLE, PAGE_TITLE, FIELD_STYLE, FoldBtn } from "../component/ui";
 import { Navigate } from "react-router-dom";
+import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 // Durée de vie d'une archive d'athlète supprimé : passé ce délai, ses RM /
 // tests ne sont plus représentatifs (progrès ou régression) → supprimée.
@@ -221,7 +222,7 @@ export default function Athletes() {
   };
 
   const rejectUser = async (id) => {
-    if (!window.confirm("Refuser l'accès à cet athlète ?")) return;
+    if (!await appConfirm("Refuser l'accès à cet athlète ?")) return;
     try {
       await updateDoc(doc(db, "users", id), { status: "rejected" });
       setUsers((prev) =>
@@ -322,10 +323,11 @@ export default function Athletes() {
     // Option : garder une archive de ses RM / tests / poids. S'il revient
     // (même compte), elle est restaurée automatiquement à la validation de
     // son accès. OK = archiver, Annuler = tout effacer sans rien garder.
-    const keepArchive = window.confirm(
+    const keepArchive = await appConfirm(
       "Garder une ARCHIVE de ses RM, tests et historique de poids ?\n\n" +
-        `• OK : mis de côté ${ARCHIVE_TTL_DAYS} jours, restaurés s'il revient dans ce délai (même compte), puis supprimés définitivement.\n` +
-        "• Annuler : tout est effacé définitivement, rien n'est conservé."
+        `• Archiver : mis de côté ${ARCHIVE_TTL_DAYS} jours, restaurés s'il revient dans ce délai (même compte), puis supprimés définitivement.\n` +
+        "• Tout effacer : rien n'est conservé.",
+      { ok: "Archiver", cancel: "Tout effacer", danger: false }
     );
 
     try {

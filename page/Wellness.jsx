@@ -61,7 +61,8 @@ export default function Wellness() {
   const [confirmId, setConfirmId] = useState(null);
   const [deleteError, setDeleteError] = useState("");
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Date LOCALE (toISOString donnait la date UTC : avant 1-2 h du matin en France, c'était encore « hier »).
+  const today = (() => { const _d = new Date(); return `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, "0")}-${String(_d.getDate()).padStart(2, "0")}`; })();
 
   useEffect(() => {
     if (!currentUser) return;
@@ -107,24 +108,19 @@ export default function Wellness() {
   const dailyScore = todayEntry ? todayEntry.normalizedScore.toFixed(1) : null;
 
   // Score hebdomadaire : uniquement pour la semaine en cours
-  const getWeekNumber = (date) => {
-    const d = new Date(date);
+  // Semaine ISO + année ISO (l'année du jeudi de la semaine) : sinon la
+  // semaine à cheval sur le 31/12 - 1/1 était coupée en deux.
+  const getIsoWeekKey = (date) => {
+    const d = typeof date === "string" ? new Date(date + "T12:00:00") : new Date(date);
     d.setHours(0, 0, 0, 0);
     d.setDate(d.getDate() + 4 - (d.getDay() || 7));
     const yearStart = new Date(d.getFullYear(), 0, 1);
-    return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+    return `${d.getFullYear()}-${Math.ceil(((d - yearStart) / 86400000 + 1) / 7)}`;
   };
 
-  const currentWeek = getWeekNumber(new Date());
-  const currentYear = new Date().getFullYear();
+  const currentWeekKey = getIsoWeekKey(new Date());
 
-  const thisWeekEntries = entries.filter((e) => {
-    const entryDate = new Date(e.date);
-    return (
-      getWeekNumber(entryDate) === currentWeek &&
-      entryDate.getFullYear() === currentYear
-    );
-  });
+  const thisWeekEntries = entries.filter((e) => getIsoWeekKey(e.date) === currentWeekKey);
 
   const fold = useFold("wellness");
 

@@ -48,6 +48,7 @@ import {
   classifyForm,
   FORM_LEVELS,
 } from "../component/loadMetrics";
+import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 /* ===== Charte graphique du dashboard athlète (une seule pour toutes les cartes) ===== */
 const CARD_STYLE = {
@@ -1129,14 +1130,13 @@ export default function Dashboard() {
         dd.setHours(0, 0, 0, 0);
         dd.setDate(dd.getDate() + 4 - (dd.getDay() || 7));
         const ys = new Date(dd.getFullYear(), 0, 1);
-        return Math.ceil(((dd - ys) / 86400000 + 1) / 7);
+        // clé semaine ISO + année ISO (semaine à cheval sur le nouvel an non coupée)
+        return `${dd.getFullYear()}-${Math.ceil(((dd - ys) / 86400000 + 1) / 7)}`;
       };
       const curWeek = getWeekNum(today);
-      const curYear = new Date().getFullYear();
       const thisWeek = wellnessData.filter(
         (e) =>
-          getWeekNum(e.date) === curWeek &&
-          new Date(e.date + "T12:00:00").getFullYear() === curYear
+          getWeekNum(e.date) === curWeek
       );
       const weeklyAvg =
         thisWeek.length > 0
@@ -3658,7 +3658,7 @@ export default function Dashboard() {
                             </button>
                             <button
                               onClick={async () => {
-                                if (!window.confirm("Supprimer cette blessure de l'historique ?")) return;
+                                if (!await appConfirm("Supprimer cette blessure de l'historique ?")) return;
                                 try {
                                   await deleteDoc(doc(db, "injuries", inj.id));
                                   setShowAthleteDetail((prev) => ({

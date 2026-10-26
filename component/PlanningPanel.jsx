@@ -34,6 +34,7 @@ import {
   hasLoadInfo,
   scopeRank,
 } from "./cycles";
+import { appConfirm, appAlert as alert } from "./appDialog";
 
 const CARD = "#151310";
 const DARK = "#0d0c0a";
@@ -399,7 +400,7 @@ export default function PlanningPanel({
     }
   };
   const removeFixture = async (f) => {
-    if (!window.confirm(`Supprimer « ${f.name} » ?`)) return;
+    if (!await appConfirm(`Supprimer « ${f.name} » ?`)) return;
     setBusy(true);
     try {
       await deleteDoc(doc(db, "fixtures", f.id));
@@ -650,7 +651,7 @@ export default function PlanningPanel({
     const msg = kids.length
       ? `Supprimer « ${c.name} » ET ses ${kids.length} cycle(s) enfant(s) ? Les séances ne sont pas touchées.`
       : `Supprimer « ${c.name} » ? Les séances ne sont pas touchées.`;
-    if (!window.confirm(msg)) return;
+    if (!await appConfirm(msg)) return;
     setBusy(true);
     try {
       const b = writeBatch(db);
@@ -668,12 +669,13 @@ export default function PlanningPanel({
   const generateWeeks = async (c) => {
     const exists = (cycles || []).filter((x) => x.parentId === c.id && x.level === "micro");
     const total = Math.max(1, Math.ceil((diffDays(c.startDate, c.endDate) + 1) / 7));
-    if (!window.confirm(`Créer ${total} semaine(s) (microcycles) dans « ${c.name} » ?`)) return;
+    if (!await appConfirm(`Créer ${total} semaine(s) (microcycles) dans « ${c.name} » ?`)) return;
     const withTransition =
       total >= 2 &&
-      window.confirm(
-        "Dernière semaine = TRANSITION ?\n\nOK : la dernière semaine devient un mini-mésocycle « Transition » d'une semaine (le cycle se termine la veille).\nAnnuler : toutes les semaines restent dans le cycle."
-      );
+      (await appConfirm(
+        "Dernière semaine = TRANSITION ?\n\nOui : la dernière semaine devient un mini-mésocycle « Transition » d'une semaine (le cycle se termine la veille).\nNon : toutes les semaines restent dans le cycle.",
+        { ok: "Oui, transition", cancel: "Non", danger: false }
+      ));
     const plan = buildPlan(c, { lastIsTransition: withTransition });
     const weeksToMake = plan.weeks.filter((w) => !exists.some((x) => x.startDate === w.startDate));
     const transitionExists =

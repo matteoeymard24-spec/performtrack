@@ -3,6 +3,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { Page, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE, PAGE_SUB } from "../component/ui";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 export default function MyProfile() {
   const { currentUser, userRole, isSuperAdmin } = useAuth();

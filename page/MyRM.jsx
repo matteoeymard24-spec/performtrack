@@ -25,6 +25,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 // Mêmes catégories que la banque d'exercices (gestionnaire "🔤 Noms
 // d'exercices" dans Workout.jsx) — utilisées ici pour filtrer/regrouper.
@@ -259,7 +260,7 @@ export default function MyRM() {
         const m = d.data();
         const key = d.id;
         const lk = key.toLowerCase();
-        if (!m.category || m.isWarmup || m.isPDC || m.hidden) return;
+        if (!m.category || m.isWarmup || m.isPDC || m.hidden || key.startsWith("test_")) return;
         if (existingIds.has(normKey(key)) || grouped[lk] || Object.keys(grouped).some((g) => normKey(g) === normKey(key)) || lk === "vma" || lk === "cmj") return;
         toCreate.push({ key, lk, category: normalizeCategoryValue(m.category) || "autre" });
       });
@@ -428,7 +429,7 @@ export default function MyRM() {
   };
 
   const deleteSprint = async (id) => {
-    if (!window.confirm("Supprimer cette saisie de sprint ?")) return;
+    if (!await appConfirm("Supprimer cette saisie de sprint ?")) return;
     try {
       await deleteDoc(doc(db, "users", uid, "tests", id));
       await loadSprints();
@@ -514,7 +515,7 @@ export default function MyRM() {
   const [rebuilding, setRebuilding] = useState(false);
   const rebuildFromFeedback = async () => {
     if (!uid || rebuilding) return;
-    if (!window.confirm("Reconstruire les RM à partir de tous les retours de séance ? Les valeurs testées à la main ne sont pas modifiées.")) return;
+    if (!await appConfirm("Reconstruire les RM à partir de tous les retours de séance ? Les valeurs testées à la main ne sont pas modifiées.")) return;
     setRebuilding(true);
     try {
       const byEx = {};
@@ -600,7 +601,7 @@ export default function MyRM() {
     }
     pts.sort((x, y) => (x.date || "").localeCompare(y.date || ""));
     const last = pts[pts.length - 1];
-    if (!window.confirm(`Remettre « ${name} » à ${last.kg} kg (calculé depuis ${pts.length} séance(s)) ? La valeur actuelle et la courbe seront remplacées.`)) return;
+    if (!await appConfirm(`Remettre « ${name} » à ${last.kg} kg (calculé depuis ${pts.length} séance(s)) ? La valeur actuelle et la courbe seront remplacées.`)) return;
     try {
       await setDoc(
         doc(db, "users", uid, "rm", key),

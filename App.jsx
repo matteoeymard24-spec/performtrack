@@ -14,9 +14,12 @@ import Profile from "./page/MyProfile";
 import MyRM from "./page/MyRM";
 import ACWRMonitoring from "./page/ACWRMonitoring";
 import Tests from "./page/Tests";
+import { DialogHost } from "./component/appDialog";
 
 export default function App() {
   return (
+    <>
+    <DialogHost />
     <Routes>
       {/* PUBLIC */}
       <Route path="/login" element={<Login />} />
@@ -37,5 +40,6 @@ export default function App() {
         </Route>
       </Route>
     </Routes>
+    </>
   );
 }

@@ -121,7 +121,9 @@ export function AuthProvider({ children }) {
 
   const value = {
     currentUser,
-    userRole: preview ? "athlete" : userRole,
+    // Un super admin est toujours traité comme admin partout dans l'appli
+    // (beaucoup d'écrans testent userRole === "admin").
+    userRole: preview ? "athlete" : isSuperAdmin ? "admin" : userRole,
     userGroup,
     userProfile,
     isSuperAdmin: preview ? false : isSuperAdmin,

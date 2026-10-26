@@ -36,7 +36,8 @@ export default function WellnessForm() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Date LOCALE (toISOString donnait la date UTC : avant 1-2 h du matin en France, c'était encore « hier »).
+  const today = (() => { const _d = new Date(); return `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, "0")}-${String(_d.getDate()).padStart(2, "0")}`; })();
 
   useEffect(() => {
     if (!currentUser) return;
