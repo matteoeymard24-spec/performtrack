@@ -122,34 +122,59 @@ function FieldLines({ field }) {
   return <>{els}</>;
 }
 
+const TEAMS = { pa: "#2f6fe0", pb: "#d9443a", pc: "#f2c230", pd: "#3fae5a" };
+export const PALETTE = ["#2f6fe0", "#d9443a", "#f2c230", "#3fae5a", "#ffffff", "#111111", "#f08a24", "#9b59d0", "#e04f9a", "#5fd3e8"];
+const DEFAULT_COLOR = { run: "#ffffff", pass: "#ffd76a", zone: "#ffd76a", text: "#ffffff", elastic: "#e04f9a", cone: "#f08a24", pole: "#f2c230" };
+const LINE_TYPES = ["run", "pass", "zone", "elastic"];
+const ROTATABLE = ["bag", "shield", "hurdle"];
+const COLORABLE = ["pa", "pb", "pc", "pd", "run", "pass", "zone", "text", "elastic", "cone", "pole"];
+
 const TOOLS = [
-  { id: "move", label: "✋", title: "Déplacer" },
-  { id: "pa", label: "🔵", title: "Joueur équipe A" },
-  { id: "pb", label: "🔴", title: "Joueur équipe B" },
+  { id: "move", label: "✋", title: "Déplacer / sélectionner" },
+  { id: "pa", label: "🔵", title: "Joueur équipe 1" },
+  { id: "pb", label: "🔴", title: "Joueur équipe 2" },
+  { id: "pc", label: "🟡", title: "Joueur équipe 3" },
+  { id: "pd", label: "🟢", title: "Joueur équipe 4" },
   { id: "cone", label: "🔶", title: "Plot" },
+  { id: "pole", label: "📍", title: "Piquet" },
+  { id: "hurdle", label: "🚧", title: "Haie" },
   { id: "ball", label: "🏉", title: "Ballon" },
   { id: "bag", label: "🥫", title: "Boudin de placage" },
   { id: "shield", label: "🛡️", title: "Bouclier de contact" },
+  { id: "elastic", label: "〰️", title: "Élastique (glisse d'un point à l'autre)" },
   { id: "run", label: "➡️", title: "Course (trait plein)" },
   { id: "pass", label: "⇢", title: "Passe (pointillés)" },
+  { id: "runc", label: "↷", title: "Course en arc" },
+  { id: "passc", label: "⤻", title: "Passe en arc (pointillés)" },
   { id: "zone", label: "▭", title: "Zone (rectangle)" },
   { id: "text", label: "T", title: "Texte" },
-  { id: "erase", label: "🧽", title: "Gommer (clic sur un élément)" },
+  { id: "erase", label: "🧽", title: "Gommer (touche un élément)" },
 ];
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const round1 = (v) => Math.round(v * 10) / 10;
+const colorOf = (it) => it.c || TEAMS[it.t] || DEFAULT_COLOR[it.t] || "#ffffff";
+const markerId = (c) => "arw-" + String(c).replace(/[^a-zA-Z0-9]/g, "");
+
+// point de contrôle d'une flèche en arc (k = courbure, signe = côté)
+const ctrlOf = (it) => {
+  const mx = (it.x1 + it.x2) / 2, my = (it.y1 + it.y2) / 2;
+  const dx = it.x2 - it.x1, dy = it.y2 - it.y1;
+  const k = Number(it.k) || 0;
+  return { cx: mx - dy * k, cy: my + dx * k };
+};
 
 function Item({ it, unit, selected }) {
   const r = unit;
-  const sel = selected ? { stroke: "#ffd76a", strokeWidth: unit * 0.35 } : {};
-  if (it.t === "pa" || it.t === "pb") {
-    const fill = it.t === "pa" ? "#2f6fe0" : "#d9443a";
+  const hl = selected ? { stroke: "#ffd76a", strokeWidth: unit * 0.35 } : {};
+  const col = colorOf(it);
+  if (TEAMS[it.t]) {
+    const dark = col === "#f2c230" || col === "#ffffff" || col === "#5fd3e8";
     return (
       <g>
-        <circle cx={it.x} cy={it.y} r={r} fill={fill} stroke="#fff" strokeWidth={unit * 0.18} {...sel} />
+        <circle cx={it.x} cy={it.y} r={r} fill={col} stroke="#fff" strokeWidth={unit * 0.18} {...hl} />
         {it.n != null && (
-          <text x={it.x} y={it.y + r * 0.38} textAnchor="middle" fontSize={r * 1.1} fontWeight="700" fill="#fff" style={{ pointerEvents: "none" }}>
+          <text x={it.x} y={it.y + r * 0.38} textAnchor="middle" fontSize={r * 1.1} fontWeight="700" fontFamily="system-ui, sans-serif" fill={dark ? "#111" : "#fff"} style={{ pointerEvents: "none" }}>
             {it.n}
           </text>
         )}
@@ -160,25 +185,46 @@ function Item({ it, unit, selected }) {
     return (
       <polygon
         points={`${it.x},${it.y - r * 0.9} ${it.x - r * 0.75},${it.y + r * 0.6} ${it.x + r * 0.75},${it.y + r * 0.6}`}
-        fill="#f08a24"
+        fill={col}
         stroke="#fff"
         strokeWidth={unit * 0.12}
-        {...sel}
+        {...hl}
       />
     );
+  if (it.t === "pole")
+    return (
+      <g>
+        <circle cx={it.x + r * 0.15} cy={it.y + r * 0.15} r={r * 0.5} fill="rgba(0,0,0,0.35)" />
+        <circle cx={it.x} cy={it.y} r={r * 0.5} fill={col} stroke="#111" strokeWidth={unit * 0.12} {...hl} />
+        <circle cx={it.x} cy={it.y} r={r * 0.12} fill="#111" />
+      </g>
+    );
+  if (it.t === "hurdle") {
+    // haie vue de dessus : barre + 2 pieds
+    const w = r * 2.4, x = it.x, y = it.y;
+    return (
+      <g transform={`rotate(${it.rot || 0} ${x} ${y})`}>
+        <rect x={x - w / 2} y={y - r * 0.18} width={w} height={r * 0.36} fill="#f3f0ea" stroke={selected ? "#ffd76a" : "#d9443a"} strokeWidth={unit * (selected ? 0.3 : 0.1)} />
+        {[-0.3, 0.1].map((f) => (
+          <rect key={f} x={x + w * f} y={y - r * 0.18} width={w * 0.2} height={r * 0.36} fill="#d9443a" />
+        ))}
+        {[-1, 1].map((sd) => (
+          <line key={sd} x1={x + (sd * w) / 2} y1={y - r * 0.5} x2={x + (sd * w) / 2} y2={y + r * 0.5} stroke="#111" strokeWidth={unit * 0.2} strokeLinecap="round" />
+        ))}
+      </g>
+    );
+  }
   if (it.t === "bag") {
-    // boudin de placage vu de dessus/de face : cylindre bleu à bandes jaunes
     const w = r * 0.95, h = r * 2.3;
     return (
       <g transform={`rotate(${it.rot || 0} ${it.x} ${it.y})`}>
-        <rect x={it.x - w / 2} y={it.y - h / 2} width={w} height={h} rx={w / 2} fill="#1f3d7a" stroke="#fff" strokeWidth={unit * 0.12} {...sel} />
+        <rect x={it.x - w / 2} y={it.y - h / 2} width={w} height={h} rx={w / 2} fill="#1f3d7a" stroke="#fff" strokeWidth={unit * 0.12} {...hl} />
         <rect x={it.x - w / 2} y={it.y - h * 0.18} width={w} height={h * 0.1} fill="#f2c230" />
         <rect x={it.x - w / 2} y={it.y + h * 0.08} width={w} height={h * 0.1} fill="#f2c230" />
       </g>
     );
   }
   if (it.t === "shield") {
-    // bouclier de contact : pad incurvé rouge (face bombée vers l'avant = haut)
     const w = r * 2, h = r * 1.0;
     const x = it.x, y = it.y;
     return (
@@ -188,28 +234,49 @@ function Item({ it, unit, selected }) {
           fill="#c43b2f"
           stroke="#fff"
           strokeWidth={unit * 0.12}
-          {...sel}
+          {...hl}
         />
         <line x1={x - w * 0.15} y1={y + h * 0.55} x2={x + w * 0.15} y2={y + h * 0.55} stroke="#1a1a1a" strokeWidth={unit * 0.18} strokeLinecap="round" />
       </g>
     );
   }
   if (it.t === "ball")
-    return <ellipse cx={it.x} cy={it.y} rx={r * 0.75} ry={r * 0.5} fill="#f3e3c3" stroke="#6b4a2a" strokeWidth={unit * 0.15} {...sel} />;
+    return <ellipse cx={it.x} cy={it.y} rx={r * 0.75} ry={r * 0.5} fill="#f3e3c3" stroke="#6b4a2a" strokeWidth={unit * 0.15} {...hl} />;
   if (it.t === "run" || it.t === "pass") {
-    const color = it.t === "run" ? "#ffffff" : "#ffd76a";
+    const stroke = selected ? "#ffd76a" : col;
+    const common = {
+      stroke,
+      strokeWidth: unit * 0.3,
+      strokeDasharray: it.t === "pass" ? `${unit * 0.8} ${unit * 0.6}` : undefined,
+      markerEnd: `url(#${markerId(selected ? "#ffd76a" : col)})`,
+      strokeLinecap: "round",
+      fill: "none",
+    };
+    if (Number(it.k)) {
+      const { cx, cy } = ctrlOf(it);
+      return <path d={`M ${it.x1} ${it.y1} Q ${cx} ${cy} ${it.x2} ${it.y2}`} {...common} />;
+    }
+    return <line x1={it.x1} y1={it.y1} x2={it.x2} y2={it.y2} {...common} />;
+  }
+  if (it.t === "elastic") {
+    // élastique : ligne en zigzag entre deux points
+    const dx = it.x2 - it.x1, dy = it.y2 - it.y1;
+    const L = Math.hypot(dx, dy) || 1;
+    const n = Math.max(4, Math.round(L / (unit * 0.9)));
+    const nx = -dy / L, ny = dx / L, amp = unit * 0.35;
+    let d = `M ${it.x1} ${it.y1}`;
+    for (let i = 1; i < n; i++) {
+      const t = i / n, sgn = i % 2 ? 1 : -1;
+      d += ` L ${it.x1 + dx * t + nx * amp * sgn} ${it.y1 + dy * t + ny * amp * sgn}`;
+    }
+    d += ` L ${it.x2} ${it.y2}`;
     return (
-      <line
-        x1={it.x1}
-        y1={it.y1}
-        x2={it.x2}
-        y2={it.y2}
-        stroke={selected ? "#ffd76a" : color}
-        strokeWidth={unit * 0.3}
-        strokeDasharray={it.t === "pass" ? `${unit * 0.8} ${unit * 0.6}` : undefined}
-        markerEnd={`url(#arrow-${it.t})`}
-        strokeLinecap="round"
-      />
+      <g>
+        <path d={d} fill="none" stroke={selected ? "#ffd76a" : col} strokeWidth={unit * 0.22} strokeLinejoin="round" />
+        {[[it.x1, it.y1], [it.x2, it.y2]].map(([px, py], k) => (
+          <circle key={k} cx={px} cy={py} r={unit * 0.3} fill="#111" stroke={col} strokeWidth={unit * 0.1} />
+        ))}
+      </g>
     );
   }
   if (it.t === "zone") {
@@ -220,8 +287,9 @@ function Item({ it, unit, selected }) {
         y={y}
         width={Math.abs(it.x2 - it.x1)}
         height={Math.abs(it.y2 - it.y1)}
-        fill="rgba(255,215,106,0.18)"
-        stroke={selected ? "#ffd76a" : "rgba(255,215,106,0.9)"}
+        fill={col}
+        fillOpacity={0.2}
+        stroke={selected ? "#ffd76a" : col}
         strokeWidth={unit * 0.2}
         strokeDasharray={`${unit * 0.6} ${unit * 0.4}`}
       />
@@ -229,7 +297,7 @@ function Item({ it, unit, selected }) {
   }
   if (it.t === "text")
     return (
-      <text x={it.x} y={it.y} textAnchor="middle" fontSize={unit * 1.6} fontWeight="700" fill={selected ? "#ffd76a" : "#fff"} stroke="rgba(0,0,0,0.6)" strokeWidth={unit * 0.08} paintOrder="stroke">
+      <text x={it.x} y={it.y} textAnchor="middle" fontSize={unit * 1.6} fontWeight="700" fontFamily="system-ui, sans-serif" fill={col} stroke={selected ? "#ffd76a" : col === "#111111" ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)"} strokeWidth={unit * (selected ? 0.18 : 0.08)} paintOrder="stroke">
         {it.s}
       </text>
     );
@@ -237,46 +305,67 @@ function Item({ it, unit, selected }) {
 }
 
 // distance d'un point à un élément (pour sélectionner / gommer)
-function hitDist(it, p) {
-  if (it.x != null) return Math.hypot(it.x - p.x, it.y - p.y);
-  if (it.t === "zone") {
-    const x1 = Math.min(it.x1, it.x2), x2 = Math.max(it.x1, it.x2), y1 = Math.min(it.y1, it.y2), y2 = Math.max(it.y1, it.y2);
-    if (p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2) return 0;
-    return Infinity;
-  }
-  const { x1, y1, x2, y2 } = it;
+function segDist(p, x1, y1, x2, y2) {
   const dx = x2 - x1, dy = y2 - y1;
   const L2 = dx * dx + dy * dy || 1;
   const t = clamp(((p.x - x1) * dx + (p.y - y1) * dy) / L2, 0, 1);
   return Math.hypot(x1 + t * dx - p.x, y1 + t * dy - p.y);
 }
+function hitDist(it, p) {
+  if (it.x != null) return Math.hypot(it.x - p.x, it.y - p.y);
+  if (it.x1 == null) return Infinity;
+  if (it.t === "zone") {
+    const x1 = Math.min(it.x1, it.x2), x2 = Math.max(it.x1, it.x2), y1 = Math.min(it.y1, it.y2), y2 = Math.max(it.y1, it.y2);
+    if (p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2) return 0;
+    return Infinity;
+  }
+  if (Number(it.k)) {
+    // arc : on échantillonne la courbe
+    const { cx, cy } = ctrlOf(it);
+    let best = Infinity, px = it.x1, py = it.y1;
+    for (let i = 1; i <= 16; i++) {
+      const t = i / 16, u = 1 - t;
+      const qx = u * u * it.x1 + 2 * u * t * cx + t * t * it.x2;
+      const qy = u * u * it.y1 + 2 * u * t * cy + t * t * it.y2;
+      best = Math.min(best, segDist(p, px, py, qx, qy));
+      px = qx; py = qy;
+    }
+    return best;
+  }
+  return segDist(p, it.x1, it.y1, it.x2, it.y2);
+}
 
-/** Aperçu (lecture seule) ou éditeur complet. */
-export default function TacticalBoard({ value, onChange, readOnly = false, maxHeight }) {
+function Editor({ value, onChange, readOnly = false, maxHeight }) {
   const field = value?.field && FIELDS[value.field] ? value.field : "rugby";
-  const items = Array.isArray(value?.items) ? value.items : [];
+  const items = Array.isArray(value?.items) ? value.items.filter((x) => x && typeof x === "object") : [];
   const F = FIELDS[field];
   const pad = Math.max(F.w, F.h) * 0.04;
   const unit = Math.max(F.w, F.h) * 0.017; // taille d'un joueur
   const svgRef = useRef(null);
   const [tool, setTool] = useState("pa");
   const [sel, setSel] = useState(-1);
-  const [draft, setDraft] = useState(null); // flèche / zone en cours
+  const [draft, setDraft] = useState(null); // flèche / zone / élastique en cours
   const drag = useRef(null);
   const [history, setHistory] = useState([]);
   const [textDraft, setTextDraft] = useState("");
+  const [color, setColor] = useState(null); // couleur des prochains éléments (null = défaut)
 
+  const emit = (v) => onChange && onChange(v);
   const commit = (nextItems, nextField = field) => {
-    setHistory((h) => [...h.slice(-30), { field, items }]);
-    onChange && onChange({ field: nextField, items: nextItems });
+    const snapshot = { field, items };
+    setHistory((h) => [...h.slice(-30), snapshot]);
+    emit({ field: nextField, items: nextItems });
   };
 
   const toPt = (e) => {
     const svg = svgRef.current;
+    const ctm = svg && svg.getScreenCTM();
+    if (!svg || !ctm) return null;
     const pt = svg.createSVGPoint();
     pt.x = e.clientX;
     pt.y = e.clientY;
-    const p = pt.matrixTransform(svg.getScreenCTM().inverse());
+    const p = pt.matrixTransform(ctm.inverse());
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
     return { x: round1(clamp(p.x, -pad, F.w + pad)), y: round1(clamp(p.y, -pad, F.h + pad)) };
   };
 
@@ -293,7 +382,8 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
     if (readOnly) return;
     e.preventDefault();
     const p = toPt(e);
-    svgRef.current.setPointerCapture?.(e.pointerId);
+    if (!p) return;
+    try { svgRef.current.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     if (tool === "erase") {
       const i = nearest(p);
       if (i >= 0) commit(items.filter((_, k) => k !== i));
@@ -302,20 +392,25 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
     if (tool === "move") {
       const i = nearest(p);
       setSel(i);
-      if (i >= 0) drag.current = { i, start: p, orig: items[i] };
+      drag.current = i >= 0 ? { i, start: p, orig: items[i], before: items, moved: false } : null;
       return;
     }
-    if (tool === "run" || tool === "pass" || tool === "zone") {
-      setDraft({ t: tool, x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+    if (tool === "run" || tool === "pass" || tool === "zone" || tool === "elastic" || tool === "runc" || tool === "passc") {
+      const t = tool === "runc" ? "run" : tool === "passc" ? "pass" : tool;
+      const d = { t, x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+      if (tool === "runc" || tool === "passc") d.k = 0.35;
+      if (color) d.c = color;
+      setDraft(d);
       return;
     }
     if (tool === "text") {
       const s = textDraft.trim();
-      if (s) commit([...items, { t: "text", x: p.x, y: p.y, s: s.slice(0, 30) }]);
+      if (s) commit([...items, { t: "text", x: p.x, y: p.y, s: s.slice(0, 30), ...(color ? { c: color } : {}) }]);
       return;
     }
     const it = { t: tool, x: p.x, y: p.y };
-    if (tool === "pa" || tool === "pb") it.n = items.filter((x) => x.t === tool).length + 1;
+    if (TEAMS[tool]) it.n = items.filter((x) => x.t === tool).length + 1;
+    if (color && COLORABLE.includes(tool)) it.c = color;
     commit([...items, it]);
   };
 
@@ -323,31 +418,41 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
     if (readOnly) return;
     if (draft) {
       const p = toPt(e);
-      setDraft((d) => ({ ...d, x2: p.x, y2: p.y }));
+      if (!p) return;
+      setDraft((d) => (d ? { ...d, x2: p.x, y2: p.y } : d));
       return;
     }
-    if (drag.current) {
+    const dg = drag.current;
+    if (dg) {
       const p = toPt(e);
-      const { i, start, orig } = drag.current;
+      if (!p) return;
+      const { i, start, orig, before } = dg;
       const dx = p.x - start.x, dy = p.y - start.y;
+      if (Math.abs(dx) + Math.abs(dy) < 0.05) return;
+      dg.moved = true;
       const moved = orig.x != null
         ? { ...orig, x: round1(orig.x + dx), y: round1(orig.y + dy) }
         : { ...orig, x1: round1(orig.x1 + dx), y1: round1(orig.y1 + dy), x2: round1(orig.x2 + dx), y2: round1(orig.y2 + dy) };
       // déplacement en direct sans empiler l'historique à chaque pixel
-      onChange && onChange({ field, items: items.map((x, k) => (k === i ? moved : x)) });
+      emit({ field, items: before.map((x, k) => (k === i ? moved : x)) });
     }
   };
 
   const onUp = () => {
     if (readOnly) return;
     if (draft) {
-      const len = Math.hypot(draft.x2 - draft.x1, draft.y2 - draft.y1);
-      if (len > unit * 0.8) commit([...items, draft]);
+      const d = draft;
       setDraft(null);
+      const len = Math.hypot(d.x2 - d.x1, d.y2 - d.y1);
+      if (len > unit * 0.8) commit([...items, d]);
     }
-    if (drag.current) {
-      setHistory((h) => [...h.slice(-30), { field, items: items.map((x, k) => (k === drag.current.i ? drag.current.orig : x)) }]);
-      drag.current = null;
+    // ⚠️ on lit le ref MAINTENANT (avant de le vider) : avant, l'historique
+    // lisait drag.current plus tard, une fois vidé → plantage (écran noir).
+    const dg = drag.current;
+    drag.current = null;
+    if (dg && dg.moved) {
+      const snapshot = { field, items: dg.before };
+      setHistory((h) => [...h.slice(-30), snapshot]);
     }
   };
 
@@ -355,7 +460,7 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
     if (!history.length) return;
     const last = history[history.length - 1];
     setHistory(history.slice(0, -1));
-    onChange && onChange(last);
+    emit(last);
     setSel(-1);
   };
 
@@ -367,6 +472,8 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
     );
   }, [field]);
 
+  const markerColors = [...new Set(["#ffd76a", ...PALETTE, ...items.filter((x) => x.t === "run" || x.t === "pass").map(colorOf)])];
+
   const board = (
     <svg
       ref={svgRef}
@@ -375,21 +482,22 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
       onPointerDown={onDown}
       onPointerMove={onMove}
       onPointerUp={onUp}
+      onPointerCancel={onUp}
       onPointerLeave={onUp}
     >
       <defs>
-        {[["run", "#ffffff"], ["pass", "#ffd76a"]].map(([k, c]) => (
-          <marker key={k} id={`arrow-${k}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+        {markerColors.map((c) => (
+          <marker key={c} id={markerId(c)} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse">
             <path d="M 0 0 L 10 5 L 0 10 z" fill={c} />
           </marker>
         ))}
+        <clipPath id={`clip-${field}`}>
+          <rect x={-3} y={-0.2} width={F.w + 6} height={F.h + 0.4} />
+        </clipPath>
       </defs>
       <rect x={-pad} y={-pad} width={F.w + pad * 2} height={F.h + pad * 2} fill={F.bg} opacity={0.75} />
       <rect x={0} y={0} width={F.w} height={F.h} fill={F.bg} />
       {stripes}
-      <clipPath id={`clip-${field}`}>
-        <rect x={-3} y={-0.2} width={F.w + 6} height={F.h + 0.4} />
-      </clipPath>
       <g clipPath={`url(#clip-${field})`}>
         <FieldLines field={field} />
       </g>
@@ -414,6 +522,14 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
     cursor: "pointer",
   });
 
+  const selItem = sel >= 0 && tool === "move" ? items[sel] : null;
+  const showPalette = (selItem && COLORABLE.includes(selItem.t)) || ["zone", "text", "run", "pass", "runc", "passc", "elastic", "cone", "pole", "pa", "pb", "pc", "pd"].includes(tool);
+  const activeColor = selItem ? colorOf(selItem) : color;
+  const pickColor = (c) => {
+    if (selItem) commit(items.map((x, k) => (k === sel ? { ...x, c } : x)));
+    else setColor(c);
+  };
+
   return (
     <div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
@@ -432,6 +548,23 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
           </button>
         ))}
       </div>
+      {showPalette && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 12, color: "#a8a199" }}>{selItem ? "Couleur de l'élément :" : "Couleur :"}</span>
+          {!selItem && (
+            <button type="button" onClick={() => setColor(null)} style={{ ...btn(color === null), fontSize: 12, minWidth: 0 }}>Auto</button>
+          )}
+          {PALETTE.map((c) => (
+            <button
+              key={c}
+              type="button"
+              title={c}
+              onClick={() => pickColor(c)}
+              style={{ width: 32, height: 32, borderRadius: "50%", background: c, border: activeColor === c ? "3px solid #e0a13d" : "2px solid #2a2620", cursor: "pointer", padding: 0 }}
+            />
+          ))}
+        </div>
+      )}
       {tool === "text" && (
         <input
           value={textDraft}
@@ -444,29 +577,82 @@ export default function TacticalBoard({ value, onChange, readOnly = false, maxHe
       {board}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
         <button type="button" onClick={undo} disabled={!history.length} style={{ ...btn(false), opacity: history.length ? 1 : 0.4 }}>↩️ Annuler</button>
-        {sel >= 0 && tool === "move" && items[sel] && (items[sel].t === "bag" || items[sel].t === "shield") && (
-          <button
-            type="button"
-            onClick={() => commit(items.map((x, k) => (k === sel ? { ...x, rot: ((x.rot || 0) + 45) % 360 } : x)))}
-            style={btn(false)}
-          >
+        {selItem && ROTATABLE.includes(selItem.t) && (
+          <button type="button" onClick={() => commit(items.map((x, k) => (k === sel ? { ...x, rot: ((x.rot || 0) + 45) % 360 } : x)))} style={btn(false)}>
             ⟳ Pivoter
           </button>
         )}
-        {sel >= 0 && tool === "move" && (
-          <button type="button" onClick={() => { commit(items.filter((_, k) => k !== sel)); setSel(-1); }} style={btn(false)}>🗑️ Supprimer l'élément</button>
+        {selItem && (selItem.t === "run" || selItem.t === "pass") && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                const steps = [0, 0.35, 0.6, -0.35, -0.6];
+                const cur = Number(selItem.k) || 0;
+                const idx = steps.findIndex((v) => Math.abs(v - cur) < 0.01);
+                const next = steps[(idx + 1) % steps.length];
+                commit(items.map((x, k) => (k === sel ? { ...x, k: next } : x)));
+              }}
+              style={btn(false)}
+            >
+              ↷ Courbure
+            </button>
+            <button type="button" onClick={() => commit(items.map((x, k) => (k === sel ? { ...x, t: x.t === "run" ? "pass" : "run" } : x)))} style={btn(false)}>
+              {selItem.t === "run" ? "⇢ Pointillés" : "➡️ Trait plein"}
+            </button>
+          </>
         )}
-        <button
-          type="button"
-          onClick={() => items.length && commit([])}
-          style={{ ...btn(false), color: "#d9695a" }}
-        >
+        {selItem && (
+          <button type="button" onClick={() => { commit(items.filter((_, k) => k !== sel)); setSel(-1); }} style={btn(false)}>🗑️ Supprimer</button>
+        )}
+        <button type="button" onClick={() => items.length && commit([])} style={{ ...btn(false), color: "#d9695a" }}>
           Tout effacer
         </button>
         <span style={{ fontSize: 12, color: "#a8a199" }}>
-          {TOOLS.find((t) => t.id === tool)?.title} — {tool === "run" || tool === "pass" || tool === "zone" ? "glisse pour tracer" : tool === "move" ? "glisse un élément" : "touche le terrain"}
+          {TOOLS.find((t) => t.id === tool)?.title} — {LINE_TYPES.includes(tool) || tool === "runc" || tool === "passc" ? "glisse pour tracer" : tool === "move" ? "touche pour sélectionner, glisse pour déplacer" : "touche le terrain"}
         </span>
       </div>
     </div>
+  );
+}
+
+/* Garde-fou : si le schéma plante, on affiche un message au lieu de faire
+   tomber toute la page (écran noir) — le dessin déjà fait n'est pas perdu. */
+class BoardBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error) {
+    console.error("[TacticalBoard]", error);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 12, border: "1px solid #d9695a", borderRadius: 8, color: "#f3f0ea", fontSize: 13, background: "#2a1512" }}>
+          ⚠️ Le schéma a rencontré un problème ({String(this.state.error.message || this.state.error)}). Ton dessin est conservé.
+          <button
+            type="button"
+            onClick={() => this.setState({ error: null })}
+            style={{ marginLeft: 8, padding: "6px 12px", borderRadius: 6, border: "none", background: "#e0a13d", color: "#1a1306", cursor: "pointer" }}
+          >
+            Réessayer
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/** Aperçu (lecture seule) ou éditeur complet. */
+export default function TacticalBoard(props) {
+  return (
+    <BoardBoundary>
+      <Editor {...props} />
+    </BoardBoundary>
   );
 }
