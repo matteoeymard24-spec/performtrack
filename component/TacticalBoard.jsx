@@ -126,7 +126,7 @@ const TEAMS = { pa: "#2f6fe0", pb: "#d9443a", pc: "#f2c230", pd: "#3fae5a" };
 export const PALETTE = ["#2f6fe0", "#d9443a", "#f2c230", "#3fae5a", "#ffffff", "#111111", "#f08a24", "#9b59d0", "#e04f9a", "#5fd3e8"];
 const DEFAULT_COLOR = { run: "#ffffff", pass: "#ffd76a", zone: "#ffd76a", text: "#ffffff", elastic: "#e04f9a", cone: "#f08a24", pole: "#f2c230" };
 const LINE_TYPES = ["run", "pass", "zone", "elastic"];
-const ROTATABLE = ["bag", "shield", "hurdle"];
+const ROTATABLE = ["bag", "shield", "hurdle", "text", "ball", "cone"];
 const COLORABLE = ["pa", "pb", "pc", "pd", "run", "pass", "zone", "text", "elastic", "cone", "pole"];
 
 const TOOLS = [
@@ -184,6 +184,7 @@ function Item({ it, unit, selected }) {
   if (it.t === "cone")
     return (
       <polygon
+        transform={`rotate(${it.rot || 0} ${it.x} ${it.y})`}
         points={`${it.x},${it.y - r * 0.9} ${it.x - r * 0.75},${it.y + r * 0.6} ${it.x + r * 0.75},${it.y + r * 0.6}`}
         fill={col}
         stroke="#fff"
@@ -241,7 +242,7 @@ function Item({ it, unit, selected }) {
     );
   }
   if (it.t === "ball")
-    return <ellipse cx={it.x} cy={it.y} rx={r * 0.75} ry={r * 0.5} fill="#f3e3c3" stroke="#6b4a2a" strokeWidth={unit * 0.15} {...hl} />;
+    return <ellipse transform={`rotate(${it.rot || 0} ${it.x} ${it.y})`} cx={it.x} cy={it.y} rx={r * 0.75} ry={r * 0.5} fill="#f3e3c3" stroke="#6b4a2a" strokeWidth={unit * 0.15} {...hl} />;
   if (it.t === "run" || it.t === "pass") {
     const stroke = selected ? "#ffd76a" : col;
     const common = {
@@ -297,7 +298,7 @@ function Item({ it, unit, selected }) {
   }
   if (it.t === "text")
     return (
-      <text x={it.x} y={it.y} textAnchor="middle" fontSize={unit * 1.6} fontWeight="700" fontFamily="system-ui, sans-serif" fill={col} stroke={selected ? "#ffd76a" : col === "#111111" ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)"} strokeWidth={unit * (selected ? 0.18 : 0.08)} paintOrder="stroke">
+      <text transform={`rotate(${it.rot || 0} ${it.x} ${it.y})`} x={it.x} y={it.y} dominantBaseline="middle" textAnchor="middle" fontSize={unit * 1.6} fontWeight="700" fontFamily="system-ui, sans-serif" fill={col} stroke={selected ? "#ffd76a" : col === "#111111" ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)"} strokeWidth={unit * (selected ? 0.18 : 0.08)} paintOrder="stroke">
         {it.s}
       </text>
     );
@@ -340,7 +341,9 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
   const items = Array.isArray(value?.items) ? value.items.filter((x) => x && typeof x === "object") : [];
   const F = FIELDS[field];
   const pad = Math.max(F.w, F.h) * 0.04;
-  const unit = Math.max(F.w, F.h) * 0.017; // taille d'un joueur
+  // taille des éléments (réglable : utile sur un grand terrain vu sur téléphone)
+  const scale = clamp(Number(value?.scale) || 1, 0.6, 3);
+  const unit = Math.max(F.w, F.h) * 0.017 * scale; // taille d'un joueur
   const svgRef = useRef(null);
   const [tool, setTool] = useState("pa");
   const [sel, setSel] = useState(-1);
@@ -351,10 +354,10 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
   const [color, setColor] = useState(null); // couleur des prochains éléments (null = défaut)
 
   const emit = (v) => onChange && onChange(v);
-  const commit = (nextItems, nextField = field) => {
-    const snapshot = { field, items };
+  const commit = (nextItems, nextField = field, nextScale = scale) => {
+    const snapshot = { field, items, scale };
     setHistory((h) => [...h.slice(-30), snapshot]);
-    emit({ field: nextField, items: nextItems });
+    emit({ field: nextField, items: nextItems, scale: nextScale });
   };
 
   const toPt = (e) => {
@@ -369,13 +372,19 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
     return { x: round1(clamp(p.x, -pad, F.w + pad)), y: round1(clamp(p.y, -pad, F.h + pad)) };
   };
 
-  const nearest = (p) => {
+  const nearest = (p, f = 1.6) => {
     let best = -1, bd = Infinity;
     items.forEach((it, i) => {
       const d = hitDist(it, p);
       if (d < bd) { bd = d; best = i; }
     });
-    return bd <= unit * 1.6 ? best : -1;
+    return bd <= unit * f ? best : -1;
+  };
+  // position de la poignée de rotation (au-dessus de l'élément, tourne avec lui)
+  const handlePos = (it) => {
+    const a = ((it.rot || 0) * Math.PI) / 180;
+    const L = unit * 2.6;
+    return { x: it.x + Math.sin(a) * L, y: it.y - Math.cos(a) * L };
   };
 
   const onDown = (e) => {
@@ -384,6 +393,27 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
     const p = toPt(e);
     if (!p) return;
     try { svgRef.current.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    // Poignée de rotation de l'élément sélectionné : on la saisit en priorité
+    const cur = sel >= 0 ? items[sel] : null;
+    if (cur && ROTATABLE.includes(cur.t) && cur.x != null) {
+      const hp = handlePos(cur);
+      if (Math.hypot(hp.x - p.x, hp.y - p.y) <= unit * 1.3) {
+        drag.current = { i: sel, rotate: true, orig: cur, before: items, moved: false };
+        return;
+      }
+    }
+    // Avec un outil de pose (joueur, plot, texte…), toucher un élément
+    // existant le SÉLECTIONNE (couleur, rotation, déplacement) au lieu d'en
+    // poser un nouveau par-dessus.
+    if (tool !== "erase" && tool !== "move" && !["run", "pass", "zone", "elastic", "runc", "passc"].includes(tool)) {
+      const hit = nearest(p, 0.9);
+      if (hit >= 0) {
+        setSel(hit);
+        drag.current = { i: hit, start: p, orig: items[hit], before: items, moved: false };
+        return;
+      }
+      setSel(-1);
+    }
     if (tool === "erase") {
       const i = nearest(p);
       if (i >= 0) commit(items.filter((_, k) => k !== i));
@@ -427,6 +457,13 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
       const p = toPt(e);
       if (!p) return;
       const { i, start, orig, before } = dg;
+      if (dg.rotate) {
+        let deg = (Math.atan2(p.x - orig.x, -(p.y - orig.y)) * 180) / Math.PI;
+        deg = (Math.round(deg / 5) * 5 + 360) % 360; // pas de 5°
+        dg.moved = true;
+        emit({ field, scale, items: before.map((x, k) => (k === i ? { ...orig, rot: deg } : x)) });
+        return;
+      }
       const dx = p.x - start.x, dy = p.y - start.y;
       if (Math.abs(dx) + Math.abs(dy) < 0.05) return;
       dg.moved = true;
@@ -434,7 +471,7 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
         ? { ...orig, x: round1(orig.x + dx), y: round1(orig.y + dy) }
         : { ...orig, x1: round1(orig.x1 + dx), y1: round1(orig.y1 + dy), x2: round1(orig.x2 + dx), y2: round1(orig.y2 + dy) };
       // déplacement en direct sans empiler l'historique à chaque pixel
-      emit({ field, items: before.map((x, k) => (k === i ? moved : x)) });
+      emit({ field, scale, items: before.map((x, k) => (k === i ? moved : x)) });
     }
   };
 
@@ -451,7 +488,7 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
     const dg = drag.current;
     drag.current = null;
     if (dg && dg.moved) {
-      const snapshot = { field, items: dg.before };
+      const snapshot = { field, scale, items: dg.before };
       setHistory((h) => [...h.slice(-30), snapshot]);
     }
   };
@@ -505,6 +542,17 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
         <Item key={i} it={it} unit={unit} selected={!readOnly && i === sel} />
       ))}
       {draft && <Item it={draft} unit={unit} selected={false} />}
+      {!readOnly && sel >= 0 && items[sel] && ROTATABLE.includes(items[sel].t) && items[sel].x != null && (() => {
+        const it = items[sel];
+        const hp = handlePos(it);
+        return (
+          <g>
+            <line x1={it.x} y1={it.y} x2={hp.x} y2={hp.y} stroke="#ffd76a" strokeWidth={unit * 0.12} strokeDasharray={`${unit * 0.3} ${unit * 0.25}`} />
+            <circle cx={hp.x} cy={hp.y} r={unit * 0.75} fill="#ffd76a" stroke="#1a1306" strokeWidth={unit * 0.12} />
+            <text x={hp.x} y={hp.y} dominantBaseline="middle" textAnchor="middle" fontSize={unit * 1} fill="#1a1306" style={{ pointerEvents: "none" }}>⟳</text>
+          </g>
+        );
+      })()}
     </svg>
   );
 
@@ -522,7 +570,7 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
     cursor: "pointer",
   });
 
-  const selItem = sel >= 0 && tool === "move" ? items[sel] : null;
+  const selItem = sel >= 0 ? items[sel] || null : null;
   const showPalette = (selItem && COLORABLE.includes(selItem.t)) || ["zone", "text", "run", "pass", "runc", "passc", "elastic", "cone", "pole", "pa", "pb", "pc", "pd"].includes(tool);
   const activeColor = selItem ? colorOf(selItem) : color;
   const pickColor = (c) => {
@@ -542,6 +590,8 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
             <option key={k} value={k}>{f.label}</option>
           ))}
         </select>
+        <button type="button" title="Éléments plus petits" onClick={() => commit(items, field, Math.round(clamp(scale - 0.25, 0.6, 3) * 100) / 100)} style={btn(false)}>A−</button>
+        <button type="button" title="Éléments plus gros" onClick={() => commit(items, field, Math.round(clamp(scale + 0.25, 0.6, 3) * 100) / 100)} style={btn(false)}>A+</button>
         {TOOLS.map((t) => (
           <button key={t.id} type="button" title={t.title} onClick={() => { setTool(t.id); setSel(-1); }} style={btn(tool === t.id)}>
             {t.label}
@@ -578,9 +628,19 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
         <button type="button" onClick={undo} disabled={!history.length} style={{ ...btn(false), opacity: history.length ? 1 : 0.4 }}>↩️ Annuler</button>
         {selItem && ROTATABLE.includes(selItem.t) && (
-          <button type="button" onClick={() => commit(items.map((x, k) => (k === sel ? { ...x, rot: ((x.rot || 0) + 45) % 360 } : x)))} style={btn(false)}>
-            ⟳ Pivoter
-          </button>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#f3f0ea", flex: "1 1 220px" }}>
+            ⟳ Orientation
+            <input
+              type="range"
+              min={0}
+              max={355}
+              step={5}
+              value={selItem.rot || 0}
+              onChange={(e) => emit({ field, scale, items: items.map((x, k) => (k === sel ? { ...x, rot: Number(e.target.value) } : x)) })}
+              style={{ flex: 1, minWidth: 100, accentColor: "#e0a13d" }}
+            />
+            <span style={{ width: 36, textAlign: "right" }}>{selItem.rot || 0}°</span>
+          </label>
         )}
         {selItem && (selItem.t === "run" || selItem.t === "pass") && (
           <>
@@ -609,7 +669,8 @@ function Editor({ value, onChange, readOnly = false, maxHeight }) {
           Tout effacer
         </button>
         <span style={{ fontSize: 12, color: "#a8a199" }}>
-          {TOOLS.find((t) => t.id === tool)?.title} — {LINE_TYPES.includes(tool) || tool === "runc" || tool === "passc" ? "glisse pour tracer" : tool === "move" ? "touche pour sélectionner, glisse pour déplacer" : "touche le terrain"}
+          {TOOLS.find((t) => t.id === tool)?.title} — {LINE_TYPES.includes(tool) || tool === "runc" || tool === "passc" ? "glisse pour tracer" : tool === "move" ? "touche pour sélectionner, glisse pour déplacer" : "touche le terrain pour poser, ou un élément pour le sélectionner"}
+          {selItem && ROTATABLE.includes(selItem.t) ? " · tourne-le avec la poignée jaune ⟳" : ""}
         </span>
       </div>
     </div>
