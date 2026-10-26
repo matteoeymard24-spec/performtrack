@@ -6,6 +6,10 @@ import { getWorkoutDocs } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
+import TacticalBoard from "../component/TacticalBoard";
+import DrillBankModal from "../component/DrillBankModal";
+import EnduranceProfile, { ZonesCard } from "../component/EnduranceProfile";
+import { zoneOf, pctCS, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO } from "../component/drillBank";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -418,6 +422,12 @@ export default function Workout() {
   // associer une photo. Clé = nom normalisé -> { name: nom d'origine }.
   const [rmExerciseNames, setRmExerciseNames] = useState({});
   const [vma, setVma] = useState(null);
+  // Vitesse critique de référence (km/h), posée depuis l'onglet Tests (tests/_reference.cs)
+  const [csRef, setCsRef] = useState(null);
+  // Banque d'exos sprint/endurance ouverte pour le bloc n° … (null = fermée)
+  const [bankForBlock, setBankForBlock] = useState(null);
+  // Schéma (tableau tactique) en cours d'édition : { bIdx, eIdx }
+  const [diagramEdit, setDiagramEdit] = useState(null);
 
   const [sessionInProgress, setSessionInProgress] = useState(null);
   const [sessionStartTime, setSessionStartTime] = useState(null);
@@ -533,6 +543,12 @@ export default function Workout() {
         setUserRM(rmData);
         setRmExerciseNames(rmNames);
         setVma(vmaEntry?.kg || null);
+        try {
+          const ref = await getDoc(doc(db, "users", currentUser.uid, "tests", "_reference"));
+          setCsRef(ref.exists() ? Number(ref.data()?.cs?.value) || null : null);
+        } catch (e) {
+          setCsRef(null);
+        }
       } catch (e) {
         console.error("Erreur RM:", e);
       }
@@ -1137,9 +1153,15 @@ export default function Workout() {
     }
   };
 
+  // Vitesse de référence (km/h) d'un exo d'endurance : VC si l'exo est réglé
+  // en % de la vitesse critique (VC réelle, sinon ≈ 0,88 × VMA), sinon VMA.
+  const refSpeedKmh = (exercise) =>
+    exercise?.intensityRef === "cs" ? csRef || (vma ? vma * DEFAULT_CS_VMA_RATIO : null) : vma;
+
   const calculateEnduranceMetrics = (exercise) => {
-    if (!vma) return null;
-    const vmaMs = (vma * 1000) / 3600;
+    const refKmh = refSpeedKmh(exercise);
+    if (!refKmh) return null;
+    const vmaMs = (refKmh * 1000) / 3600;
     const targetSpeed = vmaMs * (exercise.vmaPercentage / 100);
     let distancePerRep = targetSpeed * exercise.effortTime;
     let totalDistance = distancePerRep * exercise.reps;
@@ -6921,7 +6943,39 @@ export default function Workout() {
                     />
                   </div>
 
-                  {/* Champ photo/gif de démonstration */}
+                  {/* Sprint / endurance : schéma dessiné (tableau tactique) à la place de la photo */}
+                  {workoutType !== "muscu" && (
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: 12, color: "#a8a199", marginBottom: 4, display: "block" }}>
+                        🎯 Schéma de l'exercice
+                      </label>
+                      {ex.diagram && (ex.diagram.items || []).length > 0 && (
+                        <div onClick={() => setDiagramEdit({ bIdx, eIdx })} style={{ cursor: "pointer", marginBottom: 6 }}>
+                          <TacticalBoard value={ex.diagram} readOnly maxHeight={220} />
+                        </div>
+                      )}
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => setDiagramEdit({ bIdx, eIdx })}
+                          style={{ flex: 1, minHeight: 40, padding: 8, background: "#1a1815", color: "#e0a13d", border: "1px solid #2a2620", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
+                        >
+                          {ex.diagram && (ex.diagram.items || []).length ? "✏️ Modifier le schéma" : "✏️ Dessiner le schéma"}
+                        </button>
+                        {ex.diagram && (
+                          <button
+                            type="button"
+                            onClick={() => updateExercise(bIdx, eIdx, "diagram", null)}
+                            style={{ minHeight: 40, padding: "8px 12px", background: "#1a1815", color: "#d9695a", border: "1px solid #2a2620", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
+                          >
+                            🗑️
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {/* Champ photo/gif de démonstration (muscu) */}
+                  {workoutType === "muscu" && (
                   <div style={{ marginBottom: 10 }}>
                     <label style={{ fontSize: 12, color: "#a8a199", marginBottom: 4, display: "block" }}>
                       📸 Photo / GIF de démonstration
@@ -7052,6 +7106,7 @@ export default function Workout() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* Lien vidéo de démonstration (renseigné dans la banque
                       d'exercices, apparaît automatiquement dès que le nom
@@ -7627,8 +7682,20 @@ export default function Workout() {
                         }}
                       >
                         <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            % VMA
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
+                            %
+                            <select
+                              value={ex.intensityRef === "cs" ? "cs" : "vma"}
+                              onChange={(e) => updateExercise(bIdx, eIdx, "intensityRef", e.target.value)}
+                              style={{ background: "#0d0c0a", color: "#e0a13d", border: "1px solid #2a2620", borderRadius: 4, fontSize: 12, padding: "1px 2px" }}
+                            >
+                              <option value="vma">VMA</option>
+                              <option value="cs">VC</option>
+                            </select>
+                            {(() => {
+                              const z = zoneOf(pctCS(ex, csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO));
+                              return z ? <span style={{ color: z.color, fontWeight: 700 }}>{z.short}</span> : null;
+                            })()}
                           </label>
                           <input
                             type="number"
@@ -7846,13 +7913,26 @@ export default function Workout() {
                           Passage sol
                         </label>
                       </div>
+                      {!isTimerBlock && (ex.recoveryMin || ex.recoverySec) ? (
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>
+                            Intensité de la récup (% {ex.intensityRef === "cs" ? "VC" : "VMA"}, 0 = passive)
+                          </label>
+                          <input
+                            type="number"
+                            value={ex.recoveryVmaPct || 0}
+                            onChange={(e) => updateExercise(bIdx, eIdx, "recoveryVmaPct", Number(e.target.value))}
+                            style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", boxSizing: "border-box" }}
+                          />
+                        </div>
+                      ) : null}
                       {/* CALCUL DISTANCE */}
-                      {vma &&
+                      {refSpeedKmh(ex) &&
                         ex.vmaPercentage &&
                         ex.effortTime &&
                         ex.reps &&
                         (() => {
-                          const vmaMs = (vma * 1000) / 3600;
+                          const vmaMs = (refSpeedKmh(ex) * 1000) / 3600;
                           const targetSpeed = vmaMs * (ex.vmaPercentage / 100);
                           let distancePerRep = targetSpeed * ex.effortTime;
                           let totalDistance = distancePerRep * ex.reps;
@@ -7939,10 +8019,66 @@ export default function Workout() {
               >
                 ➕ Ajouter exercice
               </button>
+              {(workoutType === "sprint" || workoutType === "endurance") && (
+                <button
+                  type="button"
+                  onClick={() => setBankForBlock(bIdx)}
+                  style={{ width: "100%", padding: 10, marginTop: 6, background: "#1a1815", color: "#e0a13d", border: "1px solid #e0a13d", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
+                >
+                  📚 Banque d'exos {workoutType === "sprint" ? "sprint" : "endurance"}
+                </button>
+              )}
               </>
               )}
             </div>
           ))}
+          {workoutType === "endurance" && (
+            <>
+              <EnduranceProfile blocks={blocks} vma={vma} cs={csRef} />
+              <ZonesCard />
+            </>
+          )}
+          {bankForBlock !== null && (
+            <DrillBankModal
+              type={workoutType === "sprint" ? "sprint" : "endurance"}
+              ratio={csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO}
+              onClose={() => setBankForBlock(null)}
+              onPick={(item) => {
+                const { cat, ...fields } = item;
+                void cat;
+                const exo = { ...fields };
+                if (workoutType === "sprint") exo.diagram = defaultSprintDiagram(item.distance);
+                setBlocks((prev) =>
+                  prev.map((b, i) => {
+                    if (i !== bankForBlock) return b;
+                    const exs = b.exercises || [];
+                    // un exo vide (juste créé) est remplacé plutôt que gardé
+                    const lastEmpty = exs.length && !exs[exs.length - 1].name ? exs.length - 1 : -1;
+                    const base = lastEmpty >= 0 ? exs[lastEmpty] : {};
+                    const merged = { ...base, ...exo };
+                    return { ...b, exercises: lastEmpty >= 0 ? exs.map((x, k) => (k === lastEmpty ? merged : x)) : [...exs, merged] };
+                  })
+                );
+                setBankForBlock(null);
+              }}
+            />
+          )}
+          {diagramEdit && blocks[diagramEdit.bIdx]?.exercises?.[diagramEdit.eIdx] && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", zIndex: 2500, display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}>
+              <div style={{ background: "#151310", border: "1px solid #e0a13d", borderRadius: 12, width: "100%", maxWidth: 960, maxHeight: "95vh", overflowY: "auto", padding: 12, boxSizing: "border-box", color: "#f3f0ea" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
+                  <div style={{ fontWeight: 700 }}>🎯 Schéma — {blocks[diagramEdit.bIdx].exercises[diagramEdit.eIdx].name || "exercice"}</div>
+                  <button type="button" onClick={() => setDiagramEdit(null)} style={{ padding: "8px 16px", minHeight: 40, background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>
+                    ✓ Terminé
+                  </button>
+                </div>
+                <TacticalBoard
+                  value={blocks[diagramEdit.bIdx].exercises[diagramEdit.eIdx].diagram || { field: workoutType === "sprint" ? "piste" : "rugby", items: [] }}
+                  onChange={(d) => updateExercise(diagramEdit.bIdx, diagramEdit.eIdx, "diagram", d)}
+                />
+              </div>
+            </div>
+          )}
 
           <button
             onClick={addBlock}
@@ -8193,6 +8329,13 @@ export default function Workout() {
                 test d'endurance (onglet Tests) pour la définir.
               </div>
             </div>
+          )}
+
+          {(sessionType === "endurance" || sessionType === "vma") && (
+            <>
+              <EnduranceProfile blocks={selectedSession.blocks} vma={vma} cs={csRef} />
+              <ZonesCard />
+            </>
           )}
 
           {/* Contrôles séance - Pour tous (athlètes ET admins) */}
@@ -8549,6 +8692,22 @@ export default function Workout() {
                         📝 {ex.description}
                       </div>
                     )}
+
+                    {/* Schéma dessiné (sprint / endurance) */}
+                    {ex.diagram && (ex.diagram.items || []).length > 0 && (
+                      <div style={{ marginBottom: 10 }}>
+                        <TacticalBoard value={ex.diagram} readOnly maxHeight={320} />
+                      </div>
+                    )}
+                    {/* Zone + allure cible (endurance) */}
+                    {(sessionType === "endurance" || sessionType === "vma") && ex.vmaPercentage > 0 && (() => {
+                      const z = zoneOf(pctCS(ex, csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO));
+                      return z ? (
+                        <div style={{ display: "inline-block", marginBottom: 8, padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, color: z.color, border: `1px solid ${z.color}` }}>
+                          {z.short} · {ex.vmaPercentage} % {ex.intensityRef === "cs" ? "vitesse critique" : "VMA"} · {z.feel}
+                        </div>
+                      ) : null;
+                    })()}
 
                     {/* Photo/gif de démonstration si présente (résolue par nom
                         d'exercice depuis la bibliothèque partagée) */}
