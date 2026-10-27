@@ -3,7 +3,7 @@ import { e1rmFromSet } from "../component/loadMetrics";
 import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { getWorkoutDocs } from "../component/workoutQueries";
+import { getWorkoutDocs, getScopedUserDocs, daysAgoStr, WINDOW } from "../component/workoutQueries";
 import {
   collection,
   getDocs,
@@ -57,7 +57,7 @@ const normKey = (name) =>
     .replace(/\s+/g, " ");
 
 export default function MyRM() {
-  const { currentUser, userRole, isSuperAdmin } = useAuth();
+  const { currentUser, userRole, isSuperAdmin, coachScope } = useAuth();
   const isAdminLike = userRole === "admin" || isSuperAdmin;
   // Coach : peut consulter / modifier les RM d'un athlète ("" = les siens)
   const [viewUid, setViewUid] = useState("");
@@ -76,13 +76,18 @@ export default function MyRM() {
     if (!isAdminLike) return;
     (async () => {
       try {
-        const snap = await getDocs(collection(db, "users"));
+        const snap = await getScopedUserDocs();
         const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setRmAthletes(all.filter((u) => u.id !== currentUser?.uid && u.role !== "admin"));
-        setRmAdmins(all.filter((u) => u.id !== currentUser?.uid && u.role === "admin"));
+        setRmAthletes(
+          all.filter(
+            (u) => u.id !== currentUser?.uid && u.role !== "admin" && (!coachScope || coachScope.ownsUser(u))
+          )
+        );
+        // les autres coachs ne sont accessibles qu'au superadmin
+        setRmAdmins(all.filter((u) => u.id !== currentUser?.uid && u.role === "admin" && isSuperAdmin));
         try {
           const g = await getDocs(collection(db, "groups"));
-          setRmGroups(g.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setRmGroups(g.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !coachScope || coachScope.ownsGroup(x)));
         } catch (e) {
           console.warn("Groupes:", e);
         }
@@ -105,6 +110,8 @@ export default function MyRM() {
   // Movement Jump"). Pas besoin de le ressaisir à la main.
   const [sessionCmjEntries, setSessionCmjEntries] = useState([]);
   const [fbEntries, setFbEntries] = useState([]);
+  // Feedbacks : 12 derniers mois par défaut (quota gratuit), tout sur demande.
+  const [fbAllHistory, setFbAllHistory] = useState(false);
 
   // États RM
   const [rmHistory, setRmHistory] = useState({});
@@ -335,7 +342,7 @@ export default function MyRM() {
     if (!currentUser) return;
     const loadedFor = uid;
     try {
-      const snap = await getWorkoutDocs();
+      const snap = await getWorkoutDocs(fbAllHistory ? {} : { since: daysAgoStr(WINDOW.feedback) });
       if (uidRef.current !== loadedFor) return;
       setFbEntries(
         extractFeedbackExercises(
@@ -374,7 +381,8 @@ export default function MyRM() {
 
   useEffect(() => {
     loadSessionCmj();
-  }, [currentUser, uid]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, uid, fbAllHistory]);
 
   /* ===================== SPRINT (10 / 20 / 60 m) ===================== */
   const loadSprints = async () => {
@@ -820,6 +828,15 @@ export default function MyRM() {
           subtitle="Tous les exercices de tes séances pour lesquels tu as donné un feedback (charge, reps, RPE). Touche une ligne pour voir toutes les séries."
         >
           <FeedbackList entries={fbEntries} mode="all" limit={15} searchable />
+          {!fbAllHistory && (
+            <button
+              type="button"
+              onClick={() => setFbAllHistory(true)}
+              style={{ marginTop: 10, padding: "8px 12px", background: "transparent", color: "#e0a13d", border: "1px solid rgba(224,161,61,0.4)", borderRadius: 8, cursor: "pointer", fontSize: 13, minHeight: 40 }}
+            >
+              🕘 Afficher aussi les feedbacks de plus de 12 mois
+            </button>
+          )}
         </FoldCard>
       </div>
 

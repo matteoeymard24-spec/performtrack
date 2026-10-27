@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
 import { auth, db } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, getDocs, collection, query, where } from "firebase/firestore";
+import { athleteCanSeeWorkout } from "../component/coachScope";
 
 const AuthContext = createContext();
 
@@ -115,6 +116,116 @@ export function AuthProvider({ children }) {
     return auth.signOut();
   };
 
+  // ===== Portée coach : quels athlètes / séances ce compte a-t-il le droit de voir ? =====
+  // Coach (admin) : ses athlètes (users.coachId == son uid).
+  // Superadmin : tous les comptes sont chargés ; il voit les siens + ceux sans coach,
+  // ou TOUT si l'interrupteur « tout voir » est activé (mémorisé sur l'appareil).
+  const uid = currentUser?.uid || null;
+  const rawAdmin = userRole === "admin" || isSuperAdmin;
+  const seeAllKey = `pt_seeAll_${uid || "anon"}`;
+  const [seeAllFlag, setSeeAllFlag] = useState(false);
+  useEffect(() => {
+    try {
+      setSeeAllFlag(localStorage.getItem(seeAllKey) === "1");
+    } catch (e) {
+      setSeeAllFlag(false);
+    }
+  }, [seeAllKey]);
+  const setSeeAll = (on) => {
+    try {
+      localStorage.setItem(seeAllKey, on ? "1" : "0");
+    } catch (e) {
+      /* stockage indisponible */
+    }
+    // Recharge : toutes les pages recalculent leurs listes avec la nouvelle portée.
+    window.location.reload();
+  };
+  const [scopeMap, setScopeMap] = useState({}); // id -> coachId (ou null)
+  const [scopeReady, setScopeReady] = useState(false);
+  const [scopeKey, setScopeKey] = useState(0);
+  const refreshScope = useCallback(() => setScopeKey((k) => k + 1), []);
+  useEffect(() => {
+    if (!uid || !rawAdmin) {
+      setScopeMap({});
+      setScopeReady(true);
+      return;
+    }
+    let cancelled = false;
+    setScopeReady(false);
+    (async () => {
+      try {
+        const snap = isSuperAdmin
+          ? await getDocs(collection(db, "users"))
+          : await getDocs(query(collection(db, "users"), where("coachId", "==", uid)));
+        if (cancelled) return;
+        const map = {};
+        snap.docs.forEach((d) => {
+          map[d.id] = d.data().coachId || null;
+        });
+        setScopeMap(map);
+      } catch (e) {
+        console.warn("Portée coach: lecture des athlètes impossible", e);
+        if (!cancelled) setScopeMap({});
+      } finally {
+        if (!cancelled) setScopeReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, rawAdmin, isSuperAdmin, scopeKey, retryKey]);
+
+  const seeAll = isSuperAdmin && seeAllFlag;
+  const ownsCoachId = useCallback(
+    (coachIdOfUser, userId) => {
+      if (!rawAdmin) return false;
+      if (userId && userId === uid) return true;
+      if (isSuperAdmin) return seeAll || !coachIdOfUser || coachIdOfUser === uid;
+      return coachIdOfUser === uid;
+    },
+    [rawAdmin, isSuperAdmin, seeAll, uid]
+  );
+  // Ce document users (athlète) fait-il partie de mes athlètes ?
+  const ownsUser = useCallback((u) => !!u && ownsCoachId(u.coachId || null, u.id), [ownsCoachId]);
+  // Idem à partir d'un simple identifiant (séances ciblant un athlète...).
+  const ownsId = useCallback(
+    (id) => {
+      if (!id) return false;
+      if (id === uid) return true;
+      if (!(id in scopeMap)) return isSuperAdmin; // inconnu : seul le superadmin le garde
+      return ownsCoachId(scopeMap[id], id);
+    },
+    [scopeMap, ownsCoachId, isSuperAdmin, uid]
+  );
+  // Cette séance est-elle visible pour ce compte ?
+  const canViewWorkout = useCallback(
+    (w) => {
+      if (!w) return false;
+      if (rawAdmin && !previewAthlete) {
+        if (isSuperAdmin && seeAll) return true;
+        if (!w.createdBy || w.createdBy === uid) return true;
+        if (w.targetUserId && ownsId(w.targetUserId)) return true;
+        return false;
+      }
+      return athleteCanSeeWorkout(w, { id: uid, coachId: userProfile?.coachId || null });
+    },
+    [rawAdmin, previewAthlete, isSuperAdmin, seeAll, uid, ownsId, userProfile]
+  );
+  // Ce groupe personnalisé est-il à moi ? (un coach ne voit que ses groupes)
+  const ownsGroup = useCallback(
+    (g) => {
+      if (!rawAdmin) return true;
+      if (isSuperAdmin && seeAll) return true;
+      return g?.createdBy === uid || (isSuperAdmin && !g?.createdBy);
+    },
+    [rawAdmin, isSuperAdmin, seeAll, uid]
+  );
+  const coachScope = useMemo(
+    () => ({ ready: scopeReady, seeAll, ownsUser, ownsId, ownsGroup, canViewWorkout, refresh: refreshScope, setSeeAll }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scopeReady, seeAll, ownsUser, ownsId, ownsGroup, canViewWorkout, refreshScope]
+  );
+
   // Le coach réel (indépendamment de l'aperçu) peut activer l'aperçu athlète.
   const canPreview = userRole === "admin" || isSuperAdmin;
   const preview = canPreview && previewAthlete;
@@ -132,6 +243,7 @@ export function AuthProvider({ children }) {
     canPreview,
     previewAthlete: preview,
     setPreviewAthlete,
+    coachScope,
   };
 
   return (

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
+import { getScopedUserDocs } from "../component/workoutQueries";
 import {
   collection,
   getDocs,
@@ -256,7 +257,7 @@ function ResultPreview({ res }) {
 }
 
 export default function Tests() {
-  const { currentUser, userRole, isSuperAdmin } = useAuth();
+  const { currentUser, userRole, isSuperAdmin, coachScope } = useAuth();
   // Coach (admin / superadmin) = saisie + gestion ; athlète = consultation de ses propres tests uniquement.
   const isCoach = userRole === "admin" || isSuperAdmin === true;
   const [showParams, setShowParams] = useState(true);
@@ -312,7 +313,7 @@ export default function Tests() {
             getDocs(collection(db, "exerciseMedia")),
           ]);
           setAthletes(me.exists() ? [{ id: me.id, ...me.data() }] : [{ id: currentUser.uid }]);
-          setGroups(gs.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setGroups(gs.docs.map((d) => ({ id: d.id, ...d.data() })).filter((g) => !coachScope || coachScope.ownsGroup(g)));
           const mm0 = {};
           ms.docs.forEach((d) => {
             if (d.id.startsWith("test_")) mm0[d.id.slice(5)] = d.data();
@@ -321,15 +322,22 @@ export default function Tests() {
           return;
         }
         const [us, gs, ms] = await Promise.all([
-          getDocs(collection(db, "users")),
+          getScopedUserDocs(),
           getDocs(collection(db, "groups")),
           getDocs(collection(db, "exerciseMedia")),
         ]);
         const list = us.docs
           .map((d) => ({ id: d.id, ...d.data() }))
+          .filter((u) =>
+            u.id === currentUser?.uid
+              ? true
+              : u.role === "admin" || u.superAdmin === true
+              ? isSuperAdmin
+              : !coachScope || coachScope.ownsUser(u)
+          )
           .sort((a, b) => athleteName(a).localeCompare(athleteName(b), "fr"));
         setAthletes(list);
-        setGroups(gs.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setGroups(gs.docs.map((d) => ({ id: d.id, ...d.data() })).filter((g) => !coachScope || coachScope.ownsGroup(g)));
         const mm = {};
         ms.docs.forEach((d) => {
           if (d.id.startsWith("test_")) mm[d.id.slice(5)] = d.data();
@@ -496,8 +504,19 @@ export default function Tests() {
   };
 
   const saveMedia = async (tid, data) => {
-    await setDoc(doc(db, "exerciseMedia", "test_" + tid), { ...data, updatedAt: new Date().toISOString() });
-    setMedia((m) => ({ ...m, [tid]: data }));
+    // Fiche commune d'un autre coach : seul son auteur ou le superadmin la modifie.
+    const prev = media[tid];
+    if (prev && prev.createdBy !== currentUser?.uid && !isSuperAdmin) {
+      alert("Photo / vidéo de test commune (créée par un autre coach) : seul son auteur ou le superadmin peut la modifier.");
+      return;
+    }
+    const full = { ...data, createdBy: prev?.createdBy || currentUser?.uid || null };
+    try {
+      await setDoc(doc(db, "exerciseMedia", "test_" + tid), { ...full, updatedAt: new Date().toISOString() });
+      setMedia((m) => ({ ...m, [tid]: full }));
+    } catch (e) {
+      alert("Erreur : " + e.message);
+    }
   };
 
   const addToGroup = async () => {

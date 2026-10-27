@@ -2,11 +2,12 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { getWorkoutDocs } from "../component/workoutQueries";
+import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
 import TacticalBoard from "../component/TacticalBoard";
+import { loadExerciseImage, saveExerciseImage, deleteExerciseImage } from "../component/mediaStore";
 import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
 import EnduranceProfile, { ZonesCard } from "../component/EnduranceProfile";
 import { zoneOf, pctCS, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK } from "../component/drillBank";
@@ -346,11 +347,22 @@ const MAX_MEDIA_ZOOM = 250;
 
 export default function Workout() {
   const blockFold = useFold("workout_blocks");
-  const { currentUser, userRole, userGroup, isSuperAdmin } = useAuth();
+  const { currentUser, userRole, userGroup, isSuperAdmin, coachScope } = useAuth();
   const isAdminLike = userRole === "admin" || isSuperAdmin;
 
   const [events, setEvents] = useState([]);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  // Période de séances chargée (quota gratuit Firestore) : les 60 derniers jours
+  // + tout le futur ; en remontant le calendrier vers un mois plus ancien, on
+  // élargit la période pour charger ce mois-là.
+  const [historySince, setHistorySince] = useState(() => daysAgoStr(WINDOW.calendar));
+  useEffect(() => {
+    const first = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+    first.setDate(first.getDate() - 7); // la grille affiche aussi la fin du mois précédent
+    const p = (n) => String(n).padStart(2, "0");
+    const firstStr = `${first.getFullYear()}-${p(first.getMonth() + 1)}-${p(first.getDate())}`;
+    setHistorySince((cur) => (firstStr < cur ? firstStr : cur));
+  }, [currentMonth]);
   const [cycles, setCycles] = useState([]);
   const [fixtures, setFixtures] = useState([]);
   const [showPlanning, setShowPlanning] = useState(!isAdminLike);
@@ -407,6 +419,8 @@ export default function Workout() {
   // séances/planif, "admins" = les séances perso et la planif de chaque admin.
   const [viewMode, setViewMode] = useState("");
   const [adminUsers, setAdminUsers] = useState([]);
+  // Tous les comptes existants (même hors de ma portée) : sert au nettoyage des groupes.
+  const [allUserIds, setAllUserIds] = useState([]);
   const [blocks, setBlocks] = useState([
     {
       name: "Bloc A",
@@ -572,8 +586,20 @@ export default function Workout() {
   const fetchSessions = async () => {
     if (!currentUser) return;
     try {
-      // SIMPLIFICATION : Charger TOUS les workouts (les règles Firestore autorisent la lecture)
-      const snap = await getWorkoutDocs();
+      // Séances de la période chargée seulement (voir historySince) ; pour un
+      // athlète, seulement celles de ses groupes (moins de lectures Firestore).
+      let athleteGroups = null;
+      if (userRole !== "admin") {
+        athleteGroups = ["total", userGroup || "total"];
+        (customGroups || []).forEach((g) => {
+          if ((g.athleteIds || []).includes(currentUser.uid)) athleteGroups.push(g.id);
+          (g.subGroups || []).forEach((sg) => {
+            if ((sg.athleteIds || []).includes(currentUser.uid)) athleteGroups.push(makeSubGroupTarget(g.id, sg.id));
+          });
+        });
+        athleteGroups = [...new Set(athleteGroups)];
+      }
+      const snap = await getWorkoutDocs({ since: historySince, groups: athleteGroups, fresh: true });
       const allWorkouts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       
       let filtered;
@@ -611,6 +637,13 @@ export default function Workout() {
         });
       }
 
+      // Portée coach : un coach ne voit que ses séances / celles de ses athlètes,
+      // un athlète rattaché à un coach ne voit que les séances de ce coach.
+      if (coachScope)
+        filtered = filtered.filter(
+          (w) => coachScope.canViewWorkout(w) || (isSuperAdmin && w.group === "moi") // vue « admins » du superadmin
+        );
+
       // Trier par date
       filtered.sort((a, b) => a.date.localeCompare(b.date));
       setEvents(filtered);
@@ -628,14 +661,18 @@ export default function Workout() {
   };
 
   useEffect(() => {
+    // Attend que la portée coach soit connue (sinon un coach verrait brièvement 0 séance).
+    if (coachScope && !coachScope.ready) return;
     fetchSessions();
-  }, [currentUser, userRole, userGroup, customGroups, showAllMoi, isSuperAdmin, viewMode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, userRole, userGroup, customGroups, showAllMoi, isSuperAdmin, viewMode, coachScope, historySince]);
 
   /* ===================== CYCLES (planification) ===================== */
   const fetchCycles = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const snap = await getDocs(collection(db, "cycles"));
+      // Portée coach : cycles que j'ai créés (coach) / ceux de mon coach (athlète).
+      const snap = await getScopedDocs("cycles");
       setCycles(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (e) {
       // Règles Firestore pas encore publiées pour "cycles" : on ignore, le
@@ -652,7 +689,7 @@ export default function Workout() {
   const fetchFixtures = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const snap = await getDocs(collection(db, "fixtures"));
+      const snap = await getScopedDocs("fixtures");
       setFixtures(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (e) {
       console.warn("Matchs indisponibles :", e.code || e.message);
@@ -691,7 +728,14 @@ export default function Workout() {
   const fetchGroupsList = async () => {
     try {
       const snap = await getDocs(collection(db, "groups"));
-      setCustomGroups(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      // Un coach ne gère que SES groupes ; le superadmin garde aussi ceux sans auteur
+      // (et tous avec « tout voir »). Les athlètes reçoivent la liste complète
+      // (nécessaire pour savoir de quels groupes ils font partie).
+      if (userRole === "admin" && !(isSuperAdmin && coachScope?.seeAll)) {
+        list = list.filter((g) => g.createdBy === currentUser?.uid || (isSuperAdmin && !g.createdBy));
+      }
+      setCustomGroups(list);
     } catch (e) {
       console.error("Erreur chargement groupes:", e);
     }
@@ -908,7 +952,7 @@ export default function Workout() {
   // Séances (toutes) ciblant un groupe ou un sous-groupe : pour les supprimer
   // avec lui (sinon elles restaient en base, grisées dans le calendrier).
   const findSessionsForTargets = async (matcher) => {
-    const all = await getWorkoutDocs();
+    const all = await getWorkoutDocs({ fresh: true }); // tout l'historique (action rare)
     return all.docs.filter((d) => matcher(d.data().group));
   };
 
@@ -941,24 +985,28 @@ export default function Workout() {
     if (userRole !== "admin") return;
     const fetch = async () => {
       try {
-        const snap = await getDocs(collection(db, "users"));
+        const snap = await getScopedUserDocs();
         const allUsers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setAthletes(allUsers.filter((u) => u.role !== "admin"));
+        setAllUserIds(allUsers.map((u) => u.id));
+        setAthletes(
+          allUsers.filter((u) => u.role !== "admin" && (!coachScope || coachScope.ownsUser(u)))
+        );
         setAdminUsers(allUsers.filter((u) => u.role === "admin" || u.superAdmin === true));
       } catch (e) {
         console.error(e);
       }
     };
     fetch();
-  }, [userRole]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole, coachScope]);
 
   // Nettoyage automatique : un athlète supprimé de l'app ne doit plus figurer
   // dans un groupe / sous-groupe (sinon "Athlète supprimé" s'affiche sans
   // pouvoir le retirer). Comparaison avec TOUS les comptes existants.
   useEffect(() => {
     if (userRole !== "admin" || customGroups.length === 0) return;
-    if (athletes.length + adminUsers.length === 0) return; // pas encore chargés
-    const known = new Set([...athletes, ...adminUsers].map((u) => u.id));
+    if (allUserIds.length === 0) return; // pas encore chargés
+    const known = new Set(allUserIds);
     const dirty = customGroups.filter(
       (g) =>
         (g.athleteIds || []).some((id) => !known.has(id)) ||
@@ -981,7 +1029,7 @@ export default function Workout() {
         console.warn("Nettoyage groupes:", e);
       }
     })();
-  }, [userRole, customGroups, athletes, adminUsers]);
+  }, [userRole, customGroups, allUserIds]);
 
   /* ===================== CALCULS ===================== */
   /* --- RM de l'ATHLÈTE visé (vue admin) ---
@@ -1098,9 +1146,10 @@ export default function Workout() {
             if (lib || !want) continue;
           }
           if (!want && !lib) continue;
+          if (!bankOwnerOk(key)) continue; // fiche commune d'un autre coach : on n'y touche pas
           await setDoc(
             doc(db, "exerciseMedia", key),
-            { name: lib?.name || formatExerciseDisplayName(ex.name), unilateral: want, updatedAt: serverTimestamp() },
+            { name: lib?.name || formatExerciseDisplayName(ex.name), unilateral: want, ...ownerStamp(key), updatedAt: serverTimestamp() },
             { merge: true }
           );
           setExerciseMediaLibrary((prev) => ({ ...prev, [key]: { ...(prev[key] || { name: ex.name }), unilateral: want } }));
@@ -1868,7 +1917,7 @@ export default function Workout() {
           return getLocalDateStr(d);
         })
       );
-      const existingSnap = await getWorkoutDocs();
+      const existingSnap = await getWorkoutDocs({ since: [...targetDates].sort()[0], fresh: true });
       const existingKeys = new Set(
         existingSnap.docs
           .map((d) => d.data())
@@ -1952,7 +2001,7 @@ export default function Workout() {
       // Même garde-fou anti-doublon que "Dupliquer semaine" : on relit
       // Firestore à cet instant pour ne pas recréer une séance déjà présente
       // à la date cible (si ce jour a déjà été dupliqué précédemment).
-      const existingSnap = await getWorkoutDocs();
+      const existingSnap = await getWorkoutDocs({ since: duplicateDayTarget, fresh: true });
       const existingKeys = new Set(
         existingSnap.docs
           .map((d) => d.data())
@@ -2850,6 +2899,7 @@ export default function Workout() {
       });
       setExerciseMediaLibrary(lib);
       setSavedDrills(drillMap);
+      hydrateExerciseImages(lib);
     } catch (e) {
       console.error("Erreur chargement bibliothèque média des exercices:", e);
     } finally {
@@ -2861,6 +2911,48 @@ export default function Workout() {
     loadExerciseMediaLibrary();
   }, []);
 
+  // Photos rangées à part (exerciseImages) : récupérées depuis le cache du
+  // navigateur, ou téléchargées UNE fois si elles sont nouvelles / modifiées.
+  const hydrateExerciseImages = async (lib) => {
+    const keys = Object.keys(lib).filter((k) => lib[k]?.hasMedia && !lib[k]?.mediaUrl);
+    for (const key of keys) {
+      try {
+        const url = await loadExerciseImage(key, lib[key].mediaV);
+        if (!url) continue;
+        setExerciseMediaLibrary((prev) =>
+          prev[key] ? { ...prev, [key]: { ...prev[key], mediaUrl: url } } : prev
+        );
+      } catch (e) {
+        console.warn("Photo exercice", key, e);
+      }
+    }
+  };
+
+  // Migration (superadmin, une fois) : les photos encore stockées DANS la fiche
+  // (ancien format) sont déplacées vers exerciseImages. La fiche devient légère
+  // et toutes les pages arrêtent de retélécharger les photos à chaque ouverture.
+  const imagesMigrationRef = useRef(false);
+  useEffect(() => {
+    if (!isSuperAdmin || !mediaLibraryLoaded || imagesMigrationRef.current) return;
+    const inline = Object.entries(exerciseMediaLibrary).filter(([, v]) => v && v.mediaUrl && !v.hasMedia);
+    if (inline.length === 0) return;
+    imagesMigrationRef.current = true;
+    (async () => {
+      let moved = 0;
+      for (const [key, v] of inline) {
+        try {
+          const ver = await saveExerciseImage(key, v.mediaUrl, v.mediaType || "image");
+          await updateDoc(doc(db, "exerciseMedia", key), { mediaUrl: deleteField(), hasMedia: true, mediaV: ver });
+          setExerciseMediaLibrary((prev) => (prev[key] ? { ...prev, [key]: { ...prev[key], hasMedia: true, mediaV: ver } } : prev));
+          moved++;
+        } catch (e) {
+          console.warn("Migration photo", key, e);
+        }
+      }
+      if (moved) console.log(`📦 ${moved} photo(s) d'exercice déplacée(s) vers exerciseImages (quota gratuit).`);
+    })();
+  }, [isSuperAdmin, mediaLibraryLoaded, exerciseMediaLibrary]);
+
   // Migration ponctuelle : la première fois qu'un exercice avec une image
   // "ancien format" (stockée directement sur la séance) est rencontré et
   // qu'il n'a pas encore de fiche dans "exerciseMedia", on la crée — une
@@ -2868,19 +2960,24 @@ export default function Workout() {
   // droit d'écrire dans "exerciseMedia" (règles Firestore), donc cette
   // migration ne se déclenche que pour lui.
   useEffect(() => {
-    if (!isAdminLike || !mediaLibraryLoaded) return;
+    if (!isSuperAdmin || !mediaLibraryLoaded) return;
     Object.entries(legacyExerciseMedia).forEach(([key, entry]) => {
       if (exerciseMediaLibrary[key] || migratedMediaKeysRef.current.has(key)) return;
       migratedMediaKeysRef.current.add(key);
-      setDoc(doc(db, "exerciseMedia", key), {
-        name: entry.name,
-        mediaUrl: entry.mediaUrl,
-        mediaType: entry.mediaType,
-        mediaZoom: entry.mediaZoom,
-        updatedAt: serverTimestamp(),
-      })
-        .then(() => {
-          setExerciseMediaLibrary((prev) => ({ ...prev, [key]: entry }));
+      saveExerciseImage(key, entry.mediaUrl, entry.mediaType || "image")
+        .then((ver) =>
+          setDoc(doc(db, "exerciseMedia", key), {
+            name: entry.name,
+            hasMedia: true,
+            mediaV: ver,
+            mediaType: entry.mediaType,
+            mediaZoom: entry.mediaZoom,
+            createdBy: currentUser?.uid || null,
+            updatedAt: serverTimestamp(),
+          }).then(() => ver)
+        )
+        .then((ver) => {
+          setExerciseMediaLibrary((prev) => ({ ...prev, [key]: { ...entry, hasMedia: true, mediaV: ver } }));
         })
         .catch((e) => {
           console.error("Erreur migration media exercice:", key, e);
@@ -2922,7 +3019,7 @@ export default function Workout() {
       out[key] = { ...(out[key] || {}), key, name: v.name, template: v.template, fromSessions: true, builtin: !!out[key]?.builtin, cat: out[key]?.cat };
     });
     Object.entries(savedDrills[kind] || {}).forEach(([key, v]) => {
-      if (v.hidden) {
+      if (v.hidden || (myUid && v.hiddenFor?.[myUid])) {
         delete out[key];
         return;
       }
@@ -2942,9 +3039,18 @@ export default function Workout() {
         const template = drillTemplate(ex);
         const prev = next[key];
         if (prev && !prev.hidden && JSON.stringify(prev.template) === JSON.stringify(template)) continue;
+        // modèle commun d'un autre coach : on ne l'écrase pas
+        if (prev && prev.createdBy !== currentUser?.uid && !isSuperAdmin) continue;
         const docId = drillDocId(kind, key);
         try {
-          const data = { kind, name: formatExerciseDisplayName(ex.name), template, hidden: false, updatedAt: serverTimestamp() };
+          const data = {
+            kind,
+            name: formatExerciseDisplayName(ex.name),
+            template,
+            hidden: false,
+            ...(prev ? {} : { createdBy: currentUser?.uid || null }),
+            updatedAt: serverTimestamp(),
+          };
           await setDoc(doc(db, "exerciseMedia", docId), data, { merge: true });
           next[key] = { ...data, docId };
         } catch (e) {
@@ -2957,7 +3063,14 @@ export default function Workout() {
   const deleteDrill = async (entry, kind = bankTab) => {
     if (!await askConfirm(`Retirer « ${entry.name} » de la banque ${kind === "sprint" ? "vitesse" : "endurance"} ? Les séances déjà créées ne changent pas.`)) return;
     const docId = entry.docId || drillDocId(kind, entry.key);
+    const savedEntry = savedDrills[kind]?.[entry.key];
     try {
+      if (!isSuperAdmin) {
+        // Coach : retire l'exo de SA banque seulement (les autres coachs le gardent).
+        await setDoc(doc(db, "exerciseMedia", docId), { hiddenFor: { [currentUser.uid]: true }, ...(savedEntry ? {} : { kind, name: entry.name, createdBy: currentUser.uid }), updatedAt: serverTimestamp() }, { merge: true });
+        setSavedDrills((sd) => ({ ...sd, [kind]: { ...(sd[kind] || {}), [entry.key]: { ...(sd[kind]?.[entry.key] || {}), name: entry.name, docId, hiddenFor: { ...(sd[kind]?.[entry.key]?.hiddenFor || {}), [currentUser.uid]: true } } } }));
+        return;
+      }
       await setDoc(doc(db, "exerciseMedia", docId), { kind, name: entry.name, hidden: true, updatedAt: serverTimestamp() }, { merge: true });
       setSavedDrills((sd) => ({ ...sd, [kind]: { ...(sd[kind] || {}), [entry.key]: { ...(sd[kind]?.[entry.key] || {}), name: entry.name, hidden: true, docId } } }));
     } catch (e) {
@@ -3019,6 +3132,34 @@ export default function Workout() {
   const [renameDraft, setRenameDraft] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
 
+  // ===== Banque d'exos partagée entre coachs =====
+  // Chacun ne modifie (renommer, catégorie, photo, vidéo, supprimer) que les
+  // fiches qu'il a créées ; le superadmin modifie tout. « Supprimer » une fiche
+  // commune la masque seulement pour soi (hiddenFor[uid]).
+  const myUid = currentUser?.uid || null;
+  const bankOwnerOk = (key) =>
+    isSuperAdmin || !exerciseMediaLibrary[key] || exerciseMediaLibrary[key].createdBy === myUid;
+  const ownerStamp = (key) => (exerciseMediaLibrary[key] ? {} : { createdBy: myUid });
+  const isHiddenForMe = (v) => !!v?.hidden || !!(myUid && v?.hiddenFor?.[myUid]);
+  const COMMON_ENTRY_MSG =
+    "Exercice commun (créé par un autre coach) : tu peux le retirer de TA liste, mais seul son auteur ou le superadmin peut le modifier.";
+  const hideBankEntryForMe = async (key, name) => {
+    await setDoc(
+      doc(db, "exerciseMedia", key),
+      {
+        hiddenFor: { [myUid]: true },
+        // fiche créée uniquement pour retenir le masquage : invisible chez les autres coachs
+        ...(exerciseMediaLibrary[key] ? {} : { name, createdBy: myUid, bankHiddenOnly: true }),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+    setExerciseMediaLibrary((prev) => ({
+      ...prev,
+      [key]: { ...(prev[key] || { name, bankHiddenOnly: true, createdBy: myUid }), hiddenFor: { ...(prev[key]?.hiddenFor || {}), [myUid]: true } },
+    }));
+  };
+
   const getExerciseNameEntries = () => {
     const merged = {};
     Object.entries(exerciseNames).forEach(([key, v]) => {
@@ -3033,7 +3174,8 @@ export default function Workout() {
       }
     });
     Object.entries(exerciseMediaLibrary).forEach(([key, v]) => {
-      if (v.hidden) {
+      if (v.bankHiddenOnly && !merged[key]) return; // simple marque de masquage d'un autre coach
+      if (isHiddenForMe(v)) {
         // Fiche "masquée" (supprimée depuis ce gestionnaire) : on la retire
         // de la liste même si elle vient d'une séance ou de "Mes RM".
         delete merged[key];
@@ -3045,6 +3187,7 @@ export default function Workout() {
         usedInSessions: !!merged[key]?.usedInSessions,
         fromRM: !!merged[key]?.fromRM,
         mediaUrl: v.mediaUrl,
+        hasMedia: !!(v.mediaUrl || v.hasMedia),
         mediaType: v.mediaType,
         category: v.category || null,
         isWarmup: !!v.isWarmup,
@@ -3067,7 +3210,7 @@ export default function Workout() {
     if (!key || !category) return;
     setPropagatingCategory(key);
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
+      const usersSnap = await getScopedUserDocs();
       const athleteIds = usersSnap.docs
         .filter((d) => d.data().role !== "admin" && d.data().superAdmin !== true)
         .map((d) => d.id);
@@ -3109,7 +3252,7 @@ export default function Workout() {
   const deleteExerciseFromAllAthletesRM = async (key) => {
     if (!key) return;
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
+      const usersSnap = await getScopedUserDocs();
       const athleteIds = usersSnap.docs
         .filter((d) => d.data().role !== "admin" && d.data().superAdmin !== true)
         .map((d) => d.id);
@@ -3143,8 +3286,10 @@ export default function Workout() {
     let moved = 0;
     let merged = 0;
     try {
-      const usersSnap = await getDocs(collection(db, "users"));
+      const usersSnap = await getScopedUserDocs();
       for (const u of usersSnap.docs) {
+        // autres coachs : leurs fiches ne me regardent pas (et les règles les refusent)
+        if (!isSuperAdmin && u.id !== currentUser?.uid && (u.data().role === "admin" || u.data().superAdmin === true)) continue;
         const rmSnap = await getDocs(collection(db, "users", u.id, "rm"));
         for (const d of rmSnap.docs) {
           if (d.id === "VMA" || d.id === "CMJ") continue;
@@ -3199,6 +3344,10 @@ export default function Workout() {
   };
 
   const confirmRenameExercise = async (oldKey) => {
+    if (!bankOwnerOk(oldKey)) {
+      alert(COMMON_ENTRY_MSG);
+      return;
+    }
     const newName = renameDraft.trim();
     if (!newName) {
       alert("Le nom ne peut pas être vide");
@@ -3226,7 +3375,7 @@ export default function Workout() {
       // était ouvert). Firestore ne permet pas de modifier un seul champ
       // imbriqué dans un tableau d'objets : on réécrit le tableau "blocks"
       // en entier pour chaque séance concernée.
-      const workoutSnap = await getWorkoutDocs();
+      const workoutSnap = await getWorkoutDocs({ fresh: true }); // tout l'historique (action rare)
       const sessionsToUpdate = workoutSnap.docs
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((w) =>
@@ -3258,11 +3407,33 @@ export default function Workout() {
           : {};
         const mediaEntry = { ...exerciseMediaLibrary[oldKey], ...keepNew, name: newName };
         if (newKey !== oldKey) {
+          // La photo (rangée à part dans exerciseImages) suit le nouveau nom.
+          const { mediaUrl: _inline, ...metaOnly } = mediaEntry;
+          void _inline;
+          const oldE = exerciseMediaLibrary[oldKey] || {};
+          const newE = existingNew || {};
+          let imgMeta = {};
+          let oldImageMovable = true;
+          if (newE.hasMedia || newE.mediaUrl) {
+            // le nouveau nom a déjà sa photo : on garde la sienne
+            if (newE.hasMedia) imgMeta = { hasMedia: true, mediaV: newE.mediaV };
+            else imgMeta = { hasMedia: true, mediaV: await saveExerciseImage(newKey, newE.mediaUrl, newE.mediaType || "image") };
+          } else if (oldE.hasMedia || oldE.mediaUrl) {
+            let img = oldE.mediaUrl;
+            if (!img) img = await loadExerciseImage(oldKey, oldE.mediaV);
+            if (img) {
+              imgMeta = { hasMedia: true, mediaV: await saveExerciseImage(newKey, img, oldE.mediaType || "image") };
+            } else {
+              oldImageMovable = false; // photo introuvable : on ne supprime rien
+            }
+          }
           await setDoc(doc(db, "exerciseMedia", newKey), {
-            ...mediaEntry,
+            ...metaOnly,
+            ...imgMeta,
             updatedAt: serverTimestamp(),
           });
           await deleteDoc(doc(db, "exerciseMedia", oldKey));
+          if (oldImageMovable && oldE.hasMedia) await deleteExerciseImage(oldKey);
         } else {
           await updateDoc(doc(db, "exerciseMedia", oldKey), { name: newName });
         }
@@ -3293,8 +3464,10 @@ export default function Workout() {
           updatedAt: new Date().toISOString(),
         };
       };
-      const usersSnap = await getDocs(collection(db, "users"));
+      const usersSnap = await getScopedUserDocs();
       for (const u of usersSnap.docs) {
+        // autres coachs : leurs fiches ne me regardent pas (et les règles les refusent)
+        if (!isSuperAdmin && u.id !== currentUser?.uid && (u.data().role === "admin" || u.data().superAdmin === true)) continue;
         const uid = u.id;
         const oldRmRef = doc(db, "users", uid, "rm", oldKey);
         const oldRmSnap = await getDoc(oldRmRef);
@@ -3355,6 +3528,29 @@ export default function Workout() {
       alert(`"${name}" existe déjà dans la liste.`);
       return;
     }
+    // Fiche commune existante (masquée pour moi, ou d'un autre coach) : on ne la
+    // remplace pas, on la ré-affiche simplement dans ma liste.
+    if (exerciseMediaLibrary[key] && !bankOwnerOk(key)) {
+      if (exerciseMediaLibrary[key].hidden) {
+        alert(`"${name}" a été retiré de la banque commune par le superadmin.`);
+        return;
+      }
+      try {
+        await setDoc(
+          doc(db, "exerciseMedia", key),
+          { hiddenFor: { [myUid]: false }, updatedAt: serverTimestamp() },
+          { merge: true }
+        );
+        setExerciseMediaLibrary((prev) => ({
+          ...prev,
+          [key]: { ...prev[key], hiddenFor: { ...(prev[key]?.hiddenFor || {}), [myUid]: false } },
+        }));
+        setNewExerciseDraftName("");
+      } catch (e) {
+        alert("❌ " + e.message);
+      }
+      return;
+    }
     // Échauffement / poids du corps : jamais de catégorie RM, donc jamais
     // diffusé dans "Mes RM" des athlètes.
     const isExcluded = newExerciseDraftWarmup || newExerciseDraftPDC;
@@ -3376,6 +3572,7 @@ export default function Workout() {
           category,
           isWarmup: newExerciseDraftWarmup,
           isPDC: newExerciseDraftPDC,
+          createdBy: exerciseMediaLibrary[key]?.createdBy || myUid,
           updatedAt: serverTimestamp(),
         });
         setExerciseMediaLibrary((prev) => ({
@@ -3432,6 +3629,10 @@ export default function Workout() {
   };
 
   const confirmEditVideo = async (entry) => {
+    if (!bankOwnerOk(entry.key)) {
+      alert(COMMON_ENTRY_MSG);
+      return;
+    }
     const url = videoDraft.trim();
     setSavingVideo(true);
     try {
@@ -3440,6 +3641,7 @@ export default function Workout() {
         {
           name: entry.name,
           videoUrl: url || deleteField(),
+          ...ownerStamp(entry.key),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -3474,6 +3676,10 @@ export default function Workout() {
   };
 
   const confirmCategorizeExercise = async (entry) => {
+    if (!bankOwnerOk(entry.key)) {
+      alert(COMMON_ENTRY_MSG);
+      return;
+    }
     const isExcluded = categorizeDraft.isWarmup || categorizeDraft.isPDC;
     const category = isExcluded ? null : categorizeDraft.category || "autre";
     try {
@@ -3484,6 +3690,7 @@ export default function Workout() {
           category,
           isWarmup: categorizeDraft.isWarmup,
           isPDC: categorizeDraft.isPDC,
+          ...ownerStamp(entry.key),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -3508,7 +3715,19 @@ export default function Workout() {
   };
 
   const deleteExerciseCatalogEntry = async (entry) => {
-    const hasMedia = !!entry.mediaUrl;
+    // Coach (pas superadmin) : il retire l'exercice de SA liste uniquement ;
+    // les autres coachs et la banque commune ne sont pas touchés.
+    if (!isSuperAdmin) {
+      if (!await askConfirm(`Retirer "${entry.name}" de ta liste ? Les autres coachs le gardent, tes séances existantes ne changent pas.`)) return;
+      try {
+        await hideBankEntryForMe(entry.key, entry.name);
+      } catch (e) {
+        console.error("Erreur masquage exercice:", e);
+        alert("❌ Erreur : " + e.message);
+      }
+      return;
+    }
+    const hasMedia = !!(entry.mediaUrl || entry.hasMedia);
     // Trois cas :
     // 1) A une photo + utilisé dans des séances -> on retire juste la
     //    photo, le nom reste utilisable.
@@ -3529,8 +3748,11 @@ export default function Workout() {
           mediaUrl: deleteField(),
           mediaType: deleteField(),
           mediaZoom: deleteField(),
+          hasMedia: deleteField(),
+          mediaV: deleteField(),
           updatedAt: serverTimestamp(),
         });
+        await deleteExerciseImage(entry.key);
         setExerciseMediaLibrary((prev) => ({
           ...prev,
           [entry.key]: {
@@ -3569,6 +3791,7 @@ export default function Workout() {
         await deleteExerciseFromAllAthletesRM(entry.key);
       } else {
         await deleteDoc(doc(db, "exerciseMedia", entry.key));
+        if (hasMedia) await deleteExerciseImage(entry.key);
         setExerciseMediaLibrary((prev) => {
           const next = { ...prev };
           delete next[entry.key];
@@ -3600,6 +3823,10 @@ export default function Workout() {
       }
 
       const mediaKey = normalizeExerciseName(exerciseName);
+      if (!bankOwnerOk(mediaKey)) {
+        alert(COMMON_ENTRY_MSG);
+        return resolve();
+      }
       const isGif = file.type === "image/gif";
       const stopProgress = () => {
         if (progressKey) setUploadingMedia((prev) => ({ ...prev, [progressKey]: false }));
@@ -3626,15 +3853,23 @@ export default function Workout() {
             // sécurité).
             ...(existing?.videoUrl ? { videoUrl: existing.videoUrl } : {}),
           };
+          // Image à part (exerciseImages) + fiche légère qui pointe vers sa version.
+          const ver = await saveExerciseImage(mediaKey, dataUrl, mediaType);
+          const { mediaUrl: _img, ...meta } = entry;
+          void _img;
           await setDoc(
             doc(db, "exerciseMedia", mediaKey),
             {
-              ...entry,
+              ...meta,
+              hasMedia: true,
+              mediaV: ver,
+              mediaUrl: deleteField(),
+              ...(existing ? {} : { createdBy: myUid }),
               updatedAt: serverTimestamp(),
             },
             { merge: true }
           );
-          setExerciseMediaLibrary((prev) => ({ ...prev, [mediaKey]: entry }));
+          setExerciseMediaLibrary((prev) => ({ ...prev, [mediaKey]: { ...(prev[mediaKey] || {}), ...entry, hasMedia: true, mediaV: ver } }));
           resolve();
         } catch (e) {
           console.error("Erreur enregistrement media:", e);
@@ -3733,6 +3968,10 @@ export default function Workout() {
     const exerciseName = blocks[bIdx]?.exercises[eIdx]?.name?.trim();
     const mediaKey = normalizeExerciseName(exerciseName);
     if (!mediaKey || !exerciseMediaLibrary[mediaKey]) return;
+    if (!bankOwnerOk(mediaKey)) {
+      alert(COMMON_ENTRY_MSG);
+      return;
+    }
     if (
       !await askConfirm(
         `Supprimer la photo/gif de "${exerciseName}" ? Elle disparaîtra de TOUTES les séances qui utilisent cet exercice.`
@@ -3743,6 +3982,7 @@ export default function Workout() {
     deleteDoc(doc(db, "exerciseMedia", mediaKey)).catch((e) => {
       console.error("Erreur suppression media:", e);
     });
+    deleteExerciseImage(mediaKey);
     setExerciseMediaLibrary((prev) => {
       const next = { ...prev };
       delete next[mediaKey];
@@ -3754,6 +3994,7 @@ export default function Workout() {
     const exerciseName = blocks[bIdx]?.exercises[eIdx]?.name?.trim();
     const mediaKey = normalizeExerciseName(exerciseName);
     if (!mediaKey || !exerciseMediaLibrary[mediaKey]) return;
+    if (!bankOwnerOk(mediaKey)) return; // zoom d'une photo commune : réservé à son auteur
     setExerciseMediaLibrary((prev) => ({
       ...prev,
       [mediaKey]: { ...prev[mediaKey], mediaZoom: zoom },

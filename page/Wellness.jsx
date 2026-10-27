@@ -58,6 +58,8 @@ export default function Wellness() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [entries, setEntries] = useState([]);
+  // 6 derniers mois par défaut (quota gratuit Firestore), tout sur demande.
+  const [allHistory, setAllHistory] = useState(false);
   const [confirmId, setConfirmId] = useState(null);
   const [deleteError, setDeleteError] = useState("");
 
@@ -68,11 +70,19 @@ export default function Wellness() {
     if (!currentUser) return;
 
     const fetchData = async () => {
-      const q = query(
-        collection(db, "wellness"),
-        where("userId", "==", currentUser.uid),
-        orderBy("date", "asc")
-      );
+      const since = (() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 182);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })();
+      const q = allHistory
+        ? query(collection(db, "wellness"), where("userId", "==", currentUser.uid), orderBy("date", "asc"))
+        : query(
+            collection(db, "wellness"),
+            where("userId", "==", currentUser.uid),
+            where("date", ">=", since),
+            orderBy("date", "asc")
+          );
 
       const snap = await getDocs(q);
 
@@ -101,7 +111,7 @@ export default function Wellness() {
     };
 
     fetchData();
-  }, [currentUser]);
+  }, [currentUser, allHistory]);
 
   // Score quotidien : uniquement pour aujourd'hui
   const todayEntry = entries.find((e) => e.date === today);
@@ -149,7 +159,21 @@ export default function Wellness() {
   return (
     <Page>
       <h2 style={PAGE_TITLE}>Wellness – Suivi détaillé</h2>
-      <p style={PAGE_SUB}>Suivez votre état de forme quotidien et votre récupération</p>
+      <p style={PAGE_SUB}>
+        Suivez votre état de forme quotidien et votre récupération
+        {!allHistory && (
+          <>
+            {" "}· 6 derniers mois{" "}
+            <button
+              type="button"
+              onClick={() => setAllHistory(true)}
+              style={{ background: "none", border: "none", color: "#e0a13d", textDecoration: "underline", cursor: "pointer", fontSize: "inherit", padding: 0 }}
+            >
+              (tout afficher)
+            </button>
+          </>
+        )}
+      </p>
 
       <button
         onClick={() => navigate("/wellness-form")}

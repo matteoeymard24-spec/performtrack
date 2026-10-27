@@ -1,7 +1,8 @@
 import { db } from "../firebase";
-import { getWorkoutDocs } from "../component/workoutQueries";
+import { getWorkoutDocs, getScopedUserDocs } from "../component/workoutQueries";
 import { collection, getDocs, getDoc, setDoc, updateDoc, doc, query, where, deleteDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import { generateCoachCode } from "../component/coachScope";
 import { useAuth } from "../auth/AuthProvider";
 import { Page, CARD_STYLE, CARD_ACCENT_BORDER, CARD_TITLE, PAGE_TITLE, FIELD_STYLE, FoldBtn } from "../component/ui";
 import { Navigate } from "react-router-dom";
@@ -13,7 +14,7 @@ const ARCHIVE_TTL_DAYS = 60;
 const ARCHIVE_TTL_MS = ARCHIVE_TTL_DAYS * 86400000;
 
 export default function Athletes() {
-  const { userRole, isSuperAdmin, currentUser } = useAuth();
+  const { userRole, isSuperAdmin, currentUser, userProfile, coachScope } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -62,7 +63,7 @@ export default function Athletes() {
         setError(null);
         console.log("[Athletes] Requête Firestore - collection(users)");
         
-        const snap = await getDocs(collection(db, "users"));
+        const snap = await getScopedUserDocs();
         console.log("[Athletes] Firestore - Réponse reçue:", snap.docs.length, "documents");
         
         if (!isMounted) {
@@ -118,6 +119,87 @@ export default function Athletes() {
     };
   }, []); // Pas de dépendances = s'exécute UNE SEULE FOIS
   
+  // ===================== CODE COACH + RATTACHEMENT =====================
+  const [myCode, setMyCode] = useState(null);
+  const [codeBusy, setCodeBusy] = useState(false);
+  const codeInit = useRef(false);
+  const displayNameOf = (u) =>
+    `${u?.firstName || ""} ${u?.lastName || ""}`.trim() || u?.displayName || u?.email || "Coach";
+
+  const createCoachCode = async (oldCode) => {
+    if (!currentUser) return null;
+    for (let i = 0; i < 8; i++) {
+      const code = generateCoachCode();
+      const ref = doc(db, "coachCodes", code);
+      const ex = await getDoc(ref);
+      if (ex.exists()) continue;
+      await setDoc(ref, {
+        coachId: currentUser.uid,
+        coachName: displayNameOf(userProfile),
+        createdAt: new Date().toISOString(),
+      });
+      await updateDoc(doc(db, "users", currentUser.uid), { coachCode: code });
+      if (oldCode && oldCode !== code) {
+        try {
+          await deleteDoc(doc(db, "coachCodes", oldCode));
+        } catch (e) {
+          console.warn("Ancien code coach non supprimé:", e);
+        }
+      }
+      setMyCode(code);
+      return code;
+    }
+    return null;
+  };
+
+  // Un coach sans code en reçoit un automatiquement à l'ouverture de la page.
+  useEffect(() => {
+    if (!currentUser || !userProfile || (userRole !== "admin" && !isSuperAdmin)) return;
+    if (userProfile.coachCode) {
+      setMyCode(userProfile.coachCode);
+      return;
+    }
+    if (codeInit.current) return;
+    codeInit.current = true;
+    createCoachCode(null).catch((e) => {
+      console.error("Création du code coach:", e);
+      codeInit.current = false;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUser, userProfile, userRole, isSuperAdmin]);
+
+  const regenerateCode = async () => {
+    if (!await appConfirm("Générer un nouveau code ? L'ancien ne fonctionnera plus pour les nouvelles inscriptions (tes athlètes déjà rattachés ne changent pas).")) return;
+    setCodeBusy(true);
+    try {
+      await createCoachCode(myCode);
+    } catch (e) {
+      alert("❌ Impossible de générer le code : " + e.message);
+    } finally {
+      setCodeBusy(false);
+    }
+  };
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(myCode);
+      alert("📋 Code copié : " + myCode);
+    } catch (e) {
+      alert("Ton code : " + myCode);
+    }
+  };
+
+  // Rattache un athlète déjà inscrit à un coach (superadmin uniquement).
+  const assignCoach = async (id, coachId) => {
+    try {
+      await updateDoc(doc(db, "users", id), { coachId: coachId || null });
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, coachId: coachId || null } : u)));
+      coachScope?.refresh?.();
+    } catch (err) {
+      console.error("Erreur assignCoach:", err);
+      alert("❌ Rattachement impossible : " + err.message);
+    }
+  };
+
   // 🔒 Sécurité FRONT : Attendre que userRole soit chargé
   if (userRole === undefined || userRole === null) {
     return (
@@ -153,7 +235,19 @@ export default function Athletes() {
   // Un athlète qui s'inscrit lui-même arrive avec status: "pending" (voir
   // Login.jsx) et reste bloqué par ProtectedRoute.jsx tant que le coach n'a
   // pas approuvé ou refusé sa demande ici.
-  const pendingUsers = users.filter((u) => u.status === "pending");
+  // Portée coach : un coach ne voit que ses athlètes ; le superadmin voit les siens + les
+  // athlètes sans coach (tout si l'interrupteur « tout voir » est activé) et les coachs.
+  const scopedUsers = users.filter((u) => {
+    if (u.id === currentUser?.uid) return !!isSuperAdmin;
+    if (u.role === "admin" || u.superAdmin === true) return !!isSuperAdmin;
+    return coachScope ? coachScope.ownsUser(u) : true;
+  });
+  const coachNameById = {};
+  users.forEach((u) => {
+    if (u.role === "admin" || u.superAdmin === true) coachNameById[u.id] = displayNameOf(u);
+  });
+  const coachList = users.filter((u) => u.role === "admin" || u.superAdmin === true);
+  const pendingUsers = scopedUsers.filter((u) => u.status === "pending");
 
   // Initialise "Mes RM" pour un athlète qui vient d'être approuvé : une
   // fiche (en attente, kg: null) pour chaque exercice déjà catégorisé dans
@@ -364,6 +458,13 @@ export default function Athletes() {
         });
       }
 
+      // 0b-bis. Compte coach supprimé : ses athlètes repassent « sans coach »
+      // (ils réapparaissent chez le superadmin) et son code ne sert plus.
+      const asCoach = await getDocs(query(collection(db, "users"), where("coachId", "==", userId)));
+      for (const d of asCoach.docs) await updateDoc(d.ref, { coachId: null });
+      const codes = await getDocs(query(collection(db, "coachCodes"), where("coachId", "==", userId)));
+      for (const d of codes.docs) await deleteDoc(d.ref);
+
       // 0c. Blessures, tests, cycles / échéances individuels
       const injSnap = await getDocs(query(collection(db, "injuries"), where("userId", "==", userId)));
       for (const d of injSnap.docs) await deleteDoc(d.ref);
@@ -479,6 +580,58 @@ export default function Athletes() {
     <Page>
       <h2 style={{ ...PAGE_TITLE, marginBottom: 18 }}>👥 Gestion des Athlètes</h2>
 
+      {/* Mon code coach : à donner aux athlètes pour qu'ils te rejoignent à l'inscription */}
+      <div style={{ ...CARD_STYLE, border: CARD_ACCENT_BORDER }}>
+        <h3 style={{ ...CARD_TITLE, marginBottom: 8 }}>🔑 Mon code coach</h3>
+        <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
+          Donne ce code à tes athlètes : ils le saisissent à l'inscription, leur demande arrive ici et tu les
+          autorises. Tu ne vois que tes athlètes et leurs séances.
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div
+            style={{
+              fontSize: 28,
+              fontWeight: 800,
+              letterSpacing: 4,
+              color: "#e0a13d",
+              background: "#151310",
+              padding: "8px 16px",
+              borderRadius: 10,
+              minWidth: 150,
+              textAlign: "center",
+            }}
+          >
+            {myCode || "…"}
+          </div>
+          <button
+            onClick={copyCode}
+            disabled={!myCode}
+            style={{ padding: "10px 16px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, minHeight: 44 }}
+          >
+            📋 Copier
+          </button>
+          <button
+            onClick={regenerateCode}
+            disabled={codeBusy || !myCode}
+            style={{ padding: "10px 16px", background: "transparent", color: "#a8a199", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8, cursor: "pointer", minHeight: 44 }}
+          >
+            🔄 Nouveau code
+          </button>
+        </div>
+        {isSuperAdmin && (
+          <div style={{ fontSize: 12, color: "#a8a199", marginTop: 12 }}>
+            Mode superadmin : {coachScope?.seeAll ? "tu vois TOUS les athlètes de tous les coachs" : "tu vois tes athlètes + ceux sans coach"}.
+            {" "}
+            <button
+              onClick={() => coachScope?.setSeeAll?.(!coachScope.seeAll)}
+              style={{ background: "none", border: "none", color: "#e0a13d", cursor: "pointer", textDecoration: "underline", fontSize: 12, padding: 0 }}
+            >
+              {coachScope?.seeAll ? "Revenir à mes athlètes" : "Tout voir"}
+            </button>
+          </div>
+        )}
+      </div>
+
       {pendingUsers.length > 0 && (
         <div style={{ ...CARD_STYLE, border: CARD_ACCENT_BORDER }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: pendingOpen ? 14 : 0 }}>
@@ -506,7 +659,20 @@ export default function Athletes() {
                   <div style={{ fontWeight: "bold" }}>{u.email}</div>
                   <div style={{ fontSize: 12, color: "#a8a199" }}>
                     Souhaite rejoindre en tant qu'athlète
+                    {u.coachId ? ` · code de ${coachNameById[u.coachId] || "un coach"}` : " · sans code coach"}
                   </div>
+                  {isSuperAdmin && (
+                    <select
+                      value={u.coachId || ""}
+                      onChange={(e) => assignCoach(u.id, e.target.value)}
+                      style={{ marginTop: 6, background: "#1a1815", color: "#f3f0ea", border: "1px solid #2a2620", borderRadius: 6, padding: "4px 6px", fontSize: 12 }}
+                    >
+                      <option value="">Aucun coach</option>
+                      {coachList.map((c) => (
+                        <option key={c.id} value={c.id}>{displayNameOf(c)}</option>
+                      ))}
+                    </select>
+                  )}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
@@ -557,7 +723,7 @@ export default function Athletes() {
         />
       </div>
 
-      {users.filter((u) => {
+      {scopedUsers.filter((u) => {
         if (u.status === "pending") return false; // déjà affichés ci-dessus
         if (!searchQuery.trim()) return true;
         const search = searchQuery.toLowerCase();
@@ -570,7 +736,7 @@ export default function Athletes() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {users.filter((u) => {
+          {scopedUsers.filter((u) => {
             if (u.status === "pending") return false; // déjà affichés ci-dessus
             if (!searchQuery.trim()) return true;
             const search = searchQuery.toLowerCase();
@@ -604,6 +770,14 @@ export default function Athletes() {
                   >
                     {user.email || "Email non renseigné"}
                   </div>
+                  {user.role !== "admin" && (
+                    <div style={{ fontSize: 12, color: user.coachId ? "#e0a13d" : "#6f6a62", marginTop: 3 }}>
+                      🎯 {user.coachId ? `Coach : ${coachNameById[user.coachId] || "—"}` : "Sans coach"}
+                    </div>
+                  )}
+                  {user.role === "admin" && user.coachCode && isSuperAdmin && (
+                    <div style={{ fontSize: 12, color: "#a8a199", marginTop: 3 }}>🔑 Code : {user.coachCode}</div>
+                  )}
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -799,6 +973,22 @@ export default function Athletes() {
                     </div>
                   </div>
 
+                  {isSuperAdmin && user.role !== "admin" && (
+                    <div style={{ marginBottom: 14 }}>
+                      <div style={{ color: "#a8a199", fontSize: 12, marginBottom: 4 }}>Coach de cet athlète</div>
+                      <select
+                        value={user.coachId || ""}
+                        onChange={(e) => assignCoach(user.id, e.target.value)}
+                        style={{ width: "100%", padding: 10, borderRadius: 8, background: "#151310", color: "#f3f0ea", border: "1px solid rgba(255,255,255,0.12)", fontSize: 15 }}
+                      >
+                        <option value="">— Aucun coach (visible par le superadmin) —</option>
+                        {coachList.map((c) => (
+                          <option key={c.id} value={c.id}>{displayNameOf(c)}{c.id === currentUser?.uid ? " (moi)" : ""}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
                       onClick={() => startEdit(user)}
@@ -825,7 +1015,7 @@ export default function Athletes() {
                       ✏️ Modifier
                     </button>
 
-                    {!(
+                    {isSuperAdmin && !(
                       user.role === "admin" &&
                       (user.email || "").toLowerCase() === "matteo.eymard24@gmail.com"
                     ) && (

@@ -10,7 +10,7 @@ const BORDER_STRONG = "rgba(255,255,255,0.16)";
 const TEXT_MUTED = "#a8a199";
 
 export default function Layout() {
-  const { currentUser, userRole, isSuperAdmin, logout, canPreview, previewAthlete, setPreviewAthlete } = useAuth();
+  const { currentUser, userRole, isSuperAdmin, logout, canPreview, previewAthlete, setPreviewAthlete, coachScope } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -154,6 +154,24 @@ export default function Layout() {
 
           {/* Actions desktop */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }} className="desktop-actions">
+            {isSuperAdmin && coachScope && (
+              <button
+                onClick={() => coachScope.setSeeAll(!coachScope.seeAll)}
+                title={coachScope.seeAll ? "Tu vois les athlètes de tous les coachs — clique pour revenir aux tiens" : "Voir aussi les athlètes et séances des autres coachs"}
+                style={{
+                  padding: "9px 14px",
+                  background: coachScope.seeAll ? ACCENT : "transparent",
+                  color: coachScope.seeAll ? "#1a1306" : TEXT_MUTED,
+                  border: `1px solid ${coachScope.seeAll ? ACCENT : BORDER}`,
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 600,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {coachScope.seeAll ? "🌐 Tout voir" : "🎯 Mes athlètes"}
+              </button>
+            )}
             {canPreview && (
               <button
                 onClick={togglePreview}
@@ -389,6 +407,25 @@ export default function Layout() {
               );
             })}
             <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
+              {isSuperAdmin && coachScope && (
+                <button
+                  onClick={() => coachScope.setSeeAll(!coachScope.seeAll)}
+                  style={{
+                    width: "100%",
+                    padding: "13px 14px",
+                    marginBottom: 8,
+                    background: coachScope.seeAll ? ACCENT : "transparent",
+                    color: coachScope.seeAll ? "#1a1306" : TEXT_MUTED,
+                    border: `1px solid ${coachScope.seeAll ? ACCENT : BORDER}`,
+                    borderRadius: 10,
+                    fontSize: 15,
+                    fontWeight: 600,
+                    textAlign: "left",
+                  }}
+                >
+                  {coachScope.seeAll ? "🌐 Je vois tous les coachs (tap = mes athlètes)" : "🎯 Mes athlètes (tap = tout voir)"}
+                </button>
+              )}
               {canPreview && (
                 <button
                   onClick={togglePreview}

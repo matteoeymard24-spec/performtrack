@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { getWorkoutDocs } from "../component/workoutQueries";
+import { getWorkoutDocs, getScopedUserDocs, getWellnessSince, daysAgoStr, WINDOW } from "../component/workoutQueries";
 import {
   collection,
   getDocs,
@@ -48,6 +48,7 @@ import {
   classifyForm,
   FORM_LEVELS,
 } from "../component/loadMetrics";
+import { athleteCanSeeWorkout } from "../component/coachScope";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 /* ===== Charte graphique du dashboard athlète (une seule pour toutes les cartes) ===== */
@@ -80,6 +81,10 @@ const getLocalDateStr = (date) => {
 // valeur du champ "group" d'une séance qui cible un sous-groupe : sans elles,
 // ces séances n'étaient jamais rattachées à l'athlète (ni séance du jour,
 // ni feedbacks, ni charge/ACWR).
+// RM des athlètes (classification de forme) gardés 5 min en mémoire.
+const RM_CACHE = new Map();
+const RM_CACHE_TTL = 5 * 60 * 1000;
+
 const getAthleteGroupIds = (athleteId, customGroups) => {
   const ids = [];
   (customGroups || []).forEach((g) => {
@@ -123,7 +128,7 @@ const getExerciseCategoryLabel = (value) =>
   "📦 Autre";
 
 export default function Dashboard() {
-  const { currentUser, userRole, userProfile } = useAuth();
+  const { currentUser, userRole, userProfile, coachScope } = useAuth();
   const navigate = useNavigate();
 
   // Ouvre la séance du jour dans Workout, en lecture ("voir") ou en la
@@ -254,6 +259,7 @@ export default function Dashboard() {
   // charge, sans refaire de requête Firestore séparée.
   const [athleteWorkouts, setAthleteWorkouts] = useState([]);
   const [weekOverview, setWeekOverview] = useState([]);
+  const [selfForm, setSelfForm] = useState(null); // « état de forme » de MON dashboard
   const [, setSelfCrossStatus] = useState(null);
   const [, setSelfRediRatio] = useState(null);
   const [, setSelfWellnessZ] = useState(null);
@@ -318,7 +324,11 @@ export default function Dashboard() {
     const fetchGroups = async () => {
       try {
         const snap = await getDocs(collection(db, "groups"));
-        setCustomGroups(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setCustomGroups(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((g) => userRole !== "admin" || !coachScope || coachScope.ownsGroup(g))
+        );
       } catch (e) {
         console.error("Erreur chargement groupes:", e);
       }
@@ -570,65 +580,9 @@ export default function Dashboard() {
     return "Athlète";
   };
 
-  /* ==================== NETTOYAGE AUTOMATIQUE (>5 semaines) ==================== */
-  // Supprime les séances et wellness plus vieux que 35 jours (5 semaines)
-  // pour économiser du stockage Firestore. 35 jours > 28 jours nécessaires
-  // au calcul REDI (fenêtre chronique 28j), donc REDI continue de
-  // fonctionner normalement.
-  const CLEANUP_RETENTION_DAYS = 35;
-
-  const cleanupOldData = async () => {
-    try {
-      const todayStr = getLocalDateStr(new Date());
-      const lastCleanup = localStorage.getItem("performtrack_lastCleanup");
-      if (lastCleanup === todayStr) return; // déjà fait aujourd'hui
-
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - CLEANUP_RETENTION_DAYS);
-      const cutoffStr = getLocalDateStr(cutoff);
-
-      const [workoutSnap, wellnessSnap] = await Promise.all([
-        getWorkoutDocs(),
-        getDocs(collection(db, "wellness")),
-      ]);
-
-      const oldWorkoutDocs = workoutSnap.docs.filter(
-        (d) => d.data().date && d.data().date < cutoffStr
-      );
-      const oldWellnessDocs = wellnessSnap.docs.filter(
-        (d) => d.data().date && d.data().date < cutoffStr
-      );
-
-      const allOldDocs = [...oldWorkoutDocs, ...oldWellnessDocs];
-
-      if (allOldDocs.length === 0) {
-        localStorage.setItem("performtrack_lastCleanup", todayStr);
-        return;
-      }
-
-      // Firestore limite les batchs à 500 opérations, on découpe par sécurité
-      const chunkSize = 450;
-      for (let i = 0; i < allOldDocs.length; i += chunkSize) {
-        const chunk = allOldDocs.slice(i, i + chunkSize);
-        const batch = writeBatch(db);
-        chunk.forEach((docSnap) => batch.delete(docSnap.ref));
-        await batch.commit();
-      }
-
-      console.log(
-        `🧹 Nettoyage auto : ${allOldDocs.length} document(s) supprimé(s) (> ${CLEANUP_RETENTION_DAYS} jours)`
-      );
-      localStorage.setItem("performtrack_lastCleanup", todayStr);
-    } catch (e) {
-      console.error("Erreur nettoyage automatique:", e);
-    }
-  };
-
-  useEffect(() => {
-    if (userRole === "admin" && currentUser) {
-      cleanupOldData();
-    }
-  }, [userRole, currentUser]);
+  /* Plus de nettoyage automatique : toutes les séances et tous les wellness
+     sont conservés. Pour rester dans le quota gratuit de Firestore, chaque
+     page ne relit que la période dont elle a besoin (voir workoutQueries.js). */
 
   useEffect(() => {
     if (viewRole !== "athlete" || !currentUser || !userProfile) return;
@@ -648,13 +602,19 @@ export default function Dashboard() {
       // --- Séances (séance du jour + stats globales) ---
       let userWorkouts = [];
       try {
-        const allWorkouts = (await getWorkoutDocs()).docs.map(
-          (d) => ({ id: d.id, ...d.data() })
-        );
         const userGrp = userProfile?.group || "total";
         const myGroupIds = getAthleteGroupIds(currentUser.uid, customGroups);
+        // 60 derniers jours + futur, et seulement mes groupes (quota gratuit Firestore)
+        const allWorkouts = (
+          await getWorkoutDocs({
+            since: daysAgoStr(WINDOW.athlete),
+            groups: [...new Set(["total", userGrp, ...myGroupIds])],
+          })
+        ).docs.map((d) => ({ id: d.id, ...d.data() }));
 
         userWorkouts = allWorkouts.filter((w) => {
+          // séances du coach de l'athlète uniquement (athlète sans coach : tout, comme avant)
+          if (!athleteCanSeeWorkout(w, { id: currentUser.uid, coachId: userProfile?.coachId || null })) return false;
           return (
             w.group === "total" ||
             w.group === userGrp ||
@@ -720,6 +680,7 @@ export default function Dashboard() {
       }
 
       // --- RM ---
+      const selfRmMap = {}; // sert à la fatigue nerveuse (état de forme)
       try {
         const [rmSnap, exerciseMediaSnap] = await Promise.all([
           getDocs(collection(db, "users", currentUser.uid, "rm")),
@@ -784,6 +745,12 @@ export default function Dashboard() {
         setAthleteRMCategoriesMap(categoriesMap);
         setAthleteVmaData(vmaEntry);
         setAthleteCmjData(cmjEntry);
+        rmSnap.docs.forEach((d) => {
+          const key = normalizeExerciseKey(d.id);
+          const kg = Number(d.data().kg);
+          if (key === "vma" || key === "cmj" || !(kg > 0)) return;
+          selfRmMap[key] = kg;
+        });
       } catch (e) {
         console.error("Erreur RM (dashboard athlète):", e);
       }
@@ -797,9 +764,7 @@ export default function Dashboard() {
         // propriétaire ou à un admin, donc une requête non filtrée sur toute la
         // collection est rejetée par Firestore pour un athlète (erreur silencieuse
         // attrapée plus bas -> le wellness du jour n'apparaissait jamais).
-        const myWellnessSnap = await getDocs(
-          query(collection(db, "wellness"), where("userId", "==", currentUser.uid))
-        );
+        const myWellnessSnap = await getWellnessSince(daysAgoStr(WINDOW.athlete), currentUser.uid);
         myWellness = myWellnessSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
@@ -871,6 +836,35 @@ export default function Dashboard() {
             rpeReliability: myRpeReliability,
           })
         );
+
+        // État de forme complet (identique à la fiche athlète côté coach) :
+        // REDI × wellness × performance en force / CMJ.
+        const myAcwr = calculateACWR(userWorkouts, currentUser.uid);
+        const myAcwrNum = myAcwr !== null ? Number(myAcwr) : null;
+        const myNeural = neuralFatigueAnalysis(
+          extractStrengthSessions(userWorkouts, currentUser.uid),
+          selfRmMap,
+          today
+        );
+        const myForm = classifyForm({
+          rediRatioValue: myAcwrNum,
+          wellnessZ: wZ,
+          wellnessScore: todayScoreForZ,
+          cmjPctChange: myCmjStatus.pctChange,
+          neural: myNeural,
+          sick: !!(todayW && todayW.sick),
+        });
+        setSelfForm({
+          id: currentUser.uid,
+          crossStatus: myForm,
+          acwr: myAcwr,
+          acwrStatus: getACWRStatus(myAcwr),
+          wellnessZ: wZ,
+          wellnessScore: todayScoreForZ,
+          wellnessZStatus: getWellnessZScoreStatus(wZ),
+          cmjStatus: myCmjStatus,
+          neural: myNeural,
+        });
       } catch (e) {
         console.error("Erreur indicateurs croisés (dashboard athlète):", e);
       }
@@ -938,11 +932,14 @@ export default function Dashboard() {
 
     const load = async () => {
       try {
-        const usersSnap = await getDocs(collection(db, "users"));
+        const usersSnap = await getScopedUserDocs();
         const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
         const athleteUsers = allUsers.filter(
-          (u) => u.superAdmin !== true && u.role !== "admin"
+          (u) =>
+            u.superAdmin !== true &&
+            u.role !== "admin" &&
+            (!coachScope || coachScope.ownsUser(u)) // portée coach
         );
 
         if (athleteUsers.length === 0) {
@@ -951,10 +948,12 @@ export default function Dashboard() {
           return;
         }
 
-        const allWellness = (
-          await getDocs(collection(db, "wellness"))
-        ).docs.map((d) => ({ id: d.id, ...d.data() }));
-        const allWorkouts = (await getWorkoutDocs()).docs.map(
+        // Période utile seulement (quota gratuit Firestore) : 60 j de wellness
+        // (z-score sur 28 j), 120 j de séances (REDI + historique 90 j).
+        const allWellness = (await getWellnessSince(daysAgoStr(WINDOW.athlete))).docs.map(
+          (d) => ({ id: d.id, ...d.data() })
+        );
+        const allWorkouts = (await getWorkoutDocs({ since: daysAgoStr(WINDOW.analysis) })).docs.map(
           (d) => ({ id: d.id, ...d.data() })
         );
         const today = getLocalDateStr(new Date());
@@ -972,6 +971,12 @@ export default function Dashboard() {
         const rmByUser = {};
         await Promise.all(
           athleteUsers.map(async (u) => {
+            // Cache 5 min : rouvrir le Dashboard ne relit pas les RM de chaque athlète.
+            const cached = RM_CACHE.get(u.id);
+            if (cached && Date.now() - cached.at < RM_CACHE_TTL) {
+              rmByUser[u.id] = cached.map;
+              return;
+            }
             const m = {};
             try {
               const snap = await getDocs(collection(db, "users", u.id, "rm"));
@@ -985,6 +990,7 @@ export default function Dashboard() {
               console.error("Erreur lecture RM (classification forme):", e);
             }
             rmByUser[u.id] = m;
+            RM_CACHE.set(u.id, { at: Date.now(), map: m });
           })
         );
 
@@ -1000,10 +1006,11 @@ export default function Dashboard() {
           const uGroupIds = getAthleteGroupIds(u.id, customGroups);
           const uWorkouts = allWorkouts.filter(
             (w) =>
-              w.group === "total" ||
-              w.group === uGrp ||
-              w.targetUserId === u.id ||
-              uGroupIds.includes(w.group)
+              athleteCanSeeWorkout(w, u) &&
+              (w.group === "total" ||
+                w.group === uGrp ||
+                w.targetUserId === u.id ||
+                uGroupIds.includes(w.group))
           );
           const todayWorkout = uWorkouts.find((w) => w.date === today);
 
@@ -1114,7 +1121,7 @@ export default function Dashboard() {
     try {
       const today = getLocalDateStr(new Date());
 
-      const allWellness = (await getDocs(collection(db, "wellness"))).docs.map(
+      const allWellness = (await getWellnessSince(daysAgoStr(WINDOW.analysis), athlete.id)).docs.map(
         (d) => ({ id: d.id, ...d.data() })
       );
       const wellnessData = allWellness
@@ -1209,7 +1216,7 @@ export default function Dashboard() {
         .map((d) => ({ weight: d.data().weight, date: d.data().date }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-      const allW = (await getWorkoutDocs()).docs.map((d) => ({
+      const allW = (await getWorkoutDocs({ since: daysAgoStr(WINDOW.analysis) })).docs.map((d) => ({
         id: d.id,
         ...d.data(),
       }));
@@ -1334,6 +1341,213 @@ export default function Dashboard() {
       </div>
     );
   }
+
+  // Carte « État de forme » (REDI × wellness × force / CMJ), partagée entre la fiche
+  // athlète du coach et mon propre dashboard (own = true : pas de retour coach).
+  const renderFormCard = (a, own = false) => {
+              const cs = a.crossStatus;
+              const dom = cs.domains || { load: 0, wellness: 0, neural: 0 };
+              const sevColor = (v) => (v >= 2 ? "#d9695a" : v === 1 ? "#d9a441" : "#4fae7d");
+              const sevText = (v) => (v >= 2 ? "Alerte" : v === 1 ? "Vigilance" : "OK");
+              const nl2 = a.neural;
+              const hasLoad = a.acwr !== null && a.acwr !== undefined;
+              const hasWell = a.wellnessZ !== null && a.wellnessZ !== undefined || a.wellnessScore !== null;
+              const cmjPct = a.cmjStatus ? a.cmjStatus.pctChange : null;
+              const hasNeu = (nl2 && nl2.evaluated > 0) || (cmjPct !== null && cmjPct !== undefined);
+              const tiles = [
+                {
+                  icon: "⚙️",
+                  title: "Charge d'entraînement",
+                  has: hasLoad,
+                  sev: dom.load,
+                  value: hasLoad ? `REDI ${Number(a.acwr).toFixed(2)}` : "—",
+                  caption: hasLoad ? a.acwrStatus.label : "Pas assez de séances",
+                },
+                {
+                  icon: "🧘",
+                  title: "Bien-être (wellness)",
+                  has: hasWell,
+                  sev: dom.wellness,
+                  value:
+                    a.wellnessZ !== null && a.wellnessZ !== undefined
+                      ? `z = ${a.wellnessZ.toFixed(1)}`
+                      : a.wellnessScore !== null
+                        ? `${a.wellnessScore.toFixed(1)}/10`
+                        : "—",
+                  caption: hasWell ? a.wellnessZStatus.label : "Pas de questionnaire",
+                },
+                {
+                  icon: "🧠",
+                  title: "Fatigue nerveuse",
+                  has: hasNeu,
+                  sev: dom.neural,
+                  value: hasNeu ? sevText(dom.neural) : "—",
+                  caption:
+                    nl2 && nl2.evaluated > 0
+                      ? `Force : séance du ${nl2.date.slice(8, 10)}/${nl2.date.slice(5, 7)}`
+                      : cmjPct !== null && cmjPct !== undefined
+                        ? `CMJ ${cmjPct > 0 ? "+" : ""}${cmjPct}%`
+                        : "Pas de séance de force récente",
+                },
+              ];
+              return (
+                <div
+                  style={{
+                    background: "#151310",
+                    padding: 18,
+                    borderRadius: 12,
+                    border: `2px solid ${cs.color}`,
+                    marginBottom: 25,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+                      <div
+                        style={{
+                          width: 56,
+                          height: 56,
+                          borderRadius: 28,
+                          background: `${cs.color}26`,
+                          border: `2px solid ${cs.color}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 28,
+                          flexShrink: 0,
+                        }}
+                      >
+                        {cs.emoji}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                          État de forme
+                        </div>
+                        <div style={{ fontSize: 24, fontWeight: 800, color: cs.color, lineHeight: 1.15 }}>{cs.label}</div>
+                      </div>
+                    </div>
+                    <SectionToggleBtn sectionKey="cross" />
+                  </div>
+
+                  {sectionVisibility.cross && (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginBottom: 14 }}>
+                        {tiles.map((t) => {
+                          const col = t.has ? sevColor(t.sev) : "#4a453d";
+                          return (
+                            <div key={t.title} style={{ background: "#0d0c0a", borderRadius: 10, padding: 12, border: `1px solid ${t.has ? col + "66" : "rgba(255,255,255,0.06)"}` }}>
+                              <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
+                                {t.icon} {t.title}
+                              </div>
+                              <div style={{ fontSize: 22, fontWeight: 800, color: t.has ? col : "#6f6a62", marginBottom: 8 }}>{t.value}</div>
+                              <div style={{ display: "flex", gap: 3, marginBottom: 6 }}>
+                                {[0, 1, 2].map((k) => (
+                                  <div
+                                    key={k}
+                                    style={{
+                                      flex: 1,
+                                      height: 7,
+                                      borderRadius: 4,
+                                      background: t.has && k <= t.sev ? sevColor(k === 0 && t.sev === 0 ? 0 : t.sev) : "rgba(255,255,255,0.08)",
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                              <div style={{ fontSize: 11, color: t.has ? col : "#6f6a62" }}>{t.caption}</div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div style={{ marginBottom: 14 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#f3f0ea", marginBottom: 8 }}>Pourquoi ce statut ?</div>
+                        {cs.reasons && cs.reasons.length > 0 ? (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            {cs.reasons.map((r, idx) => (
+                              <div key={idx} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "#f0d9ae", background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.25)", borderRadius: 8, padding: "7px 10px" }}>
+                                <span>⚠️</span>
+                                <span>{r}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 13, color: "#4fae7d", background: "rgba(79,174,125,0.1)", border: "1px solid rgba(79,174,125,0.3)", borderRadius: 8, padding: "8px 10px" }}>
+                            ✅ Aucun signal : charge, bien-être et performance dans la norme de l'athlète.
+                          </div>
+                        )}
+                      </div>
+
+                      {!own && (
+                      <FatigueFeedback
+                        athleteId={a.id}
+                        date={getLocalDateStr(new Date())}
+                        level={cs.level}
+                        label={cs.label}
+                        reasons={cs.reasons}
+                        coachId={currentUser?.uid}
+                      />
+                      )}
+
+                      {nl2 && nl2.evaluated > 0 && (
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#f3f0ea", marginBottom: 8 }}>
+                            🏋️ Performance en force — séance du {nl2.date.slice(8, 10)}/{nl2.date.slice(5, 7)}
+                          </div>
+                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            {nl2.exercises.map((e) => {
+                              const ratio = e.rmRatio;
+                              const bad = e.reasons.length > 0;
+                              return (
+                                <div key={e.key}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, marginBottom: 4, flexWrap: "wrap" }}>
+                                    <span style={{ color: bad ? "#d9695a" : "#f3f0ea", fontWeight: 600 }}>{e.name}</span>
+                                    <span style={{ color: "#a8a199" }}>
+                                      e1RM {e.e1rm} kg
+                                      {e.dropPct !== null && (
+                                        <span style={{ marginLeft: 8, fontWeight: 700, color: e.dropPct > 15 ? "#d9695a" : e.dropPct > 0 ? "#d9a441" : "#4fae7d" }}>
+                                          {e.dropPct > 0 ? "−" : "+"}
+                                          {Math.abs(e.dropPct)}% vs préc.
+                                        </span>
+                                      )}
+                                    </span>
+                                  </div>
+                                  {ratio !== null ? (
+                                    <div style={{ position: "relative", height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 5 }}>
+                                      <div style={{ width: `${Math.min(100, ratio)}%`, height: "100%", borderRadius: 5, background: ratio < 80 && !e.presc ? "#d9695a" : "#4fae7d" }} />
+                                      {!e.presc && <div style={{ position: "absolute", left: "80%", top: -3, bottom: -3, width: 2, background: "#f3f0ea" }} title="Seuil 80 % du RM" />}
+                                    </div>
+                                  ) : (
+                                    <div style={{ fontSize: 11, color: "#6f6a62" }}>RM non renseigné pour cet exercice</div>
+                                  )}
+                                  {e.presc && (
+                                    <div style={{ fontSize: 11, color: e.reasons.includes("load") || e.reasons.includes("rpe") ? "#d9695a" : "#a8a199", marginTop: 3, lineHeight: 1.5 }}>
+                                      Prévu : {e.presc.pct}% × {e.presc.reps} reps = {e.presc.prescribedKg} kg · fait : {e.presc.actualKg} kg (
+                                      {e.presc.loadGapPct > 0 ? "−" : "+"}
+                                      {Math.abs(e.presc.loadGapPct)}%) · RPE {e.presc.rpe}
+                                      {e.presc.expectedRpe !== null ? ` (attendu ≈ ${e.presc.expectedRpe} à ${e.presc.actualPct}% du RM ${e.presc.refSource === "recent" ? "récent" : "enregistré"} de ${e.presc.refRm} kg)` : ""}
+                                      {e.reasons.includes("load") ? " → charge nettement sous le prévu avec effort élevé" : ""}
+                                      {e.reasons.includes("rpe") ? " → effort trop élevé pour la charge prévue" : ""}
+                                    </div>
+                                  )}
+                                  {!e.presc && ratio !== null && (
+                                    <div style={{ fontSize: 11, color: ratio < 80 ? "#d9695a" : "#a8a199", marginTop: 3 }}>
+                                      {ratio}% du RM enregistré (seuil 80 %) — pas de prescription % RM pour cet exo
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      <div style={{ fontSize: 11, color: "#6f6a62", lineHeight: 1.5 }}>
+                        Fatigue nerveuse : si l'exercice a un % du RM prescrit, on compare la charge faite et le RPE au prévu (signal si ≥ 15 % sous la charge prévue avec RPE ≥ 8, ou RPE ≥ 8 alors que ≥ 3 points de moins étaient attendus à charge normale) ; sinon, 1RM estimé &lt; 80 % du RM enregistré. Dans tous les cas, chute du 1RM estimé &gt; 15 % vs séance précédente.
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            };
 
   if (viewRole !== "admin") {
     const todayScore = todayWellness
@@ -1534,6 +1748,10 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* État de forme : même analyse que la fiche athlète du coach, mais pour MOI
+            (athlète, ou coach via « Moi (mon dashboard) »). */}
+        {selfForm && selfForm.crossStatus && renderFormCard(selfForm, true)}
 
         {!todayWellness && (
           <div
@@ -1872,7 +2090,7 @@ export default function Dashboard() {
             }}
           >
             <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 4 }}>
-              Taux de réalisation (séances passées)
+              Taux de réalisation (60 derniers jours)
             </div>
             <div style={{ fontSize: 24, fontWeight: "bold", color: "#4fae7d" }}>
               {totalSessions > 0
@@ -3266,208 +3484,7 @@ export default function Dashboard() {
               </div>
             )}
 
-            {showAthleteDetail.crossStatus && (() => {
-              const cs = showAthleteDetail.crossStatus;
-              const dom = cs.domains || { load: 0, wellness: 0, neural: 0 };
-              const sevColor = (v) => (v >= 2 ? "#d9695a" : v === 1 ? "#d9a441" : "#4fae7d");
-              const sevText = (v) => (v >= 2 ? "Alerte" : v === 1 ? "Vigilance" : "OK");
-              const nl2 = showAthleteDetail.neural;
-              const hasLoad = showAthleteDetail.acwr !== null && showAthleteDetail.acwr !== undefined;
-              const hasWell = showAthleteDetail.wellnessZ !== null && showAthleteDetail.wellnessZ !== undefined || showAthleteDetail.wellnessScore !== null;
-              const cmjPct = showAthleteDetail.cmjStatus ? showAthleteDetail.cmjStatus.pctChange : null;
-              const hasNeu = (nl2 && nl2.evaluated > 0) || (cmjPct !== null && cmjPct !== undefined);
-              const tiles = [
-                {
-                  icon: "⚙️",
-                  title: "Charge d'entraînement",
-                  has: hasLoad,
-                  sev: dom.load,
-                  value: hasLoad ? `REDI ${Number(showAthleteDetail.acwr).toFixed(2)}` : "—",
-                  caption: hasLoad ? showAthleteDetail.acwrStatus.label : "Pas assez de séances",
-                },
-                {
-                  icon: "🧘",
-                  title: "Bien-être (wellness)",
-                  has: hasWell,
-                  sev: dom.wellness,
-                  value:
-                    showAthleteDetail.wellnessZ !== null && showAthleteDetail.wellnessZ !== undefined
-                      ? `z = ${showAthleteDetail.wellnessZ.toFixed(1)}`
-                      : showAthleteDetail.wellnessScore !== null
-                        ? `${showAthleteDetail.wellnessScore.toFixed(1)}/10`
-                        : "—",
-                  caption: hasWell ? showAthleteDetail.wellnessZStatus.label : "Pas de questionnaire",
-                },
-                {
-                  icon: "🧠",
-                  title: "Fatigue nerveuse",
-                  has: hasNeu,
-                  sev: dom.neural,
-                  value: hasNeu ? sevText(dom.neural) : "—",
-                  caption:
-                    nl2 && nl2.evaluated > 0
-                      ? `Force : séance du ${nl2.date.slice(8, 10)}/${nl2.date.slice(5, 7)}`
-                      : cmjPct !== null && cmjPct !== undefined
-                        ? `CMJ ${cmjPct > 0 ? "+" : ""}${cmjPct}%`
-                        : "Pas de séance de force récente",
-                },
-              ];
-              return (
-                <div
-                  style={{
-                    background: "#151310",
-                    padding: 18,
-                    borderRadius: 12,
-                    border: `2px solid ${cs.color}`,
-                    marginBottom: 25,
-                  }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-                      <div
-                        style={{
-                          width: 56,
-                          height: 56,
-                          borderRadius: 28,
-                          background: `${cs.color}26`,
-                          border: `2px solid ${cs.color}`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 28,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {cs.emoji}
-                      </div>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 11, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                          État de forme
-                        </div>
-                        <div style={{ fontSize: 24, fontWeight: 800, color: cs.color, lineHeight: 1.15 }}>{cs.label}</div>
-                      </div>
-                    </div>
-                    <SectionToggleBtn sectionKey="cross" />
-                  </div>
-
-                  {sectionVisibility.cross && (
-                    <>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginBottom: 14 }}>
-                        {tiles.map((t) => {
-                          const col = t.has ? sevColor(t.sev) : "#4a453d";
-                          return (
-                            <div key={t.title} style={{ background: "#0d0c0a", borderRadius: 10, padding: 12, border: `1px solid ${t.has ? col + "66" : "rgba(255,255,255,0.06)"}` }}>
-                              <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
-                                {t.icon} {t.title}
-                              </div>
-                              <div style={{ fontSize: 22, fontWeight: 800, color: t.has ? col : "#6f6a62", marginBottom: 8 }}>{t.value}</div>
-                              <div style={{ display: "flex", gap: 3, marginBottom: 6 }}>
-                                {[0, 1, 2].map((k) => (
-                                  <div
-                                    key={k}
-                                    style={{
-                                      flex: 1,
-                                      height: 7,
-                                      borderRadius: 4,
-                                      background: t.has && k <= t.sev ? sevColor(k === 0 && t.sev === 0 ? 0 : t.sev) : "rgba(255,255,255,0.08)",
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                              <div style={{ fontSize: 11, color: t.has ? col : "#6f6a62" }}>{t.caption}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <div style={{ marginBottom: 14 }}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#f3f0ea", marginBottom: 8 }}>Pourquoi ce statut ?</div>
-                        {cs.reasons && cs.reasons.length > 0 ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                            {cs.reasons.map((r, idx) => (
-                              <div key={idx} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "#f0d9ae", background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.25)", borderRadius: 8, padding: "7px 10px" }}>
-                                <span>⚠️</span>
-                                <span>{r}</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 13, color: "#4fae7d", background: "rgba(79,174,125,0.1)", border: "1px solid rgba(79,174,125,0.3)", borderRadius: 8, padding: "8px 10px" }}>
-                            ✅ Aucun signal : charge, bien-être et performance dans la norme de l'athlète.
-                          </div>
-                        )}
-                      </div>
-
-                      <FatigueFeedback
-                        athleteId={showAthleteDetail.id}
-                        date={getLocalDateStr(new Date())}
-                        level={cs.level}
-                        label={cs.label}
-                        reasons={cs.reasons}
-                        coachId={currentUser?.uid}
-                      />
-
-                      {nl2 && nl2.evaluated > 0 && (
-                        <div style={{ marginBottom: 12 }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: "#f3f0ea", marginBottom: 8 }}>
-                            🏋️ Performance en force — séance du {nl2.date.slice(8, 10)}/{nl2.date.slice(5, 7)}
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                            {nl2.exercises.map((e) => {
-                              const ratio = e.rmRatio;
-                              const bad = e.reasons.length > 0;
-                              return (
-                                <div key={e.key}>
-                                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 13, marginBottom: 4, flexWrap: "wrap" }}>
-                                    <span style={{ color: bad ? "#d9695a" : "#f3f0ea", fontWeight: 600 }}>{e.name}</span>
-                                    <span style={{ color: "#a8a199" }}>
-                                      e1RM {e.e1rm} kg
-                                      {e.dropPct !== null && (
-                                        <span style={{ marginLeft: 8, fontWeight: 700, color: e.dropPct > 15 ? "#d9695a" : e.dropPct > 0 ? "#d9a441" : "#4fae7d" }}>
-                                          {e.dropPct > 0 ? "−" : "+"}
-                                          {Math.abs(e.dropPct)}% vs préc.
-                                        </span>
-                                      )}
-                                    </span>
-                                  </div>
-                                  {ratio !== null ? (
-                                    <div style={{ position: "relative", height: 10, background: "rgba(255,255,255,0.08)", borderRadius: 5 }}>
-                                      <div style={{ width: `${Math.min(100, ratio)}%`, height: "100%", borderRadius: 5, background: ratio < 80 && !e.presc ? "#d9695a" : "#4fae7d" }} />
-                                      {!e.presc && <div style={{ position: "absolute", left: "80%", top: -3, bottom: -3, width: 2, background: "#f3f0ea" }} title="Seuil 80 % du RM" />}
-                                    </div>
-                                  ) : (
-                                    <div style={{ fontSize: 11, color: "#6f6a62" }}>RM non renseigné pour cet exercice</div>
-                                  )}
-                                  {e.presc && (
-                                    <div style={{ fontSize: 11, color: e.reasons.includes("load") || e.reasons.includes("rpe") ? "#d9695a" : "#a8a199", marginTop: 3, lineHeight: 1.5 }}>
-                                      Prévu : {e.presc.pct}% × {e.presc.reps} reps = {e.presc.prescribedKg} kg · fait : {e.presc.actualKg} kg (
-                                      {e.presc.loadGapPct > 0 ? "−" : "+"}
-                                      {Math.abs(e.presc.loadGapPct)}%) · RPE {e.presc.rpe}
-                                      {e.presc.expectedRpe !== null ? ` (attendu ≈ ${e.presc.expectedRpe} à ${e.presc.actualPct}% du RM ${e.presc.refSource === "recent" ? "récent" : "enregistré"} de ${e.presc.refRm} kg)` : ""}
-                                      {e.reasons.includes("load") ? " → charge nettement sous le prévu avec effort élevé" : ""}
-                                      {e.reasons.includes("rpe") ? " → effort trop élevé pour la charge prévue" : ""}
-                                    </div>
-                                  )}
-                                  {!e.presc && ratio !== null && (
-                                    <div style={{ fontSize: 11, color: ratio < 80 ? "#d9695a" : "#a8a199", marginTop: 3 }}>
-                                      {ratio}% du RM enregistré (seuil 80 %) — pas de prescription % RM pour cet exo
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      <div style={{ fontSize: 11, color: "#6f6a62", lineHeight: 1.5 }}>
-                        Fatigue nerveuse : si l'exercice a un % du RM prescrit, on compare la charge faite et le RPE au prévu (signal si ≥ 15 % sous la charge prévue avec RPE ≥ 8, ou RPE ≥ 8 alors que ≥ 3 points de moins étaient attendus à charge normale) ; sinon, 1RM estimé &lt; 80 % du RM enregistré. Dans tous les cas, chute du 1RM estimé &gt; 15 % vs séance précédente.
-                      </div>
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+            {showAthleteDetail.crossStatus && renderFormCard(showAthleteDetail)}
 
             {showAthleteDetail.injuries && (
               <div

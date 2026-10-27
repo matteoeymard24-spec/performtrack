@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { getWorkoutDocs } from "../component/workoutQueries";
+import { getWorkoutDocs, getScopedUserDocs, daysAgoStr, WINDOW } from "../component/workoutQueries";
 import { collection, getDocs } from "firebase/firestore";
 import { Navigate } from "react-router-dom";
 import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB, FIELD_STYLE } from "../component/ui";
@@ -36,7 +36,7 @@ import {
 } from "../component/loadMetrics";
 
 export default function ACWRMonitoring() {
-  const { userRole, currentUser, isSuperAdmin } = useAuth();
+  const { userRole, currentUser, isSuperAdmin, coachScope } = useAuth();
   const isAdminLike = userRole === "admin" || isSuperAdmin;
   const [athletes, setAthletes] = useState([]);
   const [pickMode, setPickMode] = useState(""); // "" | "athletes" | "admins" (carrés de choix, comme Tests / Workout)
@@ -52,10 +52,17 @@ export default function ACWRMonitoring() {
   useEffect(() => {
     const fetchAthletes = async () => {
       try {
-        const usersSnap = await getDocs(collection(db, "users"));
+        const usersSnap = await getScopedUserDocs();
         const athletesData = usersSnap.docs
           .map((d) => ({ id: d.id, ...d.data() }))
-          ; // tous les comptes : le tri Athlètes / Moi / Admins se fait à l'affichage
+          // portée coach : mes athlètes (+ moi) ; les autres coachs seulement pour le superadmin
+          .filter((u) =>
+            u.id === currentUser?.uid
+              ? true
+              : u.role === "admin" || u.superAdmin === true
+              ? isSuperAdmin
+              : !coachScope || coachScope.ownsUser(u)
+          ); // tous les comptes : le tri Athlètes / Moi / Admins se fait à l'affichage
 
         athletesData.sort((a, b) => {
           const nameA = a.firstName || a.email || "";
@@ -78,7 +85,11 @@ export default function ACWRMonitoring() {
     const fetchGroups = async () => {
       try {
         const snap = await getDocs(collection(db, "groups"));
-        setCustomGroups(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setCustomGroups(
+          snap.docs
+            .map((d) => ({ id: d.id, ...d.data() }))
+            .filter((g) => !coachScope || coachScope.ownsGroup(g))
+        );
       } catch (error) {
         console.error("Erreur chargement groupes:", error);
       }
@@ -145,7 +156,7 @@ export default function ACWRMonitoring() {
     setLoadingAthlete(true);
 
     try {
-      const workoutsSnap = await getWorkoutDocs();
+      const workoutsSnap = await getWorkoutDocs({ since: daysAgoStr(WINDOW.analysis) }); // 90 j d'historique + 28 j de REDI
       const allWorkouts = workoutsSnap.docs.map((d) => ({
         id: d.id,
         ...d.data(),

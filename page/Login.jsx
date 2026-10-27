@@ -3,7 +3,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
 } from "firebase/auth";
-import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
+import { normalizeCoachCode } from "../component/coachScope";
 import { auth, db } from "../firebase";
 import { useNavigate } from "react-router-dom";
 
@@ -18,6 +19,7 @@ const TEXT_MUTED = "#a8a199";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [coachCode, setCoachCode] = useState("");
   const [isRegister, setIsRegister] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -46,10 +48,34 @@ export default function Login() {
       // statut différent de "pending" (voir firestore-rules-avec-groupes.rules).
       // L'accès réel à l'app est bloqué tant que le coach n'a pas approuvé
       // la demande depuis la page Athlètes.
+      // Code coach (facultatif) : rattache la demande au coach qui a donné le
+      // code. Code inconnu -> on annule la création du compte (il vient d'être
+      // créé, on peut donc le supprimer) pour que l'athlète puisse réessayer.
+      const code = normalizeCoachCode(coachCode);
+      let coachData = {};
+      if (code) {
+        let coachSnap = null;
+        try {
+          coachSnap = await getDoc(doc(db, "coachCodes", code));
+        } catch (e) {
+          coachSnap = null;
+        }
+        if (!coachSnap || !coachSnap.exists() || !coachSnap.data().coachId) {
+          try {
+            await cred.user.delete();
+          } catch (e) {
+            console.warn("Annulation du compte impossible :", e);
+          }
+          setError("Code coach introuvable. Vérifie-le auprès de ton coach (ou laisse le champ vide).");
+          return;
+        }
+        coachData = { coachId: coachSnap.data().coachId, coachCode: code };
+      }
       await setDoc(doc(db, "users", cred.user.uid), {
         email: cred.user.email,
         role: "athlete",
         status: "pending",
+        ...coachData,
         createdAt: serverTimestamp(),
       });
       navigate("/");
@@ -245,6 +271,39 @@ export default function Login() {
               onBlur={(e) => (e.target.style.borderColor = BORDER)}
             />
           </div>
+
+          {isRegister && (
+            <div style={{ marginBottom: 22 }}>
+              <label style={{ display: "block", marginBottom: 7, color: TEXT_MUTED, fontSize: 13, fontWeight: 500 }}>
+                Code coach <span style={{ opacity: 0.7 }}>(donné par ton coach)</span>
+              </label>
+              <input
+                type="text"
+                placeholder="ex. K7M2QX"
+                value={coachCode}
+                onChange={(e) => setCoachCode(e.target.value.toUpperCase())}
+                autoCapitalize="characters"
+                autoComplete="off"
+                maxLength={12}
+                style={{
+                  width: "100%",
+                  padding: 13,
+                  borderRadius: 10,
+                  border: `1px solid ${BORDER}`,
+                  background: SURFACE_2,
+                  color: "#f3f0ea",
+                  fontSize: 15,
+                  letterSpacing: 2,
+                  transition: "border-color 0.15s ease",
+                }}
+                onFocus={(e) => (e.target.style.borderColor = ACCENT)}
+                onBlur={(e) => (e.target.style.borderColor = BORDER)}
+              />
+              <div style={{ fontSize: 11, color: TEXT_MUTED, marginTop: 5 }}>
+                Sans code, ta demande ira au responsable de l'application.
+              </div>
+            </div>
+          )}
 
           {error && (
             <div

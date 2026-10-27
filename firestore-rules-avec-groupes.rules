@@ -2,184 +2,203 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ===================== FONCTIONS =====================
     function isSignedIn() {
       return request.auth != null;
     }
 
+    // Profil du compte connecté (users/{uid}).
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function isAdmin() {
-      // ATTENTION : le champ réellement utilisé partout dans l'app (Dashboard,
-      // Admin, ACWRMonitoring, AuthProvider) est "superAdmin", pas
-      // "isSuperAdmin". Une version précédente de ces règles vérifiait
-      // "isSuperAdmin", un champ qui n'existe nulle part côté app — la garde
-      // anti-auto-promotion ci-dessous ne protégeait donc PAS le vrai champ
-      // "superAdmin", qu'un athlète aurait pu s'attribuer directement.
-      return isSignedIn() && (
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.superAdmin == true
-      );
+      return isSignedIn() && (me().get('role', '') == 'admin' || me().get('superAdmin', false) == true);
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && me().get('superAdmin', false) == true;
+    }
+
+    // Coach de l'athlète connecté (null = compte d'avant le système coach).
+    function myCoachId() {
+      return me().get('coachId', null);
     }
 
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // ========== USERS ==========
-    match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+    // L'athlète userId est-il rattaché au coach connecté ?
+    function isMyAthlete(userId) {
+      return isAdmin() &&
+        get(/databases/$(database)/documents/users/$(userId)).data.get('coachId', null) == request.auth.uid;
+    }
 
-      // FAILLE CORRIGÉE ICI : avant, "allow write" laissait n'importe quel
-      // athlète authentifié écrire N'IMPORTE QUOI dans son propre document
-      // users/{sonUid} — y compris role: "admin" ou isSuperAdmin: true. Un
-      // athlète pouvait donc s'auto-promouvoir admin en un seul appel
-      // Firestore SDK depuis la console du navigateur, sans jamais passer
-      // par l'interface. Un athlète peut toujours modifier son propre
-      // profil (poids, prénom, etc.), mais ne peut plus jamais changer son
-      // rôle, son statut superAdmin, ni son groupe (assigné par le coach) —
-      // seul un admin (vérifié côté serveur, pas côté client) peut toucher
-      // ces trois champs.
-      // "status" gère l'autorisation d'accès à la première connexion : un
-      // athlète qui s'inscrit lui-même ne peut créer son profil qu'avec
-      // status = 'pending' (jamais 'approved' directement), et ne peut plus
-      // jamais changer son propre statut ensuite (seul un admin approuve ou
-      // refuse). L'absence du champ (comptes créés avant cette fonctionnalité)
-      // est traitée comme "approuvé" côté app.
-      allow create: if isAdmin() || (
+    // ===================== USERS =====================
+    match /users/{userId} {
+      // Superadmin : tout. Coach : lui-même, SES athlètes, et les autres coachs (noms).
+      allow read: if isOwner(userId) || isSuperAdmin() ||
+        (isAdmin() && (resource.data.coachId == request.auth.uid || resource.data.role == 'admin'));
+
+      // Inscription : l'athlète crée son profil en attente (jamais admin / approuvé).
+      allow create: if isSuperAdmin() || (
         isOwner(userId) &&
         (!('role' in request.resource.data) || request.resource.data.role == 'athlete') &&
         (!('superAdmin' in request.resource.data) || request.resource.data.superAdmin == false) &&
         (!('status' in request.resource.data) || request.resource.data.status == 'pending')
       );
 
-      allow update: if isAdmin() || (
-        isOwner(userId) &&
-        (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
-        (!('superAdmin' in request.resource.data) ||
-          request.resource.data.superAdmin == (resource.data.superAdmin == true)) &&
-        (!('group' in request.resource.data) || request.resource.data.group == resource.data.group) &&
-        (!('status' in request.resource.data) || request.resource.data.status == resource.data.status)
-      );
+      allow update: if isSuperAdmin() ||
+        // Coach : valide / modifie SES athlètes, sans les changer de coach ni de rôle.
+        (
+          isAdmin() && !isOwner(userId) &&
+          resource.data.get('coachId', null) == request.auth.uid &&
+          request.resource.data.get('coachId', null) == request.auth.uid &&
+          request.resource.data.get('role', 'athlete') == resource.data.get('role', 'athlete') &&
+          request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false)
+        ) ||
+        // Chacun modifie son propre profil, sans toucher rôle / superadmin / groupe / coach / statut.
+        (
+          isOwner(userId) &&
+          (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
+          (!('superAdmin' in request.resource.data) ||
+            request.resource.data.superAdmin == (resource.data.superAdmin == true)) &&
+          (!('group' in request.resource.data) || request.resource.data.group == resource.data.group) &&
+          (!('coachId' in request.resource.data) ||
+            request.resource.data.coachId == resource.data.get('coachId', null)) &&
+          (!('status' in request.resource.data) || request.resource.data.status == resource.data.status)
+        );
 
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
 
-      // Sous-collections (rm, weight_history)
+      // Sous-collections (rm, tests, weight_history...)
       match /{subcollection}/{docId} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read, write: if isOwner(userId) || isSuperAdmin() || isMyAthlete(userId);
       }
     }
 
-    // ========== WORKOUT ==========
+    // ===================== WORKOUT (séances) =====================
     match /workout/{workoutId} {
-      // Lecture : tous les utilisateurs authentifiés
-      allow read: if isSignedIn();
-
-      // Création : admins uniquement
-      allow create: if isAdmin();
-
-      // Mise à jour : admins OU athlètes qui modifient UNIQUEMENT leur
-      // propre entrée dans userProgress.
-      // BUG CORRIGÉ ICI : la condition précédente faisait
-      // request.resource.data.userProgress.diff(resource.data.userProgress)
-      // sans jamais vérifier que resource.data.userProgress existait déjà.
-      // Or aucune séance n'était créée avec un champ userProgress initial
-      // (voir Workout.jsx) — donc pour TOUTE séance, le tout premier
-      // athlète qui essayait de démarrer se heurtait à un .diff() sur un
-      // champ inexistant, provoquant une erreur d'évaluation de la règle et
-      // donc un refus d'écriture systématique. Le garde-fou
-      // "!('userProgress' in resource.data)" corrige ça pour les séances
-      // déjà existantes en base ; côté app, Workout.jsx initialise
-      // maintenant userProgress: {} dès la création pour que ça ne se
-      // reproduise plus.
-      allow update: if isAdmin() || (
-        isSignedIn() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userProgress']) &&
-        (
-          !('userProgress' in resource.data) ||
-          request.resource.data.userProgress.diff(resource.data.userProgress).affectedKeys().hasOnly([request.auth.uid])
-        )
+      // Superadmin : tout. Coach : ses séances. Athlète rattaché : séances de son
+      // coach + celles qui le ciblent. Athlète sans coach : tout (comme avant).
+      allow read: if isSignedIn() && (
+        isSuperAdmin() ||
+        resource.data.createdBy == request.auth.uid ||
+        resource.data.targetUserId == request.auth.uid ||
+        (!isAdmin() && (myCoachId() == null || resource.data.createdBy == myCoachId()))
       );
 
-      // Suppression : admins uniquement
-      allow delete: if isAdmin();
+      allow create: if isSuperAdmin() || (isAdmin() && request.resource.data.createdBy == request.auth.uid);
+
+      // Coach : ses séances. Athlète : uniquement SA ligne de userProgress.
+      allow update: if isSuperAdmin() ||
+        (isAdmin() && resource.data.createdBy == request.auth.uid) ||
+        (
+          isSignedIn() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['userProgress']) &&
+          (
+            !('userProgress' in resource.data) ||
+            request.resource.data.userProgress.diff(resource.data.userProgress).affectedKeys().hasOnly([request.auth.uid])
+          )
+        );
+
+      allow delete: if isSuperAdmin() || (isAdmin() && resource.data.createdBy == request.auth.uid);
     }
 
-    // ========== WELLNESS ==========
+    // ===================== WELLNESS =====================
     match /wellness/{wellnessId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-
-      // Un athlète peut modifier son propre wellness, mais ne peut pas en
-      // changer le userId (empêche de "reléguer" son propre document à un
-      // autre athlète ou de perturber les requêtes admin).
       allow update: if isAdmin() || (
         isSignedIn() &&
         resource.data.userId == request.auth.uid &&
         request.resource.data.userId == resource.data.userId
       );
-
       allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // ========== INJURIES (journal de blessures — nouvelle collection) ==========
+    // ===================== INJURIES (blessures) =====================
     match /injuries/{injuryId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-
-      // Un coach (admin) peut enregistrer une blessure pour n'importe quel athlète.
       allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isAdmin());
-
       allow update: if isAdmin() || (
         isSignedIn() &&
         resource.data.userId == request.auth.uid &&
         request.resource.data.userId == resource.data.userId
       );
-
       allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
-    // ========== GROUPS (groupes personnalisés d'athlètes) ==========
+    // ===================== GROUPS (groupes personnalisés) =====================
     match /groups/{groupId} {
-      // Lecture : tout utilisateur authentifié (nécessaire pour que chaque
-      // athlète sache de quels groupes il fait partie et voie les séances
-      // ciblées dessus).
+      // Lecture : tout compte connecté (chaque athlète doit savoir dans quels groupes il est).
       allow read: if isSignedIn();
-
-      // Écriture (création / modification / suppression) : admins uniquement
-      allow write: if isAdmin();
+      allow create: if isSuperAdmin() || (isAdmin() && request.resource.data.createdBy == request.auth.uid);
+      allow update, delete: if isSuperAdmin() || (isAdmin() && resource.data.createdBy == request.auth.uid);
     }
 
-    // ========== EXERCISE MEDIA (photos/gifs de démonstration, une seule
-    // fois par nom d'exercice — voir Workout.jsx) ==========
+    // ===================== EXERCISE MEDIA (banque d'exos commune) =====================
     match /exerciseMedia/{exerciseKey} {
-      // Lecture : tout utilisateur authentifié (le coach ET les athlètes
-      // voient la photo pendant la séance).
       allow read: if isSignedIn();
-
-      // Écriture (création / modification / suppression) : admins
-      // uniquement. Cette collection ne contient qu'UN document par
-      // exercice (dédupliqué), donc bien moins coûteuse que si l'image
-      // était recopiée dans chaque séance.
-      allow write: if isAdmin();
+      // Chaque coach crée ses fiches ; il ne modifie / supprime que les siennes.
+      // Sur une fiche commune il peut seulement la masquer pour lui (hiddenFor).
+      allow create: if isSuperAdmin() || (isAdmin() && request.resource.data.createdBy == request.auth.uid);
+      allow update: if isSuperAdmin() || (isAdmin() && (
+        resource.data.get('createdBy', null) == request.auth.uid ||
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hiddenFor', 'updatedAt'])
+      ));
+      allow delete: if isSuperAdmin() || (isAdmin() && resource.data.get('createdBy', null) == request.auth.uid);
     }
-    // ========== CYCLES (planification macro / méso / micro, voir
-    // component/PlanningPanel.jsx) ==========
+
+    // ===================== EXERCISE IMAGES (photos des exos, à part) =====================
+    // Même droits que la fiche exerciseMedia du même nom.
+    match /exerciseImages/{exerciseKey} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin() || (isAdmin() && (
+        !exists(/databases/$(database)/documents/exerciseMedia/$(exerciseKey)) ||
+        get(/databases/$(database)/documents/exerciseMedia/$(exerciseKey)).data.get('createdBy', null) == request.auth.uid
+      ));
+    }
+
+    // ===================== CYCLES (planification) =====================
     match /cycles/{cycleId} {
-      // Lecture : tout utilisateur authentifié (les athlètes voient le
-      // cycle en cours sur leur calendrier).
-      allow read: if isSignedIn();
-
-      // Écriture : admins uniquement.
-      allow write: if isAdmin();
+      allow read: if isSignedIn() && (
+        isSuperAdmin() ||
+        resource.data.createdBy == request.auth.uid ||
+        (!isAdmin() && (myCoachId() == null || resource.data.createdBy == myCoachId()))
+      );
+      allow create: if isSuperAdmin() || (isAdmin() && request.resource.data.createdBy == request.auth.uid);
+      allow update, delete: if isSuperAdmin() || (isAdmin() && resource.data.createdBy == request.auth.uid);
     }
-    // ========== ARCHIVED ATHLETES (athlètes archivés, voir page/Athletes.jsx) ==========
-    // Réservé aux admins : contient une copie du profil archivé.
+
+    // ===================== FIXTURES (matchs / compétitions) =====================
+    match /fixtures/{fixtureId} {
+      allow read: if isSignedIn() && (
+        isSuperAdmin() ||
+        resource.data.createdBy == request.auth.uid ||
+        (!isAdmin() && (myCoachId() == null || resource.data.createdBy == myCoachId()))
+      );
+      // Coach : ses matchs. Athlète : ses propres échéances (portée "user:<son uid>").
+      allow create: if isSuperAdmin() || (
+        isSignedIn() && request.resource.data.createdBy == request.auth.uid &&
+        (isAdmin() || request.resource.data.scope == 'user:' + request.auth.uid)
+      );
+      allow update, delete: if isSuperAdmin() || (
+        isSignedIn() && resource.data.createdBy == request.auth.uid
+      );
+    }
+
+    // ===================== COACH CODES =====================
+    match /coachCodes/{code} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && request.resource.data.coachId == request.auth.uid;
+      allow update, delete: if isSuperAdmin() || (isAdmin() && resource.data.coachId == request.auth.uid);
+    }
+
+    // ===================== ARCHIVED ATHLETES =====================
     match /archivedAthletes/{athleteId} {
       allow read, write: if isAdmin();
-    }
-    // ========== FIXTURES (matchs et jours de compétition, voir
-    // component/PlanningPanel.jsx) ==========
-    match /fixtures/{fixtureId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
     }
   }
 }
