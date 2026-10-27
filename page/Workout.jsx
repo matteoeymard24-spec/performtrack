@@ -2004,6 +2004,118 @@ export default function Workout() {
   };
 
   /* ===================== DUPLICATION SÉANCE UNIQUE ===================== */
+  // Déplace une séance existante vers un autre jour (glisser-déposer ou champ date).
+  const dragSessionId = useRef(null);
+  const [dragOverDate, setDragOverDate] = useState(null);
+  const moveSessionToDate = async (sessionId, newDate) => {
+    const sess = events.find((e) => e.id === sessionId);
+    if (!sess || !newDate || sess.date === newDate || !isAdminLike) return;
+    const hasProgress = Object.keys(sess.userProgress || {}).length > 0;
+    const fmt = (d) => new Date(d + "T12:00:00").toLocaleDateString("fr-FR");
+    if (
+      !(await askConfirm(
+        `Déplacer « ${sess.title} » du ${fmt(sess.date)} au ${fmt(newDate)} ?` +
+          (hasProgress ? "\n⚠️ Des athlètes ont déjà rempli cette séance : leurs résultats suivront la séance à sa nouvelle date." : "")
+      ))
+    )
+      return;
+    const oldDate = sess.date;
+    setEvents((prev) => prev.map((e) => (e.id === sessionId ? { ...e, date: newDate } : e)));
+    setSelectedSession((prev) => (prev && prev.id === sessionId ? { ...prev, date: newDate } : prev));
+    try {
+      await updateDoc(doc(db, "workout", sessionId), { date: newDate });
+      setSelectedDate(newDate);
+    } catch (e) {
+      console.error("[moveSession]", e);
+      setEvents((prev) => prev.map((x) => (x.id === sessionId ? { ...x, date: oldDate } : x)));
+      setSelectedSession((prev) => (prev && prev.id === sessionId ? { ...prev, date: oldDate } : prev));
+      alert("❌ Déplacement impossible : " + e.message);
+    }
+  };
+
+  // Appui long au doigt : la séance se « détache », on la promène sur un jour, on relâche.
+  const touchDrag = useRef({ id: null, active: false, timer: null, sx: 0, sy: 0, lastBlock: 0 });
+  const [touchGhost, setTouchGhost] = useState(null);
+  const moveRef = useRef(null);
+  moveRef.current = moveSessionToDate;
+  const cancelTouchDrag = () => {
+    const td = touchDrag.current;
+    clearTimeout(td.timer);
+    td.id = null;
+    td.active = false;
+    setTouchGhost(null);
+    setDragOverDate(null);
+  };
+  const touchDragProps = (sess) =>
+    !isAdminLike
+      ? {}
+      : {
+          onTouchStart: (e) => {
+            const t = e.touches[0];
+            const td = touchDrag.current;
+            clearTimeout(td.timer);
+            td.id = sess.id;
+            td.active = false;
+            td.sx = t.clientX;
+            td.sy = t.clientY;
+            td.timer = setTimeout(() => {
+              td.active = true;
+              try { navigator.vibrate && navigator.vibrate(30); } catch (_) { /* ignore */ }
+              setTouchGhost({ x: td.sx, y: td.sy, title: sess.title });
+            }, 450);
+          },
+          onContextMenu: (e) => e.preventDefault(),
+        };
+  const touchDragBlockClick = () => Date.now() - touchDrag.current.lastBlock < 500;
+  useEffect(() => {
+    const dateAt = (t) => {
+      const el = document.elementFromPoint(t.clientX, t.clientY);
+      const cell = el && el.closest ? el.closest("[data-date]") : null;
+      return cell ? cell.getAttribute("data-date") : null;
+    };
+    const onMove = (e) => {
+      const td = touchDrag.current;
+      if (!td.id) return;
+      const t = e.touches[0];
+      if (!td.active) {
+        // le doigt a bougé avant la fin de l'appui long : c'est un défilement normal
+        if (Math.hypot(t.clientX - td.sx, t.clientY - td.sy) > 10) {
+          clearTimeout(td.timer);
+          td.id = null;
+        }
+        return;
+      }
+      e.preventDefault();
+      setTouchGhost((g) => (g ? { ...g, x: t.clientX, y: t.clientY } : g));
+      setDragOverDate(dateAt(t));
+    };
+    const onEnd = (e) => {
+      const td = touchDrag.current;
+      if (!td.id) return;
+      clearTimeout(td.timer);
+      const wasActive = td.active;
+      const id = td.id;
+      const t = e.changedTouches && e.changedTouches[0];
+      const date = wasActive && t && e.type === "touchend" ? dateAt(t) : null;
+      td.id = null;
+      td.active = false;
+      setTouchGhost(null);
+      setDragOverDate(null);
+      if (wasActive) {
+        td.lastBlock = Date.now();
+        if (date) moveRef.current(id, date);
+      }
+    };
+    document.addEventListener("touchmove", onMove, { passive: false });
+    document.addEventListener("touchend", onEnd);
+    document.addEventListener("touchcancel", onEnd);
+    return () => {
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
+  }, []);
+
   const duplicateSession = async () => {
     if (duplicatingSessionLock.current) return;
     if (!sessionToDuplicate || !duplicateTargetDate) {
@@ -3881,9 +3993,24 @@ export default function Workout() {
               ...dayFixtures.map((f) => `${kindOf(f.kind).icon} ${f.name}`),
             ].join("\n") || undefined
           }
+          data-date={dateStr}
           onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+          onDragOver={(e) => {
+            if (!dragSessionId.current) return;
+            e.preventDefault();
+            if (dragOverDate !== dateStr) setDragOverDate(dateStr);
+          }}
+          onDragLeave={() => dragOverDate === dateStr && setDragOverDate(null)}
+          onDrop={(e) => {
+            e.preventDefault();
+            const id = dragSessionId.current;
+            dragSessionId.current = null;
+            setDragOverDate(null);
+            if (id) moveSessionToDate(id, dateStr);
+          }}
           style={{
             position: "relative",
+            outline: dragOverDate === dateStr ? "2px dashed #e0a13d" : "none",
             background: fxMain ? `${fxMain.color}2e` : isToday ? "rgba(79,174,125,0.14)" : "#1a1815",
             border: isSelected
               ? "2px solid #4fae7d"
@@ -3981,12 +4108,27 @@ export default function Workout() {
             {dayEvents.slice(0, isMobile ? 1 : dayFixtures.length > 0 ? 2 : 3).map((evt, i) => (
               <div
                 key={i}
+                draggable={isAdminLike}
+                onDragStart={(e) => {
+                  dragSessionId.current = evt.id;
+                  e.dataTransfer.effectAllowed = "move";
+                  try { e.dataTransfer.setData("text/plain", evt.id); } catch (_) { /* ignore */ }
+                }}
+                onDragEnd={() => {
+                  dragSessionId.current = null;
+                  setDragOverDate(null);
+                }}
+                {...touchDragProps(evt)}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (touchDragBlockClick()) return;
                   setSelectedDate(dateStr);
                   setSelectedSession(evt);
                 }}
                 style={{
+                  WebkitTouchCallout: "none",
+                  WebkitUserSelect: "none",
+                  userSelect: "none",
                   background: getColor(evt),
                   borderRadius: 2,
                   padding: isMobile ? "1px 2px" : "1px 5px",
@@ -5103,6 +5245,32 @@ export default function Workout() {
               />
             )}
           </div>
+        </div>
+      )}
+
+      {touchGhost && (
+        <div
+          style={{
+            position: "fixed",
+            left: touchGhost.x,
+            top: touchGhost.y,
+            transform: "translate(-50%, -140%)",
+            zIndex: 9999,
+            pointerEvents: "none",
+            background: "#e0a13d",
+            color: "#151310",
+            fontWeight: 700,
+            fontSize: 13,
+            padding: "6px 10px",
+            borderRadius: 8,
+            boxShadow: "0 6px 18px rgba(0,0,0,0.5)",
+            maxWidth: 220,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          ↔️ {touchGhost.title}
         </div>
       )}
 
@@ -9377,8 +9545,22 @@ export default function Workout() {
                     .map((session) => (
                       <div
                         key={session.id}
-                        onClick={() => setSelectedSession(session)}
+                        draggable={isAdminLike}
+                        onDragStart={(e) => {
+                          dragSessionId.current = session.id;
+                          e.dataTransfer.effectAllowed = "move";
+                          try { e.dataTransfer.setData("text/plain", session.id); } catch (_) { /* ignore */ }
+                        }}
+                        onDragEnd={() => {
+                          dragSessionId.current = null;
+                          setDragOverDate(null);
+                        }}
+                        {...touchDragProps(session)}
+                        onClick={() => !touchDragBlockClick() && setSelectedSession(session)}
                         style={{
+                          WebkitTouchCallout: "none",
+                          WebkitUserSelect: "none",
+                          userSelect: "none",
                           background: "#0d0c0a",
                           padding: 18,
                           borderRadius: 10,
@@ -9389,6 +9571,20 @@ export default function Workout() {
                         <h4 style={{ margin: "0 0 6px 0", fontSize: 16 }}>
                           {moiPrefix(session)}{session.title}
                         </h4>
+                        {isAdminLike && (
+                          <label
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#a8a199", margin: "0 0 8px 0" }}
+                          >
+                            ↔️ Déplacer au
+                            <input
+                              type="date"
+                              value=""
+                              onChange={(e) => e.target.value && moveSessionToDate(session.id, e.target.value)}
+                              style={{ background: "#1a1815", color: "#f3f0ea", border: "1px solid #2a2620", borderRadius: 6, padding: "4px 6px", fontSize: 14 }}
+                            />
+                          </label>
+                        )}
                         <div style={{ fontSize: 13, color: "#a8a199" }}>
                           <span
                             style={{
