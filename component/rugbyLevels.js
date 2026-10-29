@@ -3,14 +3,16 @@
 
    Comment les valeurs sont construites (rien n'est caché) :
    • Pro D2        = barème SU Agen, note 10/20 (≈ moyenne des tops Pro D2).
-   • Top 14 / International = valeurs du "Référentiel standards rugby"
-     (objectifs FFR 2020, Références physiques V3 World Class, meilleures
-     perfs Top 14 21-22) quand elles existent ET sont cohérentes avec
-     l'échelle ; sinon barème Agen note 15/20 (Top 14) et 20/20 (Intl).
-   • Nationale, Fédérale 1/2/3, Régionale, Espoirs, U18 = ESTIMATION :
-     le référentiel ne contient aucune valeur pour ces niveaux. On part du
-     niveau Pro D2 et on applique le coefficient de LEVELS[].f, atténué
-     selon la qualité testée (SENS). Modifie f ou SENS ici pour ajuster.
+   • Pro D2 validé par les 1RM des pros d'Agen (STANDARDS MUSCU 2026-27) :
+     la médiane du poste tombe sur la note 9 à 12 du barème.
+   • Top 14 / International = Pro D2 × écart de la famille (petit). Les
+     objectifs FFR 2020 / V3 World Class du référentiel sont affichés comme
+     repère « objectif » mais ne fixent plus le seuil (ce sont des cibles
+     d'élite, pas des moyennes). Exception : Bronco (centiles publiés).
+   • Les autres niveaux (et Top 14 / International sans valeur publiée) =
+     ESTIMATION : niveau Pro D2 × un écart PROPRE À CHAQUE FAMILLE DE QUALITÉ
+     et à chaque étage (FAMILY_RATIO ci-dessous) — petit en haut, grand entre
+     Nationale et Fédérale 1, plus fort pour la force que pour la vitesse.
    ===================================================================== */
 
 /* Du plus exigeant au moins exigeant */
@@ -18,46 +20,88 @@ export const LEVELS = [
   { id: "international", label: "International" },
   { id: "top14", label: "Top 14" },
   { id: "prod2", label: "Pro D2" },
-  { id: "nationale", label: "Nationale", f: 0.95 },
-  { id: "espoirs", label: "Espoirs (U21)", f: 0.92, jeunes: true },
-  { id: "federale1", label: "Fédérale 1", f: 0.9 },
-  { id: "federale2", label: "Fédérale 2", f: 0.84 },
-  { id: "federale3", label: "Fédérale 3", f: 0.78 },
-  { id: "regionale", label: "Régionale", f: 0.72 },
-  { id: "u18", label: "U18", f: 0.7, jeunes: true },
+  { id: "nationale", label: "Nationale", est: true },
+  { id: "espoirs", label: "Espoirs (U21)", est: true, jeunes: true },
+  { id: "federale1", label: "Fédérale 1", est: true },
+  { id: "federale2", label: "Fédérale 2", est: true },
+  { id: "federale3", label: "Fédérale 3", est: true },
+  { id: "regionale", label: "Régionale", est: true },
+  { id: "u18", label: "U18", est: true, jeunes: true },
 ];
 
 import { CYCLING_LEVELS } from "./cycling";
 export const levelLabel = (id) => LEVELS.find((l) => l.id === id)?.label || CYCLING_LEVELS.find((l) => l.id === id)?.label || id;
 
-/* Sensibilité de chaque qualité à l'écart de niveau :
-   1 = suit tout l'écart (force), 0.6 = vitesse (réglé à 0.6 : les joueurs de Fédérale courent nettement moins vite que Pro D2). */
-export const SENS = {
-  SQUAT: 1,
-  "DEVELOPPE COUCHE": 1,
-  "DEVELOPPE MILITAIRE": 1,
-  RDL: 1,
-  "TRAP BARRE": 1,
-  "TIRAGE PLANCHE": 1,
-  "HIP THRUST": 1,
-  TRACTION: 1,
-  "Cervicales Flexion": 1,
-  "Cervicales extension": 1,
-  "Keiser R150": 1,
-  "1080 R30": 1,
-  "1080 R30 - 10m Pmax": 1,
-  CMJ: 1,
-  CMJB: 1,
-  Bronco: 0.5,
-  BROAD: 1,
-  YOYO1: 0.5,
-  VIFT: 0.5,
-  "Vitesse GPS": 0.6,
-  "5m": 0.6,
-  "10m": 0.6,
-  "15m": 0.6,
-  "20m": 0.6,
-  "60m": 0.6,
+/* ÉCARTS ENTRE NIVEAUX PAR FAMILLE DE QUALITÉ (remplace l'ancien « coefficient × sensibilité » unique).
+   Valeur = rapport au niveau Pro D2 dans le sens « meilleur » : 1,06 = 6 % de mieux que Pro D2 ;
+   pour un TEMPS (sprint, Bronco, prowler) le temps du niveau = temps Pro D2 ÷ rapport.
+   Pourquoi des écarts différents selon la qualité et selon l'étage :
+   • En haut (Pro D2 → Top 14 → International) les écarts sont PETITS : Smart et al. 2013 (JSCR, 1 161 joueurs
+     NZ) : International vs Super Rugby ≈ 2 % au sprint 20 m ; Argus et al. 2012 (JSCR) : pros vs semi-pros, pas
+     de différence de force maximale, c'est la puissance qui sépare. Données LNR 2026-27 : masse Pro D2 ≈ Top 14
+     ≈ XV de France (± 3 %).
+   • Le GROS écart est entre le monde pro / semi-pro (Pro D2, Nationale) et l'amateur (Fédérale 1 et dessous) :
+     Smart 2013 : provinciaux vs clubs 1 à 14 % selon le test ; Fontana et al. 2015 (IJSPP, Italie) : divisions
+     inférieures plus légères, plus grasses, plus hétérogènes ; revue systématique Payne et al. 2025 (JSCR) : la
+     force maximale (5 études / 5) et la force rapide (3 / 3) distinguent toujours les niveaux, la vitesse
+     maximale moins nettement (3 / 6).
+   • Selon la qualité : la FORCE maximale (1RM) varie le plus entre niveaux, puis l'endurance (distance Yo-Yo),
+     la puissance (sauts), et la VITESSE le moins (quelques % seulement).
+   Ordre des colonnes : international, top14, nationale, espoirs, federale1, federale2, federale3, regionale, u18.
+   Les chiffres sont des ESTIMATIONS calées sur ces études (aucune étude ne mesure chaque niveau français). */
+export const LEVEL_ORDER = ["international", "top14", "nationale", "espoirs", "federale1", "federale2", "federale3", "regionale", "u18"];
+export const FAMILY_RATIO = {
+  force: [1.11, 1.06, 0.94, 0.85, 0.85, 0.79, 0.75, 0.71, 0.68],
+  puissance: [1.07, 1.04, 0.96, 0.93, 0.91, 0.87, 0.84, 0.81, 0.82],
+  broad: [1.04, 1.025, 0.98, 0.96, 0.945, 0.92, 0.9, 0.88, 0.89],
+  sprint: [1.025, 1.015, 0.985, 0.975, 0.96, 0.948, 0.935, 0.922, 0.925],
+  vmax: [1.035, 1.02, 0.98, 0.97, 0.955, 0.94, 0.925, 0.91, 0.92],
+  yoyo: [1.12, 1.06, 0.92, 0.88, 0.82, 0.76, 0.7, 0.65, 0.75],
+  vift: [1.04, 1.02, 0.98, 0.97, 0.95, 0.93, 0.91, 0.89, 0.93],
+  bronco: [1.06, 1.03, 0.975, 0.965, 0.945, 0.925, 0.905, 0.885, 0.93],
+};
+export const FAMILY_LABEL = {
+  force: "force maximale",
+  puissance: "puissance / sauts",
+  broad: "saut horizontal",
+  sprint: "accélération (temps)",
+  vmax: "vitesse maximale",
+  yoyo: "endurance (distance)",
+  vift: "endurance (vitesse)",
+  bronco: "endurance (temps)",
+};
+export const FAMILY = {
+  SQUAT: "force",
+  "DEVELOPPE COUCHE": "force",
+  "DEVELOPPE MILITAIRE": "force",
+  RDL: "force",
+  "TRAP BARRE": "force",
+  "TIRAGE PLANCHE": "force",
+  "HIP THRUST": "force",
+  TRACTION: "force",
+  "Cervicales Flexion": "force",
+  "Cervicales extension": "force",
+  "Prowler 85Kg 10m": "sprint",
+  "Keiser R150": "puissance",
+  "1080 R30": "puissance",
+  "1080 R30 - 10m Pmax": "puissance",
+  CMJ: "puissance",
+  CMJB: "puissance",
+  BROAD: "broad",
+  Bronco: "bronco",
+  YOYO1: "yoyo",
+  VIFT: "vift",
+  "Vitesse GPS": "vmax",
+  "5m": "sprint",
+  "10m": "sprint",
+  "15m": "sprint",
+  "20m": "sprint",
+  "60m": "sprint",
+};
+export const familyRatio = (normKey, levelId) => {
+  const fam = FAMILY[normKey] || "puissance";
+  const i = LEVEL_ORDER.indexOf(levelId);
+  return i < 0 ? 1 : FAMILY_RATIO[fam][i];
 };
 
 /* Colonnes du référentiel : Pilier, Talonneur, 2e ligne, 3e ligne, 9, 10, Centre, Ailier/Arrière */
@@ -92,7 +136,11 @@ export const SOURCED = {
   Bronco: {
     international: { v: [5.05, 5.05, 4.55, 4.43, 4.31, 4.31, 4.44, 4.38], src: "Étude Weakley et al. 2026 (Super Rugby, 10e centile)" },
     top14: { v: BRONCO_MID, src: "Estimé : milieu entre le 30e et le 10e centile Super Rugby (Weakley 2026)" },
-    prod2: { v: [5.22, 5.22, 5.06, 4.56, 4.39, 4.39, 4.56, 4.51], src: "Estimé : 30e centile Super Rugby (Weakley 2026) pris comme niveau Pro D2" },
+    /* Pro D2 = moyenne entre les DONNÉES DU SU AGEN (data/Bronco.xlsx, meilleur temps de chaque joueur 2023-2025,
+       médiane du poste : pilier 5'30, talonneur 5'07, 2e ligne 5'10, 3e ligne 4'53, 9 4'25, 10 4'45, centre 4'56,
+       ailier 4'41, arrière 4'36) et le 30e centile Super Rugby ; chaque poste est gardé au moins 3 s plus lent
+       que le Top 14 (talonneur, 9, ailier/arrière). */
+    prod2: { v: [5.26, 5.17, 5.08, 4.55, 4.38, 4.42, 4.56, 4.48], src: "Données SU Agen (Bronco 2023-25) + 30e centile Super Rugby" },
   },
   CMJ: {
     international: { v: [50, 55, 55, 55, 55, 55, 60, 62], src: "Références physiques V3 World Class" },

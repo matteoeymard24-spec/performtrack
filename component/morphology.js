@@ -1,122 +1,161 @@
 /* =====================================================================
-   morphology.js — morphologie (masse, masse maigre, masse grasse) par poste et par niveau.
+   morphology.js — morphologie (poids, taille, masse maigre) par poste et par niveau.
 
-   SOURCES
-   • Standards de poids du corps et de masse maigre (FFM) PAR POSTE : document « USA Rugby Player Profiles and
-     Performance Standards » (tableaux « Standards - Body Weight » et « Standards - Fat Free Mass »).
-     Notes USA : poids 2 à 8 (8 = vert = cible) ; masse maigre 2 à 10 (10 = or). Note /20 de l'app = 2 × note USA
-     (cible verte = 16 / 20, or = 20 / 20).
-   • Poids de référence par poste utilisés pour ramener la force au poids : ceux du tableau « Standards - Squat »
-     du même document (prop 125, talonneur 115, 2e ligne 110, 3e ligne 110, 9 85, 10 90, centre 105, ailier 95, arrière 95).
-   • Normalisation de la force : exposants dérivés chez des joueurs élite de rugby union — Crewther et al. 2009, J Sports Sci
-     27(14):1575-80 : box squat 0,33 ± 0,31 ; développé couché 0,45 ± 0,30 ; bench throw 0,46 ± 0,36 ; squat jump 0,64 ± 0,31 ;
-     exposant théorique 0,67 (Jaric 2002). Le ratio simple (÷ masse) avantage les légers (Crewther 2009, 2011, 2012).
-   • Masse grasse : Posthumus et al. 2020 (Sports 8(6):85), pros, DXA : avants 17,8 ± 2,4 %, arrières 14,8 ± 1,2 %.
-     Les plis cutanés donnent des valeurs plus basses (≈ 14,0 % avants / 10,5 % arrières en élite, revue J Funct Morphol
-     Kinesiol 2026) : la méthode de mesure change beaucoup le chiffre.
-   • Niveau : les standards USA sont des standards de haut niveau. Pour les niveaux inférieurs on multiplie les seuils
-     de masse par le coefficient f du niveau (LEVELS). ESTIMATION cohérente avec la revue 2026 (avants amateurs ≈ 91 kg
-     contre ≈ 116 kg en élite, soit ≈ 0,78), pas une mesure poste par poste.
+   DONNÉES RÉELLES (saison 2026-27, fiches officielles LNR : top14.lnr.fr / prod2.lnr.fr)
+   • Top 14 : 804 joueurs ; Pro D2 : 686 joueurs ; XV de France (Tournoi 2026) : 42 joueurs.
+     Piliers et talonneurs séparés à partir des postes déclarés par les clubs.
+   • Résultat clé : en haut, la masse bouge TRÈS PEU entre niveaux. Pro D2 ≈ Top 14 ≈ XV de France
+     (écarts de 0 à 3 % selon le poste ; aux postes 10 et ailier, les joueurs de Pro D2 sont même un peu
+     plus lourds). Ce sont les écarts AU SEIN d'un poste (écart-type 6 à 10 kg) qui sont grands.
+   • Exemple demi de mêlée Top 14 : moyenne 80,6 kg, 75e centile 83, 90e centile 88, max 93.
+
+   CONSTRUCTION
+   • Bronze = moyenne du niveau ; argent = moyenne + 0,6 écart-type (≈ 75e-80e centile) ;
+     or = moyenne + 1,4 écart-type (≈ 90e centile : très peu de joueurs au-dessus).
+     → 9 international : ≈ 81 / 85 / 90 kg.
+   • International = moyenne Top 14 + 1 % quand le XV de France est plus lourd que le Top 14 (sinon = Top 14).
+     Quand Pro D2 ≥ Top 14 au poste : une seule moyenne « pro » pour Pro D2, Top 14 et International.
+   • Niveaux amateurs = moyenne Pro D2 × rapport ESTIMÉ (aucune base de données publique en Fédérale) :
+     écart plus marqué pour les avants que pour les arrières, et grand saut entre Nationale et Fédérale 1.
+     Appuis : Fontana et al. 2015 (IJSPP 10:1003, Italie : divisions inférieures plus légères, plus grasses,
+     plus hétérogènes) ; Sedeaud et al. 2013 (masse des internationaux français + 12 kg en 20 ans) ;
+     revue 2026 (J Funct Morphol Kinesiol : avants amateurs ≈ 91 kg contre ≈ 116 kg en élite).
+     L'écart-type est élargi de 10 % aux niveaux amateurs (populations plus hétérogènes).
+   • Masse maigre = poids × (1 − % de masse grasse de référence DXA) : pros avants 17,8 %, arrières 14,8 %
+     (Posthumus et al. 2020, Sports 8(6):85), + 0,5 à 4,5 points aux niveaux inférieurs (Fontana 2015).
+   • Note /20 : moyenne du niveau = 10, argent = 15, or = 20, moyenne − 2 écarts-types = 0
+     (même logique que le reste de l'app : 10/20 = le standard du niveau).
+   • Normalisation de la force (radar) : exposants de Crewther et al. 2009 (J Sports Sci 27:1575) ; masse de
+     référence = moyenne du poste au niveau.
    ===================================================================== */
 import { LEVELS } from "./rugbyLevels";
 
-export const REF_MASS = { PILIER: 125, TALON: 115, "2L": 110, "3L": 110, "9": 85, "10": 90, Centre: 105, Ailier: 95, Arriere: 95 };
-
-/* points [valeur kg → note USA], note la plus haute en premier */
-const BM = {
-  PILIER: [[117, 8], [115, 6], [112, 5], [110, 4], [108, 3], [106, 2]],
-  TALON: [[108, 8], [105, 6], [104, 5], [103, 4], [102, 3], [101, 2]],
-  "2L": [[117, 8], [115, 6], [112, 5], [110, 4], [108, 3], [106, 2]],
-  "3L": [[106, 8], [102, 6], [100, 5], [98, 4], [96, 3], [94, 2]],
-  "9": [[92, 8], [88, 6], [86, 5], [84, 4], [82, 3], [80, 2]],
-  "10": [[92, 8], [88, 6], [86, 5], [84, 4], [82, 3], [80, 2]],
-  Centre: [[102.5, 8], [97.5, 6], [95, 5], [92.5, 4], [90, 3], [87.5, 2]],
-  Ailier: [[100, 8], [95, 6], [92.5, 5], [90, 4], [87.5, 3], [85, 2]],
-  Arriere: [[100, 8], [95, 6], [92.5, 5], [90, 4], [87.5, 3], [85, 2]],
-};
-const FFM = {
-  PILIER: [[102, 10], [99, 8], [91, 4], [89, 3], [87, 2]],
-  TALON: [[100, 10], [97, 8], [90, 4], [88, 3], [86, 2]],
-  "2L": [[105, 10], [102, 8], [94, 4], [92, 3], [90, 2]],
-  "3L": [[100, 10], [96, 8], [84, 4], [81, 3], [79, 2]],
-  "9": [[87, 10], [84, 8], [76, 4], [74, 3], [72, 2]],
-  "10": [[87, 10], [84, 8], [76, 4], [74, 3], [72, 2]],
-  Centre: [[100, 10], [96, 8], [84, 4], [81, 3], [79, 2]],
-  Ailier: [[92, 10], [89, 8], [78, 4], [75, 3], [72, 2]],
-  Arriere: [[92, 10], [89, 8], [78, 4], [75, 3], [72, 2]],
-};
-
-/* Coefficient de niveau appliqué aux seuils de masse (1 pour Pro D2 et au-dessus, ou sans niveau) */
-export const massLevelFactor = (levelId) => {
-  const l = LEVELS.find((x) => x.id === levelId);
-  return l && l.f ? l.f : 1;
-};
-
-/* Note USA (0 à max) par interpolation linéaire entre les points ; extrapolation vers 0 sous le plus bas point */
-function interp(points, value, factor) {
-  const pts = points.map(([v, s]) => [v * factor, s]); // valeurs décroissantes
-  if (value >= pts[0][0]) return pts[0][1];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const [v1, s1] = pts[i];
-    const [v2, s2] = pts[i + 1];
-    if (value >= v2) return s2 + ((value - v2) / (v1 - v2)) * (s1 - s2);
-  }
-  const [vl, sl] = pts[pts.length - 1];
-  const [vp, sp] = pts[pts.length - 2];
-  const slope = (sp - sl) / (vp - vl); // points de note par kg
-  return Math.max(0, sl - (vl - value) * slope);
-}
-
-export const hasMorph = (poste) => !!BM[poste];
-
-/* Standard « vert » (cible) du poste au niveau donné : poids et masse maigre */
-export function morphTargets(poste, levelId) {
-  const f = massLevelFactor(levelId);
-  if (!BM[poste]) return null;
-  return { bm: Math.round(BM[poste][0][0] * f * 10) / 10, ffm: Math.round(FFM[poste][1][0] * f * 10) / 10, f };
-}
-
-/* Évalue la morphologie. bw en kg, bf en % (optionnel). Retourne la note /20 de l'axe « Masse » + détails */
-export function evaluateMorph(poste, levelId, bw, bf) {
-  if (!BM[poste] || !(bw > 0)) return null;
-  const f = massLevelFactor(levelId);
-  const ffm = bf > 0 && bf < 60 ? bw * (1 - bf / 100) : null;
-  const sBm = Math.min(8, interp(BM[poste], bw, f));
-  const sFfm = ffm != null ? interp(FFM[poste], ffm, f) : null;
-  const note = Math.round((sFfm != null ? sFfm : sBm) * 2 * 10) / 10;
-  const t = morphTargets(poste, levelId);
-  return {
-    note,
-    basis: sFfm != null ? "masse maigre" : "poids du corps",
-    noteBm: Math.round(sBm * 2 * 10) / 10,
-    noteFfm: sFfm != null ? Math.round(sFfm * 2 * 10) / 10 : null,
-    bw,
-    ffm: ffm != null ? Math.round(ffm * 10) / 10 : null,
-    fatKg: ffm != null ? Math.round((bw - ffm) * 10) / 10 : null,
-    target: t,
-    gapBm: Math.round((t.bm - bw) * 10) / 10,
-    gapFfm: ffm != null ? Math.round((t.ffm - ffm) * 10) / 10 : null,
-  };
-}
-
-/* Profils d'un même poste : « athlétique » (plus mobile, plus léger) et « momentum » (plus de masse, plus de poids
-   dans les collisions). AUCUNE norme publiée ne sépare ces profils : écart ESTIMÉ de ± 4 % sur le poids et la masse
-   maigre du standard du poste (à corriger si tu as des données de club). */
-export const PROFILE_FACTOR = { athletique: 0.96, standard: 1, momentum: 1.04 };
-export const profileTargets = (poste, levelId) => {
-  const t = morphTargets(poste, levelId);
-  if (!t) return null;
-  const r1 = (x) => Math.round(x * 10) / 10;
-  const out = {};
-  Object.entries(PROFILE_FACTOR).forEach(([k, f]) => {
-    out[k] = { bm: r1(t.bm * f), ffm: r1(t.ffm * f) };
-  });
-  return out;
-};
-
 export const FORWARDS = ["PILIER", "TALON", "2L", "3L"];
 
-/* Références de masse grasse (%) : [moyenne, écart-type] — DXA pros (Posthumus 2020) */
+/* Données LNR 2026-27 : [moyenne kg, écart-type kg, effectif] et taille moyenne (cm) */
+export const PRO_DATA = {
+  PILIER: { t14: [121.2, 9.8, 108], p2: [120.3, 10.0, 117], fr: [125.4, 8], h: { t14: 184.1, p2: 184.2, fr: 184.9 } },
+  TALON: { t14: [107.1, 7.8, 57], p2: [106.1, 8.1, 60], fr: [110.3, 3], h: { t14: 181.6, p2: 181.5, fr: 182.7 } },
+  "2L": { t14: [118.6, 9.6, 84], p2: [115.9, 7.5, 88], fr: [120.6, 5], h: { t14: 199.3, p2: 198.4, fr: 200.2 } },
+  "3L": { t14: [107.3, 8.2, 129], p2: [105.2, 8.1, 134], fr: [105.9, 9], h: { t14: 191.5, p2: 189.4, fr: 193.3 } },
+  "9": { t14: [80.6, 5.9, 45], p2: [79.8, 6.9, 54], fr: [83.7, 3], h: { t14: 174.9, p2: 175.1, fr: 178.0 } },
+  "10": { t14: [85.5, 7.2, 40], p2: [86.6, 5.6, 58], fr: [79.5, 2], h: { t14: 182.6, p2: 181.8, fr: 183.0 } },
+  Centre: { t14: [97.1, 7.0, 84], p2: [93.9, 7.7, 86], fr: [96.6, 5], h: { t14: 185.6, p2: 184.1, fr: 188.2 } },
+  Ailier: { t14: [88.8, 8.1, 62], p2: [91.5, 8.7, 49], fr: [86.2, 5], h: { t14: 182.6, p2: 183.0, fr: 185.6 } },
+  Arriere: { t14: [87.7, 6.5, 33], p2: [85.3, 7.8, 39], fr: [88.5, 2], h: { t14: 183.3, p2: 182.6, fr: 182.5 } },
+};
+
+/* Rapport à la moyenne Pro D2 (poids), avants / arrières — ESTIMATION (voir en-tête) */
+const MASS_RATIO = {
+  nationale: { fw: 0.97, bk: 0.98 },
+  espoirs: { fw: 0.92, bk: 0.94 },
+  federale1: { fw: 0.93, bk: 0.95 },
+  federale2: { fw: 0.9, bk: 0.93 },
+  federale3: { fw: 0.87, bk: 0.91 },
+  regionale: { fw: 0.84, bk: 0.89 },
+  u18: { fw: 0.84, bk: 0.88 },
+};
+/* Taille : écart très faible entre niveaux (sélection précoce sur le gabarit) */
+const HEIGHT_RATIO = { nationale: 0.997, espoirs: 0.995, federale1: 0.992, federale2: 0.988, federale3: 0.984, regionale: 0.98, u18: 0.985 };
+/* % de masse grasse de référence (DXA) ; ajouté aux niveaux inférieurs */
 export const BF_DXA = { forwards: [17.8, 2.4], backs: [14.8, 1.2] };
-/* Plis cutanés, élite (valeurs moyennes citées dans la revue 2026) */
 export const BF_SKINFOLD = { forwards: 14.0, backs: 10.5 };
+const BF_ADD = { international: 0, top14: 0, prod2: 0, nationale: 0.5, espoirs: 1, federale1: 1.5, federale2: 2.5, federale3: 3.5, regionale: 4.5, u18: 1.5 };
+
+export const SILVER_SD = 0.6;
+export const GOLD_SD = 1.4;
+const r1 = (x) => Math.round(x * 10) / 10;
+
+export const hasMorph = (poste) => !!PRO_DATA[poste];
+
+/* Moyenne / écart-type / taille du poste à un niveau (sans niveau : Pro D2) */
+export function massRef(poste, levelId) {
+  const d = PRO_DATA[poste];
+  if (!d) return null;
+  const fw = FORWARDS.includes(poste);
+  const lvl = levelId || "prod2";
+  const [mT, sdT, nT] = d.t14;
+  const [mP, sdP, nP] = d.p2;
+  const pooled = mP >= mT ? (mT * nT + mP * nP) / (nT + nP) : null; // Pro D2 ≥ Top 14 → une seule moyenne pro
+  const sdPro = (sdT * nT + sdP * nP) / (nT + nP);
+  const top14 = pooled ?? mT;
+  const prod2 = pooled ?? mP;
+  const intl = pooled ?? (d.fr[0] > mT ? mT * 1.01 : mT);
+  let m, sd, h, src;
+  if (lvl === "international") {
+    m = intl; sd = sdPro; h = Math.max(d.h.t14, (d.h.t14 + d.h.fr) / 2);
+    src = pooled ? "LNR 2026-27 : moyenne pro (Pro D2 ≥ Top 14 à ce poste)" : d.fr[0] > mT ? "LNR 2026-27 : Top 14 + 1 % (XV de France plus lourd)" : "LNR 2026-27 : = Top 14 (XV de France pas plus lourd)";
+  } else if (lvl === "top14") {
+    m = top14; sd = sdPro; h = d.h.t14;
+    src = pooled ? "LNR 2026-27 : moyenne pro (Top 14 + Pro D2)" : `LNR 2026-27 : ${nT} joueurs de Top 14`;
+  } else if (lvl === "prod2") {
+    m = prod2; sd = sdPro; h = d.h.p2;
+    src = pooled ? "LNR 2026-27 : moyenne pro (Top 14 + Pro D2)" : `LNR 2026-27 : ${nP} joueurs de Pro D2`;
+  } else {
+    const k = MASS_RATIO[lvl] ? MASS_RATIO[lvl][fw ? "fw" : "bk"] : 1;
+    m = prod2 * k; sd = sdPro * k * 1.1; h = d.h.p2 * (HEIGHT_RATIO[lvl] || 1);
+    src = `Estimé : moyenne Pro D2 × ${String(k).replace(".", ",")}`;
+  }
+  const bfPct = (fw ? BF_DXA.forwards[0] : BF_DXA.backs[0]) + (BF_ADD[lvl] || 0);
+  return { m, sd, h, bfPct, src, est: !!LEVELS.find((l) => l.id === lvl)?.est };
+}
+
+/* Bronze / argent / or du poste au niveau : poids, masse maigre, taille */
+export function medalTargets(poste, levelId) {
+  const R = massRef(poste, levelId);
+  if (!R) return null;
+  const lean = 1 - R.bfPct / 100;
+  const bm = { bronze: r1(R.m), silver: r1(R.m + SILVER_SD * R.sd), gold: r1(R.m + GOLD_SD * R.sd) };
+  const ffm = { bronze: r1(bm.bronze * lean), silver: r1(bm.silver * lean), gold: r1(bm.gold * lean) };
+  return { bm, ffm, h: Math.round(R.h), sd: r1(R.sd), bfPct: r1(R.bfPct), src: R.src, est: R.est };
+}
+
+/* Compatibilité : « cible » du poste = l'argent */
+export function morphTargets(poste, levelId) {
+  const t = medalTargets(poste, levelId);
+  return t ? { bm: t.bm.silver, ffm: t.ffm.silver } : null;
+}
+
+/* Masse de référence pour ramener la force au poids (radar) = moyenne du poste au niveau */
+export const refMassFor = (poste, levelId) => {
+  const R = massRef(poste, levelId);
+  return R ? R.m : null;
+};
+
+/* Note /20 : moyenne − 2 écarts-types = 0, moyenne = 10, argent = 15, or = 20 (plafonnée à 20) */
+function noteOf(value, mean, sd) {
+  if (!(sd > 0)) return null;
+  const z = (value - mean) / sd;
+  let n;
+  if (z <= 0) n = 10 + 5 * z;
+  else if (z <= SILVER_SD) n = 10 + (5 * z) / SILVER_SD;
+  else n = 15 + (5 * (z - SILVER_SD)) / (GOLD_SD - SILVER_SD);
+  return Math.max(0, Math.min(20, n));
+}
+
+/* Évalue la morphologie. bw en kg, bf en % (optionnel). Note /20 de l'axe « Masse » + détails */
+export function evaluateMorph(poste, levelId, bw, bf) {
+  const R = massRef(poste, levelId);
+  if (!R || !(bw > 0)) return null;
+  const lean = 1 - R.bfPct / 100;
+  const ffm = bf > 0 && bf < 60 ? bw * (1 - bf / 100) : null;
+  const nBm = noteOf(bw, R.m, R.sd);
+  const nFfm = ffm != null ? noteOf(ffm, R.m * lean, R.sd * lean) : null;
+  const note = r1(nFfm != null ? nFfm : nBm);
+  const t = medalTargets(poste, levelId);
+  const medal = (v, set) => (v >= set.gold ? "gold" : v >= set.silver ? "silver" : v >= set.bronze ? "bronze" : null);
+  return {
+    note,
+    basis: nFfm != null ? "masse maigre" : "poids du corps",
+    noteBm: r1(nBm),
+    noteFfm: nFfm != null ? r1(nFfm) : null,
+    bw,
+    ffm: ffm != null ? r1(ffm) : null,
+    fatKg: ffm != null ? r1(bw - ffm) : null,
+    target: { bm: t.bm.silver, ffm: t.ffm.silver },
+    medals: t,
+    medal: ffm != null ? medal(ffm, t.ffm) : medal(bw, t.bm),
+    gapBm: r1(t.bm.silver - bw),
+    gapFfm: ffm != null ? r1(t.ffm.silver - ffm) : null,
+  };
+}

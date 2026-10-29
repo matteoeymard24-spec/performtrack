@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { evaluateStrength, groupByPattern, posteLabel, levelLabel, noteColor } from "./norms";
-import { REF_MASS, massLevelFactor, hasMorph, evaluateMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "./morphology";
+import { refMassFor, hasMorph, evaluateMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "./morphology";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -110,7 +110,7 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
   const bw = num(localW) || num(weight);
   const hCm = num(hIn);
   const bf = num(bfIn);
-  const refMass = REF_MASS[poste] ? REF_MASS[poste] * massLevelFactor(level) : null;
+  const refMass = refMassFor(poste, level);
   const ex = EXPS;
   const scaleLow = bw && refMass ? Math.pow(refMass / bw, ex.low) : null;
   const scaleUp = bw && refMass ? Math.pow(refMass / bw, ex.up) : null;
@@ -299,9 +299,9 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
               {bfHigh
                 ? `La masse grasse (${bf} %) est élevée pour ce groupe : priorité à la recomposition (perdre du gras tout en gardant ou gagnant du muscle), pas à la prise de poids brute.`
                 : morph.gapFfm != null && morph.gapFfm > 0
-                ? `Il manque environ ${morph.gapFfm} kg de masse maigre pour atteindre le standard du poste (${morph.target.ffm} kg) : priorité à un bloc d'hypertrophie avec surplus calorique contrôlé.`
+                ? `Il manque environ ${morph.gapFfm} kg de masse maigre pour atteindre l'argent du poste à ce niveau (${morph.target.ffm} kg) : priorité à un bloc d'hypertrophie avec surplus calorique contrôlé.`
                 : morph.gapBm > 0
-                ? `Il manque environ ${morph.gapBm} kg pour atteindre le poids standard du poste (${morph.target.bm} kg) : priorité à un bloc d'hypertrophie. Renseigne le % de masse grasse pour savoir si c'est du muscle qu'il faut gagner.`
+                ? `Il manque environ ${morph.gapBm} kg pour atteindre l'argent du poste à ce niveau (${morph.target.bm} kg) : priorité à un bloc d'hypertrophie. Renseigne le % de masse grasse pour savoir si c'est du muscle qu'il faut gagner.`
                 : ""}
               {forceOkForWeight ? " Sa force est correcte pour son poids : c'est la masse qui limite, pas la qualité de force." : ""}
             </div>

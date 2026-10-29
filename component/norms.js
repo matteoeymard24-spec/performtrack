@@ -8,7 +8,7 @@
 import { RUGBY_BAREME, RUGBY_MATCH_REF } from "./rugbyBareme";
 import { parseTime, num } from "./testsCalc";
 import { CYCLING_TYPES } from "./cycling";
-import { LEVELS, SENS, SOURCED, GROUP, levelLabel, BRONCO_RECORD_S, BRONCO_POSTE_RATIO } from "./rugbyLevels";
+import { LEVELS, SOURCED, GROUP, levelLabel, BRONCO_RECORD_S, BRONCO_POSTE_RATIO, familyRatio, FAMILY, FAMILY_LABEL } from "./rugbyLevels";
 
 export { LEVELS, levelLabel } from "./rugbyLevels";
 
@@ -205,8 +205,6 @@ const LADDER_META = {
   },
   VIFT: {
     prod2: { tag: "estimé", src: "Moyenne rugby union 19,0 km/h (Darrall-Jones 2016), sans distinction de poste" },
-    top14: { tag: "estimé", src: "Moyenne + 1 écart-type (≈ 1,1 km/h)" },
-    international: { tag: "estimé", src: "Moyenne + 2 écarts-types (≈ 1,1 km/h)" },
   },
   BROAD: {
     prod2: { tag: "doc", src: "Mesures du club (broad jump, 16 joueurs au poste connu), tirées vers la littérature quand le poste compte peu de joueurs" },
@@ -306,45 +304,58 @@ export function buildLadder(sport, normKey, poste) {
   };
 
   const meta0 = LADDER_META[normKey] || {};
-  let iTag = meta0.international || { tag: "barème", src: "Barème Agen, note 20/20" };
-  let i = n20;
+  const famLbl = FAMILY_LABEL[FAMILY[normKey]] || "puissance";
+  const pReal = dir === "high" ? p : -p; // valeur réelle Pro D2 (secondes pour Bronco)
+  // Niveau = Pro D2 × écart propre à la famille de qualité et à l'étage (rugbyLevels.js, FAMILY_RATIO)
+  const byRatio = (id) => {
+    const r = familyRatio(normKey, id);
+    return W(dir === "high" ? pReal * r : pReal / r);
+  };
+  const pct = (id) => {
+    const r = familyRatio(normKey, id);
+    const d = Math.round((r - 1) * 1000) / 10;
+    return `${d > 0 ? "+" : ""}${String(d).replace(".", ",")} %`;
+  };
+  const estSrc = (id) => ({ tag: "estimé", src: `Estimé : Pro D2 ${pct(id)} (écart ${famLbl}, voir sources)` });
+  // Bronco : seuils Top 14 / International issus d'une étude publiée (centiles Super Rugby) ;
+  // ailleurs les valeurs du référentiel (objectifs FFR, World Class) sont des cibles, affichées en repère.
+  const useSourced = bronco;
+  // Échelles construites ailleurs avec leurs propres données (broad jump : Super Rugby ; Yo-Yo : club) :
+  // Top 14 / International = notes 15 / 20 de ces échelles.
+  const ownTop = !!meta0.top14;
+  let i = ownTop ? n20 : byRatio("international");
+  let iTag = meta0.international || estSrc("international");
   const si = srcOf("international");
-  if (si && si.w > p) {
+  if (useSourced && si && si.w > p) {
     i = si.w;
     iTag = { tag: si.est ? "estimé" : "doc", src: si.src };
+  } else if (si && !meta0.international) {
+    iTag = { ...iTag, src: `${iTag.src} — repère : ${si.src} = ${back(dir === "high" ? si.w : -si.w)}` };
   }
-  if (!(i > p)) i = p + Math.abs(p) * 0.08;
-
-  let tTag = meta0.top14 || { tag: "barème", src: "Barème Agen, note 15/20" };
-  let t = n15;
+  let t = ownTop ? n15 : byRatio("top14");
+  let tTag = meta0.top14 || estSrc("top14");
   const st = srcOf("top14");
-  if (st && st.w > p && st.w < i) {
+  if (useSourced && st && st.w > p && st.w < i) {
     t = st.w;
     tTag = { tag: st.est ? "estimé" : "doc", src: st.src };
-  } else if (!(n15 > p && n15 < i)) {
-    t = (p + i) / 2;
-    tTag = { tag: "barème", src: "Milieu entre Pro D2 et International" };
   }
+  if (!(t > p)) t = p + Math.abs(p) * 0.02;
+  if (!(i > t)) i = t + Math.abs(t) * 0.02;
 
-  const sens = SENS[normKey] ?? 0.5;
   const real = (w) => back(dir === "high" ? w : -w);
   const rows = [];
   LEVELS.forEach((l) => {
     let w, meta;
     if (l.id === "international") [w, meta] = [i, iTag];
     else if (l.id === "top14") [w, meta] = [t, tTag];
-    else if (l.id === "prod2") [w, meta] = [p, sp ? { tag: "estimé", src: sp.src } : meta0.prod2 || { tag: "barème", src: "Barème Agen, note 10/20 (≈ moyenne des tops Pro D2)" }];
-    else {
-      const eff = 1 - (1 - l.f) * sens;
-      const pReal = dir === "high" ? p : -p; // valeur réelle Pro D2 (secondes pour Bronco)
-      const val = dir === "high" ? pReal * eff : pReal / eff;
-      w = W(val);
-      meta = { tag: "estimé", src: "Estimation : niveau Pro D2 × coefficient (pas de valeur dans le référentiel)" };
-    }
+    else if (l.id === "prod2") [w, meta] = [p, sp ? { tag: sp.est ? "estimé" : "doc", src: sp.src } : meta0.prod2 || { tag: "barème", src: "Barème Agen, note 10/20 (≈ médiane des pros d'Agen)" }];
+    else [w, meta] = [byRatio(l.id), estSrc(l.id)];
     rows.push({ id: l.id, label: l.label, jeunes: !!l.jeunes, w, thr: real(w), ...meta });
   });
   // sécurité : jamais plus facile en montant
-  for (let k = rows.length - 2; k >= 0; k--) if (rows[k].w < rows[k + 1].w) rows[k].w = rows[k + 1].w, (rows[k].thr = real(rows[k].w));
+  // (catégories jeunes U18 / Espoirs hors de la chaîne : elles ne sont pas « en dessous » de la Régionale)
+  const chain = rows.filter((r) => !r.jeunes);
+  for (let k = chain.length - 2; k >= 0; k--) if (chain[k].w < chain[k + 1].w) chain[k].w = chain[k + 1].w, (chain[k].thr = real(chain[k].w));
   // Médailles : bronze = moyenne du niveau (déjà dans row.thr) ; argent / or = écart du barème
   // entre la note 10 et les notes 15 / 20, ramené au niveau (réduit pour les niveaux plus bas,
   // jamais gonflé pour les niveaux plus hauts).
@@ -352,7 +363,9 @@ export function buildLadder(sport, normKey, poste) {
   const aCv = prodRow ? cv(prodRow.thr) : null;
   rows.forEach((r) => {
     const bCv = cv(r.thr);
-    const s = aCv > 0 && bCv > 0 ? Math.min(1, bCv / aCv) : 1;
+    // écart des médailles ramené au niveau : plus serré en haut (population plus homogène, Fontana 2015),
+    // réduit en bas pour les charges (un 9 de Régionale n'a pas l'écart de kg d'un pro).
+    const s = aCv > 0 && bCv > 0 ? (dir === "high" ? Math.min(bCv / aCv, aCv / bCv) : Math.min(1, bCv / aCv)) : 1;
     const med = (nNote) => back(bCv + (at(nNote) - at(10)) * s);
     r.silver = med(15);
     r.gold = med(20);

@@ -42,7 +42,7 @@ import {
 import { NormList, LevelTable } from "../component/NormsUI";
 import RegionProfile from "../component/RegionProfile";
 import PhysicalRadar from "../component/PhysicalRadar";
-import { profileTargets, hasMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "../component/morphology";
+import { medalTargets, hasMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "../component/morphology";
 import { LEVELS as RUGBY_LEVELS } from "../component/rugbyLevels";
 import CyclingRadar, { CyclingNorms } from "../component/CyclingRadar";
 import { CYCLING_LEVELS, CYCLING_SEXES, normSex } from "../component/cycling";
@@ -1375,51 +1375,53 @@ export default function Tests() {
                       <FoldHead title={<>📏 Standards anthropométriques par niveau — {posteLabel(sport, poste)}</>} open={bf.isOpen("n_morph")} onToggle={() => bf.toggle("n_morph")} gap={2} />
                       {bf.isOpen("n_morph") && (<>
                         <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
-                          Poids et masse maigre à viser pour ce poste, niveau par niveau{level ? ` (objectif : ${levelLabel(level)})` : ""}. Un athlète à ce standard a la note « verte » (16/20).
+                          Taille, poids et masse maigre du poste, niveau par niveau{level ? ` (objectif : ${levelLabel(level)})` : ""}. 🥉 bronze = moyenne du niveau (10/20), 🥈 argent ≈ 75e-80e centile (15/20), 🥇 or ≈ 90e centile (20/20, très peu de joueurs au-dessus).
                         </div>
                         <div style={{ overflowX: "auto" }}>
                           <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
                             <thead>
                               <tr style={{ color: MUTED, textAlign: "right" }}>
                                 <th rowSpan={2} style={{ padding: "5px 8px", textAlign: "left", verticalAlign: "bottom" }}>Niveau</th>
+                                <th rowSpan={2} style={{ padding: "5px 8px", verticalAlign: "bottom" }}>Taille (cm)</th>
                                 <th colSpan={3} style={{ padding: "5px 8px", textAlign: "center", borderBottom: "1px solid #1d1a16" }}>Poids (kg)</th>
                                 <th colSpan={3} style={{ padding: "5px 8px", textAlign: "center", borderBottom: "1px solid #1d1a16" }}>Masse maigre (kg)</th>
                                 <th rowSpan={2} style={{ padding: "5px 8px", verticalAlign: "bottom" }}>Source</th>
                               </tr>
                               <tr style={{ color: MUTED, textAlign: "right", fontSize: 11 }}>
-                                <th style={{ padding: "3px 8px" }}>Athlétique*</th>
-                                <th style={{ padding: "3px 8px" }}>Standard</th>
-                                <th style={{ padding: "3px 8px" }}>Momentum*</th>
-                                <th style={{ padding: "3px 8px" }}>Athlétique*</th>
-                                <th style={{ padding: "3px 8px" }}>Standard</th>
-                                <th style={{ padding: "3px 8px" }}>Momentum*</th>
+                                <th style={{ padding: "3px 8px" }}>🥉</th>
+                                <th style={{ padding: "3px 8px" }}>🥈</th>
+                                <th style={{ padding: "3px 8px" }}>🥇</th>
+                                <th style={{ padding: "3px 8px" }}>🥉</th>
+                                <th style={{ padding: "3px 8px" }}>🥈</th>
+                                <th style={{ padding: "3px 8px" }}>🥇</th>
                               </tr>
                             </thead>
                             <tbody>
                               {RUGBY_LEVELS.map((l) => {
-                                const t = profileTargets(poste, l.id);
+                                const t = medalTargets(poste, l.id);
+                                if (!t) return null;
                                 const isT = l.id === level;
-                                const est = !!l.f;
                                 const cell = (v, strong) => (
                                   <td style={{ padding: "5px 8px", color: strong ? "#f3f0ea" : "#a8a199", fontWeight: strong ? 700 : 400 }}>{v}</td>
                                 );
                                 return (
                                   <tr key={l.id} style={{ borderTop: "1px solid #1d1a16", textAlign: "right", background: isT ? "rgba(224,161,61,0.12)" : "transparent" }}>
                                     <td style={{ padding: "5px 8px", textAlign: "left", color: isT ? "#e0a13d" : "#f3f0ea", fontWeight: 700 }}>{l.label}{isT ? " 🎯" : ""}</td>
-                                    {cell(t.athletique.bm, false)}
-                                    {cell(t.standard.bm, true)}
-                                    {cell(t.momentum.bm, false)}
-                                    {cell(t.athletique.ffm, false)}
-                                    {cell(t.standard.ffm, true)}
-                                    {cell(t.momentum.ffm, false)}
-                                    <td style={{ padding: "5px 8px", color: est ? "#d9a441" : "#a8a199" }}>{est ? "estimé" : "document"}</td>
+                                    {cell(t.h, false)}
+                                    {cell(t.bm.bronze, true)}
+                                    {cell(t.bm.silver, false)}
+                                    {cell(t.bm.gold, false)}
+                                    {cell(t.ffm.bronze, true)}
+                                    {cell(t.ffm.silver, false)}
+                                    {cell(t.ffm.gold, false)}
+                                    <td style={{ padding: "5px 8px", color: t.est ? "#d9a441" : "#a8a199", textAlign: "left", fontSize: 11 }}>{t.src}</td>
                                   </tr>
                                 );
                               })}
                             </tbody>
                           </table>
-                          <div style={{ fontSize: 11, color: "#d9a441", marginTop: 6, lineHeight: 1.5 }}>
-                            * Profils ESTIMÉS : aucune norme publiée ne sépare le profil athlétique (plus mobile, plus léger) du profil momentum (plus de masse pour les collisions). J'applique −4 % / +4 % au standard du poste. La colonne « Standard » est celle du document.
+                          <div style={{ fontSize: 11, color: "#a8a199", marginTop: 6, lineHeight: 1.5 }}>
+                            Profil <strong style={{ color: "#f3f0ea" }}>athlétique</strong> ≈ autour du bronze ou en dessous (plus léger, plus mobile) ; profil <strong style={{ color: "#f3f0ea" }}>momentum</strong> ≈ entre l'argent et l'or (plus de masse pour les collisions). Masse maigre = poids × (1 − % de gras de référence DXA du niveau).
                           </div>
                         </div>
                         <div style={{ fontSize: 12, color: "#a8a199", marginTop: 10, lineHeight: 1.6 }}>
@@ -1428,7 +1430,7 @@ export default function Tests() {
                             : `arrières ${BF_DXA.backs[0]} ± ${BF_DXA.backs[1]} % à la DXA (≈ ${BF_SKINFOLD.backs} % aux plis cutanés)`}. La méthode de mesure change beaucoup le chiffre : compare toujours avec la même méthode.
                         </div>
                         <div style={{ fontSize: 11, color: "#a8a199", marginTop: 8, lineHeight: 1.6 }}>
-                          Sources : « USA Rugby Player Profiles and Performance Standards » (poids et masse maigre par poste, niveau Pro D2 et au-dessus) ; masse grasse : Posthumus et al. 2020, Sports 8(6):85 (DXA, pros) et revue J Funct Morphol Kinesiol 2026 (plis). Les niveaux marqués « estimé » (Nationale et en dessous, U18, Espoirs) sont le standard du poste multiplié par un coefficient de niveau (de 0,95 à 0,70), cohérent avec la revue 2026 (avants amateurs ≈ 91 kg contre ≈ 116 kg en élite) : ce n'est pas une mesure poste par poste.
+                          Sources : poids et taille réels des fiches officielles LNR 2026-27 (804 joueurs de Top 14, 686 de Pro D2) et du XV de France (Tournoi 2026, 42 joueurs). Au niveau pro, la masse change très peu d'un niveau à l'autre (0 à 3 %) : c'est l'écart entre joueurs d'un même poste qui est grand. Niveaux « Estimé » (Nationale et en dessous, Espoirs, U18) : moyenne Pro D2 × un rapport (avants 0,97 à 0,84 ; arrières 0,98 à 0,88), avec le plus gros saut entre Nationale et Fédérale 1 — appuyé sur Fontana et al. 2015 (IJSPP, divisions inférieures plus légères et plus grasses), pas sur une base de données française. Masse grasse : Posthumus et al. 2020, Sports 8(6):85 (DXA, pros).
                         </div>
                       </>)}
                     </div>
