@@ -13,6 +13,25 @@
 
 export const DEFAULT_CS_VMA_RATIO = 0.88;
 
+/* ---------- Zones ↔ fréquence cardiaque (% FCmax) ----------
+   Correspondance ESTIMÉE (pas de table publiée « % vitesse critique → % FCmax ») :
+   • 1er seuil ventilatoire (VT1) ≈ 75-80 % FCmax, 2e seuil (VT2) ≈ 87-92 % FCmax
+     (modèle à 3 zones, Seiler & Kjerland 2006, Scand J Med Sci Sports 16:49 ; Seiler 2010, IJSPP 5:276) ;
+   • la vitesse critique ≈ limite haute de l'état stable (Jones et al. 2019, Med Sci Sports Exerc 51:2185) :
+     au-dessus, la FC monte jusqu'au maximum → zone 4 = 89-100 %.
+   Limites : la FC est en RETARD sur l'effort (1 à 3 min) → inutile pour les efforts courts / intermittents
+   (zone 5, fractionné < 2 min) ; elle dérive vers le haut sur les longues séances et à la chaleur (+10 à
+   15 bpm) ; écart individuel ≈ ± 5 %. La vitesse reste la référence, la FC sert de contrôle. */
+export const HR_MIN_EFFORT_SEC = 120; // en dessous, la FC n'a pas le temps de se stabiliser
+
+/** Plage de FC cible (bpm) d'une zone, ou null (zone 5, FCmax inconnue, effort trop court). */
+export const hrTarget = (zone, fcmax, effortSec = null) => {
+  const fm = Number(fcmax);
+  if (!zone || !zone.fcPct || !(fm >= 120 && fm <= 240)) return null;
+  if (effortSec != null && Number(effortSec) > 0 && Number(effortSec) < HR_MIN_EFFORT_SEC) return { short: true };
+  return { lo: Math.round((fm * zone.fcPct[0]) / 100), hi: Math.round((fm * zone.fcPct[1]) / 100) };
+};
+
 export const ZONES = [
   {
     id: 1,
@@ -21,7 +40,8 @@ export const ZONES = [
     min: 0,
     max: 70,
     color: "#5b8def",
-    fc: "60-75 % FCmax",
+    fc: "60-72 % FCmax",
+    fcPct: [60, 72],
     feel: "Rythme lent confortable",
     goal: "Accélérer le rétablissement, accumuler du volume à basse intensité",
     examples: "Récupération 30'-1h basse intensité (60-70 % VC)",
@@ -33,7 +53,8 @@ export const ZONES = [
     min: 70,
     max: 80,
     color: "#4fae7d",
-    fc: "70-80 % FCmax",
+    fc: "72-82 % FCmax",
+    fcPct: [72, 82],
     feel: "Rythme lent confortable",
     goal: "Base aérobie, volume sanguin, utilisation des substrats",
     examples: "Zone 2 2-3h · course longue 1h-2h (70-80 % VC)",
@@ -45,7 +66,8 @@ export const ZONES = [
     min: 80,
     max: 90,
     color: "#e0c341",
-    fc: "—",
+    fc: "82-89 % FCmax",
+    fcPct: [82, 89],
     feel: "Rythme modéré",
     goal: "Systèmes tampons, résistance longue durée (logique de negative split)",
     examples: "Course progressive 45'-1h20 (80-85 % VC) · progressive rapide 30'-1h (85-95 %)",
@@ -57,7 +79,8 @@ export const ZONES = [
     min: 90,
     max: 110,
     color: "#e0862e",
-    fc: "—",
+    fc: "89-100 % FCmax",
+    fcPct: [89, 100],
     feel: "Rythme rapide",
     goal: "Augmenter la VO2max, résistance au seuil",
     examples: "Rapide continu 20'-30' (95-100 % VC) · seuil 800-2000 m (100-105 % VC)",
@@ -69,7 +92,8 @@ export const ZONES = [
     min: 110,
     max: 400,
     color: "#d9443a",
-    fc: "—",
+    fc: "non pertinente (effort trop court)",
+    fcPct: null,
     feel: "Très rapide",
     goal: "Puissance, vitesse, variations d'allure",
     examples: "Vitesse 200-800 m (110-120 % VC), intermittents courts",

@@ -423,7 +423,7 @@ export default function Tests() {
       Object.entries(values).forEach(([k, v]) => {
         if (v !== "" && v != null) clean[k] = v;
       });
-      await addDoc(collection(db, "users", uid, "tests"), {
+      const newTest = await addDoc(collection(db, "users", uid, "tests"), {
         testId: test.id,
         group: test.group,
         date,
@@ -433,6 +433,28 @@ export default function Tests() {
         createdAt: new Date().toISOString(),
         createdBy: currentUser?.uid || null,
       });
+      // FC max de référence (zones FC des séances) : on garde la plus haute FC MESURÉE.
+      // Une FCmax estimée (formule) ne sert que s'il n'y a encore aucune référence.
+      if (stored?.fcmax) {
+        try {
+          const refDoc = doc(db, "users", uid, "tests", "_reference");
+          const cur = (await getDoc(refDoc)).data()?.fcmax || null;
+          const measured = stored.fcmaxBasis !== "estimée";
+          const curMeasured = cur && cur.basis !== "estimée";
+          const better = !cur || (measured && (!curMeasured || stored.fcmax > Number(cur.value)));
+          if (better)
+            await setDoc(
+              refDoc,
+              {
+                fcmax: { value: stored.fcmax, basis: stored.fcmaxBasis || "mesurée", testId: test.id, testName: test.name, testDocId: newTest.id, date },
+                updatedAt: new Date().toISOString(),
+              },
+              { merge: true }
+            );
+        } catch (e) {
+          console.warn("FC max de référence non mise à jour", e);
+        }
+      }
       if (test.id === "cmj" && result.cmj) {
         const ref2 = doc(db, "users", uid, "rm", "CMJ");
         const cur = await getDoc(ref2);
@@ -476,7 +498,14 @@ export default function Tests() {
       await setDoc(
         doc(db, "users", uid, "tests", "_reference"),
         {
-          [kind]: { value, testId: t.testId, testName: def?.name || t.testId, testDocId: t.id, date: t.date },
+          [kind]: {
+            value,
+            testId: t.testId,
+            testName: def?.name || t.testId,
+            testDocId: t.id,
+            date: t.date,
+            ...(kind === "fcmax" ? { basis: t.result?.fcmaxBasis || "mesurée" } : {}),
+          },
           updatedAt: new Date().toISOString(),
         },
         { merge: true }
@@ -496,7 +525,7 @@ export default function Tests() {
           history: history.slice(-20),
         });
       }
-      setMsg(`✅ ${kind.toUpperCase()} de référence : ${value} km/h (${def?.name || t.testId})`);
+      setMsg(`✅ ${kind === "fcmax" ? "FC max" : kind.toUpperCase()} de référence : ${value} ${kind === "fcmax" ? "bpm" : "km/h"} (${def?.name || t.testId})`);
       await loadTests(uid);
     } catch (e) {
       alert("Erreur : " + e.message);
@@ -1175,12 +1204,13 @@ export default function Tests() {
               <div style={cardStyle}>
                 <FoldHead title="⭐ Références pour les séances énergétiques" open={bf.isOpen("refs")} onToggle={() => bf.toggle("refs")} />
                 {bf.isOpen("refs") && (<>
-                {["vma", "vmi", "cs"].map((k) => (
+                {["vma", "vmi", "cs", "fcmax"].map((k) => (
                   <div key={k} style={{ fontSize: 13, color: ref[k] ? TEXT : MUTED, padding: "3px 0" }}>
-                    {k === "vma" ? "VMA" : k === "vmi" ? "VMI (30-15)" : "Vitesse critique"} :{" "}
+                    {k === "vma" ? "VMA" : k === "vmi" ? "VMI (30-15)" : k === "cs" ? "Vitesse critique" : "FC max (zones FC)"} :{" "}
                     {ref[k] ? (
                       <strong style={{ color: ACCENT }}>
-                        {ref[k].value} km/h
+                        {ref[k].value} {k === "fcmax" ? "bpm" : "km/h"}
+                        {k === "fcmax" && ref[k].basis === "estimée" ? " (estimée par formule)" : ""}
                       </strong>
                     ) : (
                       "non définie"
@@ -1190,7 +1220,7 @@ export default function Tests() {
                 ))}
                 {isCoach && (
                   <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
-                    Clique sur « Définir comme référence » sous un résultat pour que les séances utilisent ce test.
+                    Clique sur « Définir comme référence » sous un résultat pour que les séances utilisent ce test. La FC max se met à jour toute seule avec la plus haute FC mesurée en test ; elle donne les FC cibles des zones dans les séances d'endurance.
                   </div>
                 )}
                 </>)}
@@ -1270,7 +1300,7 @@ export default function Tests() {
                     {normsOn && <NormList rows={evaluateTestNorms(t.testId, t.values, sport, poste, level)} compact />}
                     {isCoach && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                      {[["vma", "VMA"], ["vmi", "VMI"], ["cs", "Vitesse critique"]].map(
+                      {[["vma", "VMA"], ["vmi", "VMI"], ["cs", "Vitesse critique"], ["fcmax", "FC max"]].map(
                         ([k, l]) =>
                           t.result?.[k] != null && (
                             <button key={k} onClick={() => setReference(k, t)} style={pill(ref[k]?.testDocId === t.id)}>

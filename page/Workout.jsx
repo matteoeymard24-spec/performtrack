@@ -13,7 +13,7 @@ import TacticalBoard from "../component/TacticalBoard";
 import { loadExerciseImage, saveExerciseImage, deleteExerciseImage } from "../component/mediaStore";
 import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
 import EnduranceProfile, { ZonesCard } from "../component/EnduranceProfile";
-import { zoneOf, pctCS, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK } from "../component/drillBank";
+import { zoneOf, pctCS, hrTarget, HR_MIN_EFFORT_SEC, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK } from "../component/drillBank";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -453,6 +453,7 @@ export default function Workout() {
   const [vma, setVma] = useState(null);
   // Vitesse critique de référence (km/h), posée depuis l'onglet Tests (tests/_reference.cs)
   const [csRef, setCsRef] = useState(null);
+  const [fcmaxRef, setFcmaxRef] = useState(null); // FC max de référence (tests) → FC cibles des zones
   // Banque d'exos sprint/endurance ouverte pour le bloc n° … (null = fermée)
   const [bankForBlock, setBankForBlock] = useState(null);
   // Schéma (tableau tactique) en cours d'édition : { bIdx, eIdx }
@@ -590,8 +591,10 @@ export default function Workout() {
         try {
           const ref = await getDoc(doc(db, "users", currentUser.uid, "tests", "_reference"));
           setCsRef(ref.exists() ? Number(ref.data()?.cs?.value) || null : null);
+          setFcmaxRef(ref.exists() ? Number(ref.data()?.fcmax?.value) || null : null);
         } catch (e) {
           setCsRef(null);
+          setFcmaxRef(null);
         }
       } catch (e) {
         console.error("Erreur RM:", e);
@@ -9287,11 +9290,26 @@ export default function Workout() {
                     {/* Zone + allure cible (endurance) */}
                     {(sessionType === "endurance" || sessionType === "vma") && ex.vmaPercentage > 0 && (() => {
                       const z = zoneOf(pctCS(ex, csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO));
-                      return z ? (
-                        <div style={{ display: "inline-block", marginBottom: 8, padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, color: z.color, border: `1px solid ${z.color}` }}>
-                          {z.short} · {ex.vmaPercentage} % {ex.intensityRef === "cs" ? "vitesse critique" : "VMA"} · {z.feel}
+                      if (!z) return null;
+                      const hr = hrTarget(z, fcmaxRef, ex.effortTime);
+                      return (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ display: "inline-block", padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, color: z.color, border: `1px solid ${z.color}` }}>
+                            {z.short} · {ex.vmaPercentage} % {ex.intensityRef === "cs" ? "vitesse critique" : "VMA"} · {z.feel}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#a8a199", marginTop: 4 }}>
+                            {hr && hr.lo
+                              ? <>❤️ FC cible : <strong style={{ color: z.color }}>{hr.lo}–{hr.hi} bpm</strong> ({z.fcPct[0]}-{z.fcPct[1]} % de ta FC max {fcmaxRef} bpm) — la vitesse reste la consigne, la FC sert de contrôle (elle met 1-3 min à monter).</>
+                              : hr && hr.short
+                              ? <>❤️ Effort de moins de {HR_MIN_EFFORT_SEC / 60} min : la FC n'a pas le temps de suivre, fie-toi à la vitesse.</>
+                              : !z.fcPct
+                              ? <>❤️ Zone 5 : la FC n'est pas un bon repère (effort trop court / trop intense), fie-toi à la vitesse.</>
+                              : !fcmaxRef
+                              ? <>❤️ FC cible : renseigne ta FC max dans un test d'endurance (page Tests) pour l'afficher.</>
+                              : null}
+                          </div>
                         </div>
-                      ) : null;
+                      );
                     })()}
 
                     {/* Photo/gif de démonstration si présente (résolue par nom
@@ -9486,7 +9504,7 @@ export default function Workout() {
                                   <div style={{ marginTop: 4, color: "#e8998c", fontSize: 12 }}>
                                     {fb.reps
                                       .filter((x) => x.done !== false)
-                                      .map((x) => `S${x.set}R${x.rep} ${x.time != null ? String(x.time).replace(".", ",") + "s" : "—"} (RPE ${x.rpe})`)
+                                      .map((x) => `S${x.set}R${x.rep} ${x.time != null ? String(x.time).replace(".", ",") + "s" : "—"}${x.rpe != null ? ` (RPE ${x.rpe})` : ""}`)
                                       .join(" · ")}
                                   </div>
                                 </>
@@ -10504,45 +10522,19 @@ export default function Workout() {
                     reps: reps.map((x, k) => (k === i ? { ...x, ...patch } : x)),
                   });
                 const lossColor = (l) => (l == null ? "#a8a199" : l > SPRINT_LOSS_STOP ? "#d9695a" : l > SPRINT_LOSS_WARN ? "#e08a3d" : "#4fae7d");
-                const rpeOpts = Array.from({ length: 21 }, (_, k) => k / 2);
-                // Couleur de l'échelle RPE (Foster) : vert facile → jaune → orange → rouge maximal
-                const rpeColor = (v) => {
-                  const n = Number(v);
-                  if (n <= 2) return "#4fae7d";
-                  if (n <= 4) return "#8cc36a";
-                  if (n <= 5) return "#d9c441";
-                  if (n <= 6) return "#e0a13d";
-                  if (n <= 7) return "#e08a3d";
-                  if (n <= 8) return "#d9703f";
-                  if (n <= 9) return "#d9534f";
-                  return "#b8323a";
-                };
                 const inp = { padding: "8px 6px", borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16 };
                 return (
                   <div style={{ marginBottom: 18 }}>
                     <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 4 }}>
-                      Chrono et RPE de chaque répétition
+                      Chrono de chaque répétition
                       {currentExerciseFeedback.exercise?.distance ? ` (${currentExerciseFeedback.exercise.distance} m)` : ""}
                     </div>
                     <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
-                      Temps en secondes (ex. 1,85). RPE = effort perçu sur 10 (échelle Foster), rep par rep : en sprint
-                      on court toujours à fond, ce n'est pas un RPE « reps en réserve » comme en muscu. Décoche une rep non faite.
+                      Temps en secondes (ex. 1,85). Décoche une rep non faite. L'effort global se note à la fin de la séance.
                     </div>
-                    <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", marginBottom: 4 }}>
-                      {[1, 3, 5, 6, 7, 8, 9, 10].map((v) => (
-                        <div key={v} style={{ flex: 1, background: rpeColor(v) }} />
-                      ))}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#a8a199", marginBottom: 10 }}>
-                      <span>0-2 facile</span>
-                      <span>5 difficile</span>
-                      <span>7 très difficile</span>
-                      <span>10 maximal</span>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: "6px 8px", alignItems: "center" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: "6px 8px", alignItems: "center" }}>
                       <div style={{ fontSize: 11, color: "#a8a199" }}>Rep</div>
                       <div style={{ fontSize: 11, color: "#a8a199" }}>Chrono (s)</div>
-                      <div style={{ fontSize: 11, color: "#a8a199" }}>RPE</div>
                       <div style={{ fontSize: 11, color: "#a8a199", textAlign: "right" }}>Perte</div>
                       {reps.map((x, i) => {
                         const l = x.done !== false ? S.loss(x.time) : null;
@@ -10561,26 +10553,6 @@ export default function Workout() {
                               onChange={(e) => setRep(i, { time: e.target.value.replace(/[^0-9.,]/g, "") })}
                               style={{ ...inp, width: "100%", minWidth: 0 }}
                             />
-                            <select
-                              disabled={x.done === false}
-                              value={x.rpe}
-                              onChange={(e) => setRep(i, { rpe: Number(e.target.value) })}
-                              title={FOSTER_CR10[Math.round(x.rpe)] || ""}
-                              style={{
-                                ...inp,
-                                fontSize: 15,
-                                fontWeight: 800,
-                                background: x.done === false ? "#0d0c0a" : rpeColor(x.rpe),
-                                color: x.done === false ? "#5f5850" : "#0d0c0a",
-                                border: `1px solid ${x.done === false ? "#2a2620" : rpeColor(x.rpe)}`,
-                              }}
-                            >
-                              {rpeOpts.map((v) => (
-                                <option key={v} value={v} style={{ background: rpeColor(v), color: "#0d0c0a", fontWeight: 700 }}>
-                                  {v} — {FOSTER_CR10[Math.round(v)]}
-                                </option>
-                              ))}
-                            </select>
                             <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: lossColor(l), minWidth: 44 }}>
                               {l == null ? "—" : l < 0.05 ? "best" : `+${l.toFixed(1)} %`}
                             </div>
@@ -10588,18 +10560,6 @@ export default function Workout() {
                         );
                       })}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setCurrentExerciseFeedback({
-                          ...currentExerciseFeedback,
-                          reps: reps.map((x) => ({ ...x, rpe: reps[0]?.rpe ?? x.rpe })),
-                        })
-                      }
-                      style={{ marginTop: 8, padding: "6px 10px", borderRadius: 8, border: "1px solid #2a2620", background: "transparent", color: "#a8a199", fontSize: 12, cursor: "pointer" }}
-                    >
-                      Mettre le RPE de la 1re rep partout
-                    </button>
                     <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
                       <strong>Meilleur :</strong> {fmtTime(S.best)} · <strong>Moyenne :</strong> {fmtTime(S.mean)}
                       {S.sdec != null && (
@@ -10608,7 +10568,6 @@ export default function Workout() {
                           <span style={{ color: lossColor(S.sdec), fontWeight: 700 }}>{String(S.sdec).replace(".", ",")} %</span>
                         </>
                       )}
-                      {S.rpeMean != null && <> · <strong>RPE moyen :</strong> {S.rpeMean}/10</>}
                       {S.maxLoss != null && S.maxLoss > SPRINT_LOSS_WARN && (
                         <div style={{ color: lossColor(S.maxLoss), marginTop: 4 }}>
                           {S.maxLoss > SPRINT_LOSS_STOP

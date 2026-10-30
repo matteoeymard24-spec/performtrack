@@ -11,6 +11,11 @@
        loss, J Strength Cond Res 2023 37(8):1566 ; seuil 5 % retenu par Sun et al. 2026, Front Physiol).
        Au-delà de ≈ 10 %, on ne travaille plus la vitesse maximale mais la répétition de sprints.
 
+   MISE À JOUR : le RPE par rep a été RETIRÉ. Sur un sprint de 2-4 s, la perception d'effort est
+   peu informative (effort court → paraît plus facile qu'il ne l'est ; chaque rep à fond → notes
+   toutes à 8-10). Le chrono (perte de vitesse) mesure la fatigue objectivement, et la charge passe
+   par la note GLOBALE de fin de séance (component/sessionLoad.js). Le texte ci-dessous explique
+   l'ancienne version (les anciennes saisies avec RPE restent lisibles) :
    Pourquoi le RPE PAR REP (et pas une seule note par exercice) :
      • en sprint chaque rep est maximale ; la perception monte rep après rep avec la fatigue
        (RPE qui augmente au fil des sprints répétés) — une note unique « moyenne » l'écrase ;
@@ -34,12 +39,13 @@ export function buildSprintReps(exercise, existing) {
   const sets = Math.max(1, Number(exercise?.sets) || 1);
   const reps = Math.max(1, Number(exercise?.reps) || 1);
   const old = Array.isArray(existing?.reps) ? existing.reps : [];
-  const defRpe = existing?.rpe != null ? Number(existing.rpe) : 7;
   const out = [];
   for (let s = 1; s <= sets; s++)
     for (let r = 1; r <= reps; r++) {
       const o = old.find((x) => x.set === s && x.rep === r);
-      out.push({ set: s, rep: r, time: o?.time ?? "", rpe: o?.rpe ?? defRpe, done: o?.done ?? true });
+      // pas de RPE par rep (la charge passe par la note globale de fin de séance) ; on garde celui
+      // des anciennes saisies s'il existe
+      out.push({ set: s, rep: r, time: o?.time ?? "", ...(o?.rpe != null ? { rpe: o.rpe } : {}), done: o?.done ?? true });
     }
   return out;
 }
@@ -79,14 +85,14 @@ export function sprintEntry(exercise, reps, notes) {
     set: x.set,
     rep: x.rep,
     time: validTime(x.time),
-    rpe: Number(x.rpe),
+    ...(x.rpe != null && x.rpe !== "" ? { rpe: Number(x.rpe) } : {}),
     done: x.done !== false,
   }));
   const S = summarizeSprint(clean);
   const dist = Number(exercise?.distance) || 0;
   return {
     reps: clean,
-    rpe: S.rpeMean, // compatibilité : RPE moyen des reps
+    ...(S.rpeMean != null ? { rpe: S.rpeMean } : {}), // anciennes saisies seulement
     actualDistance: dist * S.nDone, // distance imposée × reps faites
     bestTime: S.best,
     meanTime: S.mean,
