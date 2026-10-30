@@ -114,6 +114,32 @@ const runQuery = async (col, base, extra, localFilter, label) => {
   }
 };
 
+// Groupe personnalisé (id Firestore) ou sous-groupe ("sg:<groupe>:<sous-groupe>") — pas "total" / "avant"...
+export const isCustomTarget = (g) => typeof g === "string" && (g.startsWith("sg:") || /^[A-Za-z0-9]{20}$/.test(g));
+const customTargets = (groups) => (groups || []).filter(isCustomTarget);
+
+// Groupes / sous-groupes personnalisés dont l'athlète est membre (pour les pages qui ne passent pas `groups`)
+let memberCache = { uid: null, at: 0, value: [] };
+export const getMemberTargets = async (uid) => {
+  if (!uid) return [];
+  if (memberCache.uid === uid && Date.now() - memberCache.at < 5 * 60 * 1000) return memberCache.value;
+  try {
+    const snap = await getDocs(query(collection(db, "groups"), where("athleteIds", "array-contains", uid)));
+    const out = [];
+    snap.docs.forEach((d) => {
+      out.push(d.id);
+      (d.data().subGroups || []).forEach((sg) => {
+        if ((sg.athleteIds || []).includes(uid)) out.push(`sg:${d.id}:${sg.id}`);
+      });
+    });
+    memberCache = { uid, at: Date.now(), value: out };
+    return out;
+  } catch (e) {
+    console.warn("workoutQueries: groupes de l'athlète illisibles", e);
+    return [];
+  }
+};
+
 // ---------- Cache court (évite de relire la même chose en changeant de page) ----------
 const CACHE_TTL_MS = 90 * 1000;
 const cache = new Map();
@@ -175,6 +201,16 @@ export const getScopedDocs = async (colName, opts = {}) => {
         )
       );
     }
+    // Athlète rattaché : séances des groupes PERSONNALISÉS dont il est membre, quel que soit le coach
+    // qui les a créées (ex. un athlète de Cyril placé dans un groupe de Matteo). Une requête par groupe
+    // (égalité) : la règle Firestore vérifie l'appartenance au groupe.
+    const memberTg = me.coachId ? (grp ? customTargets(grp) : await getMemberTargets(me.uid)) : [];
+    if (memberTg.length)
+      memberTg.forEach((g) =>
+        reqs.push(
+          runQuery(col, [where("group", "==", g)], dateExtra, dateOk, `${colName} : group + date`)
+        )
+      );
     if (withTarget)
       reqs.push(
         runQuery(col, [where("targetUserId", "==", me.uid)], dateExtra, dateOk, `${colName} : targetUserId + date`)

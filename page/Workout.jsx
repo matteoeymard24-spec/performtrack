@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW } from "../component/workoutQueries";
+import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
@@ -639,9 +639,15 @@ export default function Workout() {
 
       // Portée coach : un coach ne voit que ses séances / celles de ses athlètes,
       // un athlète rattaché à un coach ne voit que les séances de ce coach.
+      // Exception : un athlète voit toujours les séances des groupes personnalisés dont il est membre,
+      // même créées par un autre coach que le sien.
+      const memberTargets = new Set(userRole !== "admin" ? athleteGroups || [] : []);
       if (coachScope)
         filtered = filtered.filter(
-          (w) => coachScope.canViewWorkout(w) || (isSuperAdmin && w.group === "moi") // vue « admins » du superadmin
+          (w) =>
+            coachScope.canViewWorkout(w) ||
+            (isSuperAdmin && w.group === "moi") || // vue « admins » du superadmin
+            (memberTargets.has(w.group) && isCustomTarget(w.group))
         );
 
       // Trier par date

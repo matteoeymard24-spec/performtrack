@@ -35,6 +35,18 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(userId)).data.get('coachId', null) == request.auth.uid;
     }
 
+    // L'athlète connecté est-il membre du groupe personnalisé gid ?
+    function groupHasMe(gid) {
+      return exists(/databases/$(database)/documents/groups/$(gid)) &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.get('athleteIds', []);
+    }
+
+    // Séance ciblant un groupe ("<id>") ou un sous-groupe ("sg:<id>:<sous-groupe>") dont il est membre.
+    function athleteInGroup(g) {
+      return (g.matches('sg:.*') && groupHasMe(g.split(':')[1])) ||
+        (!g.matches('sg:.*') && g != 'moi' && g != 'total' && groupHasMe(g));
+    }
+
     // ===================== USERS =====================
     match /users/{userId} {
       // Superadmin : tout. Coach : lui-même, SES athlètes, et les autres coachs (noms).
@@ -86,7 +98,9 @@ service cloud.firestore {
         isSuperAdmin() ||
         resource.data.createdBy == request.auth.uid ||
         resource.data.targetUserId == request.auth.uid ||
-        (!isAdmin() && (myCoachId() == null || resource.data.createdBy == myCoachId()))
+        (!isAdmin() && (myCoachId() == null || resource.data.createdBy == myCoachId())) ||
+        // Athlète : séances des groupes personnalisés dont il est membre, quel que soit le coach.
+        (!isAdmin() && athleteInGroup(resource.data.get('group', '')))
       );
 
       allow create: if isSuperAdmin() || (isAdmin() && request.resource.data.createdBy == request.auth.uid);

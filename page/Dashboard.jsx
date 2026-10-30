@@ -614,7 +614,7 @@ export default function Dashboard() {
 
         userWorkouts = allWorkouts.filter((w) => {
           // séances du coach de l'athlète uniquement (athlète sans coach : tout, comme avant)
-          if (!athleteCanSeeWorkout(w, { id: currentUser.uid, coachId: userProfile?.coachId || null })) return false;
+          if (!athleteCanSeeWorkout(w, { id: currentUser.uid, coachId: userProfile?.coachId || null }, myGroupIds)) return false;
           return (
             w.group === "total" ||
             w.group === userGrp ||

@@ -29,9 +29,12 @@ export const normalizeCoachCode = (raw) =>
 
 /* L'athlète `athlete` (document users) peut-il voir la séance `w` ?
    Sert aussi aux calculs par athlète côté coach (Dashboard, charge...). */
-export const athleteCanSeeWorkout = (w, athlete) => {
+// memberTargets : groupes / sous-groupes personnalisés dont l'athlète est membre → il voit leurs
+// séances quel que soit le coach qui les a créées.
+export const athleteCanSeeWorkout = (w, athlete, memberTargets = null) => {
   const coachId = athlete?.coachId || null;
   if (!coachId) return true; // compte sans coach (avant le système) : comme avant
+  if (memberTargets && w.group && memberTargets.includes(w.group)) return true;
   if (!w.createdBy) return true; // très anciennes séances sans auteur
   if (w.createdBy === coachId) return true;
   if (w.targetUserId && w.targetUserId === athlete.id) return true;
