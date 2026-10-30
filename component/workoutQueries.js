@@ -29,6 +29,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db, auth } from "../firebase";
+import { coachIdsOf } from "./coachScope";
 
 // ---------- Profil du compte connecté (rôle, superadmin, coach) ----------
 let meCache = { uid: null, value: null };
@@ -50,12 +51,13 @@ export const getMyAccess = async () => {
       superAdmin: d.superAdmin === true,
       admin: d.role === "admin" || d.superAdmin === true,
       coachId: d.coachId || null,
+      coachIds: coachIdsOf(d), // plusieurs coachs possibles
     };
     meCache = { uid, value };
     return value;
   } catch (e) {
     console.error("workoutQueries: lecture du profil impossible", e);
-    return { uid, superAdmin: false, admin: false, coachId: null, unknown: true };
+    return { uid, superAdmin: false, admin: false, coachId: null, coachIds: [], unknown: true };
   }
 };
 
@@ -183,7 +185,8 @@ export const getScopedDocs = async (colName, opts = {}) => {
     );
   } else {
     const reqs = [];
-    if (!me.coachId) {
+    const myCoaches = me.coachIds || (me.coachId ? [me.coachId] : []);
+    if (!myCoaches.length) {
       // Athlète sans coach : comportement d'avant (tout est lisible)
       reqs.push(
         grp || since
@@ -191,20 +194,23 @@ export const getScopedDocs = async (colName, opts = {}) => {
           : getDocs(col)
       );
     } else {
-      reqs.push(
-        runQuery(
-          col,
-          [where("createdBy", "==", me.coachId)],
-          [...grpExtra, ...dateExtra],
-          (d) => grpOk(d) && dateOk(d),
-          `${colName} : createdBy + group + date`
+      // une requête par coach (séances de chacun de ses coachs)
+      myCoaches.forEach((cid) =>
+        reqs.push(
+          runQuery(
+            col,
+            [where("createdBy", "==", cid)],
+            [...grpExtra, ...dateExtra],
+            (d) => grpOk(d) && dateOk(d),
+            `${colName} : createdBy + group + date`
+          )
         )
       );
     }
     // Athlète rattaché : séances des groupes PERSONNALISÉS dont il est membre, quel que soit le coach
     // qui les a créées (ex. un athlète de Cyril placé dans un groupe de Matteo). Une requête par groupe
     // (égalité) : la règle Firestore vérifie l'appartenance au groupe.
-    const memberTg = me.coachId ? (grp ? customTargets(grp) : await getMemberTargets(me.uid)) : [];
+    const memberTg = myCoaches.length ? (grp ? customTargets(grp) : await getMemberTargets(me.uid)) : [];
     if (memberTg.length)
       memberTg.forEach((g) =>
         reqs.push(
@@ -238,12 +244,13 @@ export const getScopedUserDocs = async () => {
   const col = collection(db, "users");
   if (!me.uid) return { docs: [] };
   if (me.superAdmin) return getDocs(col);
-  const [mine, admins, self] = await Promise.all([
+  const [mine, mine2, admins, self] = await Promise.all([
     getDocs(query(col, where("coachId", "==", me.uid))),
+    getDocs(query(col, where("coachIds", "array-contains", me.uid))),
     getDocs(query(col, where("role", "==", "admin"))),
     getDoc(doc(db, "users", me.uid)),
   ]);
-  return mergeSnaps([mine, admins, { docs: self.exists() ? [self] : [] }]);
+  return mergeSnaps([mine, mine2, admins, { docs: self.exists() ? [self] : [] }]);
 };
 
 // Wellness d'une période (coach : tous ses athlètes ; filtrage par athlète côté appli).

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useMemo, useState, useCall
 import { auth, db } from "../firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, getDocs, collection, query, where } from "firebase/firestore";
-import { athleteCanSeeWorkout } from "../component/coachScope";
+import { athleteCanSeeWorkout, coachIdsOf } from "../component/coachScope";
 
 const AuthContext = createContext();
 
@@ -140,7 +140,7 @@ export function AuthProvider({ children }) {
     // Recharge : toutes les pages recalculent leurs listes avec la nouvelle portée.
     window.location.reload();
   };
-  const [scopeMap, setScopeMap] = useState({}); // id -> coachId (ou null)
+  const [scopeMap, setScopeMap] = useState({}); // id -> [coachIds] (liste vide = sans coach)
   const [scopeReady, setScopeReady] = useState(false);
   const [scopeKey, setScopeKey] = useState(0);
   const refreshScope = useCallback(() => setScopeKey((k) => k + 1), []);
@@ -154,14 +154,19 @@ export function AuthProvider({ children }) {
     setScopeReady(false);
     (async () => {
       try {
-        const snap = isSuperAdmin
-          ? await getDocs(collection(db, "users"))
-          : await getDocs(query(collection(db, "users"), where("coachId", "==", uid)));
+        const snaps = isSuperAdmin
+          ? [await getDocs(collection(db, "users"))]
+          : await Promise.all([
+              getDocs(query(collection(db, "users"), where("coachId", "==", uid))),
+              getDocs(query(collection(db, "users"), where("coachIds", "array-contains", uid))),
+            ]);
         if (cancelled) return;
         const map = {};
-        snap.docs.forEach((d) => {
-          map[d.id] = d.data().coachId || null;
-        });
+        snaps.forEach((snap) =>
+          snap.docs.forEach((d) => {
+            map[d.id] = coachIdsOf(d.data());
+          })
+        );
         setScopeMap(map);
       } catch (e) {
         console.warn("Portée coach: lecture des athlètes impossible", e);
@@ -177,16 +182,17 @@ export function AuthProvider({ children }) {
 
   const seeAll = isSuperAdmin && seeAllFlag;
   const ownsCoachId = useCallback(
-    (coachIdOfUser, userId) => {
+    (coachIdsOfUser, userId) => {
       if (!rawAdmin) return false;
       if (userId && userId === uid) return true;
-      if (isSuperAdmin) return seeAll || !coachIdOfUser || coachIdOfUser === uid;
-      return coachIdOfUser === uid;
+      const ids = Array.isArray(coachIdsOfUser) ? coachIdsOfUser : coachIdsOfUser ? [coachIdsOfUser] : [];
+      if (isSuperAdmin) return seeAll || ids.length === 0 || ids.includes(uid);
+      return ids.includes(uid);
     },
     [rawAdmin, isSuperAdmin, seeAll, uid]
   );
   // Ce document users (athlète) fait-il partie de mes athlètes ?
-  const ownsUser = useCallback((u) => !!u && ownsCoachId(u.coachId || null, u.id), [ownsCoachId]);
+  const ownsUser = useCallback((u) => !!u && ownsCoachId(coachIdsOf(u), u.id), [ownsCoachId]);
   // Idem à partir d'un simple identifiant (séances ciblant un athlète...).
   const ownsId = useCallback(
     (id) => {
@@ -207,7 +213,7 @@ export function AuthProvider({ children }) {
         if (w.targetUserId && ownsId(w.targetUserId)) return true;
         return false;
       }
-      return athleteCanSeeWorkout(w, { id: uid, coachId: userProfile?.coachId || null });
+      return athleteCanSeeWorkout(w, { id: uid, coachId: userProfile?.coachId || null, coachIds: userProfile?.coachIds || [] });
     },
     [rawAdmin, previewAthlete, isSuperAdmin, seeAll, uid, ownsId, userProfile]
   );

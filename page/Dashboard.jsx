@@ -580,7 +580,7 @@ export default function Dashboard() {
         userWorkouts = allWorkouts.filter((w) => {
           if (w.userProgress?.[currentUser.uid]?.completedAt) return true; // terminée par moi : compte toujours
           // séances du coach de l'athlète uniquement (athlète sans coach : tout, comme avant)
-          if (!athleteCanSeeWorkout(w, { id: currentUser.uid, coachId: userProfile?.coachId || null }, myGroupIds)) return false;
+          if (!athleteCanSeeWorkout(w, { id: currentUser.uid, coachId: userProfile?.coachId || null, coachIds: userProfile?.coachIds || [] }, myGroupIds)) return false;
           return (
             w.group === "total" ||
             w.group === userGrp ||

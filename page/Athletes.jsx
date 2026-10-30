@@ -2,7 +2,7 @@ import { db } from "../firebase";
 import { getWorkoutDocs, getScopedUserDocs } from "../component/workoutQueries";
 import { collection, getDocs, getDoc, setDoc, updateDoc, doc, query, where, deleteDoc } from "firebase/firestore";
 import { useEffect, useState, useRef } from "react";
-import { generateCoachCode } from "../component/coachScope";
+import { generateCoachCode, coachIdsOf, coachFields } from "../component/coachScope";
 import { useAuth } from "../auth/AuthProvider";
 import { Page, CARD_STYLE, CARD_ACCENT_BORDER, CARD_TITLE, PAGE_TITLE, FIELD_STYLE, FoldBtn } from "../component/ui";
 import { Navigate } from "react-router-dom";
@@ -188,11 +188,13 @@ export default function Athletes() {
     }
   };
 
-  // Rattache un athlète déjà inscrit à un coach (superadmin uniquement).
-  const assignCoach = async (id, coachId) => {
+  // Coachs d'un athlète (superadmin uniquement) : un athlète peut en avoir PLUSIEURS.
+  // On écrit coachIds (la liste) + coachId (le 1er = coach principal, pour les anciens écrans / règles).
+  const setCoaches = async (id, ids) => {
     try {
-      await updateDoc(doc(db, "users", id), { coachId: coachId || null });
-      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, coachId: coachId || null } : u)));
+      const fields = coachFields(ids);
+      await updateDoc(doc(db, "users", id), fields);
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...fields } : u)));
       coachScope?.refresh?.();
     } catch (err) {
       console.error("Erreur assignCoach:", err);
@@ -247,6 +249,40 @@ export default function Athletes() {
     if (u.role === "admin" || u.superAdmin === true) coachNameById[u.id] = displayNameOf(u);
   });
   const coachList = users.filter((u) => u.role === "admin" || u.superAdmin === true);
+  const coachNames = (u) => coachIdsOf(u).map((c) => coachNameById[c] || "un coach");
+  // Sélecteur de coachs (plusieurs possibles) : une pastille par coach, clic = ajouter / retirer
+  const CoachPicker = ({ user, compact }) => {
+    const cur = coachIdsOf(user);
+    return (
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: compact ? 6 : 0 }}>
+        {coachList.map((c) => {
+          const on = cur.includes(c.id);
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setCoaches(user.id, on ? cur.filter((x) => x !== c.id) : [...cur, c.id])}
+              style={{
+                padding: compact ? "4px 10px" : "7px 12px",
+                borderRadius: 999,
+                border: `1px solid ${on ? "#e0a13d" : "#2a2620"}`,
+                background: on ? "rgba(224,161,61,0.18)" : "transparent",
+                color: on ? "#e0a13d" : "#a8a199",
+                fontSize: compact ? 12 : 13,
+                fontWeight: on ? 700 : 400,
+                cursor: "pointer",
+              }}
+            >
+              {on ? "✓ " : "+ "}
+              {displayNameOf(c)}
+              {c.id === currentUser?.uid ? " (moi)" : ""}
+              {on && cur[0] === c.id && cur.length > 1 ? " · principal" : ""}
+            </button>
+          );
+        })}
+      </div>
+    );
+  };
   const pendingUsers = scopedUsers.filter((u) => u.status === "pending");
 
   // Initialise "Mes RM" pour un athlète qui vient d'être approuvé : une
@@ -460,8 +496,16 @@ export default function Athletes() {
 
       // 0b-bis. Compte coach supprimé : ses athlètes repassent « sans coach »
       // (ils réapparaissent chez le superadmin) et son code ne sert plus.
-      const asCoach = await getDocs(query(collection(db, "users"), where("coachId", "==", userId)));
-      for (const d of asCoach.docs) await updateDoc(d.ref, { coachId: null });
+      const [asCoach1, asCoach2] = await Promise.all([
+        getDocs(query(collection(db, "users"), where("coachId", "==", userId))),
+        getDocs(query(collection(db, "users"), where("coachIds", "array-contains", userId))),
+      ]);
+      const done = new Set();
+      for (const d of [...asCoach1.docs, ...asCoach2.docs]) {
+        if (done.has(d.id)) continue;
+        done.add(d.id);
+        await updateDoc(d.ref, coachFields(coachIdsOf(d.data()).filter((c) => c !== userId)));
+      }
       const codes = await getDocs(query(collection(db, "coachCodes"), where("coachId", "==", userId)));
       for (const d of codes.docs) await deleteDoc(d.ref);
 
@@ -659,20 +703,9 @@ export default function Athletes() {
                   <div style={{ fontWeight: "bold" }}>{u.email}</div>
                   <div style={{ fontSize: 12, color: "#a8a199" }}>
                     Souhaite rejoindre en tant qu'athlète
-                    {u.coachId ? ` · code de ${coachNameById[u.coachId] || "un coach"}` : " · sans code coach"}
+                    {coachIdsOf(u).length ? ` · coach : ${coachNames(u).join(", ")}` : " · sans code coach"}
                   </div>
-                  {isSuperAdmin && (
-                    <select
-                      value={u.coachId || ""}
-                      onChange={(e) => assignCoach(u.id, e.target.value)}
-                      style={{ marginTop: 6, background: "#1a1815", color: "#f3f0ea", border: "1px solid #2a2620", borderRadius: 6, padding: "4px 6px", fontSize: 12 }}
-                    >
-                      <option value="">Aucun coach</option>
-                      {coachList.map((c) => (
-                        <option key={c.id} value={c.id}>{displayNameOf(c)}</option>
-                      ))}
-                    </select>
-                  )}
+                  {isSuperAdmin && <CoachPicker user={u} compact />}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
@@ -771,8 +804,8 @@ export default function Athletes() {
                     {user.email || "Email non renseigné"}
                   </div>
                   {user.role !== "admin" && (
-                    <div style={{ fontSize: 12, color: user.coachId ? "#e0a13d" : "#6f6a62", marginTop: 3 }}>
-                      🎯 {user.coachId ? `Coach : ${coachNameById[user.coachId] || "—"}` : "Sans coach"}
+                    <div style={{ fontSize: 12, color: coachIdsOf(user).length ? "#e0a13d" : "#6f6a62", marginTop: 3 }}>
+                      🎯 {coachIdsOf(user).length ? `${coachIdsOf(user).length > 1 ? "Coachs" : "Coach"} : ${coachNames(user).join(", ")}` : "Sans coach"}
                     </div>
                   )}
                   {user.role === "admin" && user.coachCode && isSuperAdmin && (
@@ -975,17 +1008,11 @@ export default function Athletes() {
 
                   {isSuperAdmin && user.role !== "admin" && (
                     <div style={{ marginBottom: 14 }}>
-                      <div style={{ color: "#a8a199", fontSize: 12, marginBottom: 4 }}>Coach de cet athlète</div>
-                      <select
-                        value={user.coachId || ""}
-                        onChange={(e) => assignCoach(user.id, e.target.value)}
-                        style={{ width: "100%", padding: 10, borderRadius: 8, background: "#151310", color: "#f3f0ea", border: "1px solid rgba(255,255,255,0.12)", fontSize: 15 }}
-                      >
-                        <option value="">— Aucun coach (visible par le superadmin) —</option>
-                        {coachList.map((c) => (
-                          <option key={c.id} value={c.id}>{displayNameOf(c)}{c.id === currentUser?.uid ? " (moi)" : ""}</option>
-                        ))}
-                      </select>
+                      <div style={{ color: "#a8a199", fontSize: 12, marginBottom: 6 }}>
+                        Coachs de cet athlète (plusieurs possibles) — chacun voit l'athlète, ses données et lui programme ses séances ; l'athlète voit les séances de tous ses coachs.
+                        Aucun coach = visible seulement par le superadmin.
+                      </div>
+                      <CoachPicker user={user} />
                     </div>
                   )}
 

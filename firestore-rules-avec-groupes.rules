@@ -20,9 +20,24 @@ service cloud.firestore {
       return isSignedIn() && me().get('superAdmin', false) == true;
     }
 
-    // Coach de l'athlète connecté (null = compte d'avant le système coach).
+    // Coach principal de l'athlète connecté (null = compte d'avant le système coach).
     function myCoachId() {
       return me().get('coachId', null);
+    }
+
+    // Un athlète peut avoir PLUSIEURS coachs : coachIds (liste) + coachId (coach principal).
+    function hasNoCoach() {
+      return myCoachId() == null && me().get('coachIds', []).size() == 0;
+    }
+
+    // uid est-il un coach de l'athlète connecté ?
+    function isMyCoach(uid) {
+      return uid == myCoachId() || uid in me().get('coachIds', []);
+    }
+
+    // Le compte connecté est-il coach du profil d (données d'un document users) ?
+    function coachOf(d) {
+      return d.get('coachId', null) == request.auth.uid || request.auth.uid in d.get('coachIds', []);
     }
 
     function isOwner(userId) {
@@ -31,8 +46,7 @@ service cloud.firestore {
 
     // L'athlète userId est-il rattaché au coach connecté ?
     function isMyAthlete(userId) {
-      return isAdmin() &&
-        get(/databases/$(database)/documents/users/$(userId)).data.get('coachId', null) == request.auth.uid;
+      return isAdmin() && coachOf(get(/databases/$(database)/documents/users/$(userId)).data);
     }
 
     // L'athlète connecté est-il membre du groupe personnalisé gid ?
@@ -51,7 +65,7 @@ service cloud.firestore {
     match /users/{userId} {
       // Superadmin : tout. Coach : lui-même, SES athlètes, et les autres coachs (noms).
       allow read: if isOwner(userId) || isSuperAdmin() ||
-        (isAdmin() && (resource.data.coachId == request.auth.uid || resource.data.role == 'admin'));
+        (isAdmin() && (coachOf(resource.data) || resource.data.get('role', '') == 'admin'));
 
       // Inscription : l'athlète crée son profil en attente (jamais admin / approuvé).
       allow create: if isSuperAdmin() || (
@@ -62,11 +76,12 @@ service cloud.firestore {
       );
 
       allow update: if isSuperAdmin() ||
-        // Coach : valide / modifie SES athlètes, sans les changer de coach ni de rôle.
+        // Coach : valide / modifie SES athlètes, sans changer leurs coachs ni leur rôle.
         (
           isAdmin() && !isOwner(userId) &&
-          resource.data.get('coachId', null) == request.auth.uid &&
-          request.resource.data.get('coachId', null) == request.auth.uid &&
+          coachOf(resource.data) &&
+          request.resource.data.get('coachId', null) == resource.data.get('coachId', null) &&
+          request.resource.data.get('coachIds', []) == resource.data.get('coachIds', []) &&
           request.resource.data.get('role', 'athlete') == resource.data.get('role', 'athlete') &&
           request.resource.data.get('superAdmin', false) == resource.data.get('superAdmin', false)
         ) ||
@@ -79,6 +94,8 @@ service cloud.firestore {
           (!('group' in request.resource.data) || request.resource.data.group == resource.data.group) &&
           (!('coachId' in request.resource.data) ||
             request.resource.data.coachId == resource.data.get('coachId', null)) &&
+          (!('coachIds' in request.resource.data) ||
+            request.resource.data.coachIds == resource.data.get('coachIds', [])) &&
           (!('status' in request.resource.data) || request.resource.data.status == resource.data.status)
         );
 
@@ -92,13 +109,13 @@ service cloud.firestore {
 
     // ===================== WORKOUT (séances) =====================
     match /workout/{workoutId} {
-      // Superadmin : tout. Coach : ses séances. Athlète rattaché : séances de son
-      // coach + celles qui le ciblent. Athlète sans coach : tout (comme avant).
+      // Superadmin : tout. Coach : ses séances. Athlète rattaché : séances de SES
+      // coachs + celles qui le ciblent. Athlète sans coach : tout (comme avant).
       allow read: if isSignedIn() && (
         isSuperAdmin() ||
         resource.data.createdBy == request.auth.uid ||
         resource.data.targetUserId == request.auth.uid ||
-        (!isAdmin() && (myCoachId() == null || resource.data.createdBy == myCoachId())) ||
+        (!isAdmin() && (hasNoCoach() || isMyCoach(resource.data.createdBy))) ||
         // Athlète : séances des groupes personnalisés dont il est membre, quel que soit le coach.
         (!isAdmin() && athleteInGroup(resource.data.get('group', '')))
       );
@@ -180,7 +197,7 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         isSuperAdmin() ||
         resource.data.createdBy == request.auth.uid ||
-        (!isAdmin() && (myCoachId() == null || resource.data.createdBy == myCoachId()))
+        (!isAdmin() && (hasNoCoach() || isMyCoach(resource.data.createdBy)))
       );
       allow create: if isSuperAdmin() || (isAdmin() && request.resource.data.createdBy == request.auth.uid);
       allow update, delete: if isSuperAdmin() || (isAdmin() && resource.data.createdBy == request.auth.uid);
@@ -191,7 +208,7 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         isSuperAdmin() ||
         resource.data.createdBy == request.auth.uid ||
-        (!isAdmin() && (myCoachId() == null || resource.data.createdBy == myCoachId()))
+        (!isAdmin() && (hasNoCoach() || isMyCoach(resource.data.createdBy)))
       );
       // Coach : ses matchs. Athlète : ses propres échéances (portée "user:<son uid>").
       allow create: if isSuperAdmin() || (

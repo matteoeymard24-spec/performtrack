@@ -69,7 +69,7 @@ export default function Login() {
           setError("Code coach introuvable. Vérifie-le auprès de ton coach (ou laisse le champ vide).");
           return;
         }
-        coachData = { coachId: coachSnap.data().coachId, coachCode: code };
+        coachData = { coachId: coachSnap.data().coachId, coachIds: [coachSnap.data().coachId], coachCode: code };
       }
       await setDoc(doc(db, "users", cred.user.uid), {
         email: cred.user.email,
