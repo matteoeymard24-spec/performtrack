@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
+import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjustment, adjustmentBefore, END_LOSS_WARN, END_LOSS_STOP } from "../component/enduranceFeedback";
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
 import { FOSTER_CR10 } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
@@ -467,6 +468,30 @@ export default function Workout() {
   // « Qui fait la séance ? » (coach) : l'athlète qui remplit la séance sur le compte du coach.
   // null = le compte connecté. Démarrage, feedbacks, fin de séance, charge et RM vont à cette personne.
   const [actingUid, setActingUid] = useState(null);
+  const [actorRefs, setActorRefs] = useState({}); // uid -> { vma, cs, fcmax } de l'athlète choisi
+  useEffect(() => {
+    if (!actingUid || actorRefs[actingUid]) return;
+    (async () => {
+      try {
+        const [vSnap, rSnap] = await Promise.all([
+          getDoc(doc(db, "users", actingUid, "rm", "VMA")),
+          getDoc(doc(db, "users", actingUid, "tests", "_reference")),
+        ]);
+        const r = rSnap.exists() ? rSnap.data() : {};
+        setActorRefs((m) => ({
+          ...m,
+          [actingUid]: {
+            vma: (vSnap.exists() && Number(vSnap.data().kg)) || Number(r?.vma?.value) || null,
+            cs: Number(r?.cs?.value) || null,
+            fcmax: Number(r?.fcmax?.value) || null,
+          },
+        }));
+      } catch (e) {
+        console.warn("Références de l'athlète:", e);
+        setActorRefs((m) => ({ ...m, [actingUid]: {} }));
+      }
+    })();
+  }, [actingUid]); // eslint-disable-line react-hooks/exhaustive-deps
   const actingSessionRef = useRef(null);
   // Banque d'exos sprint/endurance ouverte pour le bloc n° … (null = fermée)
   const [bankForBlock, setBankForBlock] = useState(null);
@@ -1275,8 +1300,13 @@ export default function Workout() {
 
   // Vitesse de référence (km/h) d'un exo d'endurance : VC si l'exo est réglé
   // en % de la vitesse critique (VC réelle, sinon ≈ 0,88 × VMA), sinon VMA.
+  // Références de la personne qui fait la séance (VMA, vitesse critique, FC max) : celles de l'athlète
+  // choisi quand le coach remplit pour lui, sinon celles du compte connecté.
+  const refVma = actingUid ? actorRefs[actingUid]?.vma ?? null : vma;
+  const refCs = actingUid ? actorRefs[actingUid]?.cs ?? null : csRef;
+  const refFcmax = actingUid ? actorRefs[actingUid]?.fcmax ?? null : fcmaxRef;
   const refSpeedKmh = (exercise) =>
-    exercise?.intensityRef === "cs" ? csRef || (vma ? vma * DEFAULT_CS_VMA_RATIO : null) : vma;
+    exercise?.intensityRef === "cs" ? refCs || (refVma ? refVma * DEFAULT_CS_VMA_RATIO : null) : refVma;
 
   const calculateEnduranceMetrics = (exercise) => {
     const refKmh = refSpeedKmh(exercise);
@@ -1507,6 +1537,16 @@ export default function Workout() {
       });
     } else if (sessionType === "endurance") {
       const metrics = calculateEnduranceMetrics(exercise);
+      // Cible ajustée d'après le bloc d'endurance précédent (si l'athlète n'a pas tenu / a dépassé)
+      const adj = adjustmentBefore(
+        selectedSession?.blocks,
+        { ...userFeedback, ...sessionFeedback },
+        blockIndex,
+        exerciseIndex,
+        (b) => blockTypeOf(b, selectedSession?.type) === "endurance"
+      );
+      const factor = existing.appliedFactor || adj?.factor || 1;
+      const target = metrics?.distancePerRep ? Math.round(metrics.distancePerRep * factor) : null;
       setCurrentExerciseFeedback({
         key,
         blockIndex,
@@ -1514,6 +1554,12 @@ export default function Workout() {
         exercise,
         sessionType,
         actualDistance: existing.actualDistance || metrics?.totalDistance || 0,
+        // distance par répétition (voir component/enduranceFeedback.js)
+        reps: buildEnduranceReps(exercise, existing),
+        targetPerRep: target,
+        plannedPct: exercise.vmaPercentage ? Math.round(exercise.vmaPercentage * factor) : null,
+        appliedFactor: factor !== 1 ? factor : null,
+        adjustedFrom: factor !== 1 ? adj?.from || null : null,
         rpe: existing.rpe || 5,
         notes: existing.notes || "",
       });
@@ -1611,6 +1657,12 @@ export default function Workout() {
       entry = {
         series: currentExerciseFeedback.series,
         notes: currentExerciseFeedback.notes || "",
+      };
+    } else if (currentExerciseFeedback.sessionType === "endurance" && Array.isArray(currentExerciseFeedback.reps)) {
+      const c = currentExerciseFeedback;
+      entry = {
+        ...enduranceEntry(c.reps, c.targetPerRep, c.plannedPct, c.rpe, c.notes),
+        ...(c.appliedFactor ? { appliedFactor: c.appliedFactor } : {}),
       };
     } else if (currentExerciseFeedback.sessionType === "sprint" && Array.isArray(currentExerciseFeedback.reps)) {
       entry = sprintEntry(currentExerciseFeedback.exercise, currentExerciseFeedback.reps, currentExerciseFeedback.notes);
@@ -8989,7 +9041,7 @@ export default function Workout() {
           </div>
 
           {/* Alerte VMA manquante */}
-          {hasBlockType(selectedSession, "endurance") && !vma && (
+          {hasBlockType(selectedSession, "endurance") && !refVma && (
             <div
               style={{
                 background: "rgba(217,164,65,0.14)",
@@ -9008,7 +9060,7 @@ export default function Workout() {
 
           {hasBlockType(selectedSession, "endurance") && (
             <>
-              <EnduranceProfile blocks={(selectedSession.blocks || []).filter((b) => blockTypeOf(b, selectedSession.type) === "endurance")} vma={vma} cs={csRef} />
+              <EnduranceProfile blocks={(selectedSession.blocks || []).filter((b) => blockTypeOf(b, selectedSession.type) === "endurance")} vma={refVma} cs={refCs} />
               <ZonesCard />
             </>
           )}
@@ -9457,9 +9509,9 @@ export default function Workout() {
                     )}
                     {/* Zone + allure cible (endurance) */}
                     {(sessionType === "endurance" || sessionType === "vma") && ex.vmaPercentage > 0 && (() => {
-                      const z = zoneOf(pctCS(ex, csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO));
+                      const z = zoneOf(pctCS(ex, refCs && refVma ? refCs / refVma : DEFAULT_CS_VMA_RATIO));
                       if (!z) return null;
-                      const hr = hrTarget(z, fcmaxRef, ex.effortTime);
+                      const hr = hrTarget(z, refFcmax, ex.effortTime);
                       return (
                         <div style={{ marginBottom: 8 }}>
                           <div style={{ display: "inline-block", padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, color: z.color, border: `1px solid ${z.color}` }}>
@@ -9467,12 +9519,12 @@ export default function Workout() {
                           </div>
                           <div style={{ fontSize: 12, color: "#a8a199", marginTop: 4 }}>
                             {hr && hr.lo
-                              ? <>❤️ FC cible : <strong style={{ color: z.color }}>{hr.lo}–{hr.hi} bpm</strong> ({z.fcPct[0]}-{z.fcPct[1]} % de ta FC max {fcmaxRef} bpm) — la vitesse reste la consigne, la FC sert de contrôle (elle met 1-3 min à monter).</>
+                              ? <>❤️ FC cible : <strong style={{ color: z.color }}>{hr.lo}–{hr.hi} bpm</strong> ({z.fcPct[0]}-{z.fcPct[1]} % de ta FC max {refFcmax} bpm) — la vitesse reste la consigne, la FC sert de contrôle (elle met 1-3 min à monter).</>
                               : hr && hr.short
                               ? <>❤️ Effort de moins de {HR_MIN_EFFORT_SEC / 60} min : la FC n'a pas le temps de suivre, fie-toi à la vitesse.</>
                               : !z.fcPct
                               ? <>❤️ Zone 5 : la FC n'est pas un bon repère (effort trop court / trop intense), fie-toi à la vitesse.</>
-                              : !fcmaxRef
+                              : !refFcmax
                               ? <>❤️ FC cible : renseigne ta FC max dans un test d'endurance (page Tests) pour l'afficher.</>
                               : null}
                           </div>
@@ -9697,7 +9749,7 @@ export default function Workout() {
                     {/* AFFICHAGE ENDURANCE */}
                     {sessionType === "endurance" && (
                       <>
-                        {vma ? (
+                        {refVma ? (
                           <>
                             {(() => {
                               const metrics = calculateEnduranceMetrics(ex);
@@ -9753,6 +9805,22 @@ export default function Workout() {
                                       </span>
                                     )}
                                   </div>
+                                  {(() => {
+                                    // Cible ajustée d'après le bloc d'endurance précédent de CETTE personne
+                                    const adj = adjustmentBefore(
+                                      selectedSession.blocks,
+                                      { ...getUserFeedback(selectedSession), ...sessionFeedback },
+                                      bIdx,
+                                      eIdx,
+                                      (b) => blockTypeOf(b, selectedSession.type) === "endurance"
+                                    );
+                                    if (!adj || adj.factor === 1 || !metrics.distancePerRep) return null;
+                                    return (
+                                      <div style={{ fontSize: 13, color: adj.factor < 1 ? "#e08a3d" : "#4fae7d", marginBottom: 10, fontWeight: 700 }}>
+                                        🎯 Cible ajustée pour toi : {Math.round(metrics.distancePerRep * adj.factor)} m par rep (≈ {Math.round(ex.vmaPercentage * adj.factor)} % au lieu de {ex.vmaPercentage} %) — d'après {adj.from}.
+                                      </div>
+                                    );
+                                  })()}
                                   {fb && (
                                     <div
                                       style={{
@@ -9764,9 +9832,28 @@ export default function Workout() {
                                       }}
                                     >
                                       <div style={{ fontSize: 13 }}>
-                                        <strong>Distance réelle :</strong>{" "}
-                                        {fb.actualDistance}m •{" "}
-                                        <strong>RPE :</strong> {fb.rpe}/10
+                                        {Array.isArray(fb.reps) ? (
+                                          <>
+                                            <strong>Total :</strong> {fb.actualDistance} m • <strong>Moyenne :</strong> {fb.meanDist ?? "—"} m
+                                            {fb.pctTarget != null && <> ({String(fb.pctTarget).replace(".", ",")} % de la cible {fb.targetPerRep} m)</>}
+                                            {fb.sdec != null && <> • <strong>Perte :</strong> {String(fb.sdec).replace(".", ",")} %</>}
+                                            {" "}• <strong>RPE :</strong> {fb.rpe}/10
+                                            <div style={{ marginTop: 4, color: "#9fd4b0", fontSize: 12 }}>
+                                              {fb.reps.filter((x) => x.done !== false).map((x) => `R${x.rep} ${x.dist != null ? x.dist + " m" : "—"}`).join(" · ")}
+                                            </div>
+                                            {fb.nextFactor && fb.nextFactor !== 1 && (
+                                              <div style={{ marginTop: 4, color: fb.nextFactor < 1 ? "#e08a3d" : "#4fae7d", fontSize: 12 }}>
+                                                ➡️ Bloc d'endurance suivant : cible × {String(fb.nextFactor).replace(".", ",")} ({fb.nextPct} % au lieu de {fb.plannedPct} %)
+                                              </div>
+                                            )}
+                                          </>
+                                        ) : (
+                                          <>
+                                            <strong>Distance réelle :</strong>{" "}
+                                            {fb.actualDistance}m •{" "}
+                                            <strong>RPE :</strong> {fb.rpe}/10
+                                          </>
+                                        )}
                                         {fb.notes && (
                                           <div
                                             style={{
@@ -10752,7 +10839,69 @@ export default function Workout() {
               (currentExerciseFeedback.sessionType === "sprint" ||
               currentExerciseFeedback.sessionType === "endurance") && (
               <>
-                {currentExerciseFeedback.sessionType === "endurance" && (
+                {currentExerciseFeedback.sessionType === "endurance" && Array.isArray(currentExerciseFeedback.reps) && (() => {
+                  const c = currentExerciseFeedback;
+                  const reps = c.reps;
+                  const S = summarizeEndurance(reps, c.targetPerRep);
+                  const adj = nextBlockAdjustment(S, c.plannedPct, c.targetPerRep);
+                  const setRep = (i, patch) => setCurrentExerciseFeedback({ ...c, reps: reps.map((x, k) => (k === i ? { ...x, ...patch } : x)) });
+                  const col = (l) => (l == null ? "#a8a199" : l > END_LOSS_STOP ? "#d9695a" : l > END_LOSS_WARN ? "#e08a3d" : "#4fae7d");
+                  const tcol = (p) => (p == null ? "#a8a199" : p >= 97 ? "#4fae7d" : p >= 90 ? "#e08a3d" : "#d9695a");
+                  const inp = { padding: "8px 6px", borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16 };
+                  return (
+                    <div style={{ marginBottom: 18 }}>
+                      <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 4 }}>Distance de chaque répétition (m)</div>
+                      <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
+                        {c.targetPerRep
+                          ? <>Cible : <strong style={{ color: "#f3f0ea" }}>{c.targetPerRep} m par rep</strong>{c.plannedPct ? ` (${c.plannedPct} % ${c.exercise?.intensityRef === "cs" ? "VC" : "VMA"})` : ""}{c.appliedFactor ? ` — ajustée d'après ${c.adjustedFrom || "le bloc précédent"}` : ""}.</>
+                          : "Pas de cible (VMA non renseignée) : la perte se calcule par rapport à la meilleure rep."}{" "}
+                        Décoche une rep non faite.
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: "6px 8px", alignItems: "center" }}>
+                        <div style={{ fontSize: 11, color: "#a8a199" }}>Rep</div>
+                        <div style={{ fontSize: 11, color: "#a8a199" }}>Distance (m)</div>
+                        <div style={{ fontSize: 11, color: "#a8a199", textAlign: "right" }}>% cible</div>
+                        <div style={{ fontSize: 11, color: "#a8a199", textAlign: "right" }}>Perte</div>
+                        {reps.map((x, i) => {
+                          const off = x.done === false;
+                          const l = off ? null : S.loss(x.dist);
+                          const pt = off ? null : S.vsTarget(x.dist);
+                          return (
+                            <React.Fragment key={x.rep}>
+                              <label style={{ fontSize: 13, whiteSpace: "nowrap", color: off ? "#5f5850" : "#f3f0ea", display: "flex", alignItems: "center", gap: 4 }}>
+                                <input type="checkbox" checked={!off} onChange={(e) => setRep(i, { done: e.target.checked })} />
+                                R{x.rep}
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder={c.targetPerRep ? String(c.targetPerRep) : "—"}
+                                disabled={off}
+                                value={x.dist}
+                                onChange={(e) => setRep(i, { dist: e.target.value.replace(/[^0-9.,]/g, "") })}
+                                style={{ ...inp, width: "100%", minWidth: 0 }}
+                              />
+                              <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: tcol(pt), minWidth: 42 }}>{pt == null ? "—" : `${Math.round(pt)} %`}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: col(l), minWidth: 44 }}>{l == null ? "—" : l < 0.05 ? "best" : `−${l.toFixed(1)} %`}</div>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                      <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
+                        <strong>Total :</strong> {S.total != null ? `${S.total} m` : "—"} · <strong>Moyenne :</strong> {S.mean != null ? `${S.mean} m` : "—"}
+                        {S.pctTarget != null && <> (<span style={{ color: tcol(S.pctTarget), fontWeight: 700 }}>{String(S.pctTarget).replace(".", ",")} % de la cible</span>)</>}
+                        {S.sdec != null && <> · <strong>Perte (%Sdec) :</strong> <span style={{ color: col(S.sdec), fontWeight: 700 }}>{String(S.sdec).replace(".", ",")} %</span></>}
+                        {adj && (
+                          <div style={{ marginTop: 6, color: adj.factor < 1 ? "#e08a3d" : adj.factor > 1 ? "#4fae7d" : "#a8a199" }}>
+                            ➡️ {adj.label}
+                            {adj.factor !== 1 && <> Bloc suivant : <strong>{adj.newTarget} m par rep</strong> (≈ {adj.newPct} % au lieu de {c.plannedPct} %).</>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {currentExerciseFeedback.sessionType === "endurance" && !Array.isArray(currentExerciseFeedback.reps) && (
                 <div style={{ marginBottom: 18 }}>
                   <label
                     style={{
