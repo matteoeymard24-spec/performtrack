@@ -454,6 +454,10 @@ export default function Workout() {
   // Vitesse critique de référence (km/h), posée depuis l'onglet Tests (tests/_reference.cs)
   const [csRef, setCsRef] = useState(null);
   const [fcmaxRef, setFcmaxRef] = useState(null); // FC max de référence (tests) → FC cibles des zones
+  // « Qui fait la séance ? » (coach) : l'athlète qui remplit la séance sur le compte du coach.
+  // null = le compte connecté. Démarrage, feedbacks, fin de séance, charge et RM vont à cette personne.
+  const [actingUid, setActingUid] = useState(null);
+  const actingSessionRef = useRef(null);
   // Banque d'exos sprint/endurance ouverte pour le bloc n° … (null = fermée)
   const [bankForBlock, setBankForBlock] = useState(null);
   // Schéma (tableau tactique) en cours d'édition : { bIdx, eIdx }
@@ -474,12 +478,19 @@ export default function Workout() {
      les tours déjà faits. Un seul setInterval global (pas un par bloc) —
      voir le useEffect juste après le composant. */
   const [emomTimer, setEmomTimer] = useState(null);
-  const [sessionFeedback, setSessionFeedback] = useState({});
+  // Feedbacks en cours de saisie, UN BROUILLON PAR PERSONNE (le coach peut passer d'un athlète à
+  // l'autre pendant la séance sans perdre ce que chacun a déjà rempli). Chaque brouillon est aussi
+  // sauvegardé dans la base (persistDraftFeedback) dès que la personne a démarré la séance.
+  const actorUid = actingUid || currentUser?.uid;
+  const [feedbackByActor, setFeedbackByActor] = useState({});
+  const sessionFeedback = feedbackByActor[actorUid] || {};
+  const setSessionFeedback = (v) =>
+    setFeedbackByActor((m) => ({ ...m, [actorUid]: typeof v === "function" ? v(m[actorUid] || {}) : v }));
   // Restaure les feedbacks déjà saisis d'une séance en cours (après rechargement / retour dans l'app)
   useEffect(() => {
     const uid = currentUser?.uid;
     const p = selectedSession?.userProgress?.[uid];
-    setSessionFeedback(p?.inProgress && !p?.completedAt && p?.feedback ? p.feedback : {});
+    setFeedbackByActor(uid ? { [uid]: p?.inProgress && !p?.completedAt && p?.feedback ? p.feedback : {} } : {});
   }, [selectedSession?.id, currentUser?.uid]);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [currentExerciseFeedback, setCurrentExerciseFeedback] = useState(null);
@@ -1119,7 +1130,17 @@ export default function Workout() {
     })();
   }, [rmViewId, isAdminLike]);
   // RM effectivement utilisé pour afficher les poids (null = aucun athlète choisi)
-  const activeRM = !isAdminLike || adminOwnSession ? userRM : rmCandidates.length === 0 ? userRM : rmCache[rmViewId] || null;
+  const activeRM = actingUid
+    ? rmCache[actingUid] || null // l'athlète qui fait la séance sur le compte du coach
+    : !isAdminLike || adminOwnSession ? userRM : rmCandidates.length === 0 ? userRM : rmCache[rmViewId] || null;
+  // Changement de séance affichée : on revient au compte connecté
+  useEffect(() => {
+    const id = selectedSession?.id || null;
+    if (actingSessionRef.current !== id) {
+      actingSessionRef.current = id;
+      setActingUid(null);
+    }
+  }, [selectedSession?.id]);
   const rmPicker =
     isAdminLike && !adminOwnSession && rmCandidates.length > 0 ? (
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "#0d0c0a", padding: "8px 0", marginBottom: 10 }}>
@@ -1199,7 +1220,8 @@ export default function Workout() {
   // connecté) — jamais ceux de l'athlète affiché en vue admin.
   const calcOwnWeight = (rmName, percent) => {
     if (!rmName || !percent) return "-";
-    const rm = userRM[normalizeExerciseName(rmName)];
+    // poids pré-rempli du feedback : RM de la personne qui fait la séance
+    const rm = (actingUid ? rmCache[actingUid] || {} : userRM)[normalizeExerciseName(rmName)];
     return rm ? Math.round((rm * percent) / 100) : "-";
   };
 
@@ -1302,22 +1324,23 @@ export default function Workout() {
   };
 
   /* ===================== HELPERS MULTI-UTILISATEURS ===================== */
-  const getUserProgress = (session, userId = currentUser?.uid) => {
+  // Personne qui fait la séance affichée : actorUid (défini avec feedbackByActor, voir actingUid).
+  const getUserProgress = (session, userId = actorUid) => {
     if (!session || !userId) return null;
     return session.userProgress?.[userId] || null;
   };
 
-  const isUserSessionCompleted = (session, userId = currentUser?.uid) => {
+  const isUserSessionCompleted = (session, userId = actorUid) => {
     const progress = getUserProgress(session, userId);
     return progress?.completedAt ? true : false;
   };
 
-  const isUserSessionInProgress = (session, userId = currentUser?.uid) => {
+  const isUserSessionInProgress = (session, userId = actorUid) => {
     const progress = getUserProgress(session, userId);
     return progress?.inProgress === true && !progress?.completedAt;
   };
 
-  const getUserFeedback = (session, userId = currentUser?.uid) => {
+  const getUserFeedback = (session, userId = actorUid) => {
     const progress = getUserProgress(session, userId);
     return progress?.feedback || {};
   };
@@ -1348,6 +1371,33 @@ export default function Workout() {
     return feedback;
   };
 
+  /* ===================== RÉATTRIBUER UNE SÉANCE ===================== */
+  // Séance remplie par un athlète sur le compte du coach : on déplace la progression (feedbacks,
+  // durée, note globale) du coach vers l'athlète, puis on calcule les RM de l'athlète.
+  // Les RM du coach éventuellement modifiés par erreur ne sont PAS annulés automatiquement.
+  const reassignSession = async (session, fromUid, toUid, toName) => {
+    const prog = session?.userProgress?.[fromUid];
+    if (!prog?.completedAt || !toUid || toUid === fromUid) return;
+    if (session.userProgress?.[toUid]?.completedAt) {
+      alert(`${toName} a déjà une séance terminée ici : réattribution annulée pour ne rien écraser.`);
+      return;
+    }
+    if (!(await askConfirm(`Déplacer cette séance terminée de ton compte vers ${toName} ?\n\nSes feedbacks, sa durée et sa note de séance passeront chez ${toName} (charge, RM), et seront retirés de ton compte.`))) return;
+    try {
+      await updateDoc(doc(db, "workout", session.id), {
+        [`userProgress.${toUid}`]: prog,
+        [`userProgress.${fromUid}`]: deleteField(),
+      });
+      await adjustRMFromFeedback(prog.feedback || {}, session, toUid);
+      alert(`✅ Séance réattribuée à ${toName}.`);
+      setActingUid(toUid === currentUser?.uid ? null : toUid);
+      await fetchSessions();
+    } catch (e) {
+      console.error("Réattribution:", e);
+      alert("❌ Réattribution impossible : " + e.message);
+    }
+  };
+
   /* ===================== GESTION SÉANCE ===================== */
   const startSession = async (session) => {
     try {
@@ -1356,7 +1406,7 @@ export default function Workout() {
       // Modifier UNIQUEMENT userProgress[currentUser.uid] avec notation pointée
       // Cela respecte les règles Firestore pour les athlètes
       await updateDoc(doc(db, "workout", session.id), {
-        [`userProgress.${currentUser.uid}`]: {
+        [`userProgress.${actorUid}`]: {
           startedAt: startTime,
           inProgress: true,
         }
@@ -1366,7 +1416,7 @@ export default function Workout() {
       // copie (on ne modifie pas l'objet de la liste des séances en place)
       const userProgress = {
         ...(session.userProgress || {}),
-        [currentUser.uid]: { startedAt: startTime, inProgress: true },
+        [actorUid]: { startedAt: startTime, inProgress: true },
       };
       
       const updatedSession = {
@@ -1505,11 +1555,11 @@ export default function Workout() {
   const persistDraftFeedback = async (nextFeedback) => {
     try {
       const sess = sessionInProgress || selectedSession;
-      if (!sess?.id || !currentUser?.uid) return;
-      const prog = sess.userProgress?.[currentUser.uid];
+      if (!sess?.id || !actorUid) return;
+      const prog = sess.userProgress?.[actorUid];
       if (!prog?.startedAt || prog?.completedAt) return;
       await updateDoc(doc(db, "workout", sess.id), {
-        [`userProgress.${currentUser.uid}.feedback`]: nextFeedback,
+        [`userProgress.${actorUid}.feedback`]: nextFeedback,
       });
       const patch = (x) =>
         x && x.id === sess.id
@@ -1517,7 +1567,7 @@ export default function Workout() {
               ...x,
               userProgress: {
                 ...(x.userProgress || {}),
-                [currentUser.uid]: { ...(x.userProgress?.[currentUser.uid] || {}), feedback: nextFeedback },
+                [actorUid]: { ...(x.userProgress?.[actorUid] || {}), feedback: nextFeedback },
               },
             }
           : x;
@@ -1571,7 +1621,8 @@ export default function Workout() {
     setCurrentExerciseFeedback(null);
   };
 
-  const adjustRMFromFeedback = async (feedback, session) => {
+  const adjustRMFromFeedback = async (feedback, session, forUid = null) => {
+    const actorUid = forUid || actingUid || currentUser?.uid; // RM de cette personne
     // Comme ailleurs dans ce fichier (workoutType par défaut "muscu"), une
     // séance sans champ "type" explicite est une séance muscu : un test
     // strict "session.type !== 'muscu'" excluait à tort TOUTES ces séances
@@ -1646,7 +1697,7 @@ export default function Workout() {
         // peut être périmé) pour récupérer sa vraie valeur ET son
         // historique complet (nécessaire pour le graphique d'évolution).
         const normalizedRmName = normalizeExerciseName(rmName);
-        const rmRef = doc(db, "users", currentUser.uid, "rm", normalizedRmName);
+        const rmRef = doc(db, "users", actorUid, "rm", normalizedRmName); // RM de la personne qui a fait la séance
         const existingSnap = await getDoc(rmRef);
         const existingData = existingSnap.exists() ? existingSnap.data() : null;
         const currentRM = existingData?.kg || null;
@@ -1706,15 +1757,17 @@ export default function Workout() {
         }
       }
       const snap = await getDocs(
-        collection(db, "users", currentUser.uid, "rm")
+        collection(db, "users", actorUid, "rm")
       );
       const rmData = {};
       snap.docs.forEach((d) => {
         // Normaliser le nom pour la clé
         const normalizedName = normalizeExerciseName(d.id);
+        if (d.id === "VMA" || d.data().exerciseName === "VMA") return;
         rmData[normalizedName] = d.data().kg;
       });
-      setUserRM(rmData);
+      if (actorUid === currentUser.uid) setUserRM(rmData);
+      else setRmCache((c) => ({ ...c, [actorUid]: rmData }));
     } catch (e) {
       console.error("Erreur ajustement RM:", e);
     }
@@ -1832,11 +1885,11 @@ export default function Workout() {
     }
 
     // Note globale de la séance + durée (charge sRPE, Foster 2001) — voir component/sessionLoad.js
-    const alreadyDone = !!workoutSession.userProgress?.[currentUser.uid]?.completedAt;
+    const alreadyDone = !!workoutSession.userProgress?.[actorUid]?.completedAt;
     let endRating = null;
     if (!alreadyDone) {
       endRating = await askSessionRpe(
-        workoutSession.userProgress?.[currentUser.uid]?.startedAt || sessionStartTime,
+        workoutSession.userProgress?.[actorUid]?.startedAt || sessionStartTime,
         Number(workoutSession.estimatedDuration) || null
       );
       if (endRating === "cancel") return;
@@ -1864,7 +1917,7 @@ export default function Workout() {
         userIds: Object.keys(currentSessionData.userProgress || {})
       });
       
-      const userProgressData = currentSessionData.userProgress?.[currentUser.uid] || {};
+      const userProgressData = currentSessionData.userProgress?.[actorUid] || {};
       console.log("[endSession] 👤 UserProgress actuel:", userProgressData);
       
       const startTime = userProgressData.startedAt || sessionStartTime;
@@ -1886,11 +1939,11 @@ export default function Workout() {
         inProgress: false,
       };
       
-      console.log("[endSession] 💾 Mise à jour userProgress pour", currentUser.uid);
+      console.log("[endSession] 💾 Mise à jour userProgress pour", actorUid);
       
       // Modifier UNIQUEMENT userProgress[currentUser.uid] avec notation pointée
       await updateDoc(sessionRef, {
-        [`userProgress.${currentUser.uid}`]: newUserProgressData
+        [`userProgress.${actorUid}`]: newUserProgressData
       });
       
       console.log("[endSession] ✅ Séance mise à jour avec succès dans Firestore");
@@ -1900,10 +1953,13 @@ export default function Workout() {
       if (!userProgressData.completedAt) {
         await adjustRMFromFeedback(newUserProgressData.feedback, { ...workoutSession, ...currentSessionData, id: workoutSession.id });
       }
-      alert("Séance terminée ! Bravo 🎉");
+      const someoneElse = actorUid !== currentUser.uid || Object.keys(feedbackByActor).some((k) => k !== actorUid);
+      alert(someoneElse ? "Séance terminée pour cette personne ✅ — choisis le suivant dans « Qui fait la séance ? »." : "Séance terminée ! Bravo 🎉");
       setSessionInProgress(null);
       setSessionFeedback({});
-      setSelectedSession(null);
+      // Coach qui remplit pour plusieurs athlètes : on garde la séance ouverte (les brouillons des
+      // autres restent) ; sinon on la ferme comme avant.
+      if (!someoneElse) setSelectedSession(null);
       await fetchSessions();
       console.log("[endSession] 🎉 Terminé avec succès !");
     } catch (e) {
@@ -8924,6 +8980,84 @@ export default function Workout() {
               <EnduranceProfile blocks={selectedSession.blocks} vma={vma} cs={csRef} />
               <ZonesCard />
             </>
+          )}
+
+          {/* Coach : QUI fait la séance sur ce téléphone ? (l'athlète remplit ses feedbacks depuis le compte
+              du coach → tout est enregistré au nom de l'athlète choisi : feedbacks, charge, RM) */}
+          {isAdminLike && rmCandidates.length > 0 && (isSuperAdmin || selectedSession.createdBy === currentUser?.uid) && (
+            <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, border: "1px solid #2a2620", background: "#151310" }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>🏃 Qui fait la séance ?</div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[{ id: currentUser?.uid, label: "Moi" }, ...rmCandidates.filter((a) => a.id !== currentUser?.uid).map((a) => ({
+                  id: a.id,
+                  label: a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète",
+                }))].map((p) => {
+                  const on = p.id === actorUid;
+                  const st = getUserProgress(selectedSession, p.id);
+                  const mark = st?.completedAt ? " ✅" : st?.inProgress ? " ⏱️" : "";
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        if (on) return;
+                        // On change de personne SANS rien effacer : le brouillon de chacun reste en mémoire ;
+                        // s'il n'y en a pas encore, on reprend celui sauvegardé dans la base.
+                        setFeedbackByActor((m) => {
+                          if (m[p.id]) return m;
+                          const pr = getUserProgress(selectedSession, p.id);
+                          return { ...m, [p.id]: pr?.inProgress && !pr?.completedAt && pr?.feedback ? pr.feedback : {} };
+                        });
+                        setActingUid(p.id === currentUser?.uid ? null : p.id);
+                        if (p.id !== currentUser?.uid) setRmViewId(p.id); // poids cibles = RM de cet athlète
+                        setSessionInProgress(null);
+                      }}
+                      style={{
+                        padding: "8px 12px",
+                        minHeight: 36,
+                        borderRadius: 999,
+                        fontSize: 13,
+                        cursor: "pointer",
+                        border: on ? "1px solid #4fae7d" : "1px solid #2a2620",
+                        background: on ? "rgba(79,174,125,0.18)" : "#0d0c0a",
+                        color: on ? "#4fae7d" : "#f3f0ea",
+                        fontWeight: on ? 700 : 400,
+                      }}
+                    >
+                      {p.label}{mark}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, color: actorUid !== currentUser?.uid ? "#4fae7d" : "#a8a199", marginTop: 8, lineHeight: 1.5 }}>
+                {actorUid !== currentUser?.uid
+                  ? "Feedbacks, charge et RM enregistrés au nom de l'athlète choisi (pas sur ton compte). Tu peux passer d'un athlète à l'autre pendant la séance : ce que chacun a rempli est gardé."
+                  : "Séance enregistrée sur ton compte. Si c'est un athlète qui la remplit sur ton téléphone, choisis-le d'abord."}
+                {" "}Chacun n'est compté que s'il démarre et termine la séance (✅ = terminée, ⏱️ = en cours).
+              </div>
+              {actorUid === currentUser?.uid && getUserProgress(selectedSession, currentUser?.uid)?.completedAt && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #2a2620" }}>
+                  <div style={{ fontSize: 12, color: "#e0a13d", marginBottom: 6 }}>
+                    ↪️ Cette séance terminée sur ton compte était celle d'un athlète ? Déplace-la chez lui :
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {rmCandidates.filter((a) => a.id !== currentUser?.uid).map((a) => {
+                      const nm = a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || "Athlète";
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => reassignSession(selectedSession, currentUser.uid, a.id, nm)}
+                          style={{ padding: "6px 10px", borderRadius: 999, fontSize: 12, cursor: "pointer", border: "1px solid #e0a13d", background: "transparent", color: "#e0a13d" }}
+                        >
+                          C'était la séance de {nm}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
 
           {/* Contrôles séance - Pour tous (athlètes ET admins) */}
