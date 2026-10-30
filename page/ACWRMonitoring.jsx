@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
+import { sessionLoad } from "../component/sessionLoad";
 import { db } from "../firebase";
 import { getWorkoutDocs, getScopedUserDocs, daysAgoStr, WINDOW } from "../component/workoutQueries";
 import { collection, getDocs } from "firebase/firestore";
@@ -106,32 +107,7 @@ export default function ACWRMonitoring() {
   // Charge d'une séance (sRPE = RPE moyen × durée), même logique que
   // l'ancien ACWR : gère les deux formats de feedback (musculation /
   // sprint-endurance).
-  const calculateLoad = (workout, userId) => {
-    const progress = getUserProgress(workout, userId);
-    const feedback = progress?.feedback;
-    if (!feedback) return 0;
-
-    let totalRPE = 0;
-    let count = 0;
-
-    Object.values(feedback).forEach((fb) => {
-      if (fb.series && Array.isArray(fb.series)) {
-        fb.series.forEach((serie) => {
-          if (serie.rpe !== undefined && serie.rpe !== null) {
-            totalRPE += Number(serie.rpe);
-            count++;
-          }
-        });
-      } else if (fb.rpe !== undefined && fb.rpe !== null) {
-        totalRPE += Number(fb.rpe);
-        count++;
-      }
-    });
-
-    const avgRPE = count > 0 ? totalRPE / count : 0;
-    const duration = workout.estimatedDuration || 60;
-    return avgRPE * duration;
-  };
+  const calculateLoad = (workout, userId) => sessionLoad(workout, userId); // voir component/sessionLoad.js
 
   // Une entrée de charge par jour (somme si plusieurs séances le même jour).
   // C'est cette série {date, load} que REDI pondère par décroissance

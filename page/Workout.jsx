@@ -2,6 +2,9 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
+import { RIR_CHOICES, rpeFromRir, rirLabel } from "../component/rir";
+import { FOSTER_CR10 } from "../component/sessionLoad";
+import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
@@ -512,6 +515,21 @@ export default function Workout() {
      donc une suppression ou une duplication semble ne rien faire. Ces versions internes ne se bloquent pas. */
   const [confirmDlg, setConfirmDlg] = useState(null);
   const [toasts, setToasts] = useState([]);
+  // Note globale de fin de séance (sRPE de Foster) : { rpe, duration, estimated, resolve }
+  const [endAsk, setEndAsk] = useState(null);
+  const askSessionRpe = (startIso, estimated) =>
+    new Promise((resolve) => {
+      const raw = startIso ? Math.round((Date.now() - new Date(startIso).getTime()) / 60000) : null;
+      // chrono oublié (séance laissée ouverte) : on propose la durée prévue
+      const plausible = raw != null && raw >= 1 && raw <= Math.max(180, 3 * (estimated || 60));
+      setEndAsk({ rpe: null, duration: plausible ? raw : estimated || 60, raw, estimated: estimated || null, resolve });
+    });
+  const closeEndAsk = (value) => {
+    setEndAsk((d) => {
+      if (d) d.resolve(value);
+      return null;
+    });
+  };
   const askConfirm = (message) =>
     new Promise((resolve) => setConfirmDlg({ message: String(message), resolve }));
   const closeConfirm = (value) => {
@@ -1394,7 +1412,7 @@ export default function Workout() {
             ...(isUniEx(exercise)
               ? { actualRepsR: exercise.reps || 0, actualRepsL: exercise.reps || 0 }
               : {}),
-            rpe: 5
+            rpe: null // à choisir : « reps en réserve » (RPE = 10 − RIR)
           });
         }
       }
@@ -1419,6 +1437,8 @@ export default function Workout() {
           existing.actualDistance ||
           exercise.distance * exercise.reps * exercise.sets ||
           0,
+        // chrono + RPE par répétition (voir component/sprintFeedback.js)
+        reps: buildSprintReps(exercise, existing),
         rpe: existing.rpe || 5,
         notes: existing.notes || "",
       });
@@ -1529,6 +1549,8 @@ export default function Workout() {
         series: currentExerciseFeedback.series,
         notes: currentExerciseFeedback.notes || "",
       };
+    } else if (currentExerciseFeedback.sessionType === "sprint" && Array.isArray(currentExerciseFeedback.reps)) {
+      entry = sprintEntry(currentExerciseFeedback.exercise, currentExerciseFeedback.reps, currentExerciseFeedback.notes);
     } else {
       entry = {
         actualDistance: Number(currentExerciseFeedback.actualDistance),
@@ -1806,6 +1828,17 @@ export default function Workout() {
       }
     }
 
+    // Note globale de la séance + durée (charge sRPE, Foster 2001) — voir component/sessionLoad.js
+    const alreadyDone = !!workoutSession.userProgress?.[currentUser.uid]?.completedAt;
+    let endRating = null;
+    if (!alreadyDone) {
+      endRating = await askSessionRpe(
+        workoutSession.userProgress?.[currentUser.uid]?.startedAt || sessionStartTime,
+        Number(workoutSession.estimatedDuration) || null
+      );
+      if (endRating === "cancel") return;
+    }
+
     try {
       console.log("[endSession] 🏁 Début de la terminaison de séance", workoutSession.id);
       const endTime = new Date().toISOString();
@@ -1844,6 +1877,8 @@ export default function Workout() {
         ...userProgressData,
         completedAt: endTime,
         actualDuration: duration,
+        ...(endRating && endRating.rpe != null ? { sessionRpe: endRating.rpe } : {}),
+        ...(endRating && endRating.duration > 0 ? { sessionDuration: endRating.duration } : {}),
         feedback: { ...(userProgressData.feedback || {}), ...sessionFeedback },
         inProgress: false,
       };
@@ -9397,7 +9432,7 @@ export default function Workout() {
                                     ? `D ${serie.actualRepsR} / G ${serie.actualRepsL}`
                                     : serie.actualReps}{" "}
                                   •{" "}
-                                  <strong>RPE:</strong> {serie.rpe}/10
+                                  <strong>Effort :</strong> {rirLabel(serie.rpe, serie.rir)}
                                 </div>
                               ))}
                               {normalized && normalized.notes && (
@@ -9443,9 +9478,25 @@ export default function Workout() {
                             }}
                           >
                             <div style={{ fontSize: 13 }}>
-                              <strong>Distance réelle :</strong>{" "}
-                              {fb.actualDistance}m • <strong>RPE :</strong>{" "}
-                              {fb.rpe}/10
+                              {Array.isArray(fb.reps) ? (
+                                <>
+                                  <strong>Meilleur :</strong> {fmtTime(fb.bestTime)} • <strong>Moyenne :</strong> {fmtTime(fb.meanTime)}
+                                  {fb.sdec != null && <> • <strong>Perte :</strong> {String(fb.sdec).replace(".", ",")} %</>}
+                                  {fb.rpe != null && <> • <strong>RPE moyen :</strong> {fb.rpe}/10</>}
+                                  <div style={{ marginTop: 4, color: "#e8998c", fontSize: 12 }}>
+                                    {fb.reps
+                                      .filter((x) => x.done !== false)
+                                      .map((x) => `S${x.set}R${x.rep} ${x.time != null ? String(x.time).replace(".", ",") + "s" : "—"} (RPE ${x.rpe})`)
+                                      .join(" · ")}
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <strong>Distance réelle :</strong>{" "}
+                                  {fb.actualDistance}m • <strong>RPE :</strong>{" "}
+                                  {fb.rpe}/10
+                                </>
+                              )}
                               {fb.notes && (
                                 <div style={{ marginTop: 5, color: "#e8998c" }}>
                                   {fb.notes}
@@ -9880,6 +9931,71 @@ export default function Workout() {
         </div>
       )}
 
+      {/* ============ NOTE GLOBALE DE FIN DE SÉANCE (sRPE de Foster) ============ */}
+      {endAsk && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.9)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1100, padding: 16 }}>
+          <div style={{ background: "#151310", padding: 22, borderRadius: 12, maxWidth: 460, width: "100%", maxHeight: "92vh", overflowY: "auto", border: "2px solid #e0a13d" }}>
+            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>Comment était la séance, dans l'ensemble ?</div>
+            <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 12, lineHeight: 1.5 }}>
+              Une seule note pour toute la séance (échelle de Foster, 0 à 10) : c'est elle qui calcule ta charge
+              d'entraînement. Pense à la séance entière, pas seulement au dernier exercice.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+              {Array.from({ length: 11 }, (_, v) => {
+                const on = endAsk.rpe === v;
+                const col = v <= 3 ? "#4fae7d" : v <= 5 ? "#e0a13d" : v <= 7 ? "#d9a441" : "#d9695a";
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setEndAsk((d) => (d ? { ...d, rpe: v } : d))}
+                    style={{ padding: "10px 0", borderRadius: 8, border: `1px solid ${on ? col : "#2a2620"}`, background: on ? col : "#0d0c0a", color: on ? "#0d0c0a" : "#f3f0ea", fontSize: 17, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    {v}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ textAlign: "center", fontSize: 14, color: "#f3f0ea", marginTop: 8, minHeight: 20, fontWeight: 700 }}>
+              {endAsk.rpe != null ? `${endAsk.rpe}/10 — ${FOSTER_CR10[endAsk.rpe]}` : "Choisis une note"}
+            </div>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>Durée réelle de la séance (min)</label>
+            <input
+              type="number"
+              min="1"
+              max="300"
+              value={endAsk.duration ?? ""}
+              onChange={(e) => setEndAsk((d) => (d ? { ...d, duration: e.target.value === "" ? null : Math.max(0, Math.min(300, Number(e.target.value))) } : d))}
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16 }}
+            />
+            <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
+              {endAsk.raw != null && endAsk.raw !== endAsk.duration
+                ? `Chrono de l'app : ${endAsk.raw} min (semble trop long, séance restée ouverte ?) — corrige si besoin.`
+                : endAsk.estimated
+                ? `Durée prévue : ${endAsk.estimated} min.`
+                : ""}
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button
+                type="button"
+                disabled={endAsk.rpe == null || !(endAsk.duration > 0)}
+                onClick={() => closeEndAsk({ rpe: endAsk.rpe, duration: Number(endAsk.duration) })}
+                style={{ flex: 2, padding: 12, borderRadius: 8, border: "none", background: endAsk.rpe == null || !(endAsk.duration > 0) ? "#3a352d" : "#4fae7d", color: "white", fontWeight: 700, fontSize: 15, cursor: endAsk.rpe == null ? "not-allowed" : "pointer" }}
+              >
+                ✅ Terminer la séance
+              </button>
+              <button
+                type="button"
+                onClick={() => closeEndAsk("cancel")}
+                style={{ flex: 1, padding: 12, borderRadius: 8, border: "1px solid #2a2620", background: "transparent", color: "#a8a199", fontSize: 14, cursor: "pointer" }}
+              >
+                Retour
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ============ MODAL FEEDBACK ============ */}
       {showFeedbackModal && currentExerciseFeedback && (
         <div
@@ -10285,7 +10401,7 @@ export default function Workout() {
                     </div>
                     )}
 
-                    {/* RPE par série */}
+                    {/* Reps en réserve par série (enregistré en RPE = 10 − RIR, voir component/rir.js) */}
                     <div style={{ marginBottom: 8 }}>
                       <label
                         style={{
@@ -10295,64 +10411,40 @@ export default function Workout() {
                           fontWeight: "bold",
                         }}
                       >
-                        RPE – Échelle Foster (0–10)
+                        Combien de reps tu aurais encore pu faire ?
                       </label>
-                      <input
-                        type="range"
-                        min="0"
-                        max="10"
-                        step="0.5"
-                        value={serie.rpe}
-                        onChange={(e) => {
-                          const newSeries = [...currentExerciseFeedback.series];
-                          newSeries[idx] = {
-                            ...newSeries[idx],
-                            rpe: Number(e.target.value)
-                          };
-                          setCurrentExerciseFeedback({
-                            ...currentExerciseFeedback,
-                            series: newSeries
-                          });
-                        }}
-                        style={{
-                          width: "100%",
-                          height: 6,
-                          borderRadius: 3,
-                          outline: "none",
-                          background:
-                            "linear-gradient(to right, #4fae7d, #d9a441, #d9695a)",
-                          WebkitAppearance: "none",
-                          appearance: "none",
-                          cursor: "pointer",
-                        }}
-                      />
-                      <div style={{ textAlign: "center", marginTop: 6 }}>
-                        <span
-                          style={{
-                            fontSize: 32,
-                            fontWeight: "bold",
-                            color:
-                              serie.rpe <= 4
-                                ? "#4fae7d"
-                                : serie.rpe <= 6
-                                ? "#e0a13d"
-                                : serie.rpe <= 8
-                                ? "#d9a441"
-                                : "#d9695a",
-                          }}
-                        >
-                          {serie.rpe}/10
-                        </span>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
+                        {RIR_CHOICES.map((r) => {
+                          const on = serie.rir !== undefined && serie.rir !== null && Number(serie.rir) === r;
+                          const col = r <= 1 ? "#d9695a" : r <= 2 ? "#d9a441" : r <= 3 ? "#e0a13d" : "#4fae7d";
+                          return (
+                            <button
+                              key={r}
+                              type="button"
+                              onClick={() => {
+                                const newSeries = [...currentExerciseFeedback.series];
+                                newSeries[idx] = { ...newSeries[idx], rpe: rpeFromRir(r), rir: r };
+                                setCurrentExerciseFeedback({ ...currentExerciseFeedback, series: newSeries });
+                              }}
+                              style={{
+                                padding: "10px 0",
+                                borderRadius: 8,
+                                border: `1px solid ${on ? col : "#2a2620"}`,
+                                background: on ? col : "#0d0c0a",
+                                color: on ? "#0d0c0a" : "#f3f0ea",
+                                fontSize: 17,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {r === 5 ? "5+" : r}
+                            </button>
+                          );
+                        })}
                       </div>
-                      <div
-                        style={{
-                          textAlign: "center",
-                          fontSize: 13,
-                          color: "#a8a199",
-                          marginTop: 2,
-                        }}
-                      >
-                        {getFosterDescription(serie.rpe)}
+                      <div style={{ textAlign: "center", fontSize: 13, color: "#a8a199", marginTop: 6 }}>
+                        {rirLabel(serie.rpe, serie.rir)}
+                        {serie.rir === 0 ? " — échec, plus aucune rep possible" : ""}
                       </div>
                     </div>
                   </div>
@@ -10395,11 +10487,108 @@ export default function Workout() {
               </>
             )}
 
-            {/* FEEDBACK SPRINT/ENDURANCE */}
+            {/* FEEDBACK SPRINT : chrono + RPE par répétition */}
+            {!currentExerciseFeedback.isBlockLevel &&
+              currentExerciseFeedback.sessionType === "sprint" &&
+              Array.isArray(currentExerciseFeedback.reps) && (() => {
+                const reps = currentExerciseFeedback.reps;
+                const S = summarizeSprint(reps);
+                const setRep = (i, patch) =>
+                  setCurrentExerciseFeedback({
+                    ...currentExerciseFeedback,
+                    reps: reps.map((x, k) => (k === i ? { ...x, ...patch } : x)),
+                  });
+                const lossColor = (l) => (l == null ? "#a8a199" : l > SPRINT_LOSS_STOP ? "#d9695a" : l > SPRINT_LOSS_WARN ? "#e08a3d" : "#4fae7d");
+                const rpeOpts = Array.from({ length: 21 }, (_, k) => k / 2);
+                const inp = { padding: "8px 6px", borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16 };
+                return (
+                  <div style={{ marginBottom: 18 }}>
+                    <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 4 }}>
+                      Chrono et RPE de chaque répétition
+                      {currentExerciseFeedback.exercise?.distance ? ` (${currentExerciseFeedback.exercise.distance} m)` : ""}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
+                      Temps en secondes (ex. 1,85). RPE = effort perçu sur 10 (échelle Foster), rep par rep : en sprint
+                      on court toujours à fond, ce n'est pas un RPE « reps en réserve » comme en muscu. Décoche une rep non faite.
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: "6px 8px", alignItems: "center" }}>
+                      <div style={{ fontSize: 11, color: "#a8a199" }}>Rep</div>
+                      <div style={{ fontSize: 11, color: "#a8a199" }}>Chrono (s)</div>
+                      <div style={{ fontSize: 11, color: "#a8a199" }}>RPE</div>
+                      <div style={{ fontSize: 11, color: "#a8a199", textAlign: "right" }}>Perte</div>
+                      {reps.map((x, i) => {
+                        const l = x.done !== false ? S.loss(x.time) : null;
+                        return (
+                          <React.Fragment key={`${x.set}-${x.rep}`}>
+                            <label style={{ fontSize: 13, whiteSpace: "nowrap", color: x.done === false ? "#5f5850" : "#f3f0ea", display: "flex", alignItems: "center", gap: 4 }}>
+                              <input type="checkbox" checked={x.done !== false} onChange={(e) => setRep(i, { done: e.target.checked })} />
+                              S{x.set}·R{x.rep}
+                            </label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="—"
+                              disabled={x.done === false}
+                              value={x.time}
+                              onChange={(e) => setRep(i, { time: e.target.value.replace(/[^0-9.,]/g, "") })}
+                              style={{ ...inp, width: "100%", minWidth: 0 }}
+                            />
+                            <select
+                              disabled={x.done === false}
+                              value={x.rpe}
+                              onChange={(e) => setRep(i, { rpe: Number(e.target.value) })}
+                              style={{ ...inp, fontSize: 15 }}
+                            >
+                              {rpeOpts.map((v) => (
+                                <option key={v} value={v}>{v}</option>
+                              ))}
+                            </select>
+                            <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: lossColor(l), minWidth: 44 }}>
+                              {l == null ? "—" : l < 0.05 ? "best" : `+${l.toFixed(1)} %`}
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCurrentExerciseFeedback({
+                          ...currentExerciseFeedback,
+                          reps: reps.map((x) => ({ ...x, rpe: reps[0]?.rpe ?? x.rpe })),
+                        })
+                      }
+                      style={{ marginTop: 8, padding: "6px 10px", borderRadius: 8, border: "1px solid #2a2620", background: "transparent", color: "#a8a199", fontSize: 12, cursor: "pointer" }}
+                    >
+                      Mettre le RPE de la 1re rep partout
+                    </button>
+                    <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
+                      <strong>Meilleur :</strong> {fmtTime(S.best)} · <strong>Moyenne :</strong> {fmtTime(S.mean)}
+                      {S.sdec != null && (
+                        <>
+                          {" "}· <strong>Perte (%Sdec) :</strong>{" "}
+                          <span style={{ color: lossColor(S.sdec), fontWeight: 700 }}>{String(S.sdec).replace(".", ",")} %</span>
+                        </>
+                      )}
+                      {S.rpeMean != null && <> · <strong>RPE moyen :</strong> {S.rpeMean}/10</>}
+                      {S.maxLoss != null && S.maxLoss > SPRINT_LOSS_WARN && (
+                        <div style={{ color: lossColor(S.maxLoss), marginTop: 4 }}>
+                          {S.maxLoss > SPRINT_LOSS_STOP
+                            ? `⚠️ Une rep est ${S.maxLoss} % plus lente que la meilleure : ce n'est plus de la vitesse max (fatigue). Allonger la récup ou arrêter la série.`
+                            : `Une rep a perdu ${S.maxLoss} % : au-delà de ~5 % la vitesse maximale n'est plus vraiment travaillée.`}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+            {/* FEEDBACK SPRINT (notes) / ENDURANCE */}
             {!currentExerciseFeedback.isBlockLevel &&
               (currentExerciseFeedback.sessionType === "sprint" ||
               currentExerciseFeedback.sessionType === "endurance") && (
               <>
+                {currentExerciseFeedback.sessionType === "endurance" && (
                 <div style={{ marginBottom: 18 }}>
                   <label
                     style={{
@@ -10431,6 +10620,7 @@ export default function Workout() {
                     }}
                   />
                 </div>
+                )}
 
                 <div style={{ marginBottom: 18 }}>
                   <label
@@ -10468,10 +10658,10 @@ export default function Workout() {
               </>
             )}
 
-            {/* RPE (pour sprint/endurance seulement, muscu a RPE par série) */}
+            {/* RPE unique (endurance, et anciens feedbacks sprint) — muscu : par série ; sprint : par rep */}
             {!currentExerciseFeedback.isBlockLevel &&
-              (currentExerciseFeedback.sessionType === "sprint" ||
-              currentExerciseFeedback.sessionType === "endurance") && (
+              (currentExerciseFeedback.sessionType === "endurance" ||
+              (currentExerciseFeedback.sessionType === "sprint" && !Array.isArray(currentExerciseFeedback.reps))) && (
               <div style={{ marginBottom: 22 }}>
                 <label
                   style={{

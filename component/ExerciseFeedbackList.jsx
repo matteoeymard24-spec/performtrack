@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { rirLabel } from "./rir";
 
 /* ExerciseFeedbackList — exercices pour lesquels l'athlète a donné un feedback
    (charges, reps, RPE, notes), lus dans workout.userProgress[uid].feedback.
@@ -42,7 +43,7 @@ export function extractFeedbackExercises(workouts, uid) {
           ? [{ actualWeight: f.actualWeight, actualReps: f.actualReps, rpe: f.rpe }]
           : [];
       const sets = raw
-        .map((s) => ({ weight: num(s.actualWeight), reps: num(s.actualReps), rpe: num(s.rpe) }))
+        .map((s) => ({ weight: num(s.actualWeight), reps: num(s.actualReps), rpe: num(s.rpe), rir: s.rir }))
         .filter((s) => (s.weight && s.weight > 0) || (s.reps && s.reps > 0));
       if (sets.length === 0) return;
       const top = sets.reduce(
@@ -136,7 +137,7 @@ function Row({ e, showCount }) {
               >
                 {fmtSet(s)}
                 {s.rpe != null && s.rpe > 0 && (
-                  <span style={{ color: rpeColor(s.rpe), fontWeight: 700 }}> · RPE {s.rpe}</span>
+                  <span style={{ color: rpeColor(s.rpe), fontWeight: 700 }}> · {rirLabel(s.rpe, s.rir)}</span>
                 )}
               </span>
             ))}

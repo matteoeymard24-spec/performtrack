@@ -49,6 +49,9 @@ import {
   FORM_LEVELS,
 } from "../component/loadMetrics";
 import { athleteCanSeeWorkout } from "../component/coachScope";
+import { sprintSummaryText } from "../component/sprintFeedback";
+import { rirLabel } from "../component/rir";
+import { sessionLoad, sessionRpe } from "../component/sessionLoad";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 /* ===== Charte graphique du dashboard athlète (une seule pour toutes les cartes) ===== */
@@ -392,28 +395,9 @@ export default function Dashboard() {
     return { label: "Surcharge", color: "#d9695a" };
   };
 
-  // Charge d'une séance (sRPE = RPE moyen × durée) — gère les deux formats
-  // de feedback (musculation par série / sprint-endurance).
-  const calcSessionLoad = (w, userId) => {
-    const feedback = getUserFeedback(w, userId);
-    if (!feedback || Object.keys(feedback).length === 0) return 0;
-    let total = 0,
-      count = 0;
-    Object.values(feedback).forEach((fb) => {
-      if (fb.series && Array.isArray(fb.series)) {
-        fb.series.forEach((serie) => {
-          if (serie.rpe !== undefined && serie.rpe !== null) {
-            total += Number(serie.rpe);
-            count++;
-          }
-        });
-      } else if (fb.rpe !== undefined && fb.rpe !== null) {
-        total += Number(fb.rpe);
-        count++;
-      }
-    });
-    return count > 0 ? (total / count) * (w.estimatedDuration || 60) : 0;
-  };
+  // Charge d'une séance (sRPE de Foster = note globale de séance × durée ;
+  // repli : moyenne des RPE saisis × durée pour les anciennes séances).
+  const calcSessionLoad = (w, userId = currentUser?.uid) => sessionLoad(w, userId); // voir component/sessionLoad.js
 
   // Série {date, load} (une entrée par jour, sommée si plusieurs séances) —
   // c'est ce que REDI pondère par décroissance exponentielle. Les jours
@@ -434,26 +418,7 @@ export default function Dashboard() {
   // RPE moyenne d'une séance (sans la durée) — sert à juger la fiabilité de
   // la déclaration (variance anormalement faible = signal à vérifier),
   // indépendamment de la charge (sRPE) déjà utilisée pour REDI.
-  const calcSessionAvgRPE = (w, userId) => {
-    const feedback = getUserFeedback(w, userId);
-    if (!feedback || Object.keys(feedback).length === 0) return null;
-    let total = 0,
-      count = 0;
-    Object.values(feedback).forEach((fb) => {
-      if (fb.series && Array.isArray(fb.series)) {
-        fb.series.forEach((serie) => {
-          if (serie.rpe !== undefined && serie.rpe !== null) {
-            total += Number(serie.rpe);
-            count++;
-          }
-        });
-      } else if (fb.rpe !== undefined && fb.rpe !== null) {
-        total += Number(fb.rpe);
-        count++;
-      }
-    });
-    return count > 0 ? total / count : null;
-  };
+  const calcSessionAvgRPE = (w, userId = currentUser?.uid) => sessionRpe(w, userId); // note globale, sinon moyenne des RPE
 
   // Une RPE moyenne par jour (moyenne des séances si plusieurs le même
   // jour), sur les N dernières séances complétées — alimente
@@ -3898,14 +3863,16 @@ export default function Dashboard() {
                                               {cmj
                                                 ? `${s.actualWeight} cm`
                                                 : `${s.actualWeight} kg × ${s.actualRepsR !== undefined ? `D${s.actualRepsR}/G${s.actualRepsL}` : s.actualReps}`}
-                                              {" · "}RPE {s.rpe}/10
+                                              {" · "}{cmj ? `RPE ${s.rpe}/10` : rirLabel(s.rpe, s.rir)}
                                             </div>
                                           ))
                                         ) : (
                                           <div>
+                                            {Array.isArray(fb.reps) ? sprintSummaryText(fb) : (<>
                                             {fb.actualDistance !== undefined && `${fb.actualDistance} m · `}
                                             {fb.actualRounds !== undefined && `${fb.actualRounds} tours · `}
                                             RPE {fb.rpe}/10
+                                            </>)}
                                           </div>
                                         )}
                                         {fb.notes && (
