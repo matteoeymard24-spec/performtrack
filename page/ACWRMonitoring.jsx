@@ -148,8 +148,12 @@ export default function ACWRMonitoring() {
             myGroupIds.push(`sg:${g.id}:${sg.id}`);
         });
       });
+      // Séance TERMINÉE par l'athlète = compte toujours (séances « 🌟 Moi », séances d'un autre coach,
+      // groupe quitté depuis...) — c'était la cause des courbes vides.
       const relevantWorkouts = allWorkouts.filter(
         (w) =>
+          !!w.userProgress?.[athlete.id]?.completedAt ||
+          (w.group === "moi" && w.createdBy === athlete.id) ||
           w.group === "total" ||
           w.group === athleteGroup ||
           w.targetUserId === athlete.id ||

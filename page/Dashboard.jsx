@@ -578,6 +578,7 @@ export default function Dashboard() {
         ).docs.map((d) => ({ id: d.id, ...d.data() }));
 
         userWorkouts = allWorkouts.filter((w) => {
+          if (w.userProgress?.[currentUser.uid]?.completedAt) return true; // terminée par moi : compte toujours
           // séances du coach de l'athlète uniquement (athlète sans coach : tout, comme avant)
           if (!athleteCanSeeWorkout(w, { id: currentUser.uid, coachId: userProfile?.coachId || null }, myGroupIds)) return false;
           return (
@@ -969,13 +970,16 @@ export default function Dashboard() {
 
           const uGrp = u.group || "total";
           const uGroupIds = getAthleteGroupIds(u.id, customGroups);
+          // Une séance TERMINÉE par l'athlète compte toujours (séance « Moi », séance d'un autre coach,
+          // groupe quitté depuis...). Sinon : séances de son coach / de ses groupes qui le concernent.
           const uWorkouts = allWorkouts.filter(
             (w) =>
-              athleteCanSeeWorkout(w, u) &&
-              (w.group === "total" ||
-                w.group === uGrp ||
-                w.targetUserId === u.id ||
-                uGroupIds.includes(w.group))
+              !!w.userProgress?.[u.id]?.completedAt ||
+              (athleteCanSeeWorkout(w, u, uGroupIds) &&
+                (w.group === "total" ||
+                  w.group === uGrp ||
+                  w.targetUserId === u.id ||
+                  uGroupIds.includes(w.group)))
           );
           const todayWorkout = uWorkouts.find((w) => w.date === today);
 
@@ -1189,6 +1193,7 @@ export default function Dashboard() {
       const uGroupIds = getAthleteGroupIds(athlete.id, customGroups);
       const uWorkouts = allW.filter(
         (w) =>
+          !!w.userProgress?.[athlete.id]?.completedAt || // séance terminée par l'athlète : compte toujours
           w.group === "total" ||
           w.group === uGrp ||
           w.targetUserId === athlete.id ||
