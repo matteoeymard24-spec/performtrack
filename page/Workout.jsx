@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
+import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
 import { FOSTER_CR10 } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget } from "../component/workoutQueries";
@@ -257,7 +258,13 @@ const blockTimerDurationSeconds = (b) =>
     ? b.timerIntervalSec || 60
     : (b.timerIntervalSec || 60) * (b.timerRounds || 10);
 
+// Séances mixtes : chaque bloc est estimé avec la formule de SON type (blockType, sinon type de séance).
 const estimateSessionDurationSeconds = (type, blocks) => {
+  if (!Array.isArray(blocks)) return 0;
+  return blocks.reduce((t, b) => t + estimateTypeDurationSeconds(blockTypeOf(b, type), [b]), 0);
+};
+
+const estimateTypeDurationSeconds = (type, blocks) => {
   if (!Array.isArray(blocks)) return 0;
   if (type === "sprint") {
     return blocks.reduce(
@@ -385,6 +392,9 @@ export default function Workout() {
   // Horaire d'entraînement (facultatif, "HH:MM") : utile quand un athlète a plusieurs séances le même jour
   const [sessionTime, setSessionTime] = useState("");
   const [workoutType, setWorkoutType] = useState("muscu");
+  // Type de la séance (= type par défaut des blocs) ; alias utilisé dans la boucle des blocs du
+  // formulaire, où « workoutType » désigne le type du BLOC.
+  const formSessionType = workoutType;
 
   const [athletes, setAthletes] = useState([]);
   // Filtres calendrier (admin) : filtrent le calendrier MENSUEL en place
@@ -1629,13 +1639,15 @@ export default function Workout() {
     // (type undefined) et empêchait silencieusement toute création/mise à
     // jour de RM, même quand les séries saisies respectaient bien le filtre
     // ≤6 répétitions / RPE≥8.
-    if (!currentUser || !session.blocks || (session.type || "muscu") !== "muscu") return;
+    if (!currentUser || !session.blocks) return;
     try {
       for (const [key, fb] of Object.entries(feedback)) {
         const [bIdx, eIdx] = key.split("-").map(Number);
         const block = session.blocks[bIdx];
         const exercise = block?.exercises[eIdx];
         if (!exercise) continue;
+        // Séance mixte : seuls les blocs MUSCU alimentent les RM
+        if (blockTypeOf(block, session.type) !== "muscu") continue;
 
         // Bloc d'échauffement : jamais pris en compte pour le RM, quel que
         // soit le poids/RPE déclaré (repéré par le nom du bloc — "Bloc 1"
@@ -1853,12 +1865,13 @@ export default function Workout() {
     // exercices ne pourront donc jamais alimenter "Mes RM". Une fois la
     // séance terminée, sessionFeedback est réinitialisé : sans cet
     // avertissement, l'oubli est silencieux et irrécupérable.
-    if ((workoutSession.type || "muscu") === "muscu" && workoutSession.blocks) {
+    if (workoutSession.blocks && hasBlockType(workoutSession, "muscu")) {
       const missing = [];
       workoutSession.blocks.forEach((block, bIdx) => {
         if (/échauffement|echauffement|warm.?up|activation/i.test(block?.name || "")) {
           return;
         }
+        if (blockTypeOf(block, workoutSession.type) !== "muscu") return; // seuls les blocs muscu
         // Blocs EMOM/AMRAP : un seul RPE pour tout le bloc (pas de feedback
         // par exercice), donc on vérifie la clé de bloc, pas une clé par
         // exercice.
@@ -2815,45 +2828,26 @@ export default function Workout() {
   const toggleBlockCollapsed = (bIdx) =>
     setCollapsedBlocks((prev) => ({ ...prev, [bIdx]: !prev[bIdx] }));
 
+  // Type d'un bloc (séance mixte). Les champs changent : on remplace les exercices du bloc par un
+  // exercice vide du nouveau type (avec confirmation s'il y avait déjà des exercices nommés).
+  const setBlockType = async (bIdx, t) => {
+    const b = blocks[bIdx];
+    if (!b || blockTypeOf(b, workoutType) === t) return;
+    const named = (b.exercises || []).some((x) => x.name);
+    if (named && !(await askConfirm(`Passer « ${b.name || "ce bloc"} » en ${typeLabel(t)} ? Ses exercices seront remplacés (les champs ne sont pas les mêmes).`))) return;
+    setBlocks((prev) =>
+      prev.map((x, i) =>
+        i !== bIdx
+          ? x
+          : { ...x, blockType: t, timerMode: t === "sprint" ? null : x.timerMode || null, exercises: [defaultExerciseFor(t)] }
+      )
+    );
+  };
+
   const addExercise = (bIdx) => {
     const nb = [...blocks];
-    let newExercise;
-    if (workoutType === "muscu") {
-      newExercise = {
-        name: "",
-        description: "",
-        series: 3,
-        reps: 8,
-        tempo: "2-0-2",
-        restMin: 2,
-        rmPercent: 70,
-        rmName: "",
-      };
-    } else if (workoutType === "sprint") {
-      newExercise = {
-        name: "",
-        description: "",
-        distance: 30,
-        recoveryMin: 1,
-        recoverySec: 0,
-        reps: 6,
-        sets: 3,
-        intensity: "Max",
-      };
-    } else {
-      newExercise = {
-        name: "",
-        description: "",
-        vmaPercentage: 85,
-        effortTime: 30,
-        recoveryMin: 0,
-        recoverySec: 30,
-        reps: 10,
-        groundWork: false,
-        blockRecoveryMin: 3,
-        blockRecoverySec: 0,
-      };
-    }
+    // exercice du type du BLOC (séances mixtes)
+    let newExercise = defaultExerciseFor(blockTypeOf(nb[bIdx], workoutType));
     nb[bIdx] = { ...nb[bIdx], exercises: [...(nb[bIdx].exercises || []), newExercise] };
     setBlocks(nb);
   };
@@ -2950,9 +2944,9 @@ export default function Workout() {
     const legacy = {};
     const drills = { sprint: {}, endurance: {} };
     events.forEach((w) => {
-      const wt = w.type || "muscu";
-      const dk = wt === "sprint" ? "sprint" : wt === "endurance" || wt === "vma" ? "endurance" : null;
       (w.blocks || []).forEach((block) => {
+        const wt = blockTypeOf(block, w.type); // séance mixte : type du bloc
+        const dk = wt === "sprint" ? "sprint" : wt === "endurance" ? "endurance" : null;
         (block.exercises || []).forEach((ex) => {
           if (!ex.name) return;
           const key = normalizeExerciseName(ex.name);
@@ -3188,11 +3182,11 @@ export default function Workout() {
     );
     setOpenSuggestFor(null);
   };
-  const getSuggestionsFor = (typed) => {
-    if (workoutType === "sprint" || workoutType === "endurance") {
+  const getSuggestionsFor = (typed, type = workoutType) => {
+    if (type === "sprint" || type === "endurance") {
       const q = normalizeExerciseName(typed);
       if (!q) return [];
-      return getDrillEntries(workoutType)
+      return getDrillEntries(type)
         .filter((e) => normalizeExerciseName(e.name).includes(q) && normalizeExerciseName(e.name) !== q)
         .slice(0, 6);
     }
@@ -6676,7 +6670,20 @@ export default function Workout() {
               ].map((type) => (
                 <button
                   key={type.value}
-                  onClick={() => {
+                  onClick={async () => {
+                    // Séance déjà remplie (ex. séance mixte) : on ne change que le type PAR DÉFAUT des
+                    // nouveaux blocs, sauf si le coach veut repartir de zéro.
+                    if (blocks.some((b) => (b.exercises || []).some((x) => x.name))) {
+                      const restart = await askConfirm(
+                        `Repartir d'une séance ${typeLabel(type.value).toLowerCase()} vide ?\n\nOK = effacer les blocs actuels.\nAnnuler = garder les blocs (chacun garde son type) et faire de « ${typeLabel(type.value)} » le type par défaut des nouveaux blocs.`
+                      );
+                      if (!restart) {
+                        // les blocs sans type explicite gardent leur type actuel
+                        setBlocks((prev) => prev.map((b) => (b.blockType ? b : { ...b, blockType: blockTypeOf(b, workoutType) })));
+                        setWorkoutType(type.value);
+                        return;
+                      }
+                    }
                     setWorkoutType(type.value);
                     if (type.value === "muscu") {
                       setBlocks([
@@ -7033,8 +7040,11 @@ export default function Workout() {
           })()}
 
           {/* Blocs */}
-          {workoutType === "muscu" && rmPicker}
-          {blocks.map((block, bIdx) => (
+          {blocks.some((b) => blockTypeOf(b, workoutType) === "muscu") && rmPicker}
+          {blocks.map((block, bIdx) => {
+            // Type de CE bloc (séance mixte) : tout le formulaire du bloc suit ce type
+            const workoutType = blockTypeOf(block, formSessionType); // eslint-disable-line no-shadow
+            return (
             <div
               key={bIdx}
               ref={(el) => (blockRefs.current[bIdx] = el)}
@@ -7118,6 +7128,24 @@ export default function Workout() {
                 >
                   🗑️
                 </button>
+              </div>
+
+              {/* Type du bloc : séance mixte (muscu + sprint + endurance) */}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+                <span style={{ fontSize: 12, color: "#a8a199" }}>Type du bloc :</span>
+                {BLOCK_TYPES.map((t) => {
+                  const on = workoutType === t.value;
+                  return (
+                    <button
+                      key={t.value}
+                      type="button"
+                      onClick={() => setBlockType(bIdx, t.value)}
+                      style={{ padding: "5px 10px", borderRadius: 999, fontSize: 12, cursor: "pointer", border: `1px solid ${on ? t.color : "#2a2620"}`, background: on ? `${t.color}33` : "transparent", color: on ? t.color : "#a8a199", fontWeight: on ? 700 : 400 }}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
               </div>
 
               {!collapsedBlocks[bIdx] &&
@@ -7474,7 +7502,7 @@ export default function Workout() {
                         }}
                       />
                       {openSuggestFor === `${bIdx}-${eIdx}` &&
-                        getSuggestionsFor(ex.name).length > 0 && (
+                        getSuggestionsFor(ex.name, workoutType).length > 0 && (
                           <div
                             style={{
                               position: "absolute",
@@ -7491,7 +7519,7 @@ export default function Workout() {
                               boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
                             }}
                           >
-                            {getSuggestionsFor(ex.name).map((entry, i) => (
+                            {getSuggestionsFor(ex.name, workoutType).map((entry, i) => (
                               <div
                                 key={i}
                                 onMouseDown={() =>
@@ -7506,7 +7534,7 @@ export default function Workout() {
                                   padding: "8px 10px",
                                   cursor: "pointer",
                                   borderBottom:
-                                    i < getSuggestionsFor(ex.name).length - 1
+                                    i < getSuggestionsFor(ex.name, workoutType).length - 1
                                       ? "1px solid rgba(255,255,255,0.08)"
                                       : "none",
                                 }}
@@ -8676,22 +8704,23 @@ export default function Workout() {
               </>
               )}
             </div>
-          ))}
-          {workoutType === "endurance" && (
+            );
+          })}
+          {blocks.some((b) => blockTypeOf(b, workoutType) === "endurance") && (
             <>
-              <EnduranceProfile blocks={blocks} vma={vma} cs={csRef} />
+              <EnduranceProfile blocks={blocks.filter((b) => blockTypeOf(b, workoutType) === "endurance")} vma={vma} cs={csRef} />
               <ZonesCard />
             </>
           )}
           {bankForBlock !== null && (
             <DrillBankModal
-              type={workoutType === "sprint" ? "sprint" : "endurance"}
-              entries={getDrillEntries(workoutType === "sprint" ? "sprint" : "endurance")}
+              type={blockTypeOf(blocks[bankForBlock], workoutType) === "sprint" ? "sprint" : "endurance"}
+              entries={getDrillEntries(blockTypeOf(blocks[bankForBlock], workoutType) === "sprint" ? "sprint" : "endurance")}
               ratio={csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO}
               onClose={() => setBankForBlock(null)}
               onPick={(item) => {
                 const exo = { ...(item.template || {}), name: item.name };
-                if (workoutType === "sprint" && !exo.diagram) exo.diagram = defaultSprintDiagram(exo.distance);
+                if (blockTypeOf(blocks[bankForBlock], workoutType) === "sprint" && !exo.diagram) exo.diagram = defaultSprintDiagram(exo.distance);
                 setBlocks((prev) =>
                   prev.map((b, i) => {
                     if (i !== bankForBlock) return b;
@@ -8717,7 +8746,7 @@ export default function Workout() {
                   </button>
                 </div>
                 <TacticalBoard
-                  value={blocks[diagramEdit.bIdx].exercises[diagramEdit.eIdx].diagram || { field: workoutType === "sprint" ? "piste" : "rugby", items: [] }}
+                  value={blocks[diagramEdit.bIdx].exercises[diagramEdit.eIdx].diagram || { field: blockTypeOf(blocks[diagramEdit.bIdx], workoutType) === "sprint" ? "piste" : "rugby", items: [] }}
                   onChange={(d) => updateExercise(diagramEdit.bIdx, diagramEdit.eIdx, "diagram", d)}
                 />
               </div>
@@ -8852,7 +8881,9 @@ export default function Workout() {
                     fontWeight: "bold",
                   }}
                 >
-                  {sessionType === "sprint"
+                  {isMixedSession(selectedSession)
+                    ? `🔀 MIXTE (${sessionBlockTypes(selectedSession).map((t) => typeLabel(t).toLowerCase()).join(" + ")})`
+                    : sessionType === "sprint"
                     ? "⚡ SPRINT"
                     : sessionType === "endurance"
                     ? "🏃 ENDURANCE"
@@ -8958,7 +8989,7 @@ export default function Workout() {
           </div>
 
           {/* Alerte VMA manquante */}
-          {sessionType === "endurance" && !vma && (
+          {hasBlockType(selectedSession, "endurance") && !vma && (
             <div
               style={{
                 background: "rgba(217,164,65,0.14)",
@@ -8975,9 +9006,9 @@ export default function Workout() {
             </div>
           )}
 
-          {(sessionType === "endurance" || sessionType === "vma") && (
+          {hasBlockType(selectedSession, "endurance") && (
             <>
-              <EnduranceProfile blocks={selectedSession.blocks} vma={vma} cs={csRef} />
+              <EnduranceProfile blocks={(selectedSession.blocks || []).filter((b) => blockTypeOf(b, selectedSession.type) === "endurance")} vma={vma} cs={csRef} />
               <ZonesCard />
             </>
           )}
@@ -9165,7 +9196,10 @@ export default function Workout() {
 
           {/* Blocs exercices */}
           {rmPicker}
-          {selectedSession.blocks?.map((block, bIdx) => (
+          {selectedSession.blocks?.map((block, bIdx) => {
+            // Type de CE bloc (séance mixte) : affichage et feedback suivent ce type
+            const sessionType = blockTypeOf(block, selectedSession.type); // eslint-disable-line no-shadow
+            return (
             <div
               key={bIdx}
               style={{
@@ -9807,7 +9841,8 @@ export default function Workout() {
               </>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -10042,11 +10077,9 @@ export default function Workout() {
                               fontWeight: "bold",
                             }}
                           >
-                            {sessionType === "sprint"
-                              ? "Sprint"
-                              : sessionType === "endurance"
-                              ? "Endurance"
-                              : "Musculation"}
+                            {isMixedSession(session)
+                              ? `Mixte (${sessionBlockTypes(session).map((t) => typeLabel(t).toLowerCase()).join(" + ")})`
+                              : typeLabel(blockTypeOf(null, session.type))}
                           </span>
                           {" • "}
                           {session.time ? `🕒 ${session.time} • ` : ""}

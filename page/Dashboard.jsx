@@ -51,6 +51,7 @@ import {
 import { athleteCanSeeWorkout } from "../component/coachScope";
 import { sprintSummaryText } from "../component/sprintFeedback";
 import { rirLabel, rpeColor as rirRpeColor } from "../component/rir";
+import { blockTypeOf } from "../component/blockType";
 import { sessionLoad, sessionRpe } from "../component/sessionLoad";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
@@ -511,7 +512,7 @@ export default function Dashboard() {
   const extractStrengthSessions = (workouts, userId) => {
     const out = [];
     (workouts || []).forEach((w) => {
-      if ((w.type || "muscu") !== "muscu" || !Array.isArray(w.blocks)) return;
+      if (!Array.isArray(w.blocks)) return; // séances mixtes : on filtre bloc par bloc ci-dessous
       if (!isWorkoutCompleted(w, userId)) return;
       const fb = getUserFeedback(w, userId);
       if (!fb) return;
@@ -521,6 +522,7 @@ export default function Dashboard() {
         const block = w.blocks[bIdx];
         const ex = block && block.exercises ? block.exercises[eIdx] : null;
         if (!ex || !f) return;
+        if (blockTypeOf(block, w.type) !== "muscu") return; // seuls les blocs muscu (force)
         if (/échauffement|echauffement|warm.?up|activation/i.test(block.name || "")) return;
         if (ex.rmPercent === "PDC" || ex.rmPercent === "ELASTIQUE") return;
         if (/cmj/i.test(ex.name || "")) return;
