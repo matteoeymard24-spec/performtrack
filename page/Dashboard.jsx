@@ -50,7 +50,7 @@ import {
 } from "../component/loadMetrics";
 import { athleteCanSeeWorkout } from "../component/coachScope";
 import { sprintSummaryText } from "../component/sprintFeedback";
-import { rirLabel } from "../component/rir";
+import { rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { sessionLoad, sessionRpe } from "../component/sessionLoad";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
@@ -3863,7 +3863,7 @@ export default function Dashboard() {
                                               {cmj
                                                 ? `${s.actualWeight} cm`
                                                 : `${s.actualWeight} kg × ${s.actualRepsR !== undefined ? `D${s.actualRepsR}/G${s.actualRepsL}` : s.actualReps}`}
-                                              {" · "}{cmj ? `RPE ${s.rpe}/10` : rirLabel(s.rpe, s.rir)}
+                                              {" · "}<span style={{ color: rirRpeColor(s.rpe), fontWeight: 700 }}>{cmj ? `RPE ${s.rpe}/10` : rirLabel(s.rpe, s.rir)}</span>
                                             </div>
                                           ))
                                         ) : (

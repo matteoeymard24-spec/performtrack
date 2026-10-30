@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { RIR_CHOICES, rpeFromRir, rirLabel } from "../component/rir";
+import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { FOSTER_CR10 } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget } from "../component/workoutQueries";
@@ -9432,7 +9432,7 @@ export default function Workout() {
                                     ? `D ${serie.actualRepsR} / G ${serie.actualRepsL}`
                                     : serie.actualReps}{" "}
                                   •{" "}
-                                  <strong>Effort :</strong> {rirLabel(serie.rpe, serie.rir)}
+                                  <strong>Effort :</strong> <span style={{ color: rirRpeColor(serie.rpe), fontWeight: 700 }}>{rirLabel(serie.rpe, serie.rir)}</span>
                                 </div>
                               ))}
                               {normalized && normalized.notes && (
@@ -10416,7 +10416,7 @@ export default function Workout() {
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
                         {RIR_CHOICES.map((r) => {
                           const on = serie.rir !== undefined && serie.rir !== null && Number(serie.rir) === r;
-                          const col = r <= 1 ? "#d9695a" : r <= 2 ? "#d9a441" : r <= 3 ? "#e0a13d" : "#4fae7d";
+                          const col = rirRpeColor(rpeFromRir(r));
                           return (
                             <button
                               key={r}
@@ -10429,12 +10429,13 @@ export default function Workout() {
                               style={{
                                 padding: "10px 0",
                                 borderRadius: 8,
-                                border: `1px solid ${on ? col : "#2a2620"}`,
-                                background: on ? col : "#0d0c0a",
-                                color: on ? "#0d0c0a" : "#f3f0ea",
+                                border: `2px solid ${col}`,
+                                background: on ? col : `${col}33`,
+                                color: on ? "#0d0c0a" : col,
                                 fontSize: 17,
-                                fontWeight: 700,
+                                fontWeight: 800,
                                 cursor: "pointer",
+                                boxShadow: on ? `0 0 0 2px #0d0c0a, 0 0 0 4px ${col}` : "none",
                               }}
                             >
                               {r === 5 ? "5+" : r}
@@ -10442,7 +10443,11 @@ export default function Workout() {
                           );
                         })}
                       </div>
-                      <div style={{ textAlign: "center", fontSize: 13, color: "#a8a199", marginTop: 6 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#a8a199", marginTop: 4 }}>
+                        <span>← échec (dur)</span>
+                        <span>facile →</span>
+                      </div>
+                      <div style={{ textAlign: "center", fontSize: 14, fontWeight: 700, color: serie.rir != null ? rirRpeColor(serie.rpe) : "#a8a199", marginTop: 6 }}>
                         {rirLabel(serie.rpe, serie.rir)}
                         {serie.rir === 0 ? " — échec, plus aucune rep possible" : ""}
                       </div>
@@ -10500,6 +10505,18 @@ export default function Workout() {
                   });
                 const lossColor = (l) => (l == null ? "#a8a199" : l > SPRINT_LOSS_STOP ? "#d9695a" : l > SPRINT_LOSS_WARN ? "#e08a3d" : "#4fae7d");
                 const rpeOpts = Array.from({ length: 21 }, (_, k) => k / 2);
+                // Couleur de l'échelle RPE (Foster) : vert facile → jaune → orange → rouge maximal
+                const rpeColor = (v) => {
+                  const n = Number(v);
+                  if (n <= 2) return "#4fae7d";
+                  if (n <= 4) return "#8cc36a";
+                  if (n <= 5) return "#d9c441";
+                  if (n <= 6) return "#e0a13d";
+                  if (n <= 7) return "#e08a3d";
+                  if (n <= 8) return "#d9703f";
+                  if (n <= 9) return "#d9534f";
+                  return "#b8323a";
+                };
                 const inp = { padding: "8px 6px", borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16 };
                 return (
                   <div style={{ marginBottom: 18 }}>
@@ -10510,6 +10527,17 @@ export default function Workout() {
                     <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
                       Temps en secondes (ex. 1,85). RPE = effort perçu sur 10 (échelle Foster), rep par rep : en sprint
                       on court toujours à fond, ce n'est pas un RPE « reps en réserve » comme en muscu. Décoche une rep non faite.
+                    </div>
+                    <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", marginBottom: 4 }}>
+                      {[1, 3, 5, 6, 7, 8, 9, 10].map((v) => (
+                        <div key={v} style={{ flex: 1, background: rpeColor(v) }} />
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#a8a199", marginBottom: 10 }}>
+                      <span>0-2 facile</span>
+                      <span>5 difficile</span>
+                      <span>7 très difficile</span>
+                      <span>10 maximal</span>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: "6px 8px", alignItems: "center" }}>
                       <div style={{ fontSize: 11, color: "#a8a199" }}>Rep</div>
@@ -10537,10 +10565,20 @@ export default function Workout() {
                               disabled={x.done === false}
                               value={x.rpe}
                               onChange={(e) => setRep(i, { rpe: Number(e.target.value) })}
-                              style={{ ...inp, fontSize: 15 }}
+                              title={FOSTER_CR10[Math.round(x.rpe)] || ""}
+                              style={{
+                                ...inp,
+                                fontSize: 15,
+                                fontWeight: 800,
+                                background: x.done === false ? "#0d0c0a" : rpeColor(x.rpe),
+                                color: x.done === false ? "#5f5850" : "#0d0c0a",
+                                border: `1px solid ${x.done === false ? "#2a2620" : rpeColor(x.rpe)}`,
+                              }}
                             >
                               {rpeOpts.map((v) => (
-                                <option key={v} value={v}>{v}</option>
+                                <option key={v} value={v} style={{ background: rpeColor(v), color: "#0d0c0a", fontWeight: 700 }}>
+                                  {v} — {FOSTER_CR10[Math.round(v)]}
+                                </option>
                               ))}
                             </select>
                             <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: lossColor(l), minWidth: 44 }}>

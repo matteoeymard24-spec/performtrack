@@ -22,3 +22,17 @@ export const rirLabel = (rpe, rir) => {
   const r = Math.min(5, Math.max(0, Number(rir)));
   return `${rirText(r)} en réserve (RPE ${fr(rpeFromRir(r))})`;
 };
+
+/* Couleur d'un RPE (même palette que l'échelle sprint) : vert facile → rouge maximal */
+export const rpeColor = (v) => {
+  const n = Number(v);
+  if (v === null || v === undefined || v === "" || Number.isNaN(n)) return "#a8a199";
+  if (n <= 2) return "#4fae7d";
+  if (n <= 4) return "#8cc36a";
+  if (n <= 5) return "#d9c441";
+  if (n <= 6) return "#e0a13d";
+  if (n <= 7) return "#e08a3d";
+  if (n <= 8) return "#d9703f";
+  if (n <= 9) return "#d9534f";
+  return "#b8323a";
+};
