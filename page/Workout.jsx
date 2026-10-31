@@ -8103,6 +8103,28 @@ export default function Workout() {
                           <option value={120}>120% RM</option>
                         </select>
                       </div>
+                      {/* Prédiction des reps en réserve dès la construction (voir component/loadAdjust.js) */}
+                      {!isNoRmIntensity(ex.rmPercent) && block.timerMode !== "amrap" && (() => {
+                        const t = targetRir(ex.rmPercent || 70, ex.reps);
+                        if (!t) return null;
+                        if (t.impossible)
+                          return (
+                            <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(217,105,90,0.12)", border: "1px solid #d9695a", fontSize: 12, color: "#e8998c", lineHeight: 1.5 }}>
+                              ⚠️ {ex.reps} reps à {ex.rmPercent || 70} % : impossible (max ≈ {frNum(t.maxReps)} reps à ce %). Baisse le % ou mets au plus {Math.max(1, Math.floor(t.maxReps))} reps.
+                            </div>
+                          );
+                        return (
+                          <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, background: `${rirRpeColor(t.rpe)}1f`, border: `1px solid ${rirRpeColor(t.rpe)}`, fontSize: 12, lineHeight: 1.5 }}>
+                            <span style={{ color: rirRpeColor(t.rpe), fontWeight: 700 }}>
+                              🎯 RIR prédit : {rirTxt(t.rir)} rep{t.rir > 1 ? "s" : ""} en réserve (RPE {t.rpe})
+                            </span>
+                            <span style={{ color: "#a8a199" }}>
+                              {" "}— à {ex.rmPercent || 70} % du RM, l'athlète peut faire ≈ {frNum(t.maxReps)} reps ; {ex.reps} prévues.
+                              {t.rir === 0 ? " Série à l'échec." : ""}
+                            </span>
+                          </div>
+                        );
+                      })()}
                       {/* CALCUL POIDS CIBLE — basé sur ex.rmName s'il existe
                           encore (anciennes séances), sinon directement sur
                           le nom de l'exercice. */}
