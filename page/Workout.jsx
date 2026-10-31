@@ -1061,8 +1061,18 @@ export default function Workout() {
         const snap = await getScopedUserDocs();
         const allUsers = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         setAllUserIds(allUsers.map((u) => u.id));
+        // Mes athlètes + ceux que j'ai mis dans MES groupes / sous-groupes (même rattachés à un autre
+        // coach : je leur programme des séances, je dois pouvoir les choisir et remplir pour eux).
+        const inMyGroups = new Set();
+        (customGroups || []).forEach((g) => {
+          if (coachScope && !coachScope.ownsGroup(g)) return;
+          (g.athleteIds || []).forEach((id) => inMyGroups.add(id));
+          (g.subGroups || []).forEach((sg) => (sg.athleteIds || []).forEach((id) => inMyGroups.add(id)));
+        });
         setAthletes(
-          allUsers.filter((u) => u.role !== "admin" && (!coachScope || coachScope.ownsUser(u)))
+          allUsers.filter(
+            (u) => u.role !== "admin" && u.superAdmin !== true && (!coachScope || coachScope.ownsUser(u) || inMyGroups.has(u.id))
+          )
         );
         setAdminUsers(allUsers.filter((u) => u.role === "admin" || u.superAdmin === true));
       } catch (e) {
@@ -1071,7 +1081,7 @@ export default function Workout() {
     };
     fetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userRole, coachScope]);
+  }, [userRole, coachScope, customGroups]);
 
   // Nettoyage automatique : un athlète supprimé de l'app ne doit plus figurer
   // dans un groupe / sous-groupe (sinon "Athlète supprimé" s'affiche sans
