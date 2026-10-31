@@ -8105,7 +8105,7 @@ export default function Workout() {
                       </div>
                       {/* Prédiction des reps en réserve dès la construction (voir component/loadAdjust.js) */}
                       {!isNoRmIntensity(ex.rmPercent) && block.timerMode !== "amrap" && (() => {
-                        const t = targetRir(ex.rmPercent || 70, ex.reps);
+                        const t = targetRir(ex.rmPercent || 70, ex.reps, isUniEx(ex));
                         if (!t) return null;
                         if (t.impossible)
                           return (
@@ -8116,10 +8116,10 @@ export default function Workout() {
                         return (
                           <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, background: `${rirRpeColor(t.rpe)}1f`, border: `1px solid ${rirRpeColor(t.rpe)}`, fontSize: 12, lineHeight: 1.5 }}>
                             <span style={{ color: rirRpeColor(t.rpe), fontWeight: 700 }}>
-                              🎯 RIR prédit : {rirTxt(t.rir)} rep{t.rir > 1 ? "s" : ""} en réserve (RPE {t.rpe})
+                              🎯 RIR prédit : {rirTxt(t.rir)} rep{t.rir > 1 ? "s" : ""} en réserve{t.uni ? " par côté" : ""} (RPE {t.rpe})
                             </span>
                             <span style={{ color: "#a8a199" }}>
-                              {" "}— à {ex.rmPercent || 70} % du RM, l'athlète peut faire ≈ {frNum(t.maxReps)} reps ; {ex.reps} prévues.
+                              {" "}— à {ex.rmPercent || 70} % du RM, l'athlète peut faire ≈ {frNum(t.maxReps)} reps{t.uni ? " par côté (unilatéral : ≈ 14 % de reps en moins qu'en bilatéral, Costa 2015)" : ""} ; {ex.reps} prévues{t.uni ? " par côté" : ""}.
                               {t.rir === 0 ? " Série à l'échec." : ""}
                             </span>
                           </div>
@@ -9675,7 +9675,7 @@ export default function Workout() {
                           )}
                           {(() => {
                             // RIR visé = reps max possibles à ce %RM − reps prévues (voir component/loadAdjust.js)
-                            const t = targetRir(ex.rmPercent, ex.reps);
+                            const t = targetRir(ex.rmPercent, ex.reps, isUniEx(ex));
                             if (!t) return null;
                             return t.impossible ? (
                               <div style={{ color: "#d9695a", fontSize: 12, marginTop: 4 }}>
@@ -9683,7 +9683,7 @@ export default function Workout() {
                               </div>
                             ) : (
                               <div style={{ fontSize: 13, marginTop: 4, color: rirRpeColor(t.rpe), fontWeight: 700 }}>
-                                🎯 À viser : {rirTxt(t.rir)} rep{t.rir > 1 ? "s" : ""} en réserve (RPE {frNum(t.rpe)})
+                                🎯 À viser : {rirTxt(t.rir)} rep{t.rir > 1 ? "s" : ""} en réserve{t.uni ? " par côté" : ""} (RPE {frNum(t.rpe)})
                               </div>
                             );
                           })()}
@@ -10565,11 +10565,11 @@ export default function Workout() {
                       Série {idx + 1}
                     </h4>
                     {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
-                      const t = targetRir(currentExerciseFeedback.exercise.rmPercent, currentExerciseFeedback.exercise.reps);
+                      const t = targetRir(currentExerciseFeedback.exercise.rmPercent, currentExerciseFeedback.exercise.reps, isUniEx(currentExerciseFeedback.exercise));
                       if (!t || t.impossible) return null;
                       return (
                         <div style={{ fontSize: 13, margin: "-6px 0 12px", color: rirRpeColor(t.rpe), fontWeight: 700 }}>
-                          🎯 Objectif : {currentExerciseFeedback.exercise.reps} reps avec {rirTxt(t.rir)} en réserve (RPE {frNum(t.rpe)})
+                          🎯 Objectif : {currentExerciseFeedback.exercise.reps} reps{t.uni ? " par côté" : ""} avec {rirTxt(t.rir)} en réserve{t.uni ? " (côté le plus faible)" : ""} (RPE {frNum(t.rpe)})
                         </div>
                       );
                     })()}
@@ -10784,7 +10784,7 @@ export default function Workout() {
                     </div>
                     {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
                       // RM estimé du jour, perte vs 1re série, charge conseillée pour la série suivante
-                      const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise);
+                      const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise, isUniEx(currentExerciseFeedback.exercise));
                       const row = A.rows[idx];
                       if (!row || !row.e1rm) return null;
                       const lossCol = row.loss == null ? "#a8a199" : row.loss > LOSS_STOP ? "#d9695a" : row.loss > LOSS_WARN ? "#e08a3d" : "#4fae7d";
@@ -10824,7 +10824,7 @@ export default function Workout() {
                   </div>
                 ))}
                 {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
-                  const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise);
+                  const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise, isUniEx(currentExerciseFeedback.exercise));
                   if (!A.nextSession || !A.target) return null;
                   return (
                     <div style={{ marginBottom: 18, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
