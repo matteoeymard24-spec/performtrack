@@ -1,0 +1,103 @@
+/* =====================================================================
+   loadAdjust.js — musculation : RIR VISÉ et AJUSTEMENT DE LA CHARGE.
+
+   1) RIR visé à partir de la prescription (%RM × reps) :
+      reps max possibles à ce % (table RPE ↔ %1RM, Zourdos et al. 2016 ; Helms et al. 2016,
+      Strength Cond J 38:42) − reps prévues = reps en réserve visées.
+      Ex. 75 % du RM → ~10 reps max ; 6 reps prévues → ~4 en réserve (RPE 6).
+      Si les reps prévues dépassent le max possible, la prescription est irréaliste (signalé).
+
+   2) Charge de la série suivante (méthode RPE/RTS, « e1RM du jour ») :
+      chaque série remplie (charge, reps, reps en réserve) donne un RM estimé du jour
+      e1RM = charge / %1RM(reps + RIR) ; la charge conseillée pour la série suivante est
+      e1RM × %1RM(reps prévues + RIR visé). Arrondi à 1 kg, variation limitée à ± 10 % par série.
+      Si la série était plus dure que prévu → la charge baisse ; plus facile → elle monte.
+
+   3) Perte (fatigue) d'une série à l'autre : baisse de l'e1RM du jour par rapport à la 1re série,
+      en % (même idée que la perte de vitesse en sprint). Repères pratiques : ≤ 5 % = stable,
+      5-10 % = fatigue qui s'installe, > 10 % = fatigue nette (arrêter / alléger).
+      ESTIMATION : le RIR déclaré a une erreur d'≈ 1 rep, plus grande loin de l'échec
+      (Zourdos 2016 ; Halperin et al. 2022, Sports Med 52:377). Seules les séries ≤ 12 reps à l'échec
+      théorique et RIR ≤ 4 servent au calcul.
+   ===================================================================== */
+import { maxRepsAtPct, pct1RMFromRepsRpe, e1rmFromSet } from "./loadMetrics";
+
+export const LOSS_WARN = 5;
+export const LOSS_STOP = 10;
+
+const num = (v) => {
+  const n = parseFloat(String(v ?? "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+};
+
+/* Reps prévues (prend le 1er nombre : "8-10" → 8 ; "8/côté" → 8) */
+export const plannedReps = (reps) => {
+  const m = String(reps ?? "").match(/\d+(?:[.,]\d+)?/);
+  return m ? num(m[0]) : null;
+};
+
+/* RIR visé (arrondi à 0,5) pour un %RM et des reps prévues. null si % non chiffré (PDC, élastique). */
+export function targetRir(pct, reps) {
+  const p = num(pct);
+  const r = plannedReps(reps);
+  if (!(p > 0) || !(r > 0)) return null;
+  const mx = maxRepsAtPct(p);
+  if (mx == null) return null;
+  const raw = mx - r;
+  // Nombre ENTIER (l'athlète ne peut pas viser « 2,5 reps en réserve ») : arrondi au plus proche, et
+  // les demis vers le HAUT (2,5 → 3) : un peu plus de marge, plus prudent, et les athlètes ont tendance
+  // à sous-estimer leurs reps en réserve loin de l'échec.
+  const rir = Math.min(5, Math.max(0, Math.floor(raw + 0.5)));
+  return {
+    rir,
+    rpe: 10 - rir,
+    maxReps: Math.round(mx * 10) / 10,
+    impossible: raw < -0.5, // plus de reps prévues que le maximum possible à ce %
+  };
+}
+
+/* RM estimé du jour d'une série (null si non exploitable) */
+export function setE1rm(serie) {
+  const w = num(serie?.actualWeight);
+  const r = num(serie?.actualReps);
+  const rir = serie?.rir != null && serie.rir !== "" ? Number(serie.rir) : null;
+  if (!(w > 0) || !(r > 0) || rir == null || rir > 4) return null;
+  return e1rmFromSet(w, r, 10 - rir);
+}
+
+/* Charge conseillée pour atteindre (reps prévues, RIR visé) à partir d'un e1RM */
+export function weightFor(e1rm, reps, rir) {
+  const r = plannedReps(reps);
+  if (!(e1rm > 0) || !(r > 0) || rir == null) return null;
+  const pct = pct1RMFromRepsRpe(r, 10 - Math.min(4, Math.max(0, rir)));
+  return pct ? e1rm * pct : null;
+}
+
+/* Analyse des séries remplies : e1RM par série, perte vs 1re série, charge conseillée pour la série
+   suivante et pour la prochaine séance au même schéma. */
+export function analyzeSets(series, exercise) {
+  const tgt = targetRir(exercise?.rmPercent, exercise?.reps);
+  const rows = (series || []).map((s) => ({ e1rm: setE1rm(s), weight: num(s.actualWeight), reps: num(s.actualReps), rir: s.rir }));
+  const firstIdx = rows.findIndex((x) => x.e1rm);
+  const first = firstIdx >= 0 ? rows[firstIdx].e1rm : null;
+  const out = rows.map((x, i) => {
+    const loss = x.e1rm && first && i > firstIdx ? Math.round(((first - x.e1rm) / first) * 1000) / 10 : null;
+    let next = null;
+    if (x.e1rm && tgt && x.weight > 0) {
+      const w = weightFor(x.e1rm, exercise?.reps, tgt.rir);
+      if (w) {
+        const capped = Math.min(x.weight * 1.1, Math.max(x.weight * 0.9, w));
+        next = Math.round(capped);
+      }
+    }
+    return { ...x, loss, next };
+  });
+  const valid = out.filter((x) => x.e1rm);
+  const lastE1 = valid.length ? valid[valid.length - 1].e1rm : null;
+  const nextSession = lastE1 && tgt ? Math.round(weightFor(Math.max(...valid.map((x) => x.e1rm)), exercise?.reps, tgt.rir) || 0) || null : null;
+  const maxLoss = out.reduce((m, x) => (x.loss != null && x.loss > m ? x.loss : m), 0);
+  return { target: tgt, rows: out, maxLoss: valid.length >= 2 ? maxLoss : null, nextSession };
+}
+
+export const fr = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
+export const rirTxt = (r) => (r >= 5 ? "5+" : String(Math.round(r)));

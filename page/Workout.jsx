@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjustment, adjustmentBefore, END_LOSS_WARN, END_LOSS_STOP } from "../component/enduranceFeedback";
+import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
 import { FOSTER_CR10 } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
@@ -2925,13 +2926,16 @@ export default function Workout() {
       blocks.map((b, i) => (i !== bIdx ? b : { ...b, exercises: (b.exercises || []).filter((_, k) => k !== eIdx) }))
     );
   };
+  // Mise à jour FONCTIONNELLE (prev => ...) : plusieurs appels de suite (ex. choisir EMOM règle le
+  // mode, l'intervalle et le nombre de tours) s'additionnent au lieu de s'écraser. Avant, chaque appel
+  // repartait de l'ancienne version des blocs et le dernier effaçait le mode EMOM / AMRAP choisi.
   const updateBlock = (bIdx, field, val) => {
-    setBlocks(blocks.map((b, i) => (i !== bIdx ? b : { ...b, [field]: val })));
+    setBlocks((prev) => prev.map((b, i) => (i !== bIdx ? b : { ...b, [field]: val })));
   };
   const updateExercise = (bIdx, eIdx, field, val) => {
     // Copie immutable (on ne modifie plus l'objet exercice partagé avec la
-    // séance affichée / la liste des séances).
-    const nb = blocks.map((b, i) =>
+    // séance affichée / la liste des séances). Fonctionnelle : plusieurs appels de suite s'additionnent.
+    setBlocks((prevBlocks) => prevBlocks.map((b, i) =>
       i !== bIdx
         ? b
         : {
@@ -2963,8 +2967,7 @@ export default function Workout() {
               return updated;
             }),
           }
-    );
-    setBlocks(nb);
+    ));
   };
 
   /* ===================== BIBLIOTHÈQUE D'EXERCICES (autocomplete + image partagée) =====================
@@ -7318,8 +7321,8 @@ export default function Workout() {
                           const mode = e.target.value;
                           updateBlock(bIdx, "timerMode", mode === "normal" ? null : mode);
                           if (mode === "emom") {
-                            if (!block.timerIntervalSec) updateBlock(bIdx, "timerIntervalSec", 60);
-                            updateBlock(bIdx, "timerRounds", block.timerRounds || 10);
+                            if (!block.timerIntervalSec || block.timerMode === "amrap") updateBlock(bIdx, "timerIntervalSec", 60);
+                            updateBlock(bIdx, "timerRounds", block.timerMode === "amrap" ? 10 : block.timerRounds || 10);
                           }
                           if (mode === "amrap") {
                             // AMRAP : un seul tour, pas de "nombre de tours"
@@ -7327,7 +7330,7 @@ export default function Workout() {
                             // réglable juste en dessous, comme en muscu) qui
                             // n'est pas figé, puisque le but est d'en faire
                             // le plus possible pendant la durée impartie.
-                            if (!block.timerIntervalSec) updateBlock(bIdx, "timerIntervalSec", 600);
+                            if (!block.timerIntervalSec || block.timerMode === "emom") updateBlock(bIdx, "timerIntervalSec", 600);
                             updateBlock(bIdx, "timerRounds", 1);
                           }
                         }}
@@ -9648,6 +9651,20 @@ export default function Workout() {
                               Tempo: {ex.tempo}
                             </>
                           )}
+                          {(() => {
+                            // RIR visé = reps max possibles à ce %RM − reps prévues (voir component/loadAdjust.js)
+                            const t = targetRir(ex.rmPercent, ex.reps);
+                            if (!t) return null;
+                            return t.impossible ? (
+                              <div style={{ color: "#d9695a", fontSize: 12, marginTop: 4 }}>
+                                ⚠️ {ex.reps} reps à {ex.rmPercent} % dépasse le maximum possible (~{frNum(t.maxReps)} reps) : baisse le % ou les reps.
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: 13, marginTop: 4, color: rirRpeColor(t.rpe), fontWeight: 700 }}>
+                                🎯 À viser : {rirTxt(t.rir)} rep{t.rir > 1 ? "s" : ""} en réserve (RPE {frNum(t.rpe)})
+                              </div>
+                            );
+                          })()}
                         </div>
                         {fb && block.timerMode !== "emom" && block.timerMode !== "amrap" && (() => {
                           const normalized = normalizeFeedback(fb);
@@ -10525,6 +10542,15 @@ export default function Workout() {
                     }}>
                       Série {idx + 1}
                     </h4>
+                    {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
+                      const t = targetRir(currentExerciseFeedback.exercise.rmPercent, currentExerciseFeedback.exercise.reps);
+                      if (!t || t.impossible) return null;
+                      return (
+                        <div style={{ fontSize: 13, margin: "-6px 0 12px", color: rirRpeColor(t.rpe), fontWeight: 700 }}>
+                          🎯 Objectif : {currentExerciseFeedback.exercise.reps} reps avec {rirTxt(t.rir)} en réserve (RPE {frNum(t.rpe)})
+                        </div>
+                      );
+                    })()}
 
                     {/* Charge ou Hauteur selon exercice */}
                     <div style={{ marginBottom: 14 }}>
@@ -10734,8 +10760,58 @@ export default function Workout() {
                         {serie.rir === 0 ? " — échec, plus aucune rep possible" : ""}
                       </div>
                     </div>
+                    {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
+                      // RM estimé du jour, perte vs 1re série, charge conseillée pour la série suivante
+                      const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise);
+                      const row = A.rows[idx];
+                      if (!row || !row.e1rm) return null;
+                      const lossCol = row.loss == null ? "#a8a199" : row.loss > LOSS_STOP ? "#d9695a" : row.loss > LOSS_WARN ? "#e08a3d" : "#4fae7d";
+                      const hasNext = idx < currentExerciseFeedback.series.length - 1;
+                      const nextW = Number(currentExerciseFeedback.series[idx + 1]?.actualWeight) || 0;
+                      return (
+                        <div style={{ marginTop: 10, padding: 8, borderRadius: 8, background: "#0d0c0a", fontSize: 12, lineHeight: 1.6 }}>
+                          RM estimé du jour : <strong>{Math.round(row.e1rm)} kg</strong>
+                          {row.loss != null && (
+                            <> · perte vs série 1 : <strong style={{ color: lossCol }}>{row.loss > 0 ? "−" : "+"}{frNum(Math.abs(row.loss))} %</strong></>
+                          )}
+                          {row.loss != null && row.loss > LOSS_STOP && <div style={{ color: lossCol }}>⚠️ Fatigue nette : allège ou arrête l'exercice.</div>}
+                          {hasNext && row.next != null && A.target && (
+                            <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <span>
+                                ➡️ Série {idx + 2} : <strong>{row.next} kg</strong> pour {currentExerciseFeedback.exercise.reps} reps à {rirTxt(A.target.rir)} en réserve
+                                {row.weight && row.next !== row.weight ? ` (${row.next > row.weight ? "+" : ""}${row.next - row.weight} kg)` : " (même charge)"}
+                              </span>
+                              {nextW !== row.next && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const ns = [...currentExerciseFeedback.series];
+                                    ns[idx + 1] = { ...ns[idx + 1], actualWeight: row.next };
+                                    setCurrentExerciseFeedback({ ...currentExerciseFeedback, series: ns });
+                                  }}
+                                  style={{ padding: "4px 10px", borderRadius: 999, border: "1px solid #4fae7d", background: "transparent", color: "#4fae7d", fontSize: 12, cursor: "pointer" }}
+                                >
+                                  Appliquer
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
+                {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
+                  const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise);
+                  if (!A.nextSession || !A.target) return null;
+                  return (
+                    <div style={{ marginBottom: 18, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
+                      📈 Prochaine séance au même schéma ({currentExerciseFeedback.exercise.reps} reps, {rirTxt(A.target.rir)} en réserve) : <strong>≈ {A.nextSession} kg</strong>
+                      {A.maxLoss != null && <> · perte max sur la séance : <strong>{frNum(A.maxLoss)} %</strong></>}
+                      <div style={{ fontSize: 11, color: "#a8a199" }}>Calculé sur ta meilleure série du jour (RM estimé) ; tes RM se mettent aussi à jour tout seuls à la fin de la séance.</div>
+                    </div>
+                  );
+                })()}
 
                 {/* Notes globales */}
                 <div style={{ marginBottom: 18 }}>
