@@ -27,6 +27,8 @@ const r1 = (x) => Math.round(x * 10) / 10;
 
 export const END_LOSS_WARN = 5; // % de perte : la vitesse n'est plus tenue
 export const END_LOSS_STOP = 10;
+/* Règle d'ajustement du bloc suivant (lue aussi par la page Référence) */
+export const END_ADJ = { low: 0.97, high: 1.03, maxDown: 0.9, maxUp: 1.05, maxSdecForUp: 3 };
 
 const validDist = (d) => {
   const v = Number(String(d ?? "").replace(",", "."));
@@ -82,11 +84,11 @@ export function nextBlockAdjustment(S, pct, target) {
   const ratio = S.held / target;
   let factor = 1;
   let label = "Cible tenue : garder la même intensité au bloc suivant.";
-  if (ratio < 0.97) {
-    factor = Math.max(0.9, ratio);
+  if (ratio < END_ADJ.low) {
+    factor = Math.max(END_ADJ.maxDown, ratio);
     label = `Distance tenue ${Math.round(ratio * 100)} % de la cible : baisser l'intensité du bloc suivant pour garder des reps stables.`;
-  } else if (ratio >= 1.03 && (S.sdec == null || S.sdec <= 3)) {
-    factor = Math.min(1.05, ratio);
+  } else if (ratio >= END_ADJ.high && (S.sdec == null || S.sdec <= END_ADJ.maxSdecForUp)) {
+    factor = Math.min(END_ADJ.maxUp, ratio);
     label = `Cible dépassée sans perte (${Math.round(ratio * 100)} %) : le bloc suivant peut monter un peu.`;
   }
   return {

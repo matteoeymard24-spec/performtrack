@@ -35,6 +35,7 @@ import {
   scopeRank,
 } from "./cycles";
 import { appConfirm, appAlert as alert } from "./appDialog";
+import { realizedByWeek } from "./weekRealized";
 
 const CARD = "#151310";
 const DARK = "#0d0c0a";
@@ -488,7 +489,12 @@ export default function PlanningPanel({
       .map((c) => ({ c }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown, rangeStart, rangeEnd]);
-  const anyLoadInfo = loadWeeks.some(({ c }) => hasLoadInfo(c));
+  // RÉELLEMENT EFFECTUÉ (séances terminées du calendrier, méthode sRPE) — voir component/weekRealized.js
+  const realized = useMemo(() => realizedByWeek(events, defaultScope), [events, defaultScope]);
+  const realizedWeeks = Object.entries(realized)
+    .filter(([wk]) => addDays(wk, 6) >= rangeStart && wk <= rangeEnd)
+    .sort(([a], [b]) => a.localeCompare(b));
+  const anyLoadInfo = loadWeeks.some(({ c }) => hasLoadInfo(c)) || realizedWeeks.length > 0;
 
   /* ---------------- formulaire ---------------- */
   // Ondulatoire : le nom suit la phase (Développement, Maintien, Affûtage…)
@@ -843,7 +849,8 @@ export default function PlanningPanel({
           {/* volume & intensité par semaine (microcycles) — remplace l'ancienne charge en minutes */}
           <div style={{ position: "relative", height: 78, marginTop: 6 }}>
             <div style={{ position: "absolute", left: 0, top: 0, fontSize: 9, color: "#5e584f", zIndex: 1 }}>
-              <span style={{ color: "#5b8def" }}>■</span> Volume · <span style={{ color: "#e0a13d" }}>■</span> Intensité (1-10) · trait du haut : légère / moyenne / dure
+              <span style={{ color: "#5b8def" }}>■</span> Volume · <span style={{ color: "#e0a13d" }}>■</span> Intensité (1-10) prévus ·{" "}
+              <span style={{ color: "#5b8def" }}>□</span><span style={{ color: "#e0a13d" }}>□</span> réellement effectués · trait du haut : légère / moyenne / dure
             </div>
             {loadWeeks
               .filter(({ c }) => hasLoadInfo(c))
@@ -860,17 +867,35 @@ export default function PlanningPanel({
                     style={{ position: "absolute", left: `${left}%`, width: `${Math.max(0.8, wPct - 0.25)}%`, top: 14, bottom: 0, cursor: "pointer" }}
                   >
                     {h && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 4, borderRadius: 2, background: h.color }} />}
-                    <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, top: 6, display: "flex", alignItems: "flex-end", gap: 1 }}>
+                    <div style={{ position: "absolute", left: 0, right: "50%", bottom: 0, top: 6, display: "flex", alignItems: "flex-end", gap: 1 }}>
                       <div style={{ flex: 1, height: bar(c.volume), background: "#5b8def", borderRadius: "2px 2px 0 0", opacity: c.volume == null ? 0 : 1 }} />
                       <div style={{ flex: 1, height: bar(c.intensity), background: "#e0a13d", borderRadius: "2px 2px 0 0", opacity: c.intensity == null ? 0 : 1 }} />
                     </div>
                   </div>
                 );
               })}
+            {/* Réellement effectué : barres creuses dans la moitié droite de chaque semaine */}
+            {realizedWeeks.map(([wk, r]) => {
+              const left = pct(wk);
+              const wPct = (7 / totalDays) * 100;
+              const bar = (v) => (v == null ? 0 : Math.max(2, (Math.min(10, Number(v)) / 10) * 52));
+              return (
+                <div
+                  key={`real-${wk}`}
+                  title={`Réellement effectué · semaine du ${fmtShort(wk)}\nVolume ${r.volume}/10 (${r.minutes} min, ${r.sessions} séance(s)${r.athletes > 1 ? `, moyenne de ${r.athletes} athlètes` : ""})\nIntensité ${String(r.intensity).replace(".", ",")}/10 (RPE moyen pondéré par la durée)\nCharge ${r.load} UA · 10/10 = semaine la plus chargée (${r.maxMinutes} min)`}
+                  style={{ position: "absolute", left: `${left}%`, width: `${Math.max(0.8, wPct - 0.25)}%`, top: 14, bottom: 0, pointerEvents: "auto" }}
+                >
+                  <div style={{ position: "absolute", left: "50%", right: 0, bottom: 0, top: 6, display: "flex", alignItems: "flex-end", gap: 1 }}>
+                    <div style={{ flex: 1, height: bar(r.volume), border: "1.5px solid #5b8def", borderBottom: "none", borderRadius: "2px 2px 0 0", boxSizing: "border-box" }} />
+                    <div style={{ flex: 1, height: bar(r.intensity), border: "1.5px solid #e0a13d", borderBottom: "none", borderRadius: "2px 2px 0 0", boxSizing: "border-box" }} />
+                  </div>
+                </div>
+              );
+            })}
             {!anyLoadInfo && (
               <div style={{ position: "absolute", left: 0, right: 0, top: 24, textAlign: "center", fontSize: 11, color: MUTED }}>
                 {isAdmin
-                  ? "Ouvre une semaine (✏️ Modifier) et règle son volume et son intensité pour les voir ici."
+                  ? "Ouvre une semaine (✏️ Modifier) pour régler le volume et l'intensité prévus ; le réellement effectué s'affiche dès qu'une séance est terminée."
                   : "Volume et intensité des semaines : pas encore renseignés."}
               </div>
             )}
@@ -1174,6 +1199,17 @@ export default function PlanningPanel({
                         {h.id === "dure" ? "🔥 " : ""}{h.label} · Vol {c.volume ?? "–"} · Int {c.intensity ?? "–"}
                       </span>
                     ) : null;
+                  })()}
+                  {c.level === "micro" && (() => {
+                    // réellement effectué sur les semaines couvertes par ce microcycle
+                    const wks = Object.entries(realized).filter(([wk]) => addDays(wk, 6) >= c.startDate && wk <= c.endDate).map(([, r]) => r);
+                    if (!wks.length) return null;
+                    const r = wks[0];
+                    return (
+                      <span style={{ marginLeft: 6, color: "#a8c7f0", fontSize: 11, fontWeight: 700 }}>
+                        · Réel : Vol {r.volume} · Int {String(r.intensity).replace(".", ",")} ({r.minutes} min)
+                      </span>
+                    );
                   })()}
                   {isNow && <span style={{ marginLeft: 6, color: GREEN, fontSize: 11, fontWeight: 700 }}>● en cours · S{w.idx}/{w.total}</span>}
                   <div style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>

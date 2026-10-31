@@ -37,6 +37,7 @@ export default function Layout() {
     { path: "/tests", label: "Tests", icon: "🧪", roles: ["superadmin", "admin", "athlete"] },
     { path: "/acwr", label: "REDI", icon: "📈", roles: ["superadmin", "admin"] },
     { path: "/athletes", label: "Athlètes", icon: "👥", roles: ["superadmin", "admin"] },
+    { path: "/reference", label: "Référence", icon: "📚", roles: ["superadmin"] }, // superadmin uniquement
   ];
 
   const visibleMenuItems = menuItems.filter((item) => {

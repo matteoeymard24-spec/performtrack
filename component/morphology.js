@@ -46,7 +46,7 @@ export const PRO_DATA = {
 };
 
 /* Rapport à la moyenne Pro D2 (poids), avants / arrières — ESTIMATION (voir en-tête) */
-const MASS_RATIO = {
+export const MASS_RATIO = {
   nationale: { fw: 0.97, bk: 0.98 },
   espoirs: { fw: 0.92, bk: 0.94 },
   federale1: { fw: 0.93, bk: 0.95 },
@@ -56,11 +56,11 @@ const MASS_RATIO = {
   u18: { fw: 0.84, bk: 0.88 },
 };
 /* Taille : écart très faible entre niveaux (sélection précoce sur le gabarit) */
-const HEIGHT_RATIO = { nationale: 0.997, espoirs: 0.995, federale1: 0.992, federale2: 0.988, federale3: 0.984, regionale: 0.98, u18: 0.985 };
+export const HEIGHT_RATIO = { nationale: 0.997, espoirs: 0.995, federale1: 0.992, federale2: 0.988, federale3: 0.984, regionale: 0.98, u18: 0.985 };
 /* % de masse grasse de référence (DXA) ; ajouté aux niveaux inférieurs */
 export const BF_DXA = { forwards: [17.8, 2.4], backs: [14.8, 1.2] };
 export const BF_SKINFOLD = { forwards: 14.0, backs: 10.5 };
-const BF_ADD = { international: 0, top14: 0, prod2: 0, nationale: 0.5, espoirs: 1, federale1: 1.5, federale2: 2.5, federale3: 3.5, regionale: 4.5, u18: 1.5 };
+export const BF_ADD = { international: 0, top14: 0, prod2: 0, nationale: 0.5, espoirs: 1, federale1: 1.5, federale2: 2.5, federale3: 3.5, regionale: 4.5, u18: 1.5 };
 
 export const SILVER_SD = 0.6;
 export const GOLD_SD = 1.4;

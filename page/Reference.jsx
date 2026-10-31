@@ -1,0 +1,369 @@
+/* =====================================================================
+   Reference.jsx — page « Référence » (SUPERADMIN uniquement).
+   Explique TOUS les calculs de l'app, par modalité, avec les références.
+   Les chiffres (seuils, coefficients, tables) sont LUS DIRECTEMENT dans les
+   modules de calcul : si un réglage change dans le code, la page change avec.
+   À tenir à jour à chaque nouvelle méthode ajoutée dans l'app.
+   ===================================================================== */
+import React from "react";
+import { Navigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthProvider";
+import { Page, FoldCard, useFold, PAGE_TITLE, PAGE_SUB, MUTED, TEXT, ACCENT } from "../component/ui";
+import {
+  REDI_ACUTE_N,
+  REDI_ACUTE_LAMBDA,
+  REDI_CHRONIC_N,
+  REDI_CHRONIC_LAMBDA,
+  maxRepsAtPct,
+  NEURAL_DROP_THRESHOLD,
+  NEURAL_RM_FLOOR,
+  NEURAL_WINDOW_DAYS,
+  NEURAL_PREV_LOOKBACK_DAYS,
+  NEURAL_MIN_SETS_PREV,
+  PRESC_LOAD_GAP,
+  PRESC_RPE_HIGH,
+  PRESC_RPE_GAP,
+  FORM_LEVELS,
+} from "../component/loadMetrics";
+import { FOSTER_CR10 } from "../component/sessionLoad";
+import { targetRir, UNI_FACTOR, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
+import { SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
+import { END_LOSS_WARN, END_LOSS_STOP, END_ADJ } from "../component/enduranceFeedback";
+import { ZONES, DEFAULT_CS_VMA_RATIO, HR_MIN_EFFORT_SEC } from "../component/drillBank";
+import { LEVELS, LEVEL_ORDER, FAMILY_RATIO, FAMILY_LABEL, BRONCO_RECORD_S } from "../component/rugbyLevels";
+import { PRO_DATA, MASS_RATIO, BF_ADD, BF_DXA, BF_SKINFOLD, SILVER_SD, GOLD_SD, medalTargets } from "../component/morphology";
+import { HIP_THRUST_FACTOR, BROAD_SD } from "../component/norms";
+import { BLOCK_TYPES } from "../component/blockType";
+
+const fr = (x, d = 1) => (x == null || Number.isNaN(x) ? "—" : String(Math.round(x * 10 ** d) / 10 ** d).replace(".", ","));
+const pctTxt = (r) => `${r >= 1 ? "+" : "−"}${fr(Math.abs((r - 1) * 100), 1)} %`;
+const P = ({ children }) => <p style={{ margin: "0 0 10px", fontSize: 13, lineHeight: 1.65, color: MUTED }}>{children}</p>;
+const H = ({ children }) => <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, margin: "14px 0 6px" }}>{children}</div>;
+const F = ({ children }) => (
+  <div style={{ fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 12.5, color: ACCENT, background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 8, padding: "8px 10px", margin: "6px 0 10px", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+    {children}
+  </div>
+);
+const Ref = ({ children }) => <div style={{ fontSize: 11.5, color: "#8e877e", marginTop: 6, lineHeight: 1.5 }}>📚 {children}</div>;
+const Est = () => <span style={{ fontSize: 11, color: "#d9a441", border: "1px solid #d9a441", borderRadius: 999, padding: "0 6px", marginLeft: 6 }}>estimation</span>;
+const T = ({ head, rows }) => (
+  <div style={{ overflowX: "auto", margin: "6px 0 10px" }}>
+    <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
+      <thead>
+        <tr>
+          {head.map((h, i) => (
+            <th key={i} style={{ textAlign: i ? "right" : "left", padding: "5px 8px", color: MUTED, fontWeight: 600, borderBottom: "1px solid #2a2620", whiteSpace: "nowrap" }}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r, i) => (
+          <tr key={i} style={{ borderTop: "1px solid #1d1a16" }}>
+            {r.map((c, j) => (
+              <td key={j} style={{ textAlign: j ? "right" : "left", padding: "5px 8px", color: j ? "#d8d2c9" : TEXT, whiteSpace: "nowrap" }}>{c}</td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+export default function Reference() {
+  const { isSuperAdmin } = useAuth();
+  const fold = useFold("reference", ["charge", "muscu", "sprint", "endurance", "forme", "normes", "morpho", "biblio"]);
+  if (!isSuperAdmin) return <Navigate to="/" replace />;
+
+  const lvlLabel = (id) => LEVELS.find((l) => l.id === id)?.label || id;
+  const pctRows = [60, 65, 70, 75, 80, 85, 90];
+  const repCols = [3, 5, 6, 8, 10, 12];
+  const rirCell = (p, r, uni) => {
+    const t = targetRir(p, r, uni);
+    if (!t) return "—";
+    return t.impossible ? "✗" : t.rir >= 5 ? "5+" : String(t.rir);
+  };
+
+  return (
+    <Page>
+      <h2 style={PAGE_TITLE}>📚 Référence</h2>
+      <p style={PAGE_SUB}>
+        Tous les calculs de l'app, modalité par modalité, avec leurs sources. Visible uniquement par le superadmin. Les
+        chiffres de cette page sont lus directement dans le code de calcul : ils se mettent à jour tout seuls quand un réglage change.
+      </p>
+
+      {/* ============ CHARGE ============ */}
+      <FoldCard id="charge" fold={fold} title="⚖️ Charge d'entraînement (sRPE, REDI, monotonie)">
+        <H>Charge d'une séance</H>
+        <F>charge (UA) = note globale de séance (0-10, échelle de Foster) × durée réelle (min)</F>
+        <P>
+          Note demandée à la fin de chaque séance (« Terminer la séance »), une seule pour toute la séance, quelle que soit la
+          modalité (muscu, sprint, endurance, séance mixte). Durée = celle confirmée par l'athlète (sinon la durée prévue, sinon 60 min ;
+          une durée &gt; 300 min est ignorée). Anciennes séances sans note globale : moyenne des RPE saisis × durée prévue.
+        </P>
+        <T head={["Note", "Libellé (Foster CR-10)"]} rows={Object.entries(FOSTER_CR10).map(([k, v]) => [k, v])} />
+        <P>
+          Pourquoi une note globale : en muscu le RPE vient des reps en réserve, en sprint / endurance c'est l'effort perçu — deux échelles
+          différentes ; les mélanger fausserait la charge. Foster recommande la note ~30 min après la séance (compromis : à la fin).
+        </P>
+        <Ref>Foster et al. 2001, J Strength Cond Res 15:109 · Day et al. 2004 et Sweet et al. 2004 (sRPE en musculation) · sRPE et distance à très haute vitesse chez les sprinteurs : IJSPP 2024 19(8):792.</Ref>
+
+        <H>REDI (charge aiguë / chronique)</H>
+        <F>{`REDI = Σ e^(−λ·i) × charge(jour i) / Σ e^(−λ·i)   (jours SANS séance ignorés, pas comptés à 0)
+aigu : ${REDI_ACUTE_N} jours, λ = ${fr(REDI_ACUTE_LAMBDA, 2)}    chronique : ${REDI_CHRONIC_N} jours, λ = ${fr(REDI_CHRONIC_LAMBDA, 2)}
+ratio = REDI aigu / REDI chronique`}</F>
+        <T
+          head={["Ratio", "Zone"]}
+          rows={[
+            ["< 0,8", "Sous-chargé"],
+            ["0,8 – 1,3", "Zone optimale"],
+            ["1,3 – 1,5", "Attention"],
+            ["> 1,5", "Surcharge"],
+          ]}
+        />
+        <P>
+          Une séance compte pour un athlète seulement s'il l'a démarrée ET terminée (peu importe qui l'a créée, séance « Moi » comprise).
+          Le ratio est aussi comparé à l'historique propre de l'athlète (z-score, ≥ 1,5 ou ≤ −1,5 = inhabituel), car les zones fixes
+          sont des moyennes de population.
+        </P>
+        <H>Monotonie et strain</H>
+        <F>{`monotonie = moyenne des charges des 7 derniers jours / écart-type   (< 1,5 saine · 1,5-2 modérée · ≥ 2 élevée)
+strain = charge de la semaine × monotonie   (comparé à l'historique propre : z > 0,5 plus haut, > 1,5 inhabituel)`}</F>
+        <H>Fiabilité du RPE déclaré</H>
+        <P>Écart-type des RPE moyens des 20 dernières séances (minimum 5) : &lt; 0,4 = déclaration peu variable, à vérifier avec l'athlète.</P>
+        <Ref>Moussa et al. 2020, Frontiers in Physiology (REDI) · Foster 1998, Med Sci Sports Exerc 30:1164 (monotonie / strain) · Gabbett 2016, Br J Sports Med 50:273 (zones du ratio).</Ref>
+      </FoldCard>
+
+      {/* ============ MUSCU ============ */}
+      <FoldCard id="muscu" fold={fold} title="💪 Musculation (RIR, RM, charge conseillée)">
+        <H>Saisie : reps en réserve (RIR)</H>
+        <F>RPE enregistré = 10 − RIR   (boutons 0, 1, 2, 3, 4, 5+ ; 5+ → RPE 5)</F>
+        <Ref>Zourdos et al. 2016, J Strength Cond Res 30:267 (échelle RPE basée sur les reps en réserve) · Hackett et al. 2012 (précision près de l'échec) · Halperin et al. 2022, Sports Med 52:377 (erreur ≈ 1 rep, plus grande loin de l'échec).</Ref>
+
+        <H>RIR visé (affiché à la construction, dans la séance et le feedback)</H>
+        <F>{`RIR visé = reps max possibles à ce %RM − reps prévues   (nombre entier, les demis arrondis vers le haut)
+unilatéral : reps max PAR CÔTÉ = 1 + (reps max bilatérales − 1) × ${fr(UNI_FACTOR, 2)}`}</F>
+        <P>Table (bilatéral) — ✗ = prescription impossible (plus de reps que le maximum à ce %) :</P>
+        <T head={["%RM \\ reps", ...repCols.map(String), "reps max"]} rows={pctRows.map((p) => [`${p} %`, ...repCols.map((r) => rirCell(p, r, false)), fr(maxRepsAtPct(p))])} />
+        <P>Même table en unilatéral (reps par côté) :</P>
+        <T head={["%RM \\ reps/côté", ...repCols.map(String)]} rows={pctRows.map((p) => [`${p} %`, ...repCols.map((r) => rirCell(p, r, true))])} />
+        <P>
+          Unilatéral : le RIR se compte par côté (le RM de référence est un RM par côté), mais à % égal on fait moins de reps qu'en bilatéral
+          (≈ −14 %). <Est />
+        </P>
+        <Ref>Table reps ↔ %1RM : Helms et al. 2016, Strength Cond J 38:42 ; Zourdos 2016 · unilatéral : Costa et al. 2015, Biology of Sport 32:35.</Ref>
+
+        <H>RM estimé du jour et charge de la série suivante</H>
+        <F>{`e1RM = charge / %1RM(reps + RIR)   (séries avec RIR ≤ 4 et ≤ 12 reps à l'échec ; unilatéral : côté le plus faible)
+charge série suivante = e1RM × %1RM(reps prévues + RIR visé)   (arrondi 1 kg, ± 10 % max par série)
+perte = baisse de l'e1RM vs la 1re série   (≤ ${LOSS_WARN} % stable · ${LOSS_WARN}-${LOSS_STOP} % fatigue · > ${LOSS_STOP} % alléger / arrêter)`}</F>
+        <P>« Prochaine séance au même schéma » = meilleure série du jour × %1RM(reps prévues + RIR visé). <Est /></P>
+        <Ref>Méthode RPE / e1RM (Tuchscherer, RTS) ; Helms et al. 2018, Front Physiol (autorégulation par RPE).</Ref>
+
+        <H>Mise à jour automatique des RM (fin de séance)</H>
+        <P>
+          Blocs muscu seulement, hors échauffement, poids du corps et élastique. Séries retenues : ≤ 6 reps et RPE ≥ 8 (RIR ≤ 2).
+          RM prédit par série avec la table RPE, puis MÉDIANE des séries (robuste à une série aberrante). Historique des 20 dernières valeurs.
+          Page « Mes RM » (courbes, bouton Reconstruire) : séries ≤ 10 reps et RPE ≥ 7.
+        </P>
+        <H>Alertes de prescription</H>
+        <P>
+          « Charge » : charge réalisée ≥ {fr(PRESC_LOAD_GAP * 100, 0)} % sous la charge prévue avec RPE ≥ {PRESC_RPE_HIGH}. « RPE » : charge
+          proche du prévu mais RPE ≥ {PRESC_RPE_HIGH} alors que le RPE attendu (table) est ≥ {PRESC_RPE_GAP} points plus bas.
+        </P>
+        <P>Hip thrust sans barème : barème du squat × {fr(HIP_THRUST_FACTOR, 1)}. <Est /></P>
+      </FoldCard>
+
+      {/* ============ SPRINT ============ */}
+      <FoldCard id="sprint" fold={fold} title="⚡ Sprint">
+        <F>{`saisie : chrono de chaque rep (+ case « rep faite ») — pas de RPE par rep
+%Sdec = (somme des temps / (meilleur temps × n) − 1) × 100
+perte d'une rep = (temps − meilleur) / meilleur   (> ${SPRINT_LOSS_WARN} % : la vitesse max n'est plus travaillée · > ${SPRINT_LOSS_STOP} % : fatigue nette)`}</F>
+        <P>
+          Pas de RPE par rep : sur 2-4 s, l'effort paraît plus facile qu'il n'est et chaque rep est à fond (notes 8-10 sans information).
+          Le chrono mesure la fatigue objectivement ; la charge passe par la note globale de séance.
+        </P>
+        <Ref>Fitzsimons 1993 ; Glaister 2008 ; Girard, Mendez-Villanueva & Bishop 2011, Sports Med 41:673 (%Sdec) · seuil 5 % : JSCR 2023 37(8):1566 ; Sun et al. 2026, Front Physiol.</Ref>
+        <H>Barème sprint 60 m (sans barème club)</H>
+        <P>Modèle mono-exponentiel v(t) = Vmax·(1 − e^(−t/τ)), τ calé sur le 20 m et la Vmax du barème. <Est /></P>
+        <Ref>Furusawa 1927 ; Samozino et al. 2016, Scand J Med Sci Sports 26:648.</Ref>
+      </FoldCard>
+
+      {/* ============ ENDURANCE ============ */}
+      <FoldCard id="endurance" fold={fold} title="🏃 Endurance (zones, FC, intermittent)">
+        <H>Zones d'entraînement (en % de la vitesse critique)</H>
+        <T
+          head={["Zone", "% vitesse critique", "% FC max", "Ressenti"]}
+          rows={ZONES.map((z) => [z.name, z.max >= 400 ? `> ${z.min}` : `${z.id === 1 ? 60 : z.min}-${z.max}`, z.fcPct ? `${z.fcPct[0]}-${z.fcPct[1]}` : "non pertinente", z.feel])}
+        />
+        <P>
+          Exos en % VMA convertis en % VC avec le ratio VC/VMA de l'athlète, sinon ≈ {fr(DEFAULT_CS_VMA_RATIO, 2)}. FC cible = FC max de référence ×
+          % de la zone (plus haute FC mesurée en test ; formule de Tanaka 208 − 0,7 × âge seulement à défaut). FC non affichée pour les
+          efforts &lt; {HR_MIN_EFFORT_SEC / 60} min (la FC met 1 à 3 min à monter). Correspondance VC ↔ FC <Est />
+        </P>
+        <Ref>Seiler & Kjerland 2006, Scand J Med Sci Sports 16:49 ; Seiler 2010, IJSPP 5:276 (seuils ventilatoires en % FC max) · Jones et al. 2019, Med Sci Sports Exerc 51:2185 (vitesse critique) · Tanaka et al. 2001, J Am Coll Cardiol 37:153.</Ref>
+
+        <H>Intermittent (30/30, 15/15…) : distance par rep</H>
+        <F>{`cible d'une rep = vitesse de référence × % prescrit × temps d'effort   (× 0,88 si passage au sol)
+% de la cible = distance moyenne / cible · perte (%Sdec) = (1 − moyenne / meilleure) × 100
+alerte perte : > ${END_LOSS_WARN} % · fatigue nette : > ${END_LOSS_STOP} %`}</F>
+        <H>Ajustement du bloc d'endurance suivant</H>
+        <F>{`niveau tenu = moyenne de la 2e moitié des reps
+< ${fr(END_ADJ.low * 100, 0)} % de la cible → % suivant × (niveau tenu / cible), baisse max ${pctTxt(END_ADJ.maxDown)}
+≥ ${fr(END_ADJ.high * 100, 0)} % et perte ≤ ${END_ADJ.maxSdecForUp} % → hausse, max ${pctTxt(END_ADJ.maxUp)}
+sinon → même cible`}</F>
+        <P>Propre à chaque athlète, affiché comme « Cible ajustée pour toi » ; ne modifie pas la séance du coach. <Est /></P>
+        <Ref>Billat 2001, Sports Med 31:13 ; Buchheit & Laursen 2013, Sports Med 43:313 (régler l'intensité sur ce que l'athlète tient).</Ref>
+
+        <H>Tests d'endurance</H>
+        <P>
+          VMA (Léger, VAMEVAL, Cooper = distance / 200, 6 min = distance / 100), VO2max ≈ 5,857 × VMA − 19,458 ; 30-15 IFT (VIFT,
+          VO2max par la régression de Buchheit 2008) ; vitesse critique = pente distance / temps de 2 à 4 efforts maximaux, D' = ordonnée.
+        </P>
+      </FoldCard>
+
+      {/* ============ FORME ============ */}
+      <FoldCard id="forme" fold={fold} title="🩺 État de forme, wellness, CMJ, fatigue nerveuse">
+        <H>Wellness</H>
+        <F>{`score (0-10) = (sommeil + motivation + nutrition + hydratation + (10 − fatigue) + (10 − stress) + (10 − douleur)) / 7
+z-score vs historique propre (28 j) : ≤ −0,5 en baisse · ≤ −1,5 très dégradé`}</F>
+        <H>CMJ</H>
+        <P>Écart à la moyenne propre des 28 derniers jours (min. 3 tests) : −5 % baisse modérée · −10 % chute significative.</P>
+        <Ref>Claudino et al. 2017, J Sci Med Sport 20:397 (CMJ et état neuromusculaire).</Ref>
+        <H>Fatigue nerveuse (force)</H>
+        <P>
+          e1RM médian par exercice sur la dernière séance (≤ {NEURAL_WINDOW_DAYS} j) comparé à la séance précédente (≤ {NEURAL_PREV_LOOKBACK_DAYS} j,
+          ≥ {NEURAL_MIN_SETS_PREV} séries) : baisse ≥ {fr(NEURAL_DROP_THRESHOLD * 100, 0)} % ou e1RM &lt; {fr(NEURAL_RM_FLOOR * 100, 0)} % du RM = signal.
+          Alerte si au moins la moitié des exercices sont concernés.
+        </P>
+        <H>Classification</H>
+        <P>
+          3 domaines notés 0 / 1 / 2 : charge (REDI &gt; 1,3 / &gt; 1,5), bien-être (z ≤ −0,5 / ≤ −1,5 ; sinon score &lt; 6,5 / &lt; 5),
+          fatigue nerveuse (force + CMJ). Plusieurs domaines qui convergent montent d'un cran ; une fatigue nerveuse forte classe
+          « Fatigué » ; un signal de force isolé reste une vigilance.
+        </P>
+        <T head={["Niveau", "Signification"]} rows={Object.values(FORM_LEVELS).map((l) => [`${l.emoji} ${l.label}`, ["Risque", "Fatigué", "Surveiller", "En forme", "—"][l.rank]])} />
+        <Ref>Saw, Main & Gastin 2016, Br J Sports Med 50:281 (mesures subjectives vs objectives).</Ref>
+      </FoldCard>
+
+      {/* ============ NORMES ============ */}
+      <FoldCard id="normes" fold={fold} title="🏉 Normes rugby par niveau (tests physiques)">
+        <P>
+          Pro D2 = barème SU Agen, note 10/20 (validé par les 1RM des pros d'Agen 2026-27 : médiane du poste ≈ note 9 à 12). Bronco Pro D2 =
+          données SU Agen 2023-25 + 30e centile Super Rugby. Autres niveaux = Pro D2 × écart propre à la famille de qualité :
+        </P>
+        <T
+          head={["Famille", ...LEVEL_ORDER.map(lvlLabel)]}
+          rows={Object.entries(FAMILY_RATIO).map(([fam, arr]) => [FAMILY_LABEL[fam] || fam, ...arr.map((r) => pctTxt(r))])}
+        />
+        <P>
+          Écarts petits en haut (Pro D2 → Top 14 → International), grand saut entre Nationale et Fédérale 1 ; la force varie le plus, la vitesse
+          le moins. Pour un temps (sprint, Bronco), le temps du niveau = temps Pro D2 ÷ rapport. <Est />
+        </P>
+        <P>
+          Médailles : bronze = seuil du niveau ; argent / or = écart du barème entre les notes 10 → 15 → 20, ramené au niveau. Bronco : or plafonné
+          par le record ({Math.floor(BRONCO_RECORD_S / 60)}'{String(BRONCO_RECORD_S % 60).padStart(2, "0")}") ramené au poste. Broad jump : écart-type {fr(BROAD_SD)} cm.
+        </P>
+        <Ref>
+          Smart et al. 2013, J Strength Cond Res (1 161 joueurs NZ) · Argus et al. 2012, J Strength Cond Res · Fontana et al. 2015, IJSPP 10:1003 · Payne et al. 2025,
+          J Strength Cond Res (revue systématique) · Weakley et al. 2026, J Strength Cond Res (Bronco Super Rugby) · Posthumus et al. 2020, Sports 8:85 (broad jump) ·
+          Darrall-Jones et al. 2016, IJSPP (30-15).
+        </Ref>
+      </FoldCard>
+
+      {/* ============ MORPHO ============ */}
+      <FoldCard id="morpho" fold={fold} title="📏 Morphologie (poids, taille, masse maigre)">
+        <F>{`bronze = moyenne du niveau · argent = moyenne + ${fr(SILVER_SD, 1)} écart-type · or = moyenne + ${fr(GOLD_SD, 1)} écart-type
+note /20 : moyenne − 2 ET = 0 · moyenne = 10 · argent = 15 · or = 20
+masse maigre = poids × (1 − % de gras de référence DXA du niveau)`}</F>
+        <T
+          head={["Poste", "Top 14 (moy / ET / n)", "Pro D2 (moy / ET / n)", "XV de France", "Intl 🥉/🥈/🥇"]}
+          rows={Object.entries(PRO_DATA).map(([k, d]) => {
+            const m = medalTargets(k, "international");
+            return [k, `${fr(d.t14[0])} / ${fr(d.t14[1])} / ${d.t14[2]}`, `${fr(d.p2[0])} / ${fr(d.p2[1])} / ${d.p2[2]}`, `${fr(d.fr[0])} (n=${d.fr[1]})`, m ? `${fr(m.bm.bronze)} / ${fr(m.bm.silver)} / ${fr(m.bm.gold)}` : "—"];
+          })}
+        />
+        <T
+          head={["Niveau amateur", "Poids avants", "Poids arrières", "% gras en +"]}
+          rows={Object.entries(MASS_RATIO).map(([k, v]) => [lvlLabel(k), `× ${fr(v.fw, 2)}`, `× ${fr(v.bk, 2)}`, `+ ${fr(BF_ADD[k] || 0)} pt`])}
+        />
+        <P>
+          % de gras de référence (pros, DXA) : avants {fr(BF_DXA.forwards[0])} ± {fr(BF_DXA.forwards[1])} %, arrières {fr(BF_DXA.backs[0])} ± {fr(BF_DXA.backs[1])} %
+          (≈ {fr(BF_SKINFOLD.forwards)} / {fr(BF_SKINFOLD.backs)} % aux plis cutanés). Niveaux amateurs <Est />
+        </P>
+        <Ref>Fiches officielles LNR 2026-27 (Top 14 : 804 joueurs, Pro D2 : 686) et XV de France (Tournoi 2026) · Fontana et al. 2015 · Sedeaud et al. 2013 · Posthumus et al. 2020 (DXA) · Crewther et al. 2009, J Sports Sci 27:1575 (force ramenée au poids).</Ref>
+      </FoldCard>
+
+      {/* ============ SÉANCES ============ */}
+      <FoldCard id="seances" fold={fold} title="🗂️ Séances mixtes, durée estimée, qui fait la séance">
+        <P>
+          Chaque bloc a son type ({BLOCK_TYPES.map((b) => b.label).join(", ")}) ; un bloc sans type prend celui de la séance. Le type du bloc décide
+          du formulaire, du feedback, des RM (blocs muscu seulement) et de la durée estimée (formule du type, additionnée bloc par bloc).
+        </P>
+        <F>{`durée sprint = Σ séries × reps × (distance / 7 m/s + récup)
+durée endurance = Σ reps × (effort + récup) + récup de bloc
+EMOM = intervalle × tours · AMRAP = durée totale (+ repos après le bloc)`}</F>
+        <H>Planification : prévu vs réellement effectué</H>
+        <P>
+          Volume et intensité PRÉVUS (1-10) = saisis par le coach sur chaque semaine. RÉELLEMENT EFFECTUÉS = calculés sur les séances
+          TERMINÉES du calendrier (barres creuses) :
+        </P>
+        <F>{`intensité réelle = Σ (note de séance × durée) / Σ durée   (RPE moyen pondéré par la durée)
+volume réel = minutes de la semaine / minutes de la semaine la plus chargée × 10   (échelle relative)
+groupe : moyenne des athlètes ayant terminé au moins une séance dans la semaine`}</F>
+        <P>
+          Un coach peut remplir une séance pour un athlète (« Qui fait la séance ? ») : feedbacks, charge et RM vont à cet athlète. Chaque personne
+          n'est comptée que si elle démarre et termine la séance.
+        </P>
+      </FoldCard>
+
+      {/* ============ BIBLIO ============ */}
+      <FoldCard id="biblio" fold={fold} title="📖 Toutes les références">
+        <ul style={{ margin: 0, paddingLeft: 18, color: MUTED, fontSize: 12.5, lineHeight: 1.75 }}>
+          {[
+            "Argus CK et al. 2012 — Kinetic and training comparisons between amateur and professional rugby union players. J Strength Cond Res.",
+            "Billat LV 2001 — Interval training for performance: a scientific and empirical practice. Sports Med 31:13-31.",
+            "Buchheit M 2008 — The 30-15 Intermittent Fitness Test. J Strength Cond Res 22:365-374.",
+            "Buchheit M, Laursen PB 2013 — High-intensity interval training, solutions to the programming puzzle. Sports Med 43:313-338.",
+            "Claudino JG et al. 2017 — The countermovement jump to monitor neuromuscular status: a meta-analysis. J Sci Med Sport 20:397-402.",
+            "Costa EC et al. 2015 — Effect of unilateral and bilateral resistance exercise on maximal voluntary strength, total volume of load lifted and perceptual and metabolic responses. Biology of Sport 32:35-40.",
+            "Crewther BT et al. 2009 — Scaling strength and power for body mass differences in rugby union players. J Sports Sci 27:1575-1580.",
+            "Darrall-Jones J et al. 2016 — Fitness characteristics of rugby union players by age category (30-15 IFT). IJSPP.",
+            "Day ML et al. 2004 — Monitoring exercise intensity during resistance training using the session RPE scale. J Strength Cond Res 18:353-358.",
+            "Fitzsimons M et al. 1993 — Cycling and running tests of repeated sprint ability. Aust J Sci Med Sport 25:82-87.",
+            "Fontana FY et al. 2015 — Anthropometrics of Italian senior male rugby union players: from elite to second division. IJSPP 10:1003-1007.",
+            "Foster C 1998 — Monitoring training in athletes with reference to overtraining syndrome. Med Sci Sports Exerc 30:1164-1168.",
+            "Foster C et al. 2001 — A new approach to monitoring exercise training. J Strength Cond Res 15:109-115.",
+            "Furusawa K et al. 1927 — The dynamics of sprint running. Proc R Soc B 102:29-42.",
+            "Gabbett TJ 2016 — The training-injury prevention paradox. Br J Sports Med 50:273-280.",
+            "Girard O, Mendez-Villanueva A, Bishop D 2011 — Repeated-sprint ability, part I. Sports Med 41:673-694.",
+            "Glaister M et al. 2008 — Reliability and validity of fatigue measures in repeated sprint tests. J Strength Cond Res 22:1597-1601.",
+            "Hackett DA et al. 2012 — A novel scale to assess resistance-exercise effort (repetitions in reserve). Percept Mot Skills.",
+            "Halperin I et al. 2022 — Accuracy in predicting repetitions to task failure in resistance exercise. Sports Med 52:377-390.",
+            "Helms ER et al. 2016 — Application of the RIR-based RPE scale for resistance training. Strength Cond J 38:42-49.",
+            "Helms ER et al. 2018 — RPE vs percentage 1RM loading in periodized programs. Front Physiol 9:247.",
+            "Jones AM et al. 2019 — The maximal metabolic steady state: redefining the gold standard. Physiol Rep / Med Sci Sports Exerc.",
+            "Moussa I et al. 2020 — Robust Exponential Decreasing Index (REDI). Front Physiol.",
+            "Payne T et al. 2025 — Physical qualities that differentiate playing levels in rugby union: systematic review. J Strength Cond Res.",
+            "Posthumus L et al. 2020 — Physical and fitness characteristics of elite professional rugby union players. Sports 8:85.",
+            "Samozino P et al. 2016 — A simple method for measuring power, force, velocity properties of sprint running. Scand J Med Sci Sports 26:648-658.",
+            "Saw AE, Main LC, Gastin PB 2016 — Monitoring the athlete training response: subjective self-reported measures. Br J Sports Med 50:281-291.",
+            "Sedeaud A et al. 2013 — Secular trend: morphology and performance of French rugby players. J Sports Sci.",
+            "Seiler S, Kjerland GØ 2006 — Quantifying training intensity distribution in elite endurance athletes. Scand J Med Sci Sports 16:49-56.",
+            "Seiler S 2010 — What is best practice for training intensity and duration distribution? IJSPP 5:276-291.",
+            "Smart D et al. 2013 — Physical profiling of rugby union players: implications for talent development. J Strength Cond Res.",
+            "Sun J et al. 2026 — Velocity loss squat induced post-activation performance enhancement in sprinters. Front Physiol 17.",
+            "Sweet TW et al. 2004 — Quantitation of resistance training using the session RPE method. J Strength Cond Res 18:796-802.",
+            "Tanaka H et al. 2001 — Age-predicted maximal heart rate revisited. J Am Coll Cardiol 37:153-156.",
+            "Weakley J et al. 2026 — A 10-year analysis of the Bronco fitness test in Super Rugby athletes. J Strength Cond Res.",
+            "Zourdos MC et al. 2016 — Novel resistance training-specific RPE scale measuring repetitions in reserve. J Strength Cond Res 30:267-275.",
+            "JSCR 2023 37(8):1566 — Traditional, rest redistribution and velocity-based (5 % loss) repeated sprint training.",
+            "IJSPP 2024 19(8):792 — External training load and sRPE-TRIMP in elite sprinters.",
+            "Données : fiches officielles LNR 2026-27 (Top 14, Pro D2), XV de France 2026, barème et données SU Agen (PP 2026-2027).",
+          ].map((r, i) => (
+            <li key={i}>{r}</li>
+          ))}
+        </ul>
+      </FoldCard>
+    </Page>
+  );
+}
