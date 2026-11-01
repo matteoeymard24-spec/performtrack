@@ -10072,7 +10072,7 @@ export default function Workout() {
                                   >
                                     {ex.vmaPercentage}% VMA →{" "}
                                     <strong>{metrics.paceKmh} km/h</strong> (
-                                    {metrics.paceDisplay}) •{metrics.course ? <> {metrics.course.dist} m ({metrics.course.label}) en <strong style={{ color: "#e0a13d" }}>{metrics.targetTime ? fmtDur(metrics.targetTime) : "—"}</strong></> : `${ex.effortTime}s`}
+                                    {metrics.paceDisplay}) •{metrics.course ? <> {metrics.course.dist} m · {metrics.course.label} · en <strong style={{ color: "#e0a13d" }}>{metrics.targetTime ? fmtDur(metrics.targetTime) : "—"}</strong></> : `${ex.effortTime}s`}
                                     {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
                                       <>
                                         /

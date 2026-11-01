@@ -24,7 +24,8 @@ export default function EnduranceProfile({ blocks, vma, cs }) {
   const y = (p) => padT + ih - (p / maxPct) * ih;
   const csKmh = cs || (vma ? vma * DEFAULT_CS_VMA_RATIO : null);
   const csMs = csKmh ? (csKmh * 1000) / 3600 : null;
-  const dist = csMs ? segs.reduce((a, s) => a + (s.pct / 100) * csMs * s.dur, 0) : null;
+  // distance réelle pour les efforts définis en distance, sinon vitesse × durée
+  const dist = csMs ? segs.reduce((a, s) => a + (s.dist != null ? s.dist : (s.pct / 100) * csMs * s.dur), 0) : null;
   const ticks = [];
   const step = total > 3600 ? 600 : total > 1200 ? 300 : total > 400 ? 120 : 60;
   for (let t = 0; t <= total; t += step) ticks.push(t);

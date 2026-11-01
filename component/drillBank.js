@@ -1,4 +1,4 @@
-import { isDistanceMode, estimatedEffortSec } from "./enduranceTarget";
+import { isDistanceMode, estimatedEffortSec, courseOf } from "./enduranceTarget";
 /* ============================================================================
    BANQUE D'EXERCICES SPRINT / ENDURANCE + ZONES D'ENTRAÎNEMENT (5 zones)
    ----------------------------------------------------------------------------
@@ -196,10 +196,11 @@ const effortSecFor = (ex, ratio, vma, cs) => {
 export function enduranceSegments(blocks, ratio = DEFAULT_CS_VMA_RATIO, vma = null, cs = null) {
   const segs = [];
   let t = 0;
-  const push = (dur, pct, kind, label) => {
+  // dist (m, optionnel) : distance réelle de l'effort quand elle est fixée (exercice défini en distance)
+  const push = (dur, pct, kind, label, dist = null) => {
     const d = Math.max(0, Math.round(Number(dur) || 0));
     if (!d) return;
-    segs.push({ start: t, dur: d, pct: Number(pct) || 0, kind, label });
+    segs.push({ start: t, dur: d, pct: Number(pct) || 0, kind, label, ...(dist != null ? { dist } : {}) });
     t += d;
   };
   (blocks || []).forEach((b, bi) => {
@@ -216,7 +217,8 @@ export function enduranceSegments(blocks, ratio = DEFAULT_CS_VMA_RATIO, vma = nu
           let used = 0;
           exs.forEach((e, k) => {
             const d = Math.min(effs[k], Math.max(0, I - used));
-            push(d, pctCS(e, ratio), "effort", label(e));
+            const c = courseOf(e);
+            push(d, pctCS(e, ratio), "effort", label(e), c && effs[k] ? (c.dist * d) / effs[k] : null);
             used += d;
           });
           push(I - used, 0, "recup", "Récup (EMOM)");
@@ -229,7 +231,8 @@ export function enduranceSegments(blocks, ratio = DEFAULT_CS_VMA_RATIO, vma = nu
         while (used < T && k < 10000) {
           const i = k % exs.length;
           const d = Math.min(effs[i] || 0, T - used);
-          if (d > 0) push(d, pctCS(exs[i], ratio), "effort", label(exs[i]));
+          const c = courseOf(exs[i]);
+          if (d > 0) push(d, pctCS(exs[i], ratio), "effort", label(exs[i]), c && effs[i] ? (c.dist * d) / effs[i] : null);
           used += effs[i] > 0 ? d : 0;
           k += 1;
           if (!effs.some((x) => x > 0)) break;
@@ -245,7 +248,7 @@ export function enduranceSegments(blocks, ratio = DEFAULT_CS_VMA_RATIO, vma = nu
         const eff = effortSecFor(ex, ratio, vma, cs);
         const rec = (Number(ex.recoveryMin) || 0) * 60 + (Number(ex.recoverySec) || 0);
         for (let r = 0; r < reps; r++) {
-          push(eff, pctCS(ex, ratio), "effort", ex.name || "Effort");
+          push(eff, pctCS(ex, ratio), "effort", ex.name || "Effort", courseOf(ex)?.dist ?? null);
           if (r < reps - 1) push(rec, pctCS({ ...ex, vmaPercentage: ex.recoveryVmaPct || 0 }, ratio), "recup", "Récup");
         }
         push((Number(ex.blockRecoveryMin) || 0) * 60 + (Number(ex.blockRecoverySec) || 0), 0, "recup", "Récup série");

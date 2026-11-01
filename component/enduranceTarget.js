@@ -46,7 +46,7 @@ export function courseOf(ex) {
     const rounds = Math.max(1, Math.round(num(ex.rounds) || 1));
     const dist = 2 * legs.reduce((a, b) => a + b, 0) * rounds;
     const turns = 2 * legs.length * rounds - 1;
-    return { dist, turns, label: `${rounds > 1 ? rounds + " × " : ""}(${legs.join("-")} m aller-retour)` };
+    return { dist, turns, label: `${rounds > 1 ? rounds + " tours de " : ""}${legs.join("-")} m aller-retour` };
   }
   const dist = num(ex.distanceM);
   if (!(dist > 0)) return null;
@@ -130,7 +130,7 @@ export function timerBlockPlan(block, metricsOf) {
     const c = courseOf(ex);
     if (c) {
       D += c.dist;
-      if (m?.targetTime) T += m.targetTime;
+      if (m?.targetTime) T += Math.round(m.targetTime);
       else tOk = false;
     } else {
       allDist = false;
@@ -145,7 +145,8 @@ export function timerBlockPlan(block, metricsOf) {
     mode: allDist ? "distance" : "time",
     timerMode: block.timerMode,
     roundDist: dOk && D > 0 ? Math.round(D) : null,
-    roundTime: tOk && T > 0 ? Math.round(T * 10) / 10 : null,
+    // Chrono du tour arrondi à la SECONDE, une seule fois (même valeur que l'affichage de l'exercice)
+    roundTime: tOk && T > 0 ? Math.round(T) : null,
     pct: num(exs[0]?.vmaPercentage) || null,
   };
   if (block.timerMode === "emom") {
@@ -153,7 +154,7 @@ export function timerBlockPlan(block, metricsOf) {
     const R = Math.max(1, Math.round(num(block.timerRounds) || 10));
     plan.interval = I;
     plan.rounds = R;
-    plan.restSec = plan.roundTime != null ? Math.round((I - plan.roundTime) * 10) / 10 : null;
+    plan.restSec = plan.roundTime != null ? I - plan.roundTime : null;
     plan.impossible = plan.roundTime != null && plan.roundTime >= I;
     plan.totalDist = plan.roundDist != null ? plan.roundDist * R : null;
   } else {
@@ -170,10 +171,10 @@ export function adjustPlan(plan, factor) {
   if (!plan || !factor || factor === 1) return plan;
   const p = { ...plan, factor };
   if (p.mode === "distance") {
-    if (p.roundTime) p.roundTime = Math.round((p.roundTime / factor) * 10) / 10;
+    if (p.roundTime) p.roundTime = Math.round(p.roundTime / factor);
   } else if (p.roundDist) p.roundDist = Math.round(p.roundDist * factor);
   if (p.timerMode === "emom") {
-    p.restSec = p.roundTime != null ? Math.round((p.interval - p.roundTime) * 10) / 10 : null;
+    p.restSec = p.roundTime != null ? p.interval - p.roundTime : null;
     p.impossible = p.roundTime != null && p.roundTime >= p.interval;
     p.totalDist = p.roundDist != null ? p.roundDist * p.rounds : null;
   } else {
