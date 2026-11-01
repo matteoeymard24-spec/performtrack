@@ -3,7 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
-import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjustment, adjustmentBefore, END_LOSS_WARN, END_LOSS_STOP } from "../component/enduranceFeedback";
+import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjustment, adjustmentBefore, END_LOSS_WARN, END_LOSS_STOP, summarizeTimed, enduranceEntryTimed } from "../component/enduranceFeedback";
+import { isDistanceMode, courseOf, targetTimeSec, distanceInTime, estimatedEffortSec, fmtTime as fmtDur, COD_SEC } from "../component/enduranceTarget";
 import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
 import { isLoadedBodyweight, totalLoad, lestText } from "../component/bodyweightLoad";
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
@@ -1346,12 +1347,20 @@ export default function Workout() {
     if (!refKmh) return null;
     const vmaMs = (refKmh * 1000) / 3600;
     const targetSpeed = vmaMs * (exercise.vmaPercentage / 100);
-    let distancePerRep = targetSpeed * exercise.effortTime;
-    let totalDistance = distancePerRep * exercise.reps;
-
-    if (exercise.groundWork) {
-      totalDistance *= 0.88;
-      distancePerRep *= 0.88;
+    // Mode DISTANCE (voir component/enduranceTarget.js) : distance fixée → chrono visé
+    const course = courseOf(exercise);
+    let distancePerRep, totalDistance, targetTime = null, shuttle = null;
+    if (course) {
+      distancePerRep = course.dist;
+      totalDistance = course.dist * (exercise.reps || 1);
+      targetTime = targetTimeSec(exercise, targetSpeed);
+    } else {
+      const inT = distanceInTime(exercise.effortTime, targetSpeed, exercise.shuttleM);
+      distancePerRep = inT ? inT.dist : 0;
+      if (inT && inT.shuttles != null) shuttle = inT;
+      if (exercise.groundWork) distancePerRep *= 0.88;
+      if (shuttle) shuttle = { ...shuttle, shuttles: distancePerRep / Number(exercise.shuttleM) };
+      totalDistance = distancePerRep * exercise.reps;
     }
 
     const paceKmh = targetSpeed * 3.6;
@@ -1362,6 +1371,9 @@ export default function Workout() {
     return {
       totalDistance: Math.round(totalDistance),
       distancePerRep: Math.round(distancePerRep),
+      targetTime, // s, mode distance
+      course, // { dist, turns, label } en mode distance
+      shuttle, // { shuttles, turns } en mode temps avec navette
       paceKmh: paceKmh.toFixed(1),
       paceDisplay: `${paceMin}:${String(paceSec).padStart(2, "0")}/km`,
     };
@@ -1589,7 +1601,11 @@ export default function Workout() {
         actualDistance: existing.actualDistance || metrics?.totalDistance || 0,
         // distance par répétition (voir component/enduranceFeedback.js)
         reps: buildEnduranceReps(exercise, existing),
-        targetPerRep: target,
+        targetPerRep: metrics?.course ? metrics.course.dist : target,
+        // Mode DISTANCE : distance fixe, chrono visé (÷ facteur d'ajustement du bloc précédent)
+        mode: isDistanceMode(exercise) && courseOf(exercise) ? "distance" : "time",
+        distancePerRep: courseOf(exercise)?.dist || null,
+        targetTime: metrics?.targetTime ? Math.round((metrics.targetTime / factor) * 10) / 10 : null,
         plannedPct: exercise.vmaPercentage ? Math.round(exercise.vmaPercentage * factor) : null,
         appliedFactor: factor !== 1 ? factor : null,
         adjustedFrom: factor !== 1 ? adj?.from || null : null,
@@ -1694,7 +1710,9 @@ export default function Workout() {
     } else if (currentExerciseFeedback.sessionType === "endurance" && Array.isArray(currentExerciseFeedback.reps)) {
       const c = currentExerciseFeedback;
       entry = {
-        ...enduranceEntry(c.reps, c.targetPerRep, c.plannedPct, c.rpe, c.notes),
+        ...(c.mode === "distance"
+          ? enduranceEntryTimed(c.reps, c.distancePerRep, c.targetTime, c.plannedPct, c.rpe, c.notes)
+          : enduranceEntry(c.reps, c.targetPerRep, c.plannedPct, c.rpe, c.notes)),
         ...(c.appliedFactor ? { appliedFactor: c.appliedFactor } : {}),
       };
     } else if (currentExerciseFeedback.sessionType === "sprint" && Array.isArray(currentExerciseFeedback.reps)) {
@@ -2991,6 +3009,12 @@ export default function Workout() {
                 // Nom déjà connu comme unilatéral (ou non) : on reprend le réglage mémorisé.
                 const known = exerciseMediaLibrary[normalizeExerciseName(val)];
                 if (known && known.unilateral !== undefined) updated.unilateral = !!known.unilateral;
+              }
+              // Endurance défini en DISTANCE : la durée d'effort (utilisée pour la durée de séance,
+              // la frise des zones, la FC cible) est recalculée à partir du chrono visé.
+              if (isDistanceMode(updated)) {
+                const est = estimatedEffortSec(updated, refSpeedKmh(updated));
+                if (est) updated.effortTime = est;
               }
               return updated;
             }),
@@ -8496,8 +8520,32 @@ export default function Workout() {
                   {workoutType === "endurance" && (() => {
                     const isTimerBlock =
                       block.timerMode === "emom" || block.timerMode === "amrap";
+                    const distMode = isDistanceMode(ex);
+                    const fieldStyle = { width: "100%", padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", boxSizing: "border-box" };
+                    const modeBtn = (on) => ({ padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: on ? "1px solid #e0a13d" : "1px solid #2a2620", background: on ? "rgba(224,161,61,0.18)" : "#0d0c0a", color: on ? "#e0a13d" : "#a8a199" });
                     return (
                     <>
+                      {!isTimerBlock && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                          <span style={{ fontSize: 12, color: "#a8a199" }}>Défini par :</span>
+                          <button type="button" style={modeBtn(!distMode)} onClick={() => updateExercise(bIdx, eIdx, "targetMode", "time")}>
+                            ⏱️ Temps → mètres à faire
+                          </button>
+                          <button
+                            type="button"
+                            style={modeBtn(distMode)}
+                            onClick={() => {
+                              if (!ex.distanceM && !ex.legs) {
+                                const m = calculateEnduranceMetrics(ex);
+                                updateExercise(bIdx, eIdx, "distanceM", m?.distancePerRep ? Math.round(m.distancePerRep / 10) * 10 : 400);
+                              }
+                              updateExercise(bIdx, eIdx, "targetMode", "distance");
+                            }}
+                          >
+                            📏 Distance → chrono visé
+                          </button>
+                        </div>
+                      )}
                       <div
                         style={{
                           display: "grid",
@@ -8545,10 +8593,12 @@ export default function Workout() {
                         </div>
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Effort (s)
+                            {distMode && !isTimerBlock ? "Effort estimé (s)" : "Effort (s)"}
                           </label>
                           <input
                             type="number"
+                            readOnly={distMode && !isTimerBlock}
+                            title={distMode && !isTimerBlock ? "Calculé à partir de la distance et du % (chrono visé)" : undefined}
                             value={ex.effortTime}
                             onChange={(e) =>
                               updateExercise(
@@ -8709,6 +8759,54 @@ export default function Workout() {
                         </div>
                       </div>
                       )}
+                      {!isTimerBlock && distMode && (
+                        <div style={{ marginBottom: 10, padding: 10, borderRadius: 8, border: "1px solid #2a2620", background: "#141210" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+                            <div>
+                              <label style={{ fontSize: 12, color: "#a8a199" }}>Parcours aller-retour (m)</label>
+                              <input
+                                type="text"
+                                placeholder="ex. 20-40-60"
+                                value={ex.legs || ""}
+                                onChange={(e) => updateExercise(bIdx, eIdx, "legs", e.target.value)}
+                                style={fieldStyle}
+                              />
+                            </div>
+                            <div>
+                              <label style={{ fontSize: 12, color: "#a8a199" }}>Tours du parcours / rep</label>
+                              <input
+                                type="number"
+                                min={1}
+                                disabled={!String(ex.legs || "").trim()}
+                                value={ex.rounds || 1}
+                                onChange={(e) => updateExercise(bIdx, eIdx, "rounds", Math.max(1, Number(e.target.value) || 1))}
+                                style={fieldStyle}
+                              />
+                            </div>
+                          </div>
+                          {!String(ex.legs || "").trim() && (
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
+                              <div>
+                                <label style={{ fontSize: 12, color: "#a8a199" }}>Distance par rep (m)</label>
+                                <input type="number" value={ex.distanceM || ""} onChange={(e) => updateExercise(bIdx, eIdx, "distanceM", Number(e.target.value))} style={fieldStyle} />
+                              </div>
+                              <div>
+                                <label style={{ fontSize: 12, color: "#a8a199" }}>Navette (m, vide = ligne droite)</label>
+                                <input type="number" value={ex.shuttleM || ""} onChange={(e) => updateExercise(bIdx, eIdx, "shuttleM", Number(e.target.value) || "")} style={fieldStyle} />
+                              </div>
+                            </div>
+                          )}
+                          <div style={{ fontSize: 11, color: "#a8a199", marginTop: 6, lineHeight: 1.5 }}>
+                            Parcours : chaque distance est faite aller-retour, dans l'ordre (Bronco = 20-40-60 × 5 tours = 1200 m). Laisse vide pour une distance simple. Chaque demi-tour compte ≈ {String(COD_SEC).replace(".", ",")} s dans le chrono visé.
+                          </div>
+                        </div>
+                      )}
+                      {!isTimerBlock && !distMode && (
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={{ fontSize: 12, color: "#a8a199" }}>Navette (m, optionnel — vide = ligne droite)</label>
+                          <input type="number" value={ex.shuttleM || ""} onChange={(e) => updateExercise(bIdx, eIdx, "shuttleM", Number(e.target.value) || "")} style={fieldStyle} />
+                        </div>
+                      )}
                       <div style={{ marginBottom: 10 }}>
                         <label
                           style={{
@@ -8751,65 +8849,57 @@ export default function Workout() {
                           />
                         </div>
                       ) : null}
-                      {/* CALCUL DISTANCE */}
-                      {refSpeedKmh(ex) &&
-                        ex.vmaPercentage &&
-                        ex.effortTime &&
-                        ex.reps &&
-                        (() => {
-                          const vmaMs = (refSpeedKmh(ex) * 1000) / 3600;
-                          const targetSpeed = vmaMs * (ex.vmaPercentage / 100);
-                          let distancePerRep = targetSpeed * ex.effortTime;
-                          let totalDistance = distancePerRep * ex.reps;
-
-                          if (ex.groundWork) {
-                            totalDistance *= 0.88;
-                            distancePerRep *= 0.88;
-                          }
-
-                          const paceKmh = targetSpeed * 3.6;
-                          const paceMinPerKm = 60 / paceKmh;
-                          const paceMin = Math.floor(paceMinPerKm);
-                          const paceSec = Math.round(
-                            (paceMinPerKm - paceMin) * 60
-                          );
-
-                          return (
-                            <div
-                              style={{
-                                padding: 12,
-                                background: "rgba(79,174,125,0.14)",
-                                borderRadius: 8,
-                                fontSize: 13,
-                                color: "#9fd4b0",
-                              }}
-                            >
-                              <div
-                                style={{ fontWeight: "bold", marginBottom: 5 }}
-                              >
-                                📏 Calculs automatiques :
-                              </div>
+                      {/* CALCUL DISTANCE / CHRONO (voir component/enduranceTarget.js) */}
+                      {(() => {
+                        const course = courseOf(ex);
+                        const m = refSpeedKmh(ex) && ex.vmaPercentage ? calculateEnduranceMetrics(ex) : null;
+                        if (!m && !course) return null;
+                        const reps = Math.max(1, Number(ex.reps) || 1);
+                        return (
+                          <div style={{ padding: 12, background: "rgba(79,174,125,0.14)", borderRadius: 8, fontSize: 13, color: "#9fd4b0", marginBottom: 10 }}>
+                            <div style={{ fontWeight: "bold", marginBottom: 5 }}>📏 Calculs automatiques :</div>
+                            {m && (
                               <div>
-                                • Allure :{" "}
-                                <strong>{paceKmh.toFixed(1)} km/h</strong> (
-                                {paceMin}:{String(paceSec).padStart(2, "0")}/km)
+                                • Allure : <strong>{m.paceKmh} km/h</strong> ({m.paceDisplay})
                               </div>
-                              <div>
-                                • Distance par rep :{" "}
-                                <strong>{Math.round(distancePerRep)}m</strong>
-                              </div>
-                              <div>
-                                • Distance totale :{" "}
-                                <strong>{Math.round(totalDistance)}m</strong>
-                              </div>
-                              {ex.groundWork && (
-                                <div style={{ color: "#d9a441", marginTop: 5 }}>
-                                  ⚠️ Passage au sol : -12% de distance
+                            )}
+                            {course ? (
+                              <>
+                                <div>
+                                  • Distance par rep : <strong>{course.dist} m</strong> ({course.label}{course.turns ? `, ${course.turns} demi-tour${course.turns > 1 ? "s" : ""}` : ""})
                                 </div>
-                              )}
-                            </div>
-                          );
-                        })()}
+                                <div>
+                                  • Chrono visé par rep : <strong>{m?.targetTime ? fmtDur(m.targetTime) : "renseigne ta VMA"}</strong>
+                                  {m?.targetTime && course.turns ? <span style={{ color: "#a8a199" }}> (dont ≈ {Math.round(course.turns * COD_SEC)} s de demi-tours)</span> : null}
+                                </div>
+                                <div>
+                                  • Distance totale : <strong>{course.dist * reps} m</strong>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div>
+                                  • Distance par rep : <strong>{m.distancePerRep} m</strong>
+                                  {m.shuttle && (
+                                    <span>
+                                      {" "}= <strong>{String(Math.round(m.shuttle.shuttles * 10) / 10).replace(".", ",")} navettes de {ex.shuttleM} m</strong>
+                                      <span style={{ color: "#a8a199" }}> ({Math.floor(m.shuttle.shuttles)} navettes + {Math.round((m.shuttle.shuttles - Math.floor(m.shuttle.shuttles)) * Number(ex.shuttleM))} m ; demi-tours déduits)</span>
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  • Distance totale : <strong>{m.totalDistance} m</strong>
+                                </div>
+                              </>
+                            )}
+                            {ex.groundWork && (
+                              <div style={{ color: "#d9a441", marginTop: 5 }}>
+                                ⚠️ Passage au sol : {course ? "chrono visé ÷ 0,88" : "−12 % de distance"}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {!vma && (
                         <div
                           style={{
@@ -9884,7 +9974,7 @@ export default function Workout() {
                                   >
                                     {ex.vmaPercentage}% VMA →{" "}
                                     <strong>{metrics.paceKmh} km/h</strong> (
-                                    {metrics.paceDisplay}) •{ex.effortTime}s
+                                    {metrics.paceDisplay}) •{metrics.course ? <> {metrics.course.dist} m ({metrics.course.label}) en <strong style={{ color: "#e0a13d" }}>{metrics.targetTime ? fmtDur(metrics.targetTime) : "—"}</strong></> : `${ex.effortTime}s`}
                                     {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
                                       <>
                                         /
@@ -9912,8 +10002,13 @@ export default function Workout() {
                                             </strong>
                                           </span>
                                         )}{" "}
-                                        • Distance/rep:{" "}
-                                        <strong>{metrics.distancePerRep}m</strong>
+                                        {!metrics.course && (
+                                          <>
+                                            • Distance/rep:{" "}
+                                            <strong>{metrics.distancePerRep}m</strong>
+                                            {metrics.shuttle && <> (≈ {String(Math.round(metrics.shuttle.shuttles * 10) / 10).replace(".", ",")} navettes de {ex.shuttleM} m)</>}
+                                          </>
+                                        )}
                                         {" "}• Distance totale:{" "}
                                         <strong>{metrics.totalDistance}m</strong>
                                       </>
@@ -9935,6 +10030,12 @@ export default function Workout() {
                                       (b) => blockTypeOf(b, selectedSession.type) === "endurance"
                                     );
                                     if (!adj || adj.factor === 1 || !metrics.distancePerRep) return null;
+                                    if (metrics.course && metrics.targetTime)
+                                      return (
+                                        <div style={{ fontSize: 13, color: adj.factor < 1 ? "#e08a3d" : "#4fae7d", marginBottom: 10, fontWeight: 700 }}>
+                                          🎯 Chrono ajusté pour toi : {fmtDur(metrics.targetTime / adj.factor)} pour {metrics.course.dist} m (≈ {Math.round(ex.vmaPercentage * adj.factor)} % au lieu de {ex.vmaPercentage} %) — d'après {adj.from}.
+                                        </div>
+                                      );
                                     return (
                                       <div style={{ fontSize: 13, color: adj.factor < 1 ? "#e08a3d" : "#4fae7d", marginBottom: 10, fontWeight: 700 }}>
                                         🎯 Cible ajustée pour toi : {Math.round(metrics.distancePerRep * adj.factor)} m par rep (≈ {Math.round(ex.vmaPercentage * adj.factor)} % au lieu de {ex.vmaPercentage} %) — d'après {adj.from}.
@@ -9952,7 +10053,22 @@ export default function Workout() {
                                       }}
                                     >
                                       <div style={{ fontSize: 13 }}>
-                                        {Array.isArray(fb.reps) ? (
+                                        {Array.isArray(fb.reps) && fb.mode === "distance" ? (
+                                          <>
+                                            <strong>Total :</strong> {fb.actualDistance} m • <strong>Meilleur :</strong> {fmtDur(fb.bestTime)} • <strong>Moyenne :</strong> {fmtDur(fb.meanTime)}
+                                            {fb.pctTarget != null && <> ({String(fb.pctTarget).replace(".", ",")} % de la vitesse cible, chrono visé {fmtDur(fb.targetTime)})</>}
+                                            {fb.sdec != null && <> • <strong>Perte :</strong> {String(fb.sdec).replace(".", ",")} %</>}
+                                            {" "}• <strong>RPE :</strong> {fb.rpe}/10
+                                            <div style={{ marginTop: 4, color: "#9fd4b0", fontSize: 12 }}>
+                                              {fb.reps.filter((x) => x.done !== false).map((x) => `R${x.rep} ${x.time ? fmtDur(x.time) : "—"}`).join(" · ")}
+                                            </div>
+                                            {fb.nextFactor && fb.nextFactor !== 1 && (
+                                              <div style={{ marginTop: 4, color: fb.nextFactor < 1 ? "#e08a3d" : "#4fae7d", fontSize: 12 }}>
+                                                ➡️ Bloc d'endurance suivant : intensité × {String(fb.nextFactor).replace(".", ",")} ({fb.nextPct} % au lieu de {fb.plannedPct} %)
+                                              </div>
+                                            )}
+                                          </>
+                                        ) : Array.isArray(fb.reps) ? (
                                           <>
                                             <strong>Total :</strong> {fb.actualDistance} m • <strong>Moyenne :</strong> {fb.meanDist ?? "—"} m
                                             {fb.pctTarget != null && <> ({String(fb.pctTarget).replace(".", ",")} % de la cible {fb.targetPerRep} m)</>}
@@ -11020,7 +11136,71 @@ export default function Workout() {
               (currentExerciseFeedback.sessionType === "sprint" ||
               currentExerciseFeedback.sessionType === "endurance") && (
               <>
-                {currentExerciseFeedback.sessionType === "endurance" && Array.isArray(currentExerciseFeedback.reps) && (() => {
+                {currentExerciseFeedback.sessionType === "endurance" && currentExerciseFeedback.mode === "distance" && Array.isArray(currentExerciseFeedback.reps) && (() => {
+                  // Mode DISTANCE : chrono de chaque rep (voir component/enduranceFeedback.js, summarizeTimed)
+                  const c = currentExerciseFeedback;
+                  const reps = c.reps;
+                  const S = summarizeTimed(reps, c.distancePerRep, c.targetTime);
+                  const adj = c.targetTime ? nextBlockAdjustment(S, c.plannedPct, c.distancePerRep) : null;
+                  const setRep = (i, patch) => setCurrentExerciseFeedback({ ...c, reps: reps.map((x, k) => (k === i ? { ...x, ...patch } : x)) });
+                  const col = (l) => (l == null ? "#a8a199" : l > END_LOSS_STOP ? "#d9695a" : l > END_LOSS_WARN ? "#e08a3d" : "#4fae7d");
+                  const tcol = (p) => (p == null ? "#a8a199" : p >= 97 ? "#4fae7d" : p >= 90 ? "#e08a3d" : "#d9695a");
+                  const inp = { padding: "8px 6px", borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16 };
+                  return (
+                    <div style={{ marginBottom: 18 }}>
+                      <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 4 }}>Chrono de chaque répétition</div>
+                      <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
+                        Distance : <strong style={{ color: "#f3f0ea" }}>{c.distancePerRep} m par rep</strong>
+                        {c.targetTime
+                          ? <> · chrono visé <strong style={{ color: "#e0a13d" }}>{fmtDur(c.targetTime)}</strong>{c.plannedPct ? ` (${c.plannedPct} % ${c.exercise?.intensityRef === "cs" ? "VC" : "VMA"})` : ""}{c.appliedFactor ? ` — ajusté d'après ${c.adjustedFrom || "le bloc précédent"}` : ""}.</>
+                          : " · pas de chrono visé (VMA non renseignée) : la perte se calcule par rapport à la meilleure rep."}{" "}
+                        Saisis en secondes (52) ou en min:s (4:52). Décoche une rep non faite.
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: "6px 8px", alignItems: "center" }}>
+                        <div style={{ fontSize: 11, color: "#a8a199" }}>Rep</div>
+                        <div style={{ fontSize: 11, color: "#a8a199" }}>Chrono</div>
+                        <div style={{ fontSize: 11, color: "#a8a199", textAlign: "right" }}>% cible</div>
+                        <div style={{ fontSize: 11, color: "#a8a199", textAlign: "right" }}>Perte</div>
+                        {reps.map((x, i) => {
+                          const off = x.done === false;
+                          const l = off ? null : S.lossT(x.time);
+                          const pt = off ? null : S.vsTargetT(x.time);
+                          return (
+                            <React.Fragment key={x.rep}>
+                              <label style={{ fontSize: 13, whiteSpace: "nowrap", color: off ? "#5f5850" : "#f3f0ea", display: "flex", alignItems: "center", gap: 4 }}>
+                                <input type="checkbox" checked={!off} onChange={(e) => setRep(i, { done: e.target.checked })} />
+                                R{x.rep}
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder={c.targetTime ? fmtDur(c.targetTime).replace(" s", "") : "—"}
+                                disabled={off}
+                                value={x.time ?? ""}
+                                onChange={(e) => setRep(i, { time: e.target.value.replace(/[^0-9.,:]/g, "") })}
+                                style={{ ...inp, width: "100%", minWidth: 0 }}
+                              />
+                              <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: tcol(pt), minWidth: 42 }}>{pt == null ? "—" : `${Math.round(pt)} %`}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: col(l), minWidth: 44 }}>{l == null ? "—" : l < 0.05 ? "best" : `−${l.toFixed(1)} %`}</div>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                      <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
+                        <strong>Total :</strong> {S.total != null ? `${S.total} m` : "—"} · <strong>Meilleur :</strong> {fmtDur(S.bestTime)} · <strong>Moyenne :</strong> {fmtDur(S.meanTime)}
+                        {S.pctTarget != null && <> (<span style={{ color: tcol(S.pctTarget), fontWeight: 700 }}>{String(S.pctTarget).replace(".", ",")} % de la vitesse cible</span>)</>}
+                        {S.sdec != null && <> · <strong>Perte (%Sdec) :</strong> <span style={{ color: col(S.sdec), fontWeight: 700 }}>{String(S.sdec).replace(".", ",")} %</span></>}
+                        {adj && (
+                          <div style={{ marginTop: 6, color: adj.factor < 1 ? "#e08a3d" : adj.factor > 1 ? "#4fae7d" : "#a8a199" }}>
+                            ➡️ {adj.label}
+                            {adj.factor !== 1 && <> Bloc suivant : ≈ {adj.newPct} % au lieu de {c.plannedPct} % (chrono visé ÷ {String(adj.factor).replace(".", ",")} s'il est en distance, mètres × {String(adj.factor).replace(".", ",")} s'il est en temps).</>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {currentExerciseFeedback.sessionType === "endurance" && currentExerciseFeedback.mode !== "distance" && Array.isArray(currentExerciseFeedback.reps) && (() => {
                   const c = currentExerciseFeedback;
                   const reps = c.reps;
                   const S = summarizeEndurance(reps, c.targetPerRep);

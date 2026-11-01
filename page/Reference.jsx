@@ -30,6 +30,7 @@ import { FOSTER_CR10 } from "../component/sessionLoad";
 import { targetRir, UNI_FACTOR, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
 import { SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { END_LOSS_WARN, END_LOSS_STOP, END_ADJ } from "../component/enduranceFeedback";
+import { COD_SEC } from "../component/enduranceTarget";
 import { ZONES, DEFAULT_CS_VMA_RATIO, HR_MIN_EFFORT_SEC } from "../component/drillBank";
 import { LEVELS, LEVEL_ORDER, FAMILY_RATIO, FAMILY_LABEL, BRONCO_RECORD_S } from "../component/rugbyLevels";
 import { PRO_DATA, MASS_RATIO, BF_ADD, BF_DXA, BF_SKINFOLD, SILVER_SD, GOLD_SD, medalTargets } from "../component/morphology";
@@ -225,6 +226,21 @@ perte d'une rep = (temps − meilleur) / meilleur   (> ${SPRINT_LOSS_WARN} % : l
         <F>{`cible d'une rep = vitesse de référence × % prescrit × temps d'effort   (× 0,88 si passage au sol)
 % de la cible = distance moyenne / cible · perte (%Sdec) = (1 − moyenne / meilleure) × 100
 alerte perte : > ${END_LOSS_WARN} % · fatigue nette : > ${END_LOSS_STOP} %`}</F>
+        <H>Exercice défini en distance (chrono visé) ou en temps (mètres à faire)</H>
+        <F>{`Distance fixée → chrono visé = distance / (référence × %) + demi-tours × ${String(COD_SEC).replace(".", ",")} s
+  parcours aller-retour « 20-40-60 » × 5 tours (Bronco) = 1200 m, 29 demi-tours
+  ex. VMA 16 km/h à 100 % : 1200 / 4,44 = 270 s + 29 × 0,7 ≈ 20 s → ≈ 4:50
+Temps fixé + navette N m → distance = vitesse × (temps − demi-tours × ${String(COD_SEC).replace(".", ",")} s)
+  ex. 30 s à 16 km/h en navette de 20 m ≈ 118 m (≈ 5,9 navettes) au lieu de 133 m en ligne droite
+Passage sol : −12 % de distance (temps fixé) ou chrono ÷ 0,88 (distance fixée)
+Feedback en distance : chrono par rep → distance équivalente = distance × chrono visé / chrono réalisé
+  (proportionnelle à la vitesse) → mêmes % de la cible, %Sdec et ajustement qu'en temps fixé`}</F>
+        <P>
+          La durée d'effort d'un exercice défini en distance est estimée automatiquement. Elle sert à la durée de séance, à la frise des zones et à la FC cible.
+          Elle est calculée avec ta VMA, ou 15 km/h si aucune n'est connue. L'athlète voit, lui, le chrono calculé avec sa propre VMA ou vitesse critique.
+          Les 0,7 s par demi-tour sont une règle pratique (ESTIMATION) : le coût réel augmente avec la vitesse d'arrivée.
+        </P>
+        <Ref>Correction des demi-tours en navette : Buchheit & Laursen 2013, Sports Med 43:313 (individualisation des intermittents en navette).</Ref>
         <H>Ajustement du bloc d'endurance suivant</H>
         <F>{`niveau tenu = moyenne de la 2e moitié des reps
 < ${fr(END_ADJ.low * 100, 0)} % de la cible → % suivant × (niveau tenu / cible), baisse max ${pctTxt(END_ADJ.maxDown)}

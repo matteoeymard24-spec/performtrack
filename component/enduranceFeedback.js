@@ -21,7 +21,13 @@
      • s'il est < 97 % de la cible → % du bloc suivant × (niveau tenu / cible), baisse plafonnée à −10 % ;
      • s'il est ≥ 103 % de la cible avec une perte ≤ 3 % → hausse prudente, plafonnée à +5 % ;
      • sinon on garde la cible.
+
+   Exercice défini en DISTANCE (component/enduranceTarget.js) : l'athlète saisit le CHRONO de chaque rep.
+   Pour réutiliser exactement les mêmes calculs, chaque chrono est converti en « distance équivalente »
+   = distance × chrono visé / chrono réalisé (proportionnelle à la vitesse) : 10 % plus lent que le chrono
+   visé ⇒ ≈ 91 % de la cible, même lecture qu'en temps fixé.
    ===================================================================== */
+import { parseTime } from "./enduranceTarget";
 
 const r1 = (x) => Math.round(x * 10) / 10;
 
@@ -32,7 +38,7 @@ export const END_ADJ = { low: 0.97, high: 1.03, maxDown: 0.9, maxUp: 1.05, maxSd
 
 const validDist = (d) => {
   const v = Number(String(d ?? "").replace(",", "."));
-  return v > 0 && v < 5000 ? v : null;
+  return v > 0 && v < 100000 ? v : null;
 };
 
 /* Reps à remplir (une ligne par rep), en reprenant ce qui existe déjà */
@@ -41,7 +47,7 @@ export function buildEnduranceReps(exercise, existing) {
   const old = Array.isArray(existing?.reps) ? existing.reps : [];
   return Array.from({ length: n }, (_, i) => {
     const o = old.find((x) => x.rep === i + 1);
-    return { rep: i + 1, dist: o?.dist ?? "", done: o?.done ?? true };
+    return { rep: i + 1, dist: o?.dist ?? "", time: o?.time ?? "", done: o?.done ?? true };
   });
 }
 
@@ -86,7 +92,7 @@ export function nextBlockAdjustment(S, pct, target) {
   let label = "Cible tenue : garder la même intensité au bloc suivant.";
   if (ratio < END_ADJ.low) {
     factor = Math.max(END_ADJ.maxDown, ratio);
-    label = `Distance tenue ${Math.round(ratio * 100)} % de la cible : baisser l'intensité du bloc suivant pour garder des reps stables.`;
+    label = `Niveau tenu (2e moitié des reps) ${Math.round(ratio * 100)} % de la cible : baisser l'intensité du bloc suivant pour garder des reps stables.`;
   } else if (ratio >= END_ADJ.high && (S.sdec == null || S.sdec <= END_ADJ.maxSdecForUp)) {
     factor = Math.min(END_ADJ.maxUp, ratio);
     label = `Cible dépassée sans perte (${Math.round(ratio * 100)} %) : le bloc suivant peut monter un peu.`;
@@ -133,4 +139,58 @@ export function adjustmentBefore(blocks, feedback, bIdx, eIdx, isEndurance) {
     });
   });
   return found;
+}
+
+/* ---------- Mode DISTANCE : chrono par rep ---------- */
+const T0 = 100; // chrono de référence quand aucun chrono visé n'existe (seules les pertes relatives comptent)
+
+/* Reps « chrono » → reps « distance équivalente » pour summarizeEndurance */
+export function timedEquivalent(reps, dist, targetTime) {
+  const ref = targetTime > 0 ? targetTime : T0;
+  return (reps || []).map((x) => {
+    const t = parseTime(x.time);
+    return { rep: x.rep, done: x.done, dist: t && dist > 0 ? (dist * ref) / t : "" };
+  });
+}
+
+/* Résumé en mode distance : mêmes indicateurs + chronos */
+export function summarizeTimed(reps, dist, targetTime) {
+  const eq = timedEquivalent(reps, dist, targetTime);
+  const S = summarizeEndurance(eq, targetTime > 0 ? dist : null);
+  const times = (reps || []).filter((x) => x.done !== false).map((x) => parseTime(x.time)).filter((t) => t > 0);
+  const eqOf = (time) => {
+    const t = parseTime(time);
+    return t && dist > 0 ? (dist * (targetTime > 0 ? targetTime : T0)) / t : null;
+  };
+  return {
+    ...S,
+    eq,
+    total: S.nDone ? Math.round(dist * S.nDone) : null, // vraie distance parcourue
+    bestTime: times.length ? Math.min(...times) : null,
+    meanTime: times.length ? times.reduce((a, b) => a + b, 0) / times.length : null,
+    lossT: (time) => S.loss(eqOf(time)),
+    vsTargetT: (time) => S.vsTarget(eqOf(time)),
+  };
+}
+
+export function enduranceEntryTimed(reps, dist, targetTime, pct, rpe, notes) {
+  const clean = (reps || []).map((x) => ({ rep: x.rep, time: parseTime(x.time), done: x.done !== false }));
+  const S = summarizeTimed(clean, dist, targetTime);
+  const adj = targetTime > 0 ? nextBlockAdjustment(S, pct, dist) : null;
+  return {
+    mode: "distance",
+    reps: clean,
+    distancePerRep: dist || null,
+    targetTime: targetTime > 0 ? Math.round(targetTime * 10) / 10 : null,
+    actualDistance: S.total || 0,
+    bestTime: S.bestTime != null ? Math.round(S.bestTime * 10) / 10 : null,
+    meanTime: S.meanTime != null ? Math.round(S.meanTime * 10) / 10 : null,
+    sdec: S.sdec,
+    pctTarget: S.pctTarget,
+    targetPerRep: dist || null,
+    plannedPct: pct || null,
+    ...(adj ? { nextFactor: adj.factor, nextPct: adj.newPct } : {}),
+    rpe: Number(rpe),
+    notes: notes || "",
+  };
 }
