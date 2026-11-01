@@ -19,6 +19,7 @@ import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
 import EnduranceProfile, { ZonesCard } from "../component/EnduranceProfile";
 import { zoneOf, pctCS, hrTarget, HR_MIN_EFFORT_SEC, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK } from "../component/drillBank";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
+import { CONTRACTIONS, contractionOf, isSpecialContraction, contractionTip, contractionShort } from "../component/contraction";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
   collection,
@@ -1743,6 +1744,9 @@ export default function Workout() {
         // Poids du corps (PDC) : pas de charge externe pertinente pour un RM —
         // sauf les tractions, dont le RM est poids du corps + lest.
         if (isNoRmIntensity(exercise.rmPercent) && !isLoadedBodyweight(exercise.name)) continue;
+
+        // Excentrique supramax / isométrie : ne servent jamais au RM (voir component/contraction.js)
+        if (isSpecialContraction(exercise)) continue;
 
         // Nom utilisé pour la fiche RM : celui choisi explicitement par le
         // coach (rmName, quand l'exercice sert de référence pour calculer
@@ -8126,9 +8130,40 @@ export default function Workout() {
                           <option value={115}>115% RM</option>
                           <option value={120}>120% RM</option>
                         </select>
+                        <label style={{ fontSize: 12, color: "#a8a199", display: "block", marginTop: 8 }}>
+                          Régime
+                        </label>
+                        <select
+                          value={contractionOf(ex)}
+                          onChange={(e) => updateExercise(bIdx, eIdx, "contraction", e.target.value)}
+                          style={{
+                            width: "100%",
+                            padding: 8,
+                            borderRadius: 6,
+                            border: "1px solid #2a2620",
+                            background: "#0d0c0a",
+                            color: "#f3f0ea",
+                          }}
+                        >
+                          {CONTRACTIONS.map((c) => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                          ))}
+                        </select>
+                        {isSpecialContraction(ex) && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#e0a13d", lineHeight: 1.5 }}>
+                            {contractionTip(ex)}
+                          </div>
+                        )}
                       </div>
                       {/* Prédiction des reps en réserve dès la construction (voir component/loadAdjust.js) */}
                       {!isNoRmIntensity(ex.rmPercent) && block.timerMode !== "amrap" && (() => {
+                        if (isSpecialContraction(ex)) return null; // excentrique / iso : la table %RM ↔ reps ne s'applique pas
+                        if (contractionOf(ex) === "classique" && Number(ex.rmPercent) > 100)
+                          return (
+                            <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(217,105,90,0.12)", border: "1px solid #d9695a", fontSize: 12, color: "#e8998c", lineHeight: 1.5 }}>
+                              ⚠️ {ex.rmPercent} % : impossible en concentrique classique. Choisis « Excentrique » ou « Iso » dans Régime (jusqu'à 120 %).
+                            </div>
+                          );
                         const t = targetRir(ex.rmPercent || 70, ex.reps, isUniEx(ex));
                         if (!t) return null;
                         if (t.impossible)
@@ -9707,8 +9742,12 @@ export default function Workout() {
                           )}
                           {(() => {
                             // RIR visé = reps max possibles à ce %RM − reps prévues (voir component/loadAdjust.js)
-                            const t = targetRir(ex.rmPercent, ex.reps, isUniEx(ex));
-                            if (!t) return null;
+                            const t = isSpecialContraction(ex) ? null : targetRir(ex.rmPercent, ex.reps, isUniEx(ex));
+                            if (!t) return isSpecialContraction(ex) ? (
+                              <div style={{ fontSize: 12, marginTop: 4, color: "#e0a13d", fontWeight: 700 }}>
+                                {contractionShort(ex) === "EXC" ? "⬇️ Excentrique supramax" : contractionShort(ex) === "ISO-O" ? "🧱 Iso overcoming" : "⏸️ Iso yielding"} — pareurs / butées ; ne compte pas pour le RM
+                              </div>
+                            ) : null;
                             return t.impossible ? (
                               <div style={{ color: "#d9695a", fontSize: 12, marginTop: 4 }}>
                                 ⚠️ {ex.reps} reps à {ex.rmPercent} % dépasse le maximum possible (~{frNum(t.maxReps)} reps) : baisse le % ou les reps.
@@ -10597,7 +10636,7 @@ export default function Workout() {
                       Série {idx + 1}
                     </h4>
                     {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
-                      const t = targetRir(currentExerciseFeedback.exercise.rmPercent, currentExerciseFeedback.exercise.reps, isUniEx(currentExerciseFeedback.exercise));
+                      const t = isSpecialContraction(currentExerciseFeedback.exercise) ? null : targetRir(currentExerciseFeedback.exercise.rmPercent, currentExerciseFeedback.exercise.reps, isUniEx(currentExerciseFeedback.exercise));
                       if (!t || t.impossible) return null;
                       return (
                         <div style={{ fontSize: 13, margin: "-6px 0 12px", color: rirRpeColor(t.rpe), fontWeight: 700 }}>

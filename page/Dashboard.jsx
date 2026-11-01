@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { isSpecialContraction } from "../component/contraction";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
@@ -527,6 +528,7 @@ export default function Dashboard() {
         if (blockTypeOf(block, w.type) !== "muscu") return; // seuls les blocs muscu (force)
         if (/échauffement|echauffement|warm.?up|activation/i.test(block.name || "")) return;
         if (ex.rmPercent === "PDC" || ex.rmPercent === "ELASTIQUE") return;
+        if (isSpecialContraction(ex)) return; // excentrique / iso : pas d'e1RM
         if (/cmj/i.test(ex.name || "")) return;
         const name = ex.name;
         if (!name) return;

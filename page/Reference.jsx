@@ -5,6 +5,7 @@
    modules de calcul : si un réglage change dans le code, la page change avec.
    À tenir à jour à chaque nouvelle méthode ajoutée dans l'app.
    ===================================================================== */
+import { SUPRA_MAX_PCT } from "../component/contraction";
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
@@ -164,6 +165,19 @@ perte = baisse de l'e1RM vs la 1re série   (≤ ${LOSS_WARN} % stable · ${LOSS
 saisie = lest ajouté (0 = poids du corps seul) · charge conseillée affichée en lest (total − poids du corps)
 lest négatif = assistance (élastique) de cette valeur`}</F>
         <P>Même logique que les barèmes « Traction (charge totale) » (standards SU Agen). Le poids du corps vient du profil de l'athlète.</P>
+        <H>Excentrique supramax et isométrie (au-dessus de 100 %)</H>
+        <F>{`Régime par exercice : classique · excentrique · iso overcoming · iso yielding
+charge = RM × %  (jusqu'à ${SUPRA_MAX_PCT} %)   ex. RM 100 kg à 110 % = 110 kg
+classique > 100 % → signalé impossible
+excentrique / iso → pas de RIR prédit, pas de charge conseillée, jamais utilisé pour le RM`}</F>
+        <P>
+          La force excentrique dépasse la force concentrique d'environ 20 à 60 %, d'où les charges supramaximales en excentrique.
+          En iso overcoming, au-dessus de 100 % la barre ne bouge pas : c'est l'effort maximal qui fait l'intensité.
+          La table %RM ↔ reps n'est valable qu'en concentrique, d'où l'exclusion de ces séries des calculs.
+          Sans exclusion, 3 reps excentriques à 110 % donneraient un RM estimé d'environ 117 %, ce qui fausserait toutes les charges.
+          Les anciens exercices avec le tempo « ISO » sont traités comme iso yielding.
+        </P>
+        <Ref>Hollander et al. 2007, J Strength Cond Res 21:34 · Oranchuk et al. 2019, Scand J Med Sci Sports 29:484.</Ref>
         <H>Mise à jour automatique des RM (fin de séance)</H>
         <P>
           Blocs muscu seulement, hors échauffement, poids du corps et élastique. Séries retenues : ≤ 6 reps et RPE ≥ 8 (RIR ≤ 2).
@@ -333,6 +347,8 @@ groupe : moyenne des athlètes ayant terminé au moins une séance dans la semai
             "Costa EC et al. 2015 — Effect of unilateral and bilateral resistance exercise on maximal voluntary strength, total volume of load lifted and perceptual and metabolic responses. Biology of Sport 32:35-40.",
             "Crewther BT et al. 2009 — Scaling strength and power for body mass differences in rugby union players. J Sports Sci 27:1575-1580.",
             "Darrall-Jones J et al. 2016 — Fitness characteristics of rugby union players by age category (30-15 IFT). IJSPP.",
+            "Hollander DB et al. 2007 — Maximal eccentric and concentric strength discrepancies between young men and women for dynamic resistance exercise. J Strength Cond Res 21:34-40.",
+            "Oranchuk DJ et al. 2019 — Isometric training and long-term adaptations: effects of muscle length, intensity, and intent. Scand J Med Sci Sports 29:484-503.",
             "Day ML et al. 2004 — Monitoring exercise intensity during resistance training using the session RPE scale. J Strength Cond Res 18:353-358.",
             "Fitzsimons M et al. 1993 — Cycling and running tests of repeated sprint ability. Aust J Sci Med Sport 25:82-87.",
             "Fontana FY et al. 2015 — Anthropometrics of Italian senior male rugby union players: from elite to second division. IJSPP 10:1003-1007.",

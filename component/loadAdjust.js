@@ -21,6 +21,7 @@
       théorique et RIR ≤ 4 servent au calcul.
    ===================================================================== */
 import { maxRepsAtPct, pct1RMFromRepsRpe, e1rmFromSet } from "./loadMetrics";
+import { isSpecialContraction } from "./contraction";
 
 /* UNILATÉRAL (10 reps « par côté ») :
    • Le RIR se compte PAR CÔTÉ, pas sur le total : 10 reps par jambe = chaque jambe fait 10 reps et se
@@ -102,6 +103,8 @@ export function weightFor(e1rm, reps, rir, uni = false) {
 // bw : poids du corps à AJOUTER à la charge saisie (tractions lestées : charge totale = PDC + lest) ;
 // les charges conseillées sont alors rendues en LEST (total − bw).
 export function analyzeSets(series, exercise, uni = false, bw = 0) {
+  // Excentrique supramax / isométrie : pas d'e1RM ni de charge conseillée (table valable en concentrique seulement)
+  if (isSpecialContraction(exercise)) return { target: null, rows: (series || []).map((s) => ({ e1rm: null, loss: null, next: null, weight: num(s.actualWeight) })), maxLoss: null, nextSession: null, special: true };
   const tgt = targetRir(exercise?.rmPercent, exercise?.reps, uni);
   const add = bw > 0 ? Number(bw) : 0;
   const rows = (series || []).map((s) => {

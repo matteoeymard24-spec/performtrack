@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { isSpecialContraction } from "./contraction";
 import { rirLabel } from "./rir";
 
 /* ExerciseFeedbackList — exercices pour lesquels l'athlète a donné un feedback
@@ -58,6 +59,7 @@ export function extractFeedbackExercises(workouts, uid) {
         id: `${w.id || w.date}_${key}`,
         key: normName(name),
         unilateral: !!ex.unilateral,
+        special: isSpecialContraction(ex), // excentrique / iso : exclu du calcul des RM
         exercise: name,
         date: w.date || "",
         workoutTitle: w.title || "",

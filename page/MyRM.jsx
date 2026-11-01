@@ -540,6 +540,7 @@ export default function MyRM() {
       const byEx = {};
       fbEntries.forEach((e) => {
         if (/^(cmj|counter movement jump)$/i.test((e.exercise || "").trim())) return;
+        if (e.special) return; // excentrique / iso : pas de RM
         const vals = (e.sets || [])
           .filter((st) => st.reps && st.reps <= 10 && st.rpe && st.rpe >= 7)
           .map((st) => setE1rm(st, e.exercise))
@@ -605,6 +606,7 @@ export default function MyRM() {
     const pts = [];
     fbEntries.forEach((e) => {
       if (normKey(e.exercise) !== key) return;
+      if (e.special) return; // excentrique / iso : pas de RM
       const vals = (e.sets || [])
         .filter((st) => st.reps && st.reps <= 10 && st.rpe && st.rpe >= 7)
         .map((st) => setE1rm(st, e.exercise))
