@@ -850,7 +850,8 @@ export default function PlanningPanel({
           <div style={{ position: "relative", height: 78, marginTop: 6 }}>
             <div style={{ position: "absolute", left: 0, top: 0, fontSize: 9, color: "#5e584f", zIndex: 1 }}>
               <span style={{ color: "#5b8def" }}>■</span> Volume · <span style={{ color: "#e0a13d" }}>■</span> Intensité (1-10) prévus ·{" "}
-              <span style={{ color: "#5b8def" }}>□</span><span style={{ color: "#e0a13d" }}>□</span> réellement effectués · trait du haut : légère / moyenne / dure
+              <span style={{ display: "inline-block", width: 8, height: 8, background: "repeating-linear-gradient(45deg, #5b8def 0 2px, transparent 2px 4px)", border: "1px solid #9dbcf5" }} />
+              <span style={{ display: "inline-block", width: 8, height: 8, marginLeft: 2, background: "repeating-linear-gradient(45deg, #e0a13d 0 2px, transparent 2px 4px)", border: "1px solid #f0c98a" }} /> réellement effectués (hachuré, à droite) · trait du haut : légère / moyenne / dure
             </div>
             {loadWeeks
               .filter(({ c }) => hasLoadInfo(c))
@@ -886,8 +887,8 @@ export default function PlanningPanel({
                   style={{ position: "absolute", left: `${left}%`, width: `${Math.max(0.8, wPct - 0.25)}%`, top: 14, bottom: 0, pointerEvents: "auto" }}
                 >
                   <div style={{ position: "absolute", left: "50%", right: 0, bottom: 0, top: 6, display: "flex", alignItems: "flex-end", gap: 1 }}>
-                    <div style={{ flex: 1, height: bar(r.volume), border: "1.5px solid #5b8def", borderBottom: "none", borderRadius: "2px 2px 0 0", boxSizing: "border-box" }} />
-                    <div style={{ flex: 1, height: bar(r.intensity), border: "1.5px solid #e0a13d", borderBottom: "none", borderRadius: "2px 2px 0 0", boxSizing: "border-box" }} />
+                    <div style={{ flex: 1, height: bar(r.volume), background: "repeating-linear-gradient(45deg, rgba(91,141,239,0.85) 0 3px, rgba(91,141,239,0.35) 3px 6px)", border: "1.5px solid #9dbcf5", borderBottom: "none", borderRadius: "2px 2px 0 0", boxSizing: "border-box" }} />
+                    <div style={{ flex: 1, height: bar(r.intensity), background: "repeating-linear-gradient(45deg, rgba(224,161,61,0.85) 0 3px, rgba(224,161,61,0.35) 3px 6px)", border: "1.5px solid #f0c98a", borderBottom: "none", borderRadius: "2px 2px 0 0", boxSizing: "border-box" }} />
                   </div>
                 </div>
               );

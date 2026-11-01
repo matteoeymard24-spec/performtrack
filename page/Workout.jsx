@@ -746,7 +746,7 @@ export default function Workout() {
     if (!currentUser) return;
     try {
       // Portée coach : cycles que j'ai créés (coach) / ceux de mon coach (athlète).
-      const snap = await getScopedDocs("cycles");
+      const snap = await getScopedDocs("cycles", { fresh: true }); // fresh : sinon le cache de 90 s réaffichait l'ancienne version après un enregistrement
       setCycles(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (e) {
       // Règles Firestore pas encore publiées pour "cycles" : on ignore, le
@@ -763,7 +763,7 @@ export default function Workout() {
   const fetchFixtures = useCallback(async () => {
     if (!currentUser) return;
     try {
-      const snap = await getScopedDocs("fixtures");
+      const snap = await getScopedDocs("fixtures", { fresh: true }); // fresh : sinon le cache de 90 s réaffichait l'ancienne version après un enregistrement
       setFixtures(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (e) {
       console.warn("Matchs indisponibles :", e.code || e.message);
