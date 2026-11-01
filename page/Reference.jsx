@@ -241,6 +241,14 @@ Feedback en distance : chrono par rep → distance équivalente = distance × ch
           Les 0,7 s par demi-tour sont une règle pratique (ESTIMATION) : le coût réel augmente avec la vitesse d'arrivée.
         </P>
         <Ref>Correction des demi-tours en navette : Buchheit & Laursen 2013, Sports Med 43:313 (individualisation des intermittents en navette).</Ref>
+        <H>EMOM et AMRAP en endurance</H>
+        <F>{`Un tour = les exercices du bloc enchaînés (chacun en distance → chrono visé, ou en temps → mètres)
+EMOM : récup par tour = intervalle − durée du tour (signalé si le tour dure plus que l'intervalle)
+  ex. 200 m en navettes de 20 m à 110 % d'une VMA de 16 km/h : 47 s → 13 s de récup, 10 tours = 2000 m
+  feedback : chrono (bloc en distance) ou distance (bloc en temps) de chaque tour → % cible, %Sdec, ajustement
+AMRAP : tours visés = durée totale / durée du tour ; distance visée = tours × distance du tour
+  feedback : tours faits + mètres du tour non terminé → % de la distance visée → ajustement du bloc suivant`}</F>
+        <P>L'ajustement d'un bloc EMOM / AMRAP s'applique au bloc d'endurance suivant, qu'il soit classique, EMOM ou AMRAP.</P>
         <H>Ajustement du bloc d'endurance suivant</H>
         <F>{`niveau tenu = moyenne de la 2e moitié des reps
 < ${fr(END_ADJ.low * 100, 0)} % de la cible → % suivant × (niveau tenu / cible), baisse max ${pctTxt(END_ADJ.maxDown)}

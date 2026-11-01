@@ -132,6 +132,9 @@ export function adjustmentBefore(blocks, feedback, bIdx, eIdx, isEndurance) {
   let found = null;
   (blocks || []).forEach((b, bi) => {
     if (!isEndurance(b)) return;
+    // Bloc EMOM / AMRAP déjà renseigné avant : son feedback est au niveau du bloc
+    const bf = bi < bIdx ? feedback?.[`block-${bi}`] : null;
+    if (bf && bf.nextFactor) found = { factor: bf.nextFactor, from: b.name || `Bloc ${bi + 1}` };
     (b.exercises || []).forEach((_, ei) => {
       if (bi > bIdx || (bi === bIdx && ei >= eIdx)) return;
       const f = feedback?.[`${bi}-${ei}`];
@@ -193,4 +196,13 @@ export function enduranceEntryTimed(reps, dist, targetTime, pct, rpe, notes) {
     rpe: Number(rpe),
     notes: notes || "",
   };
+}
+
+/* Facteur d'ajustement à partir d'un rapport réalisé / visé (AMRAP : distance réelle / distance visée),
+   même règle que nextBlockAdjustment */
+export function factorFromRatio(ratio) {
+  if (!(ratio > 0)) return 1;
+  if (ratio < END_ADJ.low) return Math.round(Math.max(END_ADJ.maxDown, ratio) * 1000) / 1000;
+  if (ratio >= END_ADJ.high) return Math.round(Math.min(END_ADJ.maxUp, ratio) * 1000) / 1000;
+  return 1;
 }

@@ -3,8 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
-import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjustment, adjustmentBefore, END_LOSS_WARN, END_LOSS_STOP, summarizeTimed, enduranceEntryTimed } from "../component/enduranceFeedback";
-import { isDistanceMode, courseOf, targetTimeSec, distanceInTime, estimatedEffortSec, fmtTime as fmtDur, COD_SEC } from "../component/enduranceTarget";
+import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjustment, adjustmentBefore, END_LOSS_WARN, END_LOSS_STOP, summarizeTimed, enduranceEntryTimed, factorFromRatio } from "../component/enduranceFeedback";
+import { isDistanceMode, courseOf, targetTimeSec, distanceInTime, estimatedEffortSec, fmtTime as fmtDur, COD_SEC, timerBlockPlan, adjustPlan, planText } from "../component/enduranceTarget";
 import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
 import { isLoadedBodyweight, totalLoad, lestText } from "../component/bodyweightLoad";
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
@@ -1379,6 +1379,21 @@ export default function Workout() {
     };
   };
 
+  // Plan d'un bloc EMOM / AMRAP d'endurance pour la personne qui fait la séance,
+  // avec l'ajustement éventuel d'un bloc d'endurance précédent (voir component/enduranceTarget.js)
+  const enduranceBlockPlan = (block, bIdx, feedbackMap) => {
+    const base = timerBlockPlan(block, (e) => calculateEnduranceMetrics(e));
+    if (!base) return null;
+    const adj = adjustmentBefore(
+      selectedSession?.blocks,
+      feedbackMap || {},
+      bIdx,
+      0,
+      (b) => blockTypeOf(b, selectedSession?.type) === "endurance"
+    );
+    return adj && adj.factor !== 1 ? { ...adjustPlan(base, adj.factor), adjustedFrom: adj.from } : base;
+  };
+
   const RPE_TABLE = {
     1: { 10: 100, 9.5: 97.8, 9: 95.5, 8.5: 93.9, 8: 92.2, 7.5: 90.7, 7: 89.2 },
     2: { 10: 95.5, 9.5: 93.9, 9: 92.2, 8.5: 90.7, 8: 89.2, 7.5: 87.8, 7: 86.3 },
@@ -1649,6 +1664,21 @@ export default function Workout() {
       targetEffortTime,
       targetVmaPercentage,
       actualRounds: existing.actualRounds ?? 0,
+      extraM: existing.extraM ?? "",
+      // Endurance : plan du bloc (chrono / distance par tour) + saisie tour par tour en EMOM
+      ...(sessionType === "endurance" && (() => {
+        const plan = enduranceBlockPlan(block, blockIndex, { ...userFeedback, ...sessionFeedback });
+        if (!plan) return {};
+        const out = { endPlan: plan };
+        if (plan.timerMode === "emom") {
+          const old = Array.isArray(existing.reps) ? existing.reps : [];
+          out.reps = Array.from({ length: plan.rounds }, (_, i) => {
+            const o = old.find((x) => x.rep === i + 1);
+            return { rep: i + 1, time: o?.time ?? "", dist: o?.dist ?? "", done: o?.done ?? true };
+          });
+        }
+        return out;
+      })()),
       notes: existing.notes || "",
     });
 
@@ -1702,6 +1732,34 @@ export default function Workout() {
         }),
         notes: currentExerciseFeedback.notes || "",
       };
+      // Endurance : résultats tour par tour (EMOM) ou distance réalisée (AMRAP), + ajustement du bloc suivant
+      const P = currentExerciseFeedback.endPlan;
+      if (currentExerciseFeedback.sessionType === "endurance" && P) {
+        const c = currentExerciseFeedback;
+        if (isEmom && Array.isArray(c.reps)) {
+          const res = P.mode === "distance"
+            ? enduranceEntryTimed(c.reps, P.roundDist, P.roundTime, P.pct, c.rpe, c.notes)
+            : enduranceEntry(c.reps, P.roundDist, P.pct, c.rpe, c.notes);
+          entry = { ...res, ...entry, mode: P.mode, plan: P, ...(P.mode === "distance" && res.meanTime ? { actualRepTimeSec: res.meanTime } : {}) };
+        } else if (isAmrap) {
+          const rounds = Number(c.actualRounds) || 0;
+          const extra = Number(String(c.extraM ?? "").replace(",", ".")) || 0;
+          const real = P.roundDist ? Math.round(rounds * P.roundDist + extra) : null;
+          const ratio = real != null && P.totalDist ? real / P.totalDist : null;
+          const f = ratio ? factorFromRatio(ratio) : 1;
+          entry = {
+            ...entry,
+            mode: P.mode,
+            plan: P,
+            extraM: extra || 0,
+            actualDistance: real,
+            targetRounds: P.targetRounds,
+            pctTarget: ratio ? Math.round(ratio * 1000) / 10 : null,
+            plannedPct: P.pct || null,
+            ...(f !== 1 ? { nextFactor: f, nextPct: P.pct ? Math.round(P.pct * f) : null } : {}),
+          };
+        }
+      }
     } else if (currentExerciseFeedback.sessionType === "muscu") {
       entry = {
         series: currentExerciseFeedback.series,
@@ -7533,6 +7591,18 @@ export default function Workout() {
                         </span>
                       </div>
                     )}
+                    {/* Plan du bloc en endurance : chrono / mètres par tour, récup EMOM, tours visés AMRAP (component/enduranceTarget.js) */}
+                    {blockTypeOf(block, formSessionType) === "endurance" && (() => {
+                      const plan = timerBlockPlan(block, (e) => (refSpeedKmh(e) && e.vmaPercentage ? calculateEnduranceMetrics(e) : null));
+                      if (!plan) return null;
+                      return (
+                        <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, fontSize: 12, lineHeight: 1.5, background: plan.impossible ? "rgba(217,105,90,0.12)" : "rgba(79,174,125,0.14)", border: `1px solid ${plan.impossible ? "#d9695a" : "#4fae7d"}`, color: plan.impossible ? "#e8998c" : "#9fd4b0" }}>
+                          🎯 {planText(plan)}
+                          {plan.impossible && <div>⚠️ Le tour dure plus que l'intervalle : allonge l'intervalle, baisse la distance ou le %.</div>}
+                          {!refSpeedKmh(block.exercises?.[0]) && <div style={{ color: "#a8a199" }}>Sans VMA renseignée, les chronos / mètres ne peuvent pas être calculés.</div>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -8525,7 +8595,7 @@ export default function Workout() {
                     const modeBtn = (on) => ({ padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: on ? "1px solid #e0a13d" : "1px solid #2a2620", background: on ? "rgba(224,161,61,0.18)" : "#0d0c0a", color: on ? "#e0a13d" : "#a8a199" });
                     return (
                     <>
-                      {!isTimerBlock && (
+                      {(
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                           <span style={{ fontSize: 12, color: "#a8a199" }}>Défini par :</span>
                           <button type="button" style={modeBtn(!distMode)} onClick={() => updateExercise(bIdx, eIdx, "targetMode", "time")}>
@@ -8593,12 +8663,12 @@ export default function Workout() {
                         </div>
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            {distMode && !isTimerBlock ? "Effort estimé (s)" : "Effort (s)"}
+                            {distMode ? "Effort estimé (s)" : "Effort (s)"}
                           </label>
                           <input
                             type="number"
-                            readOnly={distMode && !isTimerBlock}
-                            title={distMode && !isTimerBlock ? "Calculé à partir de la distance et du % (chrono visé)" : undefined}
+                            readOnly={distMode}
+                            title={distMode ? "Calculé à partir de la distance et du % (chrono visé)" : undefined}
                             value={ex.effortTime}
                             onChange={(e) =>
                               updateExercise(
@@ -8759,7 +8829,7 @@ export default function Workout() {
                         </div>
                       </div>
                       )}
-                      {!isTimerBlock && distMode && (
+                      {distMode && (
                         <div style={{ marginBottom: 10, padding: 10, borderRadius: 8, border: "1px solid #2a2620", background: "#141210" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                             <div>
@@ -8801,7 +8871,7 @@ export default function Workout() {
                           </div>
                         </div>
                       )}
-                      {!isTimerBlock && !distMode && (
+                      {!distMode && (
                         <div style={{ marginBottom: 10 }}>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>Navette (m, optionnel — vide = ligne droite)</label>
                           <input type="number" value={ex.shuttleM || ""} onChange={(e) => updateExercise(bIdx, eIdx, "shuttleM", Number(e.target.value) || "")} style={fieldStyle} />
@@ -9491,6 +9561,15 @@ export default function Workout() {
                       : `⏱️ AMRAP — ${Math.round((block.timerIntervalSec || 600) / 60)} min, le plus de tours possible`}
                   </span>
                 )}
+                {(block.timerMode === "emom" || block.timerMode === "amrap") && sessionType === "endurance" && (() => {
+                  const plan = enduranceBlockPlan(block, bIdx, { ...getUserFeedback(selectedSession), ...sessionFeedback });
+                  if (!plan) return null;
+                  return (
+                    <span style={{ display: "block", marginTop: 6, fontSize: 13, fontWeight: 600, color: plan.impossible ? "#d9695a" : "#e0a13d" }}>
+                      🎯 {planText(plan)}{plan.adjustedFrom ? ` — ajusté d'après ${plan.adjustedFrom}` : ""}
+                    </span>
+                  );
+                })()}
               </h4>
               {blockFold.isOpen(`blk_${selectedSession.id}_${bIdx}`) && (
               <>
@@ -9615,6 +9694,25 @@ export default function Workout() {
                           {blockFb.actualRounds > 0 && (
                             <div style={{ marginTop: 5 }}>
                               <strong>Tours effectués :</strong> {blockFb.actualRounds}
+                              {blockFb.extraM > 0 && ` + ${blockFb.extraM} m`}
+                              {blockFb.targetRounds ? ` (visé ≈ ${String(blockFb.targetRounds).replace(".", ",")})` : ""}
+                            </div>
+                          )}
+                          {Array.isArray(blockFb.reps) && (
+                            <div style={{ marginTop: 5, fontSize: 12, color: "#9fd4b0" }}>
+                              {blockFb.reps.filter((x) => x.done !== false).map((x) => `T${x.rep} ${blockFb.mode === "distance" ? (x.time ? fmtDur(x.time) : "—") : x.dist != null ? x.dist + " m" : "—"}`).join(" · ")}
+                            </div>
+                          )}
+                          {(blockFb.actualDistance > 0 || blockFb.pctTarget != null || blockFb.sdec != null) && blockFb.plan && (
+                            <div style={{ marginTop: 5 }}>
+                              {blockFb.actualDistance > 0 && <><strong>Distance :</strong> {blockFb.actualDistance} m</>}
+                              {blockFb.pctTarget != null && <> · {String(blockFb.pctTarget).replace(".", ",")} % de la cible</>}
+                              {blockFb.sdec != null && <> · <strong>Perte :</strong> {String(blockFb.sdec).replace(".", ",")} %</>}
+                            </div>
+                          )}
+                          {blockFb.nextFactor && blockFb.nextFactor !== 1 && (
+                            <div style={{ marginTop: 4, fontSize: 12, color: blockFb.nextFactor < 1 ? "#e08a3d" : "#4fae7d" }}>
+                              ➡️ Bloc d'endurance suivant : intensité × {String(blockFb.nextFactor).replace(".", ",")}{blockFb.nextPct ? ` (${blockFb.nextPct} % au lieu de ${blockFb.plannedPct} %)` : ""}
                             </div>
                           )}
                           {blockFb.notes && (
@@ -10610,7 +10708,71 @@ export default function Workout() {
                     ajuster le % VMA à la séance suivante (comparaison au
                     temps visé ci-dessous) ; pour la muscu, c'est juste
                     informatif (pas de % VMA à ajuster). */}
-                {currentExerciseFeedback.blockTimerMode === "emom" && (
+                {/* ENDURANCE EMOM : chrono (bloc en distance) ou distance (bloc en temps) de CHAQUE tour */}
+                {currentExerciseFeedback.blockTimerMode === "emom" && currentExerciseFeedback.endPlan && Array.isArray(currentExerciseFeedback.reps) && (() => {
+                  const c = currentExerciseFeedback;
+                  const P = c.endPlan;
+                  const timed = P.mode === "distance";
+                  const reps = c.reps;
+                  const S = timed ? summarizeTimed(reps, P.roundDist, P.roundTime) : summarizeEndurance(reps, P.roundDist);
+                  const adj = (timed ? P.roundTime : P.roundDist) ? nextBlockAdjustment(S, P.pct, P.roundDist) : null;
+                  const setRep = (i, patch) => setCurrentExerciseFeedback({ ...c, reps: reps.map((x, k) => (k === i ? { ...x, ...patch } : x)) });
+                  const col = (l) => (l == null ? "#a8a199" : l > END_LOSS_STOP ? "#d9695a" : l > END_LOSS_WARN ? "#e08a3d" : "#4fae7d");
+                  const tcol = (p) => (p == null ? "#a8a199" : p >= 97 ? "#4fae7d" : p >= 90 ? "#e08a3d" : "#d9695a");
+                  const inp = { padding: "8px 6px", borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16 };
+                  return (
+                    <div style={{ marginBottom: 18 }}>
+                      <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 4 }}>{timed ? "Chrono de chaque tour" : "Distance de chaque tour (m)"}</div>
+                      <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
+                        🎯 {planText(P)}{P.adjustedFrom ? ` — ajusté d'après ${P.adjustedFrom}` : ""}.{" "}
+                        {timed ? "Saisis en secondes (45) ou min:s (1:05)." : ""} Décoche un tour non fait.
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto auto", gap: "6px 8px", alignItems: "center" }}>
+                        <div style={{ fontSize: 11, color: "#a8a199" }}>Tour</div>
+                        <div style={{ fontSize: 11, color: "#a8a199" }}>{timed ? "Chrono" : "Distance (m)"}</div>
+                        <div style={{ fontSize: 11, color: "#a8a199", textAlign: "right" }}>% cible</div>
+                        <div style={{ fontSize: 11, color: "#a8a199", textAlign: "right" }}>Perte</div>
+                        {reps.map((x, i) => {
+                          const off = x.done === false;
+                          const l = off ? null : timed ? S.lossT(x.time) : S.loss(x.dist);
+                          const pt = off ? null : timed ? S.vsTargetT(x.time) : S.vsTarget(x.dist);
+                          return (
+                            <React.Fragment key={x.rep}>
+                              <label style={{ fontSize: 13, whiteSpace: "nowrap", color: off ? "#5f5850" : "#f3f0ea", display: "flex", alignItems: "center", gap: 4 }}>
+                                <input type="checkbox" checked={!off} onChange={(e) => setRep(i, { done: e.target.checked })} />
+                                T{x.rep}
+                              </label>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder={timed ? (P.roundTime ? fmtDur(P.roundTime).replace(" s", "") : "—") : P.roundDist ? String(P.roundDist) : "—"}
+                                disabled={off}
+                                value={(timed ? x.time : x.dist) ?? ""}
+                                onChange={(e) => setRep(i, timed ? { time: e.target.value.replace(/[^0-9.,:]/g, "") } : { dist: e.target.value.replace(/[^0-9.,]/g, "") })}
+                                style={{ ...inp, width: "100%", minWidth: 0 }}
+                              />
+                              <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: tcol(pt), minWidth: 42 }}>{pt == null ? "—" : `${Math.round(pt)} %`}</div>
+                              <div style={{ fontSize: 12, fontWeight: 700, textAlign: "right", color: col(l), minWidth: 44 }}>{l == null ? "—" : l < 0.05 ? "best" : `−${l.toFixed(1)} %`}</div>
+                            </React.Fragment>
+                          );
+                        })}
+                      </div>
+                      <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
+                        <strong>Total :</strong> {S.total != null ? `${S.total} m` : "—"}
+                        {timed ? <> · <strong>Meilleur :</strong> {fmtDur(S.bestTime)} · <strong>Moyenne :</strong> {fmtDur(S.meanTime)}</> : <> · <strong>Moyenne :</strong> {S.mean != null ? `${S.mean} m` : "—"}</>}
+                        {S.pctTarget != null && <> (<span style={{ color: tcol(S.pctTarget), fontWeight: 700 }}>{String(S.pctTarget).replace(".", ",")} % de la cible</span>)</>}
+                        {S.sdec != null && <> · <strong>Perte (%Sdec) :</strong> <span style={{ color: col(S.sdec), fontWeight: 700 }}>{String(S.sdec).replace(".", ",")} %</span></>}
+                        {adj && (
+                          <div style={{ marginTop: 6, color: adj.factor < 1 ? "#e08a3d" : adj.factor > 1 ? "#4fae7d" : "#a8a199" }}>
+                            ➡️ {adj.label}
+                            {adj.factor !== 1 && P.pct ? <> Bloc d'endurance suivant : ≈ {adj.newPct} % au lieu de {P.pct} %.</> : null}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {currentExerciseFeedback.blockTimerMode === "emom" && !(currentExerciseFeedback.endPlan && Array.isArray(currentExerciseFeedback.reps)) && (
                   <div style={{ marginBottom: 18 }}>
                     <label
                       style={{
@@ -10670,6 +10832,11 @@ export default function Workout() {
                     >
                       Nombre de tours effectués
                     </label>
+                    {currentExerciseFeedback.endPlan && (
+                      <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8, lineHeight: 1.5 }}>
+                        🎯 {planText(currentExerciseFeedback.endPlan)}{currentExerciseFeedback.endPlan.adjustedFrom ? ` — ajusté d'après ${currentExerciseFeedback.endPlan.adjustedFrom}` : ""}.
+                      </div>
+                    )}
                     <input
                       type="number"
                       min="0"
@@ -10691,6 +10858,37 @@ export default function Workout() {
                         fontSize: 16,
                       }}
                     />
+                    {currentExerciseFeedback.endPlan?.roundDist ? (() => {
+                      const c = currentExerciseFeedback;
+                      const P = c.endPlan;
+                      const real = Math.round((Number(c.actualRounds) || 0) * P.roundDist + (Number(String(c.extraM ?? "").replace(",", ".")) || 0));
+                      const ratio = P.totalDist ? real / P.totalDist : null;
+                      const f = ratio ? factorFromRatio(ratio) : 1;
+                      const colr = ratio == null ? "#a8a199" : ratio >= 0.97 ? "#4fae7d" : ratio >= 0.9 ? "#e08a3d" : "#d9695a";
+                      return (
+                        <>
+                          <label style={{ display: "block", margin: "10px 0 6px", fontSize: 13, color: "#a8a199" }}>+ mètres du tour non terminé</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={c.extraM ?? ""}
+                            onChange={(e) => setCurrentExerciseFeedback({ ...c, extraM: e.target.value.replace(/[^0-9.,]/g, "") })}
+                            style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16, boxSizing: "border-box" }}
+                          />
+                          {(Number(c.actualRounds) > 0 || Number(c.extraM) > 0) && (
+                            <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
+                              <strong>Distance :</strong> {real} m
+                              {ratio != null && <> (<span style={{ color: colr, fontWeight: 700 }}>{Math.round(ratio * 100)} % de la cible {P.totalDist} m</span>)</>}
+                              {f !== 1 && P.pct && (
+                                <div style={{ marginTop: 4, color: f < 1 ? "#e08a3d" : "#4fae7d" }}>
+                                  ➡️ Bloc d'endurance suivant : ≈ {Math.round(P.pct * f)} % au lieu de {P.pct} %.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })() : null}
                   </div>
                 )}
 
