@@ -14,7 +14,7 @@ const fmt = (sec) => {
 export default function EnduranceProfile({ blocks, vma, cs }) {
   const [hover, setHover] = useState(null);
   const ratio = cs && vma ? cs / vma : DEFAULT_CS_VMA_RATIO;
-  const { segs, total } = enduranceSegments(blocks, ratio);
+  const { segs, total } = enduranceSegments(blocks, ratio, vma, cs);
   if (!segs.length || !total) return null;
   const { zones, rest } = timeInZones(segs);
   const maxPct = Math.max(120, ...segs.map((s) => s.pct + 5));

@@ -1,3 +1,4 @@
+import { isDistanceMode, estimatedEffortSec } from "./enduranceTarget";
 /* ============================================================================
    BANQUE D'EXERCICES SPRINT / ENDURANCE + ZONES D'ENTRAÎNEMENT (5 zones)
    ----------------------------------------------------------------------------
@@ -181,7 +182,18 @@ export function defaultSprintDiagram(distance) {
 const blockTimerSec = (b) =>
   b.timerMode === "amrap" ? b.timerIntervalSec || 60 : (b.timerIntervalSec || 60) * (b.timerRounds || 10);
 
-export function enduranceSegments(blocks, ratio = DEFAULT_CS_VMA_RATIO) {
+/* Durée d'un effort (s) : exercice défini en DISTANCE → chrono visé avec la référence de l'athlète
+   (VMA / VC), sinon la durée estimée enregistrée ; défini en TEMPS → effortTime. */
+const effortSecFor = (ex, ratio, vma, cs) => {
+  if (isDistanceMode(ex)) {
+    const ref = ex.intensityRef === "cs" ? cs || (vma ? vma * (ratio || DEFAULT_CS_VMA_RATIO) : null) : vma;
+    const est = ref ? estimatedEffortSec(ex, ref) : null;
+    if (est) return est;
+  }
+  return Number(ex.effortTime) || 0;
+};
+
+export function enduranceSegments(blocks, ratio = DEFAULT_CS_VMA_RATIO, vma = null, cs = null) {
   const segs = [];
   let t = 0;
   const push = (dur, pct, kind, label) => {
@@ -193,13 +205,44 @@ export function enduranceSegments(blocks, ratio = DEFAULT_CS_VMA_RATIO) {
   (blocks || []).forEach((b, bi) => {
     const exs = b.exercises || [];
     if (b.timerMode === "emom" || b.timerMode === "amrap") {
-      const pcts = exs.map((e) => pctCS(e, ratio)).filter((x) => x > 0);
-      const avg = pcts.length ? pcts.reduce((a, c) => a + c, 0) / pcts.length : 0;
-      push(blockTimerSec(b), avg, "effort", `${b.name || "Bloc " + (bi + 1)} (${b.timerMode.toUpperCase()})`);
+      const effs = exs.map((e) => effortSecFor(e, ratio, vma, cs));
+      const roundEff = effs.reduce((a, c) => a + c, 0);
+      const label = (e) => `${e.name || "Effort"} (${b.timerMode.toUpperCase()})`;
+      if (roundEff > 0 && b.timerMode === "emom") {
+        // EMOM : à chaque tour, les efforts puis la récup jusqu'au départ suivant
+        const I = Number(b.timerIntervalSec) || 60;
+        const R = Math.max(1, Number(b.timerRounds) || 10);
+        for (let r = 0; r < R; r++) {
+          let used = 0;
+          exs.forEach((e, k) => {
+            const d = Math.min(effs[k], Math.max(0, I - used));
+            push(d, pctCS(e, ratio), "effort", label(e));
+            used += d;
+          });
+          push(I - used, 0, "recup", "Récup (EMOM)");
+        }
+      } else if (roundEff > 0) {
+        // AMRAP : efforts enchaînés sans pause jusqu'à la fin du temps (dernier effort tronqué)
+        const T = Number(b.timerIntervalSec) || 600;
+        let used = 0;
+        let k = 0;
+        while (used < T && k < 10000) {
+          const i = k % exs.length;
+          const d = Math.min(effs[i] || 0, T - used);
+          if (d > 0) push(d, pctCS(exs[i], ratio), "effort", label(exs[i]));
+          used += effs[i] > 0 ? d : 0;
+          k += 1;
+          if (!effs.some((x) => x > 0)) break;
+        }
+      } else {
+        const pcts = exs.map((e) => pctCS(e, ratio)).filter((x) => x > 0);
+        const avg = pcts.length ? pcts.reduce((a, c) => a + c, 0) / pcts.length : 0;
+        push(blockTimerSec(b), avg, "effort", `${b.name || "Bloc " + (bi + 1)} (${b.timerMode.toUpperCase()})`);
+      }
     } else {
       exs.forEach((ex) => {
         const reps = Math.max(1, Number(ex.reps) || 1);
-        const eff = Number(ex.effortTime) || 0;
+        const eff = effortSecFor(ex, ratio, vma, cs);
         const rec = (Number(ex.recoveryMin) || 0) * 60 + (Number(ex.recoverySec) || 0);
         for (let r = 0; r < reps; r++) {
           push(eff, pctCS(ex, ratio), "effort", ex.name || "Effort");
