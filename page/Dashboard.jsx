@@ -52,6 +52,7 @@ import { athleteCanSeeWorkout } from "../component/coachScope";
 import { sprintSummaryText } from "../component/sprintFeedback";
 import { rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { blockTypeOf } from "../component/blockType";
+import { isLoadedBodyweight } from "../component/bodyweightLoad";
 import { sessionLoad, sessionRpe } from "../component/sessionLoad";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
@@ -509,7 +510,8 @@ export default function Dashboard() {
       .trim()
       .replace(/\s+/g, " ");
 
-  const extractStrengthSessions = (workouts, userId) => {
+  // bw = poids du corps de l'athlète : tractions → charge totale = poids du corps + lest saisi
+  const extractStrengthSessions = (workouts, userId, bw = null) => {
     const out = [];
     (workouts || []).forEach((w) => {
       if (!Array.isArray(w.blocks)) return; // séances mixtes : on filtre bloc par bloc ci-dessous
@@ -529,7 +531,7 @@ export default function Dashboard() {
         const name = ex.name;
         if (!name) return;
         const sets = Array.isArray(f.series)
-          ? f.series.map((st) => ({ weight: Number(st.actualWeight), reps: Number(st.actualReps), rpe: Number(st.rpe) }))
+          ? f.series.map((st) => ({ weight: isLoadedBodyweight(name) && bw ? (Number(st.actualWeight) || 0) + Number(bw) : Number(st.actualWeight), reps: Number(st.actualReps), rpe: Number(st.rpe) }))
           : f.actualWeight !== undefined
             ? [{ weight: Number(f.actualWeight), reps: Number(f.actualReps), rpe: Number(f.rpe) }]
             : [];
@@ -810,7 +812,7 @@ export default function Dashboard() {
         const myAcwr = calculateACWR(userWorkouts, currentUser.uid);
         const myAcwrNum = myAcwr !== null ? Number(myAcwr) : null;
         const myNeural = neuralFatigueAnalysis(
-          extractStrengthSessions(userWorkouts, currentUser.uid),
+          extractStrengthSessions(userWorkouts, currentUser.uid, userProfile?.weight),
           selfRmMap,
           today
         );
@@ -1006,7 +1008,7 @@ export default function Dashboard() {
           // Fatigue nerveuse (force) puis classification de forme croisée :
           // REDI × z-score wellness × performance (chute > 15 %, < 80 % du RM).
           const neural = neuralFatigueAnalysis(
-            extractStrengthSessions(uWorkouts, u.id),
+            extractStrengthSessions(uWorkouts, u.id, u.weight),
             rmByUser[u.id] || {},
             today
           );

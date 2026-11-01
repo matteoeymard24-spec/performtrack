@@ -159,6 +159,11 @@ perte = baisse de l'e1RM vs la 1re série   (≤ ${LOSS_WARN} % stable · ${LOSS
         <P>« Prochaine séance au même schéma » = meilleure série du jour × %1RM(reps prévues + RIR visé). <Est /></P>
         <Ref>Méthode RPE / e1RM (Tuchscherer, RTS) ; Helms et al. 2018, Front Physiol (autorégulation par RPE).</Ref>
 
+        <H>Tractions (poids du corps lesté)</H>
+        <F>{`RM traction = poids du corps (profil) + lest   ex. 65 kg + 10 kg = 75 kg
+saisie = lest ajouté (0 = poids du corps seul) · charge conseillée affichée en lest (total − poids du corps)
+lest négatif = assistance (élastique) de cette valeur`}</F>
+        <P>Même logique que les barèmes « Traction (charge totale) » (standards SU Agen). Le poids du corps vient du profil de l'athlète.</P>
         <H>Mise à jour automatique des RM (fin de séance)</H>
         <P>
           Blocs muscu seulement, hors échauffement, poids du corps et élastique. Séries retenues : ≤ 6 reps et RPE ≥ 8 (RIR ≤ 2).

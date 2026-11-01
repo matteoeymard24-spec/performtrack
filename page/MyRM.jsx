@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { e1rmFromSet } from "../component/loadMetrics";
+import { isLoadedBodyweight } from "../component/bodyweightLoad";
 import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
@@ -67,6 +68,16 @@ export default function MyRM() {
   const [viewMode, setViewMode] = useState("moi"); // moi | admin | athlete
   const [viewGroup, setViewGroup] = useState(""); // "" = tous, "none" = sans groupe, idGroupe, "sg:gid:sid"
   const uid = viewUid || currentUser?.uid;
+  // Poids du corps (profil) : RM des tractions = poids du corps + lest saisi
+  const [bodyWeight, setBodyWeight] = useState(null);
+  useEffect(() => {
+    if (!uid) return;
+    getDoc(doc(db, "users", uid))
+      .then((d) => setBodyWeight(Number(d.data()?.weight) || null))
+      .catch(() => setBodyWeight(null));
+  }, [uid]);
+  const setE1rm = (st, exName) =>
+    e1rmFromSet(isLoadedBodyweight(exName) && bodyWeight ? (Number(st.weight) || 0) + bodyWeight : st.weight, st.reps, st.rpe);
   // Anti-mélange : si on change d'athlète pendant un chargement, la réponse
   // tardive de l'ancien athlète est ignorée (sinon ses RM s'afficheraient sous
   // le nom du nouveau, et « Modifier » écrirait sur le mauvais compte).
@@ -531,7 +542,7 @@ export default function MyRM() {
         if (/^(cmj|counter movement jump)$/i.test((e.exercise || "").trim())) return;
         const vals = (e.sets || [])
           .filter((st) => st.reps && st.reps <= 10 && st.rpe && st.rpe >= 7)
-          .map((st) => e1rmFromSet(st.weight, st.reps, st.rpe))
+          .map((st) => setE1rm(st, e.exercise))
           .filter((v) => v !== null)
           .sort((x, y) => x - y);
         if (!vals.length) return;
@@ -596,7 +607,7 @@ export default function MyRM() {
       if (normKey(e.exercise) !== key) return;
       const vals = (e.sets || [])
         .filter((st) => st.reps && st.reps <= 10 && st.rpe && st.rpe >= 7)
-        .map((st) => e1rmFromSet(st.weight, st.reps, st.rpe))
+        .map((st) => setE1rm(st, e.exercise))
         .filter((v) => v !== null)
         .sort((x, y) => x - y);
       if (!vals.length) return;

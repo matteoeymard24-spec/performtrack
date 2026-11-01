@@ -5,6 +5,7 @@ import { db } from "../firebase";
 import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjustment, adjustmentBefore, END_LOSS_WARN, END_LOSS_STOP } from "../component/enduranceFeedback";
 import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
+import { isLoadedBodyweight, totalLoad, lestText } from "../component/bodyweightLoad";
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
 import { FOSTER_CR10 } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
@@ -359,7 +360,7 @@ const MAX_MEDIA_ZOOM = 250;
 
 export default function Workout() {
   const blockFold = useFold("workout_blocks");
-  const { currentUser, userRole, userGroup, isSuperAdmin, coachScope } = useAuth();
+  const { currentUser, userRole, userGroup, isSuperAdmin, coachScope, userProfile } = useAuth();
   const isAdminLike = userRole === "admin" || isSuperAdmin;
 
   const [events, setEvents] = useState([]);
@@ -1264,11 +1265,25 @@ export default function Workout() {
 
   // Poids cible d'après MES propres RM (saisie de séance par l'utilisateur
   // connecté) — jamais ceux de l'athlète affiché en vue admin.
+  // Poids du corps (profil) d'une personne : sert aux tractions lestées (RM = poids du corps + lest)
+  const bwOf = (uid) => {
+    if (!uid) return null;
+    if (uid === currentUser?.uid) return Number(userProfile?.weight) || null;
+    const u = [...(athletes || []), ...(adminUsers || [])].find((x) => x.id === uid);
+    return Number(u?.weight) || null;
+  };
   const calcOwnWeight = (rmName, percent) => {
     if (!rmName || !percent) return "-";
     // poids pré-rempli du feedback : RM de la personne qui fait la séance
     const rm = (actingUid ? rmCache[actingUid] || {} : userRM)[normalizeExerciseName(rmName)];
-    return rm ? Math.round((rm * percent) / 100) : "-";
+    if (!rm) return "-";
+    const total = (rm * percent) / 100;
+    // tractions : on pré-remplit le LEST (charge totale − poids du corps), jamais négatif
+    if (isLoadedBodyweight(rmName)) {
+      const bw = bwOf(actorUid);
+      return bw ? Math.max(0, Math.round(total - bw)) : Math.round(total);
+    }
+    return Math.round(total);
   };
 
   const calculateWeight = (rmName, percent) => {
@@ -1277,7 +1292,13 @@ export default function Workout() {
     const normalizedName = normalizeExerciseName(rmName);
     const rm = activeRM ? activeRM[normalizedName] : null;
     if (!rm) return "-";
-    return Math.round((rm * percent) / 100);
+    return Math.round((rm * percent) / 100); // charge TOTALE (tractions : voir activeLestText)
+  };
+  // Personne dont les RM sont affichés (athlète choisi / qui fait la séance / moi)
+  const activeRmUid = actingUid || (isAdminLike && !adminOwnSession && rmCandidates.length > 0 ? rmViewId : currentUser?.uid);
+  const activeLestText = (rmName, percent) => {
+    const t = calculateWeight(rmName, percent);
+    return typeof t === "number" ? lestText(t, bwOf(activeRmUid)) : null;
   };
 
   
@@ -1719,8 +1740,9 @@ export default function Workout() {
           continue;
         }
 
-        // Poids du corps (PDC) : pas de charge externe pertinente pour un RM.
-        if (isNoRmIntensity(exercise.rmPercent)) continue;
+        // Poids du corps (PDC) : pas de charge externe pertinente pour un RM —
+        // sauf les tractions, dont le RM est poids du corps + lest.
+        if (isNoRmIntensity(exercise.rmPercent) && !isLoadedBodyweight(exercise.name)) continue;
 
         // Nom utilisé pour la fiche RM : celui choisi explicitement par le
         // coach (rmName, quand l'exercice sert de référence pour calculer
@@ -1745,8 +1767,10 @@ export default function Workout() {
         // exercice, puis on prend la MÉDIANE de ces prédictions — plus
         // robuste qu'une moyenne face à une valeur aberrante isolée.
         const validPredictions = [];
+        // Tractions : RM = poids du corps + lest (la saisie est le lest, 0 = poids du corps seul)
+        const bwAdd = isLoadedBodyweight(exercise.name) ? bwOf(actorUid) : null;
         normalized.series.forEach((s) => {
-          const w = Number(s.actualWeight);
+          const w = bwAdd ? totalLoad(exercise.name, s.actualWeight, bwAdd) : Number(s.actualWeight);
           const r = Number(s.actualReps);
           const rpeVal = Number(s.rpe);
           if (!w || !r || !rpeVal) return;
@@ -8173,6 +8197,12 @@ export default function Workout() {
                                     <strong style={{ color: "#e0a13d" }}>{dbSplit(ex, targetWeight)} par haltère</strong>
                                   )}
                                 </div>
+                                {isLoadedBodyweight(ex.name) && (
+                                  <div style={{ marginTop: 4, color: "#e0a13d", fontWeight: 700 }}>
+                                    🏋️ Traction (RM = poids du corps + lest) :{" "}
+                                    {lestText(targetWeight, bwOf(activeRmUid)) || "poids du corps de l'athlète non renseigné dans son profil"}
+                                  </div>
+                                )}
                               </div>
                             );
                           } else {
@@ -9663,7 +9693,9 @@ export default function Workout() {
                             <>
                               {ex.rmPercent}%{" "}
                               {activeRM
-                                ? `(${calculateWeight(ex.name, ex.rmPercent)} kg${dbSplit(ex, calculateWeight(ex.name, ex.rmPercent))})`
+                                ? isLoadedBodyweight(ex.name) && activeLestText(ex.name, ex.rmPercent)
+                                  ? `(${activeLestText(ex.name, ex.rmPercent)})`
+                                  : `(${calculateWeight(ex.name, ex.rmPercent)} kg${dbSplit(ex, calculateWeight(ex.name, ex.rmPercent))})`
                                 : "(choisis un athlète)"}
                             </>
                           )}
@@ -10584,8 +10616,10 @@ export default function Workout() {
                           fontWeight: "bold",
                         }}
                       >
-                        {isCMJ(currentExerciseFeedback.exercise.name) 
-                          ? "Hauteur de saut (cm)" 
+                        {isCMJ(currentExerciseFeedback.exercise.name)
+                          ? "Hauteur de saut (cm)"
+                          : isLoadedBodyweight(currentExerciseFeedback.exercise.name)
+                          ? `Lest ajouté (kg) — 0 = poids du corps seul${bwOf(actorUid) ? ` (${bwOf(actorUid)} kg)` : ""}`
                           : "Charge réelle (kg)"}
                       </label>
                       <input
@@ -10784,7 +10818,7 @@ export default function Workout() {
                     </div>
                     {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
                       // RM estimé du jour, perte vs 1re série, charge conseillée pour la série suivante
-                      const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise, isUniEx(currentExerciseFeedback.exercise));
+                      const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise, isUniEx(currentExerciseFeedback.exercise), isLoadedBodyweight(currentExerciseFeedback.exercise.name) ? bwOf(actorUid) || 0 : 0);
                       const row = A.rows[idx];
                       if (!row || !row.e1rm) return null;
                       const lossCol = row.loss == null ? "#a8a199" : row.loss > LOSS_STOP ? "#d9695a" : row.loss > LOSS_WARN ? "#e08a3d" : "#4fae7d";
@@ -10824,7 +10858,7 @@ export default function Workout() {
                   </div>
                 ))}
                 {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
-                  const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise, isUniEx(currentExerciseFeedback.exercise));
+                  const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise, isUniEx(currentExerciseFeedback.exercise), isLoadedBodyweight(currentExerciseFeedback.exercise.name) ? bwOf(actorUid) || 0 : 0);
                   if (!A.nextSession || !A.target) return null;
                   return (
                     <div style={{ marginBottom: 18, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>

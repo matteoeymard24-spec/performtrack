@@ -99,9 +99,16 @@ export function weightFor(e1rm, reps, rir, uni = false) {
 
 /* Analyse des séries remplies : e1RM par série, perte vs 1re série, charge conseillée pour la série
    suivante et pour la prochaine séance au même schéma. */
-export function analyzeSets(series, exercise, uni = false) {
+// bw : poids du corps à AJOUTER à la charge saisie (tractions lestées : charge totale = PDC + lest) ;
+// les charges conseillées sont alors rendues en LEST (total − bw).
+export function analyzeSets(series, exercise, uni = false, bw = 0) {
   const tgt = targetRir(exercise?.rmPercent, exercise?.reps, uni);
-  const rows = (series || []).map((s) => ({ e1rm: setE1rm(s, uni), weight: num(s.actualWeight), reps: num(s.actualReps), rir: s.rir }));
+  const add = bw > 0 ? Number(bw) : 0;
+  const rows = (series || []).map((s) => {
+    const lest = num(s.actualWeight);
+    const tot = add ? (lest ?? 0) + add : lest;
+    return { e1rm: setE1rm({ ...s, actualWeight: tot }, uni), weight: tot, lest, reps: num(s.actualReps), rir: s.rir };
+  });
   const firstIdx = rows.findIndex((x) => x.e1rm);
   const first = firstIdx >= 0 ? rows[firstIdx].e1rm : null;
   const out = rows.map((x, i) => {
@@ -111,16 +118,18 @@ export function analyzeSets(series, exercise, uni = false) {
       const w = weightFor(x.e1rm, exercise?.reps, tgt.rir, uni);
       if (w) {
         const capped = Math.min(x.weight * 1.1, Math.max(x.weight * 0.9, w));
-        next = Math.round(capped);
+        next = Math.round(capped - add); // en lest pour les tractions
       }
     }
     return { ...x, loss, next };
   });
   const valid = out.filter((x) => x.e1rm);
   const lastE1 = valid.length ? valid[valid.length - 1].e1rm : null;
-  const nextSession = lastE1 && tgt ? Math.round(weightFor(Math.max(...valid.map((x) => x.e1rm)), exercise?.reps, tgt.rir, uni) || 0) || null : null;
+  const ns = lastE1 && tgt ? weightFor(Math.max(...valid.map((x) => x.e1rm)), exercise?.reps, tgt.rir, uni) : null;
+  const nextSession = ns ? Math.round(ns - add) : null; // en lest pour les tractions
   const maxLoss = out.reduce((m, x) => (x.loss != null && x.loss > m ? x.loss : m), 0);
-  return { target: tgt, rows: out, maxLoss: valid.length >= 2 ? maxLoss : null, nextSession };
+  // rows[i].weight = charge TOTALE ; on rend aussi la charge saisie (lest) pour comparer avec « next »
+  return { target: tgt, rows: out.map((x) => ({ ...x, weight: add ? x.lest ?? 0 : x.weight })), maxLoss: valid.length >= 2 ? maxLoss : null, nextSession };
 }
 
 export const fr = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
