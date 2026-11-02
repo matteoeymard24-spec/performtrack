@@ -10,7 +10,7 @@ import { isLoadedBodyweight, totalLoad, lestText } from "../component/bodyweight
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
 import { FOSTER_CR10 } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
-import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget } from "../component/workoutQueries";
+import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
@@ -674,6 +674,9 @@ export default function Workout() {
         });
         athleteGroups = [...new Set(athleteGroups)];
       }
+      // Une séance vient peut-être d'être créée / modifiée / terminée : on vide le cache court des
+      // séances pour que Dashboard, ACWR et Mes RM relisent la base à la prochaine visite.
+      invalidateQueryCache("workout|");
       const snap = await getWorkoutDocs({ since: historySince, groups: athleteGroups, fresh: true });
       const allWorkouts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       
@@ -1700,6 +1703,7 @@ export default function Workout() {
       await updateDoc(doc(db, "workout", sess.id), {
         [`userProgress.${actorUid}.feedback`]: nextFeedback,
       });
+      invalidateQueryCache("workout|");
       const patch = (x) =>
         x && x.id === sess.id
           ? {
@@ -2190,6 +2194,18 @@ export default function Workout() {
       if (!userProgressData.completedAt) {
         await adjustRMFromFeedback(newUserProgressData.feedback, { ...workoutSession, ...currentSessionData, id: workoutSession.id });
       }
+      // Mise à jour IMMÉDIATE de l'écran (sans recharger la page) :
+      //  • la séance ouverte affiche « terminée » pour cette personne ;
+      //  • (les RM ajustés sont déjà relus par adjustRMFromFeedback) ;
+      //  • le cache court des séances est vidé (Dashboard, ACWR, Mes RM à jour).
+      invalidateQueryCache("workout|");
+      const patchDone = (x) =>
+        x && x.id === workoutSession.id
+          ? { ...x, userProgress: { ...(x.userProgress || {}), [actorUid]: newUserProgressData } }
+          : x;
+      setSelectedSession((x) => patchDone(x));
+      setEvents((list) => (Array.isArray(list) ? list.map(patchDone) : list));
+
       const someoneElse = actorUid !== currentUser.uid || Object.keys(feedbackByActor).some((k) => k !== actorUid);
       alert(someoneElse ? "Séance terminée pour cette personne ✅ — choisis le suivant dans « Qui fait la séance ? »." : "Séance terminée ! Bravo 🎉");
       setSessionInProgress(null);
