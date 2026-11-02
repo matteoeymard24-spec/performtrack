@@ -69,3 +69,17 @@ export function tempoPhases(t, dir = "up") {
 }
 
 export const fmtPhase = (v) => (v === "X" ? "X" : `${v} s`);
+
+/* ISO : durée du maintien (s) et angle articulaire (°) réglés sur l'exercice (ex.isoSec, ex.isoAngle) */
+export const ISO_SEC_PRESETS = [3, 5, 10, 20, 30];
+export const ISO_ANGLE_PRESETS = [45, 60, 90, 110, 135];
+export const isoInfoOf = (ex) => ({
+  sec: Number(ex?.isoSec) > 0 ? Number(ex.isoSec) : null,
+  angle: Number(ex?.isoAngle) > 0 ? Number(ex.isoAngle) : null,
+});
+/* Durée d'une rep pour un exercice (tempo en secondes, ou durée du maintien ISO) */
+export const exRepSeconds = (ex) => {
+  const t = parseTempo(ex?.tempo);
+  if (t && t.special === "ISO") return isoInfoOf(ex).sec;
+  return repSeconds(t);
+};

@@ -348,7 +348,8 @@ masse maigre = poids × (1 − % de gras de référence DXA du niveau)`}</F>
 ex. 3-1-X-0 · ancien format 3 chiffres « 2-0-2 » = 2-0-2-0
 sens du mouvement : concentrique = montée (squat, développé, traction) · descente (tirage vertical,
   extension triceps poulie) · horizontal (rowing, presse) — deviné d'après le nom, modifiable
-durée d'une rep = somme des phases (X = 0,5 s) → utilisée pour la durée estimée en muscu (3 s par défaut)`}</F>
+durée d'une rep = somme des phases (X = 0,5 s) → utilisée pour la durée estimée en muscu (3 s par défaut)
+ISO : durée du maintien (s) + angle articulaire (°, ex. genou à 90°) ; durée d'une rep = durée du maintien`}</F>
         <F>{`durée sprint = Σ séries × reps × (distance / 7 m/s + récup)
 durée endurance = Σ reps × (effort + récup) + récup de bloc
 EMOM = intervalle × tours · AMRAP = durée totale (+ repos après le bloc)`}</F>

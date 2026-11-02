@@ -14,8 +14,8 @@ import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, i
 import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
-import { TempoBar, TempoEditor } from "../component/TempoView";
-import { parseTempo, repSeconds, tempoDirOf, guessTempoDir } from "../component/tempo";
+import { TempoView, TempoEditor } from "../component/TempoView";
+import { exRepSeconds, tempoDirOf, guessTempoDir } from "../component/tempo";
 import TacticalBoard from "../component/TacticalBoard";
 import { loadExerciseImage, saveExerciseImage, deleteExerciseImage } from "../component/mediaStore";
 import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
@@ -314,7 +314,7 @@ const estimateTypeDurationSeconds = (type, blocks) => {
       t +
       (b.exercises || []).reduce(
         (st, ex) =>
-          st + (ex.series || 3) * ((ex.reps || 8) * (repSeconds(parseTempo(ex.tempo)) || 3) * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + (ex.restMin != null ? Number(ex.restMin) * 60 : (Number(b.restMin ?? 2) || 0) * 60 + (Number(b.restSec) || 0))),
+          st + (ex.series || 3) * ((ex.reps || 8) * (exRepSeconds(ex) || 3) * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + (ex.restMin != null ? Number(ex.restMin) * 60 : (Number(b.restMin ?? 2) || 0) * 60 + (Number(b.restSec) || 0))),
         0
       )
     );
@@ -8241,6 +8241,9 @@ export default function Workout() {
                             autoDir={guessTempoDir(ex.name)}
                             onChange={(v) => updateExercise(bIdx, eIdx, "tempo", v)}
                             onDirChange={(d) => updateExercise(bIdx, eIdx, "tempoDir", d)}
+                            isoSec={ex.isoSec}
+                            isoAngle={ex.isoAngle}
+                            onIsoChange={(field, v) => updateExercise(bIdx, eIdx, field, v)}
                           />
                         </div>
                       )}
@@ -10071,7 +10074,9 @@ export default function Workout() {
                             </>
                           )}
                           {block.timerMode !== "emom" && block.timerMode !== "amrap" && ex.tempo && (
-                            <TempoBar tempo={ex.tempo} dir={tempoDirOf(ex)} compact />
+                            <div>
+                              <TempoView tempo={ex.tempo} dir={tempoDirOf(ex)} isoSec={ex.isoSec} isoAngle={ex.isoAngle} compact />
+                            </div>
                           )}
                           {(() => {
                             // RIR visé = reps max possibles à ce %RM − reps prévues (voir component/loadAdjust.js)
