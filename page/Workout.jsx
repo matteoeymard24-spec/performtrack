@@ -429,14 +429,43 @@ export default function Workout() {
   }, [deletedStack.length]);
   // Superadmin uniquement : afficher aussi les séances "🌟 Moi" des autres admins.
   const showAllMoi = false; // option retirée (la vue Admins sert à ça)
-  const [athleteFilterId, setAthleteFilterId] = useState("");
-  const [groupFilterId, setGroupFilterId] = useState("");
-  const [subFilterId, setSubFilterId] = useState(""); // sous-groupe du groupe filtré
-  const [adminFilterId, setAdminFilterId] = useState(""); // vue Admins : un admin précis
+  // Dernière vue choisie (Athlètes / Moi / Admins + groupe, athlète, admin) : mémorisée sur cet
+  // appareil, par compte, et reprise à la prochaine ouverture au lieu de revenir à « tous ».
+  const viewStoreKey = `pt_wk_view_${currentUser?.uid || "anon"}`;
+  const savedView = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(viewStoreKey) || "{}") || {};
+    } catch (e) {
+      return {};
+    }
+  })();
+  const [athleteFilterId, setAthleteFilterId] = useState(savedView.athlete || "");
+  const [groupFilterId, setGroupFilterId] = useState(savedView.group || "");
+  const [subFilterId, setSubFilterId] = useState(savedView.sub || ""); // sous-groupe du groupe filtré
+  const [adminFilterId, setAdminFilterId] = useState(savedView.admin || ""); // vue Admins : un admin précis
   // Vue du calendrier réservée au coach : "" = tout, "moi" = mes propres
   // séances/planif, "admins" = les séances perso et la planif de chaque admin.
-  const [viewMode, setViewMode] = useState("");
+  const [viewMode, setViewMode] = useState(
+    savedView.mode === "moi" || (savedView.mode === "admins" && isSuperAdmin) ? savedView.mode : ""
+  );
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        viewStoreKey,
+        JSON.stringify({ mode: viewMode, athlete: athleteFilterId, group: groupFilterId, sub: subFilterId, admin: adminFilterId })
+      );
+    } catch (e) {
+      /* stockage indisponible (navigation privée) : on garde juste la vue courante */
+    }
+  }, [viewStoreKey, viewMode, athleteFilterId, groupFilterId, subFilterId, adminFilterId]);
   const [adminUsers, setAdminUsers] = useState([]);
+  // Filtre mémorisé devenu invalide (athlète / admin supprimé ou hors de ma portée) : on le retire
+  useEffect(() => {
+    if (athleteFilterId && athletes.length > 0 && !athletes.some((a) => a.id === athleteFilterId)) setAthleteFilterId("");
+  }, [athletes, athleteFilterId]);
+  useEffect(() => {
+    if (adminFilterId && adminUsers.length > 0 && !adminUsers.some((a) => a.id === adminFilterId)) setAdminFilterId("");
+  }, [adminUsers, adminFilterId]);
   // Tous les comptes existants (même hors de ma portée) : sert au nettoyage des groupes.
   const [allUserIds, setAllUserIds] = useState([]);
   const [blocks, setBlocks] = useState([
