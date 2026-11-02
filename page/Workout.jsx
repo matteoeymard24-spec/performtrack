@@ -14,6 +14,8 @@ import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, i
 import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
+import { TempoBar, TempoEditor } from "../component/TempoView";
+import { parseTempo, repSeconds, tempoDirOf, guessTempoDir } from "../component/tempo";
 import TacticalBoard from "../component/TacticalBoard";
 import { loadExerciseImage, saveExerciseImage, deleteExerciseImage } from "../component/mediaStore";
 import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
@@ -312,7 +314,7 @@ const estimateTypeDurationSeconds = (type, blocks) => {
       t +
       (b.exercises || []).reduce(
         (st, ex) =>
-          st + (ex.series || 3) * ((ex.reps || 8) * 3 * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + (ex.restMin != null ? Number(ex.restMin) * 60 : (Number(b.restMin ?? 2) || 0) * 60 + (Number(b.restSec) || 0))),
+          st + (ex.series || 3) * ((ex.reps || 8) * (repSeconds(parseTempo(ex.tempo)) || 3) * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + (ex.restMin != null ? Number(ex.restMin) * 60 : (Number(b.restMin ?? 2) || 0) * 60 + (Number(b.restSec) || 0))),
         0
       )
     );
@@ -8229,74 +8231,17 @@ export default function Workout() {
                               pause entre eux, et le repos ne vient qu'une fois
                               à la fin du bloc (réglé plus haut, au niveau du
                               bloc). */}
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
+                          <label style={{ fontSize: 12, color: "#a8a199", display: "block", marginBottom: 6 }}>
                             Tempo
                           </label>
-                          <input
-                            type="text"
-                            value={ex.tempo}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "tempo",
-                                e.target.value
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
+                          {/* Tempo visuel : sens du mouvement + 4 phases (voir component/tempo.js) */}
+                          <TempoEditor
+                            tempo={ex.tempo}
+                            dir={tempoDirOf(ex)}
+                            autoDir={guessTempoDir(ex.name)}
+                            onChange={(v) => updateExercise(bIdx, eIdx, "tempo", v)}
+                            onDirChange={(d) => updateExercise(bIdx, eIdx, "tempoDir", d)}
                           />
-                          {/* Raccourcis : tempo spécial en un clic (ISO =
-                              maintien isométrique, EXPLO = intention vitesse
-                              maximale). Le champ reste modifiable à la main. */}
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 6,
-                              flexWrap: "wrap",
-                              marginTop: 6,
-                            }}
-                          >
-                            {["ISO", "EXPLO (VMAX)"].map((preset) => {
-                              const active = ex.tempo === preset;
-                              return (
-                                <button
-                                  key={preset}
-                                  type="button"
-                                  onClick={() =>
-                                    updateExercise(
-                                      bIdx,
-                                      eIdx,
-                                      "tempo",
-                                      preset
-                                    )
-                                  }
-                                  style={{
-                                    padding: "4px 10px",
-                                    borderRadius: 999,
-                                    fontSize: 12,
-                                    fontWeight: 600,
-                                    cursor: "pointer",
-                                    border: active
-                                      ? "1px solid #e0a13d"
-                                      : "1px solid #2a2620",
-                                    background: active
-                                      ? "rgba(224,161,61,0.18)"
-                                      : "#0d0c0a",
-                                    color: active ? "#e0a13d" : "#a8a199",
-                                  }}
-                                >
-                                  {preset}
-                                </button>
-                              );
-                            })}
-                          </div>
                         </div>
                       )}
                       <div style={{ marginBottom: 10 }}>
@@ -10125,11 +10070,8 @@ export default function Workout() {
                                 : "(choisis un athlète)"}
                             </>
                           )}
-                          {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
-                            <>
-                              {" • "}
-                              Tempo: {ex.tempo}
-                            </>
+                          {block.timerMode !== "emom" && block.timerMode !== "amrap" && ex.tempo && (
+                            <TempoBar tempo={ex.tempo} dir={tempoDirOf(ex)} compact />
                           )}
                           {(() => {
                             // RIR visé = reps max possibles à ce %RM − reps prévues (voir component/loadAdjust.js)
