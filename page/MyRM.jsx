@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { isDumbbell, perHand } from "../component/dumbbell";
 import { e1rmFromSet } from "../component/loadMetrics";
 import { isLoadedBodyweight } from "../component/bodyweightLoad";
 import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
@@ -683,6 +684,12 @@ export default function MyRM() {
     return null;
   };
 
+  // Fiche en cours de modification = exercice bilatéral aux haltères → saisie par haltère
+  const editDb =
+    !!editingRM &&
+    isDumbbell(editingRM) &&
+    !(uniKeys.has(normKey(editingRM)) || /unilat|bulgare|1 bras|un bras|single/i.test(editingRM));
+
   const rmSuggestions = (() => {
     const q = normKey(rmSearchQuery);
     if (!q) return [];
@@ -955,7 +962,12 @@ export default function MyRM() {
           <h3 style={{ margin: "0 0 20px 0", fontSize: 18, textTransform: "capitalize" }}>
             ✏️ Modifier — {editingRM}
           </h3>
-          {loadNote(editingRM, null) && (
+          {editDb ? (
+            <div style={{ fontSize: 13, color: "#e0a13d", margin: "-12px 0 14px" }}>
+              ⚖️ Haltères : saisis le poids d'UN haltère. L'app enregistre le total des deux (c'est lui qui sert au RM et aux % de charge).
+              {Number(testWeight) > 0 ? ` Ici : 2 × ${perHand(testWeight)} kg = ${Number(testWeight)} kg.` : ""}
+            </div>
+          ) : loadNote(editingRM, null) && (
             <div style={{ fontSize: 13, color: "#e0a13d", margin: "-12px 0 14px" }}>
               ⚖️ {loadNote(editingRM, null)}
             </div>
@@ -978,14 +990,15 @@ export default function MyRM() {
                 fontWeight: "bold",
               }}
             >
-              Poids du test (kg)
+              {editDb ? "Poids PAR HALTÈRE du test (kg)" : "Poids du test (kg)"}
             </label>
             <input
               type="number"
               step="0.5"
-              value={testWeight}
-              onChange={(e) => setTestWeight(e.target.value)}
-              placeholder="100"
+              // Haltères (bilatéral) : saisie par haltère, enregistrée en TOTAL (× 2) comme le reste de l'app
+              value={editDb && testWeight !== "" && testWeight != null ? perHand(testWeight) : testWeight}
+              onChange={(e) => setTestWeight(editDb && e.target.value !== "" ? String(Number(e.target.value) * 2) : e.target.value)}
+              placeholder={editDb ? "30" : "100"}
               style={{
                 width: "100%",
                 padding: 12,
@@ -1287,6 +1300,9 @@ export default function MyRM() {
                           >
                             {hasData ? `${Math.round(latest.kg)} kg` : "En attente"}
                           </div>
+                          {hasData && isDumbbell(exercise) && !(uniKeys.has(normKey(exercise)) || /unilat|bulgare|1 bras|un bras|single/i.test(exercise)) && (
+                            <div style={{ fontSize: 11.5, color: "#e0a13d", fontWeight: 700 }}>2 × {perHand(latest.kg)} kg</div>
+                          )}
                         </div>
 
                         {hasData && history.length > 1 && (

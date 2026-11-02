@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
 import { rmSerie } from "../component/methods";
 import { useNavigate } from "react-router-dom";
@@ -4806,6 +4807,7 @@ export default function Dashboard() {
                           <>
                             RM actuel :{" "}
                             <strong style={{ color: "#e0a13d" }}>{Math.round(lastRM.kg)} kg</strong>
+                            {isDbBilateral(selected.label) && <span style={{ color: "#e0a13d" }}> (2 × {perHand(lastRM.kg)} kg)</span>}
                             {lastRM.auto && <span style={{ marginLeft: 6, color: "#d9a441" }}>⚡</span>}
                           </>
                         ) : (
@@ -4837,7 +4839,7 @@ export default function Dashboard() {
                                 {new Date(s.day + "T12:00:00").toLocaleDateString("fr-FR")} · {s.title}
                               </span>
                               <span style={{ color: "#f3f0ea", whiteSpace: "nowrap" }}>
-                                {s.kg} kg × {s.reps}
+                                {s.kg} kg{isDbBilateral(selected.label) ? ` (2 × ${perHand(s.kg)})` : ""} × {s.reps}
                                 {s.rpe ? ` · RPE ${s.rpe}` : ""}
                                 <span style={{ color: "#4fae7d", marginLeft: 8 }}>
                                   ≈ {Math.round(s.e1rm)} kg

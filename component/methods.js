@@ -134,14 +134,24 @@ export function rmSerie(serie, ex) {
   return serie; // drop set : actualReps = reps de la 1re série
 }
 
-/* Texte court d'une série remplie (affichage du feedback) */
+/* Texte court d'une série remplie (affichage du feedback) ; « ·R1 » = 1 rep en réserve sur cette mini-série */
+const rr = (r) => (r === undefined || r === null || r === "" ? "" : `·R${Number(r) >= 5 ? "5+" : r}`);
 export function serieText(serie, ex) {
   const m = methodOf(ex);
-  if (m === "cluster" && Array.isArray(serie.clusters)) return `${serie.actualWeight} kg × (${serie.clusters.map((x) => x || 0).join("+")})`;
-  if (m === "restpause" && Array.isArray(serie.segments)) return `${serie.actualWeight} kg × ${serie.segments.filter((x) => x !== "" && x != null).join("+")}`;
+  if (m === "cluster" && Array.isArray(serie.clusters)) {
+    const cr = serie.clusterRir || [];
+    return `${serie.actualWeight} kg × (${serie.clusters.map((x, k) => `${x || 0}${rr(cr[k])}`).join(" + ")})`;
+  }
+  if (m === "restpause" && Array.isArray(serie.segments)) {
+    const sr = serie.segRir || [];
+    return `${serie.actualWeight} kg × ${serie.segments
+      .map((x, k) => (x === "" || x == null ? null : `${x}${rr(k === 0 ? serie.rir ?? sr[0] : sr[k])}`))
+      .filter(Boolean)
+      .join(" + ")}`;
+  }
   if (m === "dropset" && Array.isArray(serie.drops))
-    return `${serie.actualWeight} kg × ${serie.actualReps}${serie.drops.map((d) => ` → ${d.w} kg × ${d.r || 0}`).join("")}`;
-  if (m === "m12080") return `exc. ${serie.eccWeight || "?"} kg × ${serie.eccReps ?? "?"} → classique ${serie.actualWeight} kg × ${serie.actualReps}`;
+    return `${serie.actualWeight} kg × ${serie.actualReps}${rr(serie.rir)}${serie.drops.map((d) => ` → ${d.w} kg × ${d.r || 0}${rr(d.rir)}`).join("")}`;
+  if (m === "m12080") return `exc. ${serie.eccWeight || "?"} kg × ${serie.eccReps ?? "?"}${rr(serie.eccRir)} → classique ${serie.actualWeight} kg × ${serie.actualReps}${rr(serie.rir)}`;
   return null;
 }
 

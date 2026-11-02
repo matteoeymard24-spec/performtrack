@@ -18,6 +18,7 @@ import { TempoView, TempoEditor } from "../component/TempoView";
 import { EX_METHODS, BLOCK_METHODS, EX_DEFAULTS, BLOCK_DEFAULTS, CONTRAST_ROLES, methodOf, methodInfo, mpOf, blockMethodOf, blockMpOf, isContrastBlock, roleLabel, methodScheme, dropLoads, methodSerieDefaults, rmSerie, serieText, methodExtraSec } from "../component/methods";
 import { exRepSeconds, tempoDirOf, guessTempoDir } from "../component/tempo";
 import { vbtTargetOf, summarizeVbt, vbtColor, fmtV, VBT_LOSS_WARN, VBT_LOSS_STOP } from "../component/vbt";
+import { isDbBilateral, perHand } from "../component/dumbbell";
 import TacticalBoard from "../component/TacticalBoard";
 import { loadExerciseImage, saveExerciseImage, deleteExerciseImage } from "../component/mediaStore";
 import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
@@ -3226,19 +3227,41 @@ export default function Workout() {
         if (i !== bIdx) return b;
         const next = { ...b, method, mp: { ...(BLOCK_DEFAULTS[method] || {}), ...(b.method === method ? b.mp || {} : {}) } };
         if (method) next.timerMode = null;
+        // Exercices posés par un modèle (contrast / complex) et pas modifiés depuis : on peut les retirer
+        const tpl = CONTRAST_ROLES[b.templateOf];
+        const untouched =
+          tpl &&
+          (b.exercises || []).length === tpl.length &&
+          (b.exercises || []).every((x, k) => x.name === tpl[k].ex.name && x.role === tpl[k].role);
+        let base = b.exercises || [];
+        if (untouched) {
+          base = b.prevExercises && b.prevExercises.length ? b.prevExercises : [defaultExerciseFor("muscu")];
+          delete next.prevExercises;
+          delete next.templateOf;
+        }
         const roles = CONTRAST_ROLES[method];
         if (roles) {
-          const empty = (b.exercises || []).every((x) => !x.name);
+          const empty = base.every((x) => !x.name);
           if (empty) {
+            next.prevExercises = base; // pour revenir en arrière si on change de méthode
+            next.templateOf = method;
             next.exercises = roles.map((r) => ({ ...defaultExerciseFor("muscu"), ...r.ex, role: r.role }));
           } else {
-            const rounds = Number(b.exercises?.[0]?.series) || 4;
-            next.exercises = (b.exercises || []).map((x, k) => ({ ...x, role: roles[k]?.role || x.role || null, series: rounds }));
+            const rounds = Number(base[0]?.series) || 4;
+            next.exercises = base.map((x, k) => ({ ...x, role: roles[k]?.role || null, series: rounds }));
           }
           if (b.restMin == null || b.restMin < 3) {
             next.restMin = 3;
             next.restSec = 0;
           }
+        } else {
+          // Méthode classique : exercices d'avant si le modèle n'a pas été touché, sinon on garde et on retire les rôles
+          next.exercises = base.map((x) => {
+            const { role, ...rest } = x;
+            return rest;
+          });
+          delete next.templateOf;
+          delete next.prevExercises;
         }
         return next;
       })
@@ -3275,6 +3298,7 @@ export default function Workout() {
                 if (j !== eIdx) return x;
                 const n = { ...x, mp: { ...(x.mp || {}), ...patch } };
                 if (x.method === "m12080" && patch.conPct != null) n.rmPercent = patch.conPct;
+                if (x.method === "m12080" && patch.conReps != null) n.reps = patch.conReps; // reps classiques = champ Reps
                 return n;
               }),
             }
@@ -5116,73 +5140,95 @@ export default function Workout() {
             )}
           </div>
 
-          {viewMode === "" && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
-              {/* Barre 1 : groupes et sous-groupes */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                  <span style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700 }}>🏷️ Groupe / sous-groupe</span>
-                  {groupFilterId && (
-                    <button onClick={() => { setGroupFilterId(""); setSubFilterId(""); }} style={{ background: "none", border: "none", color: "#e0a13d", fontSize: 11, cursor: "pointer", padding: 0 }}>✕ effacer</button>
+          {viewMode === "" && (() => {
+            // Filtre par groupe (pastilles) → sous-groupes → athlète (liste limitée au groupe choisi)
+            const chip = (on, color) => ({
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              borderRadius: 999,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              border: `1px solid ${on ? "#e0a13d" : "#2a2620"}`,
+              background: on ? "rgba(224,161,61,0.18)" : "#0d0c0a",
+              color: on ? "#e0a13d" : "#f3f0ea",
+              whiteSpace: "nowrap",
+            });
+            const dot = (c) => <span style={{ width: 8, height: 8, borderRadius: "50%", background: c || "#6b645b", display: "inline-block" }} />;
+            const selGroup = customGroups.find((g) => g.id === groupFilterId) || null;
+            const pickGroup = (gid) => {
+              setAthleteFilterId("");
+              setSubFilterId("");
+              setGroupFilterId(gid);
+            };
+            const memberIds = selGroup
+              ? new Set(subFilterId ? (selGroup.subGroups || []).find((x) => x.id === subFilterId)?.athleteIds || [] : selGroup.athleteIds || [])
+              : null;
+            const athleteList = memberIds ? athletes.filter((a) => memberIds.has(a.id)) : athletes;
+            const label = (t) => <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, marginBottom: 6 }}>{t}</div>;
+            return (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div>
+                  {label("🏷️ Groupe")}
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <button type="button" onClick={() => { pickGroup(""); }} style={chip(!groupFilterId && !athleteFilterId)}>
+                      Tous <span style={{ opacity: 0.7, fontWeight: 500 }}>{athletes.length}</span>
+                    </button>
+                    {customGroups.map((g) => (
+                      <button key={g.id} type="button" onClick={() => pickGroup(g.id)} style={chip(groupFilterId === g.id)}>
+                        {dot(g.color)} {g.name} <span style={{ opacity: 0.7, fontWeight: 500 }}>{(g.athleteIds || []).length}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {selGroup && (selGroup.subGroups || []).length > 0 && (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, paddingLeft: 10, borderLeft: "2px solid #2a2620" }}>
+                      <button type="button" onClick={() => { setAthleteFilterId(""); setSubFilterId(""); }} style={{ ...chip(!subFilterId), fontSize: 12, padding: "4px 10px" }}>
+                        Tout le groupe
+                      </button>
+                      {(selGroup.subGroups || []).map((sg) => (
+                        <button
+                          key={sg.id}
+                          type="button"
+                          onClick={() => { setAthleteFilterId(""); setSubFilterId(sg.id); }}
+                          style={{ ...chip(subFilterId === sg.id), fontSize: 12, padding: "4px 10px" }}
+                        >
+                          ↳ {sg.name} <span style={{ opacity: 0.7, fontWeight: 500 }}>{(sg.athleteIds || []).length}</span>
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
-                <select
-                  value={groupFilterId && subFilterId ? `s:${groupFilterId}:${subFilterId}` : groupFilterId ? `g:${groupFilterId}` : ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setAthleteFilterId("");
-                    setGroupFilterId("");
-                    setSubFilterId("");
-                    if (v.startsWith("g:")) setGroupFilterId(v.slice(2));
-                    else if (v.startsWith("s:")) {
-                      const [, gid, sid] = v.split(":");
-                      setGroupFilterId(gid);
-                      setSubFilterId(sid);
-                    }
-                  }}
-                  style={selBox(!!groupFilterId)}
-                >
-                  <option value="">Tous les groupes</option>
-                  {customGroups.map((g) =>
-                    (g.subGroups || []).length === 0 ? (
-                      <option key={g.id} value={`g:${g.id}`}>{g.name}</option>
-                    ) : (
-                      <optgroup key={g.id} label={g.name}>
-                        <option value={`g:${g.id}`}>Tout le groupe {g.name}</option>
-                        {(g.subGroups || []).map((sg) => (
-                          <option key={sg.id} value={`s:${g.id}:${sg.id}`}>↳ {sg.name}</option>
-                        ))}
-                      </optgroup>
-                    )
-                  )}
-                </select>
-              </div>
-
-              {/* Barre 2 : athlètes */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                  <span style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700 }}>👤 Athlète</span>
-                  {athleteFilterId && (
-                    <button onClick={() => setAthleteFilterId("")} style={{ background: "none", border: "none", color: "#e0a13d", fontSize: 11, cursor: "pointer", padding: 0 }}>✕ effacer</button>
-                  )}
+                <div style={{ maxWidth: 420 }}>
+                  {label(selGroup ? `👤 Athlète de ${selGroup.name}${subFilterId ? " (sous-groupe)" : ""}` : "👤 Athlète")}
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <select
+                      value={athleteFilterId}
+                      onChange={(e) => {
+                        setAthleteFilterId(e.target.value);
+                        if (e.target.value) {
+                          setGroupFilterId("");
+                          setSubFilterId("");
+                        }
+                      }}
+                      style={{ ...selBox(!!athleteFilterId), flex: 1 }}
+                    >
+                      <option value="">{selGroup ? `Tout ${subFilterId ? "le sous-groupe" : "le groupe"} (${athleteList.length})` : `Tous les athlètes (${athletes.length})`}</option>
+                      {(athleteFilterId && !athleteList.some((a) => a.id === athleteFilterId) ? athletes : athleteList).map((a) => (
+                        <option key={a.id} value={a.id}>{getAthleteDisplayName(a)}</option>
+                      ))}
+                    </select>
+                    {athleteFilterId && (
+                      <button type="button" onClick={() => setAthleteFilterId("")} title="Revenir à tous" style={{ ...chip(false), padding: "8px 10px" }}>
+                        ✕
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <select
-                  value={athleteFilterId}
-                  onChange={(e) => {
-                    setAthleteFilterId(e.target.value);
-                    setGroupFilterId("");
-                    setSubFilterId("");
-                  }}
-                  style={selBox(!!athleteFilterId)}
-                >
-                  <option value="">Tous les athlètes</option>
-                  {athletes.map((a) => (
-                    <option key={a.id} value={a.id}>{getAthleteDisplayName(a)}</option>
-                  ))}
-                </select>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {viewMode === "admins" && isSuperAdmin && (
             <div style={{ maxWidth: 420 }}>
@@ -8339,7 +8385,7 @@ export default function Workout() {
                         if (contractionOf(ex) === "classique" && Number(ex.rmPercent) > 100)
                           return (
                             <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(217,105,90,0.12)", border: "1px solid #d9695a", fontSize: 12, color: "#e8998c", lineHeight: 1.5 }}>
-                              ⚠️ {ex.rmPercent} % : impossible en concentrique classique. Choisis « Excentrique » ou « Iso » dans Régime (jusqu'à 120 %).
+                              ⚠️ {ex.rmPercent} % : impossible en série classique. Pour du supramaximal, utilise la méthode 120-80 ou le tempo ISO (Réglages avancés).
                             </div>
                           );
                         const t = targetRir(ex.rmPercent || 70, ex.reps, isUniEx(ex));
@@ -8469,7 +8515,7 @@ export default function Workout() {
                         const used = {
                           tempo: !!ex.tempo && !["2-0-2", "2-0-2-0"].includes(String(ex.tempo).trim()),
                           method: methodOf(ex) !== "classique",
-                          regime: contractionOf(ex) !== "classique",
+                          regime: !!ex.contraction && contractionOf(ex) !== "classique",
                           vbt: !!ex.vbtTarget,
                         };
                         const open = advOpen[k] ?? Object.values(used).some(Boolean);
@@ -8569,7 +8615,7 @@ export default function Workout() {
                                     {m === "cluster" && [field("Mini-séries", "clusters", 2, 8), field("Pause (s)", "intraRest", 5, 60)]}
                                     {m === "restpause" && [field("Mini-séries", "miniSets", 1, 5), field("Pause (s)", "pauseSec", 5, 45)]}
                                     {m === "dropset" && [field("Drops", "drops", 1, 4), field("Baisse (%)", "dropPct", 5, 40)]}
-                                    {m === "m12080" && [field("Reps excentriques", "eccReps", 1, 10), field("Excentrique (%)", "eccPct", 100, 140), field("Classique (%)", "conPct", 50, 95)]}
+                                    {m === "m12080" && [field(`Reps à ${p.eccPct} % (excentrique)`, "eccReps", 1, 10), field(`Reps à ${p.conPct} % (classique)`, "conReps", 1, 15), field("% excentrique", "eccPct", 100, 140), field("% classique", "conPct", 50, 95)]}
                                   </div>
                                   <div style={{ marginTop: 6, fontSize: 12, color: "#e0a13d", fontWeight: 700 }}>{methodScheme(ex)}</div>
                                   <div style={{ fontSize: 11, color: "#a8a199", marginTop: 2, lineHeight: 1.5 }}>
@@ -8586,31 +8632,18 @@ export default function Workout() {
                         })()}
                                     </>
                                   ))}
-                                {sub("💪", "Régime de contraction", (
-                                  <>
-                        <select
-                          value={contractionOf(ex)}
-                          onChange={(e) => updateExercise(bIdx, eIdx, "contraction", e.target.value)}
-                          style={{
-                            width: "100%",
-                            padding: 8,
-                            borderRadius: 6,
-                            border: "1px solid #2a2620",
-                            background: "#0d0c0a",
-                            color: "#f3f0ea",
-                          }}
-                        >
-                          {CONTRACTIONS.map((c) => (
-                            <option key={c.id} value={c.id}>{c.label}</option>
-                          ))}
-                        </select>
-                        {isSpecialContraction(ex) && (
-                          <div style={{ marginTop: 6, fontSize: 11, color: "#e0a13d", lineHeight: 1.5 }}>
-                            {contractionTip(ex)}
-                          </div>
-                        )}
-                                  </>
-                                ))}
+                                {/* Régime de contraction retiré (donné par le tempo ISO / la méthode 120-80) ;
+                                    un ancien réglage reste visible pour pouvoir le retirer */}
+                                {contractionOf(ex) !== "classique" && ex.contraction &&
+                                  sub("💪", "Ancien réglage : régime", (
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12.5, color: "#a8a199" }}>
+                                      <span style={{ color: "#e0a13d", fontWeight: 700 }}>{CONTRACTIONS.find((c) => c.id === ex.contraction)?.label}</span>
+                                      <button type="button" onClick={() => updateExercise(bIdx, eIdx, "contraction", "classique")} style={{ padding: "4px 10px", borderRadius: 999, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 12, cursor: "pointer" }}>
+                                        ✕ Retirer
+                                      </button>
+                                      <span>Utilise plutôt le tempo ISO ou la méthode 120-80.</span>
+                                    </div>
+                                  ))}
                                 {!isNoRmIntensity(ex.rmPercent) &&
                                   sub("⚡", "Vitesse de barre (optionnel)", (
                                     <>
@@ -10391,6 +10424,7 @@ export default function Workout() {
                                   ) : (
                                     <>
                                       <strong>Charge:</strong> {serie.actualWeight} kg
+                                      {isDbBilateral(ex.name, isUniEx(ex)) && Number(serie.actualWeight) > 0 ? ` (2 × ${perHand(serie.actualWeight)} kg)` : ""}
                                     </>
                                   )}
                                   {" • "}
@@ -11436,6 +11470,7 @@ export default function Workout() {
                     })()}
 
                     {/* Charge ou Hauteur selon exercice */}
+                    {methodOf(currentExerciseFeedback.exercise) !== "dropset" && (
                     <div style={{ marginBottom: 14 }}>
                       <label
                         style={{
@@ -11449,6 +11484,8 @@ export default function Workout() {
                           ? "Hauteur de saut (cm)"
                           : isLoadedBodyweight(currentExerciseFeedback.exercise.name)
                           ? `Lest ajouté (kg) — 0 = poids du corps seul${bwOf(actorUid) ? ` (${bwOf(actorUid)} kg)` : ""}`
+                          : isDbBilateral(currentExerciseFeedback.exercise.name, isUniEx(currentExerciseFeedback.exercise))
+                          ? "Poids PAR HALTÈRE (kg)"
                           : methodOf(currentExerciseFeedback.exercise) === "m12080"
                           ? "③ Charge classique après déchargement (kg)"
                           : methodOf(currentExerciseFeedback.exercise) === "dropset"
@@ -11457,13 +11494,19 @@ export default function Workout() {
                       </label>
                       <input
                         type="number"
-                        step="0.1"
-                        value={serie.actualWeight}
+                        step="0.5"
+                        value={
+                          isDbBilateral(currentExerciseFeedback.exercise.name, isUniEx(currentExerciseFeedback.exercise)) && serie.actualWeight !== ""
+                            ? perHand(serie.actualWeight || 0)
+                            : serie.actualWeight
+                        }
                         onChange={(e) => {
                           const newSeries = [...currentExerciseFeedback.series];
+                          // Haltères (bilatéral) : saisie PAR HALTÈRE, enregistrée en TOTAL (× 2) pour le RM
+                          const k = isDbBilateral(currentExerciseFeedback.exercise.name, isUniEx(currentExerciseFeedback.exercise)) ? 2 : 1;
                           newSeries[idx] = {
                             ...newSeries[idx],
-                            actualWeight: e.target.value === '' ? '' : parseFloat(e.target.value) || 0
+                            actualWeight: e.target.value === '' ? '' : (parseFloat(e.target.value) || 0) * k
                           };
                           setCurrentExerciseFeedback({
                             ...currentExerciseFeedback,
@@ -11488,13 +11531,13 @@ export default function Workout() {
                         const uni = isUniEx(exo);
                         const w = Number(serie.actualWeight) || 0;
                         const target = Number(calcOwnWeight(exo.name, exo.rmPercent)) || 0;
-                        const suspicious = isDb && !uni && target > 0 && w > 0 && w < target * 0.6;
+                        const suspicious = false; // saisie par haltère : plus de confusion total / une main
                         return (
                           <div style={{ marginTop: 6, fontSize: 12 }}>
                             {isDb && !uni && (
                               <div style={{ color: "#e0a13d", fontWeight: 600 }}>
-                                💡 Haltères : indique le total des deux (ex. 30 kg par main = 60 kg).
-                                {w > 0 ? ` Là : ${Math.round((w / 2) * 2) / 2} kg par main.` : ""}
+                                💡 Poids d'UN haltère.{w > 0 ? ` Total : ${w} kg (2 × ${perHand(w)} kg) — c'est le total qui sert au RM.` : ""}
+                                {target > 0 ? ` Prévu : ${perHand(target)} kg par haltère.` : ""}
                               </div>
                             )}
                             {isDb && uni && (
@@ -11511,8 +11554,10 @@ export default function Workout() {
                         );
                       })()}
                     </div>
+                    )}
 
-                    {/* Saisie propre à la méthode (component/methods.js) */}
+                    {/* Saisie propre à la méthode (component/methods.js) : une ligne par mini-série / drop,
+                        avec reps (et charge si besoin) + reps en réserve de CETTE mini-série */}
                     {(() => {
                       const exo = currentExerciseFeedback.exercise;
                       const m = methodOf(exo);
@@ -11522,59 +11567,100 @@ export default function Workout() {
                         ns[idx] = { ...ns[idx], ...patch };
                         setCurrentExerciseFeedback({ ...currentExerciseFeedback, series: ns });
                       };
-                      const inp = { width: "100%", padding: 10, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16, boxSizing: "border-box" };
-                      const lab = { fontSize: 12, color: "#a8a199", marginBottom: 4 };
+                      const inp = { width: "100%", padding: 8, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16, boxSizing: "border-box" };
                       const box = { marginBottom: 14, padding: 10, borderRadius: 10, background: "rgba(224,161,61,0.06)", border: "1px solid rgba(224,161,61,0.35)" };
                       const title = (t) => <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>{methodInfo(exo).icon} {t}</div>;
                       const numVal = (v) => (v === "" ? "" : Number(v));
+                      const db = isDbBilateral(exo.name, isUniEx(exo)); // haltères : charges saisies par haltère
+                      const wIn = (v) => (db && v !== "" && v != null ? perHand(v) : v ?? "");
+                      const wOut = (v) => (v === "" ? "" : Number(v) * (db ? 2 : 1));
+                      // reps en réserve de la mini-série : petits boutons colorés 0 … 5+
+                      const rirPick = (val, onPick) => (
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 3 }}>
+                          {RIR_CHOICES.map((r) => {
+                            const on = val !== undefined && val !== null && val !== "" && Number(val) === r;
+                            const col = rirRpeColor(rpeFromRir(r));
+                            return (
+                              <button
+                                key={r}
+                                type="button"
+                                onClick={() => onPick(r)}
+                                title={`${r === 5 ? "5+" : r} rep(s) en réserve`}
+                                style={{ padding: "6px 0", borderRadius: 6, border: `1.5px solid ${col}`, background: on ? col : `${col}26`, color: on ? "#0d0c0a" : col, fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}
+                              >
+                                {r === 5 ? "5+" : r}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                      // une ligne : nom | (charge) | reps | RIR
+                      const row = (key, name, { w, onW, reps, onReps, rir, onRir, wPh }) => (
+                        <div key={key} style={{ display: "grid", gridTemplateColumns: onW ? "64px 70px 62px minmax(0, 1fr)" : "64px 62px minmax(0, 1fr)", gap: 6, alignItems: "center", padding: "6px 0", borderTop: "1px solid #2a2620" }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700 }}>{name}</div>
+                          {onW && <input type="number" step="0.5" placeholder={wPh || "kg"} value={w} onChange={(e) => onW(e.target.value)} style={inp} aria-label={`Charge ${name}`} />}
+                          <input type="number" placeholder="reps" value={reps} onChange={(e) => onReps(e.target.value)} style={inp} aria-label={`Reps ${name}`} />
+                          {rirPick(rir, onRir)}
+                        </div>
+                      );
+                      const head = (cols) => (
+                        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 6, fontSize: 10.5, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                          <span />
+                          {cols.split(" ").length === 4 && <span>{db ? "kg / haltère" : "kg"}</span>}
+                          <span>reps</span>
+                          <span>reps en réserve</span>
+                        </div>
+                      );
                       if (m === "cluster") {
                         const cl = Array.isArray(serie.clusters) ? serie.clusters : [];
+                        const cr = Array.isArray(serie.clusterRir) ? serie.clusterRir : [];
                         const total = cl.reduce((a, x) => a + (Number(x) || 0), 0);
                         return (
                           <div style={box}>
-                            {title(`Reps de chaque mini-série (pause ${mpOf(exo).intraRest} s)`)}
-                            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(cl.length || 1, 4)}, minmax(0, 1fr))`, gap: 8 }}>
-                              {cl.map((x, k) => (
-                                <div key={k}>
-                                  <div style={lab}>Mini {k + 1}</div>
-                                  <input
-                                    type="number"
-                                    value={x}
-                                    onChange={(e) => {
-                                      const next = cl.map((y, j) => (j === k ? numVal(e.target.value) : y));
-                                      setSerie({ clusters: next, actualReps: next.reduce((a, y) => a + (Number(y) || 0), 0) });
-                                    }}
-                                    style={inp}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Total {total} reps · RIR = en fin de série (dernière mini-série).</div>
+                            {title(`Mini-séries (pause ${mpOf(exo).intraRest} s)`)}
+                            {head("64px 62px minmax(0, 1fr)")}
+                            {cl.map((x, k) =>
+                              row(k, `Mini ${k + 1}`, {
+                                reps: x,
+                                onReps: (v) => {
+                                  const next = cl.map((y, j) => (j === k ? numVal(v) : y));
+                                  setSerie({ clusters: next, actualReps: next.reduce((a, y) => a + (Number(y) || 0), 0) });
+                                },
+                                rir: cr[k],
+                                onRir: (r) => {
+                                  const nr = cl.map((_, j) => (j === k ? r : cr[j] ?? null));
+                                  // RIR de la série = celui de la dernière mini-série
+                                  const last = nr[nr.length - 1];
+                                  setSerie({ clusterRir: nr, ...(last != null ? { rir: last, rpe: rpeFromRir(last) } : {}) });
+                                },
+                              })
+                            )}
+                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Total {total} reps. Le RIR de la dernière mini-série = celui de la série. Pas de mise à jour du RM.</div>
                           </div>
                         );
                       }
                       if (m === "restpause") {
                         const sg = Array.isArray(serie.segments) ? serie.segments : [serie.actualReps];
+                        const sr = Array.isArray(serie.segRir) ? serie.segRir : [];
                         return (
                           <div style={box}>
                             {title(`Série principale puis mini-séries (pause ${mpOf(exo).pauseSec} s)`)}
-                            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(sg.length, 4)}, minmax(0, 1fr))`, gap: 8 }}>
-                              {sg.map((x, k) => (
-                                <div key={k}>
-                                  <div style={lab}>{k === 0 ? "Principale" : `Mini ${k}`}</div>
-                                  <input
-                                    type="number"
-                                    value={x}
-                                    onChange={(e) => {
-                                      const next = sg.map((y, j) => (j === k ? numVal(e.target.value) : y));
-                                      setSerie({ segments: next, actualReps: Number(next[0]) || 0 });
-                                    }}
-                                    style={inp}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Le RIR ci-dessous = celui de la série principale (c'est elle qui sert au RM).</div>
+                            {head("64px 62px minmax(0, 1fr)")}
+                            {sg.map((x, k) =>
+                              row(k, k === 0 ? "Principale" : `Mini ${k}`, {
+                                reps: x,
+                                onReps: (v) => {
+                                  const next = sg.map((y, j) => (j === k ? numVal(v) : y));
+                                  setSerie({ segments: next, actualReps: Number(next[0]) || 0 });
+                                },
+                                rir: k === 0 ? serie.rir ?? sr[0] : sr[k],
+                                onRir: (r) => {
+                                  const nr = sg.map((_, j) => (j === k ? r : sr[j] ?? (j === 0 ? serie.rir ?? null : null)));
+                                  setSerie({ segRir: nr, ...(k === 0 ? { rir: r, rpe: rpeFromRir(r) } : {}) });
+                                },
+                              })
+                            )}
+                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Le RM se calcule sur la série principale (ses reps et son RIR).</div>
                           </div>
                         );
                       }
@@ -11582,27 +11668,34 @@ export default function Workout() {
                         const dr = Array.isArray(serie.drops) ? serie.drops : [];
                         return (
                           <div style={box}>
-                            {title("Série puis drops (sans repos)")}
-                            <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) minmax(0, 1fr)", gap: 8, alignItems: "center" }}>
-                              <div style={{ fontSize: 13, fontWeight: 700 }}>1re série</div>
-                              <div style={{ fontSize: 13, color: "#a8a199" }}>{serie.actualWeight || 0} kg</div>
-                              <input type="number" placeholder="reps" value={serie.actualReps} onChange={(e) => setSerie({ actualReps: numVal(e.target.value) })} style={inp} />
-                              {dr.map((d, k) => (
-                                <React.Fragment key={k}>
-                                  <div style={{ fontSize: 13, fontWeight: 700 }}>Drop {k + 1}</div>
-                                  <input type="number" placeholder="kg" value={d.w} onChange={(e) => setSerie({ drops: dr.map((y, j) => (j === k ? { ...y, w: numVal(e.target.value) } : y)) })} style={inp} />
-                                  <input type="number" placeholder="reps" value={d.r} onChange={(e) => setSerie({ drops: dr.map((y, j) => (j === k ? { ...y, r: numVal(e.target.value) } : y)) })} style={inp} />
-                                </React.Fragment>
-                              ))}
-                            </div>
+                            {title("1re série puis drops (sans repos)")}
+                            {head("64px 70px 62px minmax(0, 1fr)")}
+                            {row("main", "1re série", {
+                              w: wIn(serie.actualWeight),
+                              onW: (v) => setSerie({ actualWeight: wOut(v) }),
+                              reps: serie.actualReps,
+                              onReps: (v) => setSerie({ actualReps: numVal(v) }),
+                              rir: serie.rir,
+                              onRir: (r) => setSerie({ rir: r, rpe: rpeFromRir(r) }),
+                            })}
+                            {dr.map((d, k) =>
+                              row(k, `Drop ${k + 1}`, {
+                                w: wIn(d.w),
+                                onW: (v) => setSerie({ drops: dr.map((y, j) => (j === k ? { ...y, w: wOut(v) } : y)) }),
+                                reps: d.r,
+                                onReps: (v) => setSerie({ drops: dr.map((y, j) => (j === k ? { ...y, r: numVal(v) } : y)) }),
+                                rir: d.rir,
+                                onRir: (r) => setSerie({ drops: dr.map((y, j) => (j === k ? { ...y, rir: r } : y)) }),
+                              })
+                            )}
                             <button
                               type="button"
-                              onClick={() => setSerie({ drops: dropLoads(serie.actualWeight, exo).map((w, k) => ({ w, r: dr[k]?.r ?? "" })) })}
+                              onClick={() => setSerie({ drops: dropLoads(serie.actualWeight, exo).map((w, k) => ({ ...(dr[k] || {}), w, r: dr[k]?.r ?? "" })) })}
                               style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1px solid #2a2620", background: "#151310", color: "#f3f0ea", fontSize: 12, cursor: "pointer" }}
                             >
                               ↻ Recalculer les charges des drops (−{mpOf(exo).dropPct} %)
                             </button>
-                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Le RIR ci-dessous = celui de la 1re série (c'est elle qui sert au RM).</div>
+                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Le RM se calcule sur la 1re série.</div>
                           </div>
                         );
                       }
@@ -11611,18 +11704,18 @@ export default function Workout() {
                         return (
                           <div style={box}>
                             {title(`① Excentrique seul à ${mpOf(exo).eccPct} %`)}
-                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-                              <div>
-                                <div style={lab}>Charge (kg)</div>
-                                <input type="number" placeholder={sug ? String(sug) : "kg"} value={serie.eccWeight ?? ""} onChange={(e) => setSerie({ eccWeight: numVal(e.target.value) })} style={inp} />
-                              </div>
-                              <div>
-                                <div style={lab}>Reps excentriques</div>
-                                <input type="number" value={serie.eccReps ?? mpOf(exo).eccReps} onChange={(e) => setSerie({ eccReps: numVal(e.target.value) })} style={inp} />
-                              </div>
-                            </div>
+                            {head("64px 70px 62px minmax(0, 1fr)")}
+                            {row("ecc", `${mpOf(exo).eccPct} %`, {
+                              w: wIn(serie.eccWeight),
+                              onW: (v) => setSerie({ eccWeight: wOut(v) }),
+                              wPh: sug ? String(db ? perHand(sug) : sug) : "kg",
+                              reps: serie.eccReps ?? mpOf(exo).eccReps,
+                              onReps: (v) => setSerie({ eccReps: numVal(v) }),
+                              rir: serie.eccRir,
+                              onRir: (r) => setSerie({ eccRir: r }),
+                            })}
                             <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
-                              {sug ? `Prévu ≈ ${sug} kg. ` : ""}Puis ② décharger la barre et ③ saisir ci-dessous la charge et les reps classiques à {mpOf(exo).conPct} %. Cette série ne sert pas au calcul du RM.
+                              {sug ? `Prévu ≈ ${db ? `${perHand(sug)} kg par haltère` : `${sug} kg`}. ` : ""}Reps en réserve = descentes contrôlées encore possibles. Puis ② décharger la barre et ③ remplir ci-dessous la partie classique à {mpOf(exo).conPct} %. Pas de mise à jour du RM.
                             </div>
                           </div>
                         );
@@ -11716,7 +11809,9 @@ export default function Workout() {
                     </div>
                     )}
 
-                    {/* Reps en réserve par série (enregistré en RPE = 10 − RIR, voir component/rir.js) */}
+                    {/* Reps en réserve par série (enregistré en RPE = 10 − RIR, voir component/rir.js).
+                        Cluster / rest-pause / drop set : saisi mini-série par mini-série au-dessus. */}
+                    {!["cluster", "restpause", "dropset"].includes(methodOf(currentExerciseFeedback.exercise)) && (
                     <div style={{ marginBottom: 8 }}>
                       <label
                         style={{
@@ -11726,7 +11821,7 @@ export default function Workout() {
                           fontWeight: "bold",
                         }}
                       >
-                        Combien de reps tu aurais encore pu faire ?
+                        {methodOf(currentExerciseFeedback.exercise) === "m12080" ? "③ Partie classique : combien de reps tu aurais encore pu faire ?" : "Combien de reps tu aurais encore pu faire ?"}
                       </label>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 6 }}>
                         {RIR_CHOICES.map((r) => {
@@ -11767,6 +11862,7 @@ export default function Workout() {
                         {serie.rir === 0 ? " — échec, plus aucune rep possible" : ""}
                       </div>
                     </div>
+                    )}
                     {/* Vitesse moyenne de la série (VBT) — optionnelle */}
                     {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
                       const exo = currentExerciseFeedback.exercise;
@@ -11815,7 +11911,7 @@ export default function Workout() {
                           {hasNext && row.next != null && A.target && (
                             <div style={{ marginTop: 4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                               <span>
-                                ➡️ Série {idx + 2} : <strong>{row.next} kg</strong> pour {currentExerciseFeedback.exercise.reps} reps à {rirTxt(A.target.rir)} en réserve
+                                ➡️ Série {idx + 2} : <strong>{row.next} kg{isDbBilateral(currentExerciseFeedback.exercise.name, isUniEx(currentExerciseFeedback.exercise)) ? ` (2 × ${perHand(row.next)} kg)` : ""}</strong> pour {currentExerciseFeedback.exercise.reps} reps à {rirTxt(A.target.rir)} en réserve
                                 {row.weight && row.next !== row.weight ? ` (${row.next > row.weight ? "+" : ""}${row.next - row.weight} kg)` : " (même charge)"}
                               </span>
                               {nextW !== row.next && (
@@ -11858,7 +11954,7 @@ export default function Workout() {
                   if (!A.nextSession || !A.target) return null;
                   return (
                     <div style={{ marginBottom: 18, padding: 10, borderRadius: 8, background: "#141210", fontSize: 13, lineHeight: 1.6 }}>
-                      📈 Prochaine séance au même schéma ({currentExerciseFeedback.exercise.reps} reps, {rirTxt(A.target.rir)} en réserve) : <strong>≈ {A.nextSession} kg</strong>
+                      📈 Prochaine séance au même schéma ({currentExerciseFeedback.exercise.reps} reps, {rirTxt(A.target.rir)} en réserve) : <strong>≈ {A.nextSession} kg{isDbBilateral(currentExerciseFeedback.exercise.name, isUniEx(currentExerciseFeedback.exercise)) ? ` (2 × ${perHand(A.nextSession)} kg)` : ""}</strong>
                       {A.maxLoss != null && <> · perte max sur la séance : <strong>{frNum(A.maxLoss)} %</strong></>}
                       <div style={{ fontSize: 11, color: "#a8a199" }}>Calculé sur ta meilleure série du jour (RM estimé) ; tes RM se mettent aussi à jour tout seuls à la fin de la séance.</div>
                     </div>
