@@ -31,6 +31,7 @@ import { targetRir, UNI_FACTOR, LOSS_WARN, LOSS_STOP } from "../component/loadAd
 import { SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { END_LOSS_WARN, END_LOSS_STOP, END_ADJ } from "../component/enduranceFeedback";
 import { COD_SEC } from "../component/enduranceTarget";
+import { Z_LOOKBACK_WEEKS, Z_MIN_WEEKS, Z_SD_FLOOR_CV, Z_SD_FLOOR_MIN } from "../component/weekRealized";
 import { ZONES, DEFAULT_CS_VMA_RATIO, HR_MIN_EFFORT_SEC } from "../component/drillBank";
 import { LEVELS, LEVEL_ORDER, FAMILY_RATIO, FAMILY_LABEL, BRONCO_RECORD_S } from "../component/rugbyLevels";
 import { PRO_DATA, MASS_RATIO, BF_ADD, BF_DXA, BF_SKINFOLD, SILVER_SD, GOLD_SD, medalTargets } from "../component/morphology";
@@ -350,9 +351,20 @@ EMOM = intervalle × tours · AMRAP = durée totale (+ repos après le bloc)`}</
           Volume et intensité PRÉVUS (1-10) = saisis par le coach sur chaque semaine. RÉELLEMENT EFFECTUÉS = calculés sur les séances
           TERMINÉES du calendrier (barres creuses) :
         </P>
-        <F>{`intensité réelle = Σ (note de séance × durée) / Σ durée   (RPE moyen pondéré par la durée)
-volume réel = minutes de la semaine / minutes de la semaine la plus chargée × 10   (échelle relative)
-groupe : moyenne des athlètes ayant terminé au moins une séance dans la semaine`}</F>
+        <F>{`semaine = semaine où la séance a réellement été faite (« Séance faite le »)
+intensité réelle = Σ (note de séance × durée) / Σ durée   (RPE moyen pondéré par la durée, échelle absolue)
+volume réel = 5 + 2 × z   (borné 1-10)   z = (minutes de la semaine − moyenne) / écart-type
+  moyenne et écart-type = ${Z_LOOKBACK_WEEKS} semaines précédentes DE L'ATHLÈTE (semaines sans séance = 0)
+  5 = semaine habituelle · 7 = +1 σ · 9 = +2 σ · 3 = −1 σ
+  < ${Z_MIN_WEEKS} semaines d'historique : complété par la norme du groupe (médiane des athlètes ayant ≥ ${Z_MIN_WEEKS} semaines)
+  écart-type plancher = ${Math.round(Z_SD_FLOOR_CV * 100)} % de la moyenne (≥ ${Z_SD_FLOOR_MIN} min)
+  aucun historique ni groupe : repli « provisoire » = minutes / semaine la plus chargée × 10
+groupe : moyenne des z-scores de chaque athlète actif dans la semaine
+historique utilisé : 6 mois (lu à l'ouverture de la planification)`}</F>
+        <P>
+          Le z-score compare chaque athlète à sa propre habitude, donc un athlète qui s'entraîne beaucoup ne fausse plus le groupe. Le rétrécissement
+          vers la norme du groupe (bayésien empirique) évite des valeurs extrêmes quand un athlète a peu de semaines d'historique.
+        </P>
         <P>
           Un coach peut remplir une séance pour un athlète (« Qui fait la séance ? ») : feedbacks, charge et RM vont à cet athlète. Chaque personne
           n'est comptée que si elle démarre et termine la séance.

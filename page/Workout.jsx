@@ -360,6 +360,21 @@ const DEFAULT_MEDIA_ZOOM = 100; // en %
 const MIN_MEDIA_ZOOM = 40;
 const MAX_MEDIA_ZOOM = 250;
 
+/* Cadre d'une étape du formulaire de séance (numéro + titre + résumé + action à droite) */
+const FormSection = ({ n, title, summary, right, children }) => (
+  <div style={{ background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 12, padding: window.innerWidth <= 768 ? 12 : 16, marginBottom: 14 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: children ? 12 : 0 }}>
+      <span style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(224,161,61,0.18)", color: "#e0a13d", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{n}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 15, fontWeight: 800, color: "#f3f0ea" }}>{title}</div>
+        {summary && <div style={{ fontSize: 12.5, color: "#a8a199", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary}</div>}
+      </div>
+      {right}
+    </div>
+    {children}
+  </div>
+);
+
 export default function Workout() {
   const blockFold = useFold("workout_blocks");
   const { currentUser, userRole, userGroup, isSuperAdmin, coachScope, userProfile } = useAuth();
@@ -396,6 +411,16 @@ export default function Workout() {
   const [formDate, setFormDate] = useState(new Date());
   // Horaire d'entraînement (facultatif, "HH:MM") : utile quand un athlète a plusieurs séances le même jour
   const [sessionTime, setSessionTime] = useState("");
+  // Formulaire : section « Quand ? » repliable (mémorisé) + application de la date / l'heure aux copies
+  const [whenOpen, setWhenOpenState] = useState(() => {
+    try { return localStorage.getItem("pt_form_when_open") !== "0"; } catch (e) { return true; }
+  });
+  const setWhenOpen = (v) => {
+    setWhenOpenState(v);
+    try { localStorage.setItem("pt_form_when_open", v ? "1" : "0"); } catch (e) { /* ignore */ }
+  };
+  const [editOrig, setEditOrig] = useState(null); // { date, time, title } de la séance avant modification
+  const [applyToCopies, setApplyToCopies] = useState(true);
   const [workoutType, setWorkoutType] = useState("muscu");
   // Type de la séance (= type par défaut des blocs) ; alias utilisé dans la boucle des blocs du
   // formulaire, où « workoutType » désigne le type du BLOC.
@@ -2677,6 +2702,16 @@ export default function Workout() {
         // et la date de création d'origine restent ceux de la séance).
         const { createdBy: _cb, createdAt: _ca, ...editPayload } = payload;
         await updateDoc(doc(db, "workout", editId), editPayload);
+        // Copies de la même séance (autres groupes : même titre, même date, même auteur) :
+        // la date et l'horaire suivent si le coach l'a demandé.
+        if (applyToCopies && editOrig && (editOrig.date !== editPayload.date || (editOrig.time || null) !== editPayload.time)) {
+          const copies = events.filter(
+            (e) => e.id !== editId && e.title === editOrig.title && e.date === editOrig.date && e.createdBy === editOrig.createdBy
+          );
+          for (const cp of copies) {
+            await updateDoc(doc(db, "workout", cp.id), { date: editPayload.date, time: editPayload.time });
+          }
+        }
         // Si la séance modifiée est celle affichée en détail, on la met à
         // jour tout de suite (sinon l'ancien titre / les anciens exercices
         // restent affichés jusqu'à ce qu'on la rouvre).
@@ -2773,6 +2808,8 @@ export default function Workout() {
     setTitle(session.title);
     setFormDate(new Date(session.date + "T12:00:00"));
     setSessionTime(session.time || "");
+    setEditOrig({ date: session.date, time: session.time || null, title: session.title, createdBy: session.createdBy });
+    setApplyToCopies(true);
     setGroup(session.group || "total");
     setRemovedItems([]);
     setExtraGroups([]);
@@ -4864,7 +4901,10 @@ export default function Workout() {
                   const st = sessionStatus(evt);
                   return st.icon ? `${st.icon}${st.movedFrom ? "↪" : ""}${st.n > 1 && st.key === "partial" ? ` ${st.done}/${st.n}` : ""} ` : "";
                 })()}
-                {evt.time ? `${evt.time} ` : ""}{moiPrefix(evt)}{evt.title}
+                {evt.time ? (
+                  <span style={{ background: "rgba(0,0,0,0.45)", borderRadius: 2, padding: "0 3px", marginRight: 3, fontWeight: 800 }}>{evt.time}</span>
+                ) : null}
+                {moiPrefix(evt)}{evt.title}
               </div>
             ))}
             {isMobile && dayEvents.length > 1 && (
@@ -5130,6 +5170,7 @@ export default function Workout() {
               isAdmin={isAdminLike}
               currentUser={currentUser}
               sessionStatusOf={sessionStatus}
+              eventFilter={isEventVisibleToFilter}
               scopes={cycleScopes}
               onReload={fetchCycles}
               onReloadFixtures={fetchFixtures}
@@ -6996,8 +7037,9 @@ export default function Workout() {
           style={{
             background: "#151310",
             padding: window.innerWidth <= 768 ? 12 : 25,
-            borderRadius: 12,
-            border: "2px solid #4fae7d",
+            borderRadius: 14,
+            border: "1px solid #2a2620",
+            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
             marginBottom: 25,
           }}
         >
@@ -7038,8 +7080,9 @@ export default function Workout() {
             </button>
           </div>
 
+          <FormSection n={1} title="Séance" summary={title ? `${typeLabel(workoutType)} · ${title}` : "Type et titre"}>
           {/* Type de séance */}
-          <div style={{ marginBottom: 18 }}>
+          <div style={{ marginBottom: 14 }}>
             <label
               style={{
                 display: "block",
@@ -7175,93 +7218,114 @@ export default function Workout() {
               }}
             />
           </div>
+          </FormSection>
 
-          <div style={{ marginBottom: 18 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 6,
-                fontSize: 14,
-                fontWeight: "bold",
-              }}
-            >
-              Date
-            </label>
-            <input
-              type="date"
-              value={getLocalDateStr(formDate)}
-              onChange={(e) =>
-                setFormDate(new Date(e.target.value + "T12:00:00"))
-              }
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 8,
-                border: "2px solid rgba(224, 161, 61, 0.3)",
-                background: "#151310",
-                color: "#f3f0ea",
-                fontSize: 16,
-                cursor: "pointer",
-                transition: "all 0.3s ease",
-              }}
-              onFocus={(e) => {
-                e.target.style.border = "2px solid rgba(224, 161, 61, 0.6)";
-                e.target.style.boxShadow = "0 0 15px rgba(224, 161, 61, 0.3)";
-              }}
-              onBlur={(e) => {
-                e.target.style.border = "2px solid rgba(224, 161, 61, 0.3)";
-                e.target.style.boxShadow = "none";
-              }}
-            />
-          </div>
+          {/* 2. QUAND ? — repliable ; horaire en deux listes (fiable sur téléphone, contrairement au
+              sélecteur d'heure natif dont « Effacer » ne prévenait pas toujours l'app) */}
+          {(() => {
+            const dStr = getLocalDateStr(formDate);
+            const [hh, mm] = (sessionTime || "").split(":");
+            const longDate = new Date(dStr + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+            const setT = (h, m) => {
+              if (h === "" || h == null) return setSessionTime("");
+              setSessionTime(`${String(h).padStart(2, "0")}:${String(m ?? "00").padStart(2, "0")}`);
+            };
+            const minuteOpts = Array.from({ length: 12 }, (_, i) => String(i * 5).padStart(2, "0"));
+            if (mm && !minuteOpts.includes(mm)) minuteOpts.push(mm);
+            const shift = (n) => {
+              const d = new Date();
+              d.setDate(d.getDate() + n);
+              return getLocalDateStr(d);
+            };
+            const chip = (label, val) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setFormDate(new Date(val + "T12:00:00"))}
+                style={{ padding: "6px 12px", borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: "pointer", border: `1px solid ${dStr === val ? "#e0a13d" : "#2a2620"}`, background: dStr === val ? "rgba(224,161,61,0.18)" : "#151310", color: dStr === val ? "#e0a13d" : "#a8a199" }}
+              >
+                {label}
+              </button>
+            );
+            const field = { padding: 10, borderRadius: 8, border: "1px solid #2a2620", background: "#151310", color: "#f3f0ea", fontSize: 16, boxSizing: "border-box" };
+            const copies =
+              isEdit && editOrig
+                ? events.filter((e) => e.id !== editId && e.title === editOrig.title && e.date === editOrig.date && e.createdBy === editOrig.createdBy)
+                : [];
+            return (
+              <FormSection
+                n={2}
+                title="Quand ?"
+                summary={`📅 ${longDate}${sessionTime ? ` · 🕒 ${sessionTime}` : " · sans horaire"}`}
+                right={
+                  <button
+                    type="button"
+                    onClick={() => setWhenOpen(!whenOpen)}
+                    style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #2a2620", background: "#151310", color: "#f3f0ea", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
+                  >
+                    {whenOpen ? "Masquer" : "✏️ Modifier"}
+                  </button>
+                }
+              >
+                {whenOpen && (
+                  <div style={{ display: "grid", gap: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Date</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                        <input
+                          type="date"
+                          value={dStr}
+                          onChange={(e) => e.target.value && setFormDate(new Date(e.target.value + "T12:00:00"))}
+                          style={{ ...field, flex: "1 1 170px", minWidth: 0 }}
+                        />
+                        {chip("Aujourd'hui", shift(0))}
+                        {chip("Demain", shift(1))}
+                        {chip("+7 j", getLocalDateStr(new Date(new Date(dStr + "T12:00:00").getTime() + 7 * 86400000)))}
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+                        Horaire <span style={{ color: "#a8a199", fontWeight: 400 }}>(facultatif — ordonne les séances d'une même journée)</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <select value={hh || ""} onChange={(e) => setT(e.target.value, mm || "00")} style={{ ...field, width: 96 }} aria-label="Heure">
+                          <option value="">-- h</option>
+                          {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, "0")).map((h) => (
+                            <option key={h} value={h}>{h} h</option>
+                          ))}
+                        </select>
+                        <span style={{ color: "#a8a199" }}>:</span>
+                        <select value={hh ? mm || "00" : ""} disabled={!hh} onChange={(e) => setT(hh, e.target.value)} style={{ ...field, width: 96, opacity: hh ? 1 : 0.5 }} aria-label="Minutes">
+                          {!hh && <option value="">-- min</option>}
+                          {minuteOpts.sort().map((m) => (
+                            <option key={m} value={m}>{m}</option>
+                          ))}
+                        </select>
+                        {sessionTime && (
+                          <button type="button" onClick={() => setSessionTime("")} style={{ padding: "10px 14px", background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14 }}>
+                            ✕ Sans horaire
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {copies.length > 0 && (editOrig.date !== dStr || (editOrig.time || "") !== (sessionTime || "")) && (
+                      <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: "#f3f0ea", cursor: "pointer", lineHeight: 1.4 }}>
+                        <input type="checkbox" checked={applyToCopies} onChange={(e) => setApplyToCopies(e.target.checked)} style={{ marginTop: 3 }} />
+                        <span>
+                          Appliquer aussi cette date / cet horaire aux {copies.length} copie{copies.length > 1 ? "s" : ""} de la séance (autres groupes)
+                          <span style={{ display: "block", color: "#a8a199", fontSize: 12 }}>Sinon, seule cette séance change : les copies gardent l'ancienne date / heure.</span>
+                        </span>
+                      </label>
+                    )}
+                  </div>
+                )}
+              </FormSection>
+            );
+          })()}
 
-          <div style={{ marginBottom: 18 }}>
-            <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: "bold" }}>
-              🕒 Horaire <span style={{ color: "#a8a199", fontWeight: 400 }}>(facultatif)</span>
-            </label>
-            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <input
-                type="time"
-                value={sessionTime}
-                onChange={(e) => setSessionTime(e.target.value)}
-                style={{
-                  flex: "1 1 140px",
-                  minWidth: 0,
-                  padding: 12,
-                  borderRadius: 8,
-                  border: "2px solid rgba(224, 161, 61, 0.3)",
-                  background: "#151310",
-                  color: "#f3f0ea",
-                  fontSize: 16,
-                  boxSizing: "border-box",
-                }}
-              />
-              {sessionTime && (
-                <button
-                  type="button"
-                  onClick={() => setSessionTime("")}
-                  style={{ padding: "10px 14px", background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14 }}
-                >
-                  ✕ Sans horaire
-                </button>
-              )}
-            </div>
-            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
-              Pratique si l'athlète a plusieurs séances dans la journée : elles s'affichent dans l'ordre de l'heure.
-            </div>
-          </div>
+          <FormSection n={3} title="Pour qui ?">
 
-          <div style={{ marginBottom: 18 }}>
-            <label
-              style={{
-                display: "block",
-                marginBottom: 6,
-                fontSize: 14,
-                fontWeight: "bold",
-              }}
-            >
-              Pour qui ?
-            </label>
+          <div style={{ marginBottom: 12 }}>
             {isEdit && (
               <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8, lineHeight: 1.5 }}>
                 La séance modifiée va dans le 1er groupe coché ; chaque autre case cochée reçoit une copie.
@@ -7427,6 +7491,16 @@ export default function Workout() {
             );
           })()}
 
+          </FormSection>
+
+          {/* 4. CONTENU */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 12px" }}>
+            <span style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(224,161,61,0.18)", color: "#e0a13d", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>4</span>
+            <div style={{ fontSize: 15, fontWeight: 800 }}>Contenu de la séance</div>
+            <div style={{ marginLeft: "auto", fontSize: 12.5, color: "#a8a199" }}>
+              {blocks.length} bloc{blocks.length > 1 ? "s" : ""} · ≈ {Math.round(estimateSessionDurationSeconds(workoutType, blocks) / 60)} min
+            </div>
+          </div>
           {/* Blocs */}
           {blocks.some((b) => blockTypeOf(b, workoutType) === "muscu") && rmPicker}
           {blocks.map((block, bIdx) => {
@@ -9434,12 +9508,16 @@ export default function Workout() {
               <h3 style={{ margin: 0, fontSize: 20 }}>
                 {selectedSession.title}
               </h3>
-              <div style={{ fontSize: 13, color: "#a8a199", marginTop: 4 }}>
-                {new Date(
-                  selectedSession.date + "T12:00:00"
-                ).toLocaleDateString("fr-FR")}{" "}
-                {selectedSession.time ? `• 🕒 ${selectedSession.time} ` : ""}
-                • {selectedSession.estimatedDuration || "?"} min
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13, color: "#a8a199", marginTop: 6 }}>
+                {selectedSession.time && (
+                  <span style={{ padding: "3px 10px", borderRadius: 999, background: "rgba(224,161,61,0.18)", border: "1px solid #e0a13d", color: "#e0a13d", fontWeight: 800, fontSize: 14 }}>
+                    🕒 {selectedSession.time}
+                  </span>
+                )}
+                <span>
+                  📅 {new Date(selectedSession.date + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                </span>
+                <span>· ⏱️ {selectedSession.estimatedDuration || "?"} min</span>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
@@ -10783,8 +10861,24 @@ export default function Workout() {
                           cursor: "pointer",
                         }}
                       >
-                        <h4 style={{ margin: "0 0 6px 0", fontSize: 16 }}>
-                          {moiPrefix(session)}{session.title}
+                        <h4 style={{ margin: "0 0 6px 0", fontSize: 16, display: "flex", alignItems: "center", gap: 10 }}>
+                          <span
+                            style={{
+                              flexShrink: 0,
+                              minWidth: 62,
+                              textAlign: "center",
+                              padding: "4px 8px",
+                              borderRadius: 8,
+                              fontSize: 15,
+                              fontWeight: 800,
+                              background: session.time ? "rgba(224,161,61,0.18)" : "#1a1815",
+                              border: `1px solid ${session.time ? "#e0a13d" : "#2a2620"}`,
+                              color: session.time ? "#e0a13d" : "#a8a199",
+                            }}
+                          >
+                            {session.time || "—:—"}
+                          </span>
+                          <span>{moiPrefix(session)}{session.title}</span>
                         </h4>
                         {(() => {
                           const st = sessionStatus(session);
@@ -10823,7 +10917,6 @@ export default function Workout() {
                               : typeLabel(blockTypeOf(null, session.type))}
                           </span>
                           {" • "}
-                          {session.time ? `🕒 ${session.time} • ` : ""}
                           {session.estimatedDuration || "?"} min
                           {isUserSessionCompleted(session) && (
                             <span

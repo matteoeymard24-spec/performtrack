@@ -36,6 +36,7 @@ import {
 } from "./cycles";
 import { appConfirm, appAlert as alert } from "./appDialog";
 import { realizedByWeek } from "./weekRealized";
+import { getWorkoutDocs, daysAgoStr } from "./workoutQueries";
 
 const CARD = "#151310";
 const DARK = "#0d0c0a";
@@ -180,6 +181,7 @@ export default function PlanningPanel({
   onReloadFixtures,
   onOpenSession,
   sessionStatusOf = null, // (séance) → { key, icon, color, label, done, n } : statut affiché dans les listes
+  eventFilter = null, // même filtre que le calendrier (groupe / athlète affiché), pour l'historique long
 }) {
   const todayStr = dayStr(new Date());
   const [openId, setOpenId] = useState(null);
@@ -499,7 +501,33 @@ export default function PlanningPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shown, rangeStart, rangeEnd]);
   // RÉELLEMENT EFFECTUÉ (séances terminées du calendrier, méthode sRPE) — voir component/weekRealized.js
-  const realized = useMemo(() => realizedByWeek(events, defaultScope), [events, defaultScope]);
+  // Historique long (6 mois) pour le z-score du volume : le calendrier ne charge que ~60 jours,
+  // trop court pour comparer une semaine à l'habitude de l'athlète. Lu une fois à l'ouverture de la
+  // planification (cache 90 s), puis fusionné avec les séances du calendrier (plus récentes).
+  const [historyEvents, setHistoryEvents] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    getWorkoutDocs({ since: daysAgoStr(182) })
+      .then((snap) => {
+        if (!cancelled) setHistoryEvents(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const realizedEvents = useMemo(() => {
+    const byId = new Map();
+    historyEvents.filter((e) => !eventFilter || eventFilter(e)).forEach((e) => byId.set(e.id, e));
+    (events || []).forEach((e) => byId.set(e.id, e));
+    return [...byId.values()];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyEvents, events]);
+  const realized = useMemo(() => realizedByWeek(realizedEvents, defaultScope), [realizedEvents, defaultScope]);
+  const zTxt = (r) =>
+    r.volumeMode === "z"
+      ? `${r.volumeZ >= 0 ? "+" : "−"}${String(Math.abs(r.volumeZ).toFixed(1)).replace(".", ",")} σ`
+      : "provisoire";
   const realizedWeeks = Object.entries(realized)
     .filter(([wk]) => addDays(wk, 6) >= rangeStart && wk <= rangeEnd)
     .sort(([a], [b]) => a.localeCompare(b));
@@ -806,8 +834,6 @@ export default function PlanningPanel({
                       textOverflow: "ellipsis",
                       cursor: "pointer",
                       boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)",
-                      outline: isIndividual(c) ? "1px dashed rgba(255,255,255,0.55)" : "none",
-                      outlineOffset: -2,
                     }}
                   >
                     {isIndividual(c) ? "👤 " : ""}
@@ -890,7 +916,7 @@ export default function PlanningPanel({
               return (
                 <div
                   key={`real-${wk}`}
-                  title={`Réellement effectué · semaine du ${fmtShort(wk)}\nVolume ${r.volume}/10 (${r.minutes} min, ${r.sessions} séance(s)${r.athletes > 1 ? `, moyenne de ${r.athletes} athlètes` : ""})\nIntensité ${String(r.intensity).replace(".", ",")}/10 (RPE moyen pondéré par la durée)\nCharge ${r.load} UA · 10/10 = semaine la plus chargée (${r.maxMinutes} min)`}
+                  title={`Réellement effectué · semaine du ${fmtShort(wk)}\nVolume ${String(r.volume).replace(".", ",")}/10 (${r.minutes} min, ${r.sessions} séance(s)${r.athletes > 1 ? `, moyenne de ${r.athletes} athlètes` : ""})\n${r.volumeMode === "z" ? `= ${zTxt(r)} par rapport à ${r.athletes > 1 ? "l'habitude de chacun" : "son habitude"} (5 = semaine habituelle, 7 = +1 σ)${r.provisional ? " · peu d'historique : complété par la norme du groupe" : ""}` : "provisoire : pas assez d'historique, 10/10 = semaine la plus chargée"}\nIntensité ${String(r.intensity).replace(".", ",")}/10 (RPE moyen pondéré par la durée)\nCharge ${r.load} UA`}
                   style={{ position: "absolute", left: `${left}%`, width: `${Math.max(0.8, wPct - 0.25)}%`, top: 14, bottom: 0, pointerEvents: "auto" }}
                 >
                   <div style={{ position: "absolute", left: "50%", right: 0, bottom: 0, top: 6, display: "flex", alignItems: "flex-end", gap: 1 }}>
@@ -926,8 +952,9 @@ export default function PlanningPanel({
           <span style={{ display: "inline-block", width: 10, height: 10, verticalAlign: "-1px", background: "repeating-linear-gradient(45deg, #5b8def 0 2px, transparent 2px 4px)", border: "1px solid #9dbcf5" }} />
           <span style={{ display: "inline-block", width: 10, height: 10, marginLeft: 2, verticalAlign: "-1px", background: "repeating-linear-gradient(45deg, #e0a13d 0 2px, transparent 2px 4px)", border: "1px solid #f0c98a" }} /> réellement fait (à droite de chaque semaine)
         </span>
+        <span>volume réel : 5 = semaine habituelle de l'athlète, 7 = +1 σ, 3 = −1 σ (z-score individuel)</span>
         <span>trait en haut : semaine légère / moyenne / dure</span>
-        <span><span style={{ display: "inline-block", width: 14, height: 9, borderRadius: 2, outline: "1px dashed rgba(255,255,255,0.6)", outlineOffset: -1, verticalAlign: "-1px" }} /> 👤 cycle individuel</span>
+        <span>👤 cycle individuel</span>
       </div>
 
       <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
@@ -1258,7 +1285,7 @@ export default function PlanningPanel({
                       {gauge("Volume", "#5b8def", c.volume, r ? r.volume : null)}
                       {gauge("Intensité", "#e0a13d", c.intensity, r ? r.intensity : null)}
                       <span style={{ fontSize: 11, color: MUTED, alignSelf: "center" }}>
-                        {r ? `prévu → réel · ${r.minutes} min faites` : "prévu (/10)"}
+                        {r ? `prévu → réel · ${r.minutes} min faites · volume ${zTxt(r)}${r.volumeMode === "z" ? (r.athletes > 1 ? " vs l'habitude de chacun" : " vs son habitude") : ""}${r.provisional && r.volumeMode === "z" ? " (historique court)" : ""}` : "prévu (/10)"}
                       </span>
                     </div>
                   );
@@ -1298,7 +1325,8 @@ export default function PlanningPanel({
                               const st = sessionStatusOf ? sessionStatusOf(e) : null;
                               return st && st.icon ? <span style={{ color: st.color, fontWeight: 800 }}>{st.icon}{st.n > 1 && st.key === "partial" ? ` ${st.done}/${st.n}` : ""} </span> : null;
                             })()}
-                            {parseDay(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · {typeIcon(e)} {e.title}
+                            {parseDay(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}
+                            {e.time ? <b style={{ color: AMBER }}> {e.time}</b> : null} · {typeIcon(e)} {e.title}
                           </span>
                           <span style={{ color: MUTED }}>{e.estimatedDuration ? `${e.estimatedDuration} min` : ""}</span>
                         </div>
