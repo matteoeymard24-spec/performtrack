@@ -1699,7 +1699,9 @@ export default function Workout() {
       const sess = sessionInProgress || selectedSession;
       if (!sess?.id || !actorUid) return;
       const prog = sess.userProgress?.[actorUid];
-      if (!prog?.startedAt || prog?.completedAt) return;
+      // Séance en cours : brouillon. Séance TERMINÉE : le feedback modifié est enregistré aussi
+      // (avant, il n'était sauvé qu'en recliquant « Terminer », et sans mise à jour des RM).
+      if (!prog?.startedAt && !prog?.completedAt) return;
       await updateDoc(doc(db, "workout", sess.id), {
         [`userProgress.${actorUid}.feedback`]: nextFeedback,
       });
@@ -1795,12 +1797,24 @@ export default function Workout() {
     const next = { ...base, [currentExerciseFeedback.key]: entry };
     setSessionFeedback(next);
     persistDraftFeedback(next);
+    // Séance déjà TERMINÉE pour cette personne : le RM de cet exercice est recalculé tout de suite
+    // (à la fin de séance, seuls les feedbacks déjà saisis avaient été pris en compte).
+    {
+      const sess = sessionInProgress || selectedSession;
+      if (sess?.userProgress?.[actorUid]?.completedAt && currentExerciseFeedback.sessionType === "muscu" && !currentExerciseFeedback.isBlockLevel) {
+        adjustRMFromFeedback({ [currentExerciseFeedback.key]: entry }, sess, actorUid, { onlyKeys: [currentExerciseFeedback.key] });
+      }
+    }
 
     setShowFeedbackModal(false);
     setCurrentExerciseFeedback(null);
   };
 
-  const adjustRMFromFeedback = async (feedback, session, forUid = null) => {
+  // opts.onlyKeys : ne traiter que ces exercices (feedback modifié APRÈS la fin de la séance).
+  // Chaque séance n'écrit qu'UNE entrée d'historique par exercice (sessionId) : si le feedback est
+  // modifié ensuite, l'entrée de cette séance est remplacée (et le plafond ±10 % reste calculé par
+  // rapport au RM d'AVANT cette séance), au lieu d'empiler des ajustements.
+  const adjustRMFromFeedback = async (feedback, session, forUid = null, opts = {}) => {
     const actorUid = forUid || actingUid || currentUser?.uid; // RM de cette personne
     // Comme ailleurs dans ce fichier (workoutType par défaut "muscu"), une
     // séance sans champ "type" explicite est une séance muscu : un test
@@ -1811,6 +1825,7 @@ export default function Workout() {
     if (!currentUser || !session.blocks) return;
     try {
       for (const [key, fb] of Object.entries(feedback)) {
+        if (opts.onlyKeys && !opts.onlyKeys.includes(key)) continue;
         const [bIdx, eIdx] = key.split("-").map(Number);
         const block = session.blocks[bIdx];
         const exercise = block?.exercises[eIdx];
@@ -1887,7 +1902,13 @@ export default function Workout() {
         const rmRef = doc(db, "users", actorUid, "rm", normalizedRmName); // RM de la personne qui a fait la séance
         const existingSnap = await getDoc(rmRef);
         const existingData = existingSnap.exists() ? existingSnap.data() : null;
-        const currentRM = existingData?.kg || null;
+        const history0 = [...(existingData?.history || [])];
+        const sameIdx = session.id ? history0.findIndex((h) => h && h.sessionId === session.id) : -1;
+        // RM de référence : celui d'AVANT cette séance si elle a déjà ajusté ce RM
+        const currentRM =
+          sameIdx >= 0
+            ? history0[sameIdx].prev ?? (sameIdx === history0.length - 1 ? existingData?.previousRM : null) ?? existingData?.kg ?? null
+            : existingData?.kg || null;
         const predicted = medianPredicted;
         if (predicted) {
           let finalRM = predicted;
@@ -1909,8 +1930,13 @@ export default function Workout() {
           // Historique complet (comme VMA/CMJ) : chaque ajustement ajoute un
           // point, plutôt que d'écraser l'unique valeur — c'est ce qui rend
           // le graphique d'évolution possible avec plus d'un point.
-          const history = [...(existingData?.history || [])];
-          history.push({ date: nowIso, kg: roundedRM, autoAdjusted: true });
+          const history = history0;
+          const histEntry = { date: nowIso, kg: roundedRM, autoAdjusted: true, ...(session.id ? { sessionId: session.id } : {}), prev: currentRM || 0 };
+          if (sameIdx >= 0) history[sameIdx] = { ...histEntry, date: history[sameIdx].date || nowIso };
+          else history.push(histEntry);
+          // valeur actuelle = dernière entrée de l'historique (une séance plus récente garde la main)
+          const latest = history[history.length - 1];
+          const kgNow = sameIdx >= 0 && sameIdx !== history.length - 1 ? latest.kg : roundedRM;
 
           // Sauvegarder avec le nom normalisé (merge pour ne jamais écraser
           // le reste de la fiche). La banque d'exercices est la source de
@@ -1921,7 +1947,7 @@ export default function Workout() {
           await setDoc(
             rmRef,
             {
-              kg: roundedRM,
+              kg: kgNow,
               exerciseName: normalizedRmName,
               category: catalogCategory || existingData?.category || "autre",
               previousRM: currentRM || 0,
