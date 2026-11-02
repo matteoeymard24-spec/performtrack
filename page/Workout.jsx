@@ -11470,7 +11470,7 @@ export default function Workout() {
                     })()}
 
                     {/* Charge ou Hauteur selon exercice */}
-                    {methodOf(currentExerciseFeedback.exercise) !== "dropset" && (
+                    {!["dropset", "m12080"].includes(methodOf(currentExerciseFeedback.exercise)) && (
                     <div style={{ marginBottom: 14 }}>
                       <label
                         style={{
@@ -11603,11 +11603,12 @@ export default function Workout() {
                           {rirPick(rir, onRir)}
                         </div>
                       );
-                      const head = (cols) => (
-                        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 6, fontSize: 10.5, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                      // en-tête des colonnes : (nom) · charge · reps · reps en réserve — mêmes colonnes que row()
+                      const head = (withKg) => (
+                        <div style={{ display: "grid", gridTemplateColumns: withKg ? "64px 70px 62px minmax(0, 1fr)" : "64px 62px minmax(0, 1fr)", gap: 6, fontSize: 10.5, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.4, paddingBottom: 2 }}>
                           <span />
-                          {cols.split(" ").length === 4 && <span>{db ? "kg / haltère" : "kg"}</span>}
-                          <span>reps</span>
+                          {withKg && <span>{db ? "kg / haltère" : "kg"}</span>}
+                          <span>reps faites</span>
                           <span>reps en réserve</span>
                         </div>
                       );
@@ -11618,7 +11619,7 @@ export default function Workout() {
                         return (
                           <div style={box}>
                             {title(`Mini-séries (pause ${mpOf(exo).intraRest} s)`)}
-                            {head("64px 62px minmax(0, 1fr)")}
+                            {head(false)}
                             {cl.map((x, k) =>
                               row(k, `Mini ${k + 1}`, {
                                 reps: x,
@@ -11645,7 +11646,7 @@ export default function Workout() {
                         return (
                           <div style={box}>
                             {title(`Série principale puis mini-séries (pause ${mpOf(exo).pauseSec} s)`)}
-                            {head("64px 62px minmax(0, 1fr)")}
+                            {head(false)}
                             {sg.map((x, k) =>
                               row(k, k === 0 ? "Principale" : `Mini ${k}`, {
                                 reps: x,
@@ -11669,7 +11670,7 @@ export default function Workout() {
                         return (
                           <div style={box}>
                             {title("1re série puis drops (sans repos)")}
-                            {head("64px 70px 62px minmax(0, 1fr)")}
+                            {head(true)}
                             {row("main", "1re série", {
                               w: wIn(serie.actualWeight),
                               onW: (v) => setSerie({ actualWeight: wOut(v) }),
@@ -11700,22 +11701,37 @@ export default function Workout() {
                         );
                       }
                       if (m === "m12080") {
-                        const sug = Number(calcOwnWeight(exo.name, mpOf(exo).eccPct)) || null;
+                        const p = mpOf(exo);
+                        const sugE = Number(calcOwnWeight(exo.name, p.eccPct)) || null;
+                        const sugC = Number(calcOwnWeight(exo.name, p.conPct)) || null;
+                        const ph = (v) => (v ? String(db ? perHand(v) : v) : "kg");
                         return (
                           <div style={box}>
-                            {title(`① Excentrique seul à ${mpOf(exo).eccPct} %`)}
-                            {head("64px 70px 62px minmax(0, 1fr)")}
-                            {row("ecc", `${mpOf(exo).eccPct} %`, {
+                            {title(`Excentrique à ${p.eccPct} %, puis classique à ${p.conPct} %`)}
+                            {head(true)}
+                            {row("ecc", `① ${p.eccPct} %`, {
                               w: wIn(serie.eccWeight),
                               onW: (v) => setSerie({ eccWeight: wOut(v) }),
-                              wPh: sug ? String(db ? perHand(sug) : sug) : "kg",
-                              reps: serie.eccReps ?? mpOf(exo).eccReps,
+                              wPh: ph(sugE),
+                              reps: serie.eccReps ?? p.eccReps,
                               onReps: (v) => setSerie({ eccReps: numVal(v) }),
                               rir: serie.eccRir,
                               onRir: (r) => setSerie({ eccRir: r }),
                             })}
+                            <div style={{ fontSize: 11.5, color: "#a8a199", padding: "4px 0 4px 64px" }}>② on décharge la barre</div>
+                            {row("con", `③ ${p.conPct} %`, {
+                              w: wIn(serie.actualWeight),
+                              onW: (v) => setSerie({ actualWeight: wOut(v) }),
+                              wPh: ph(sugC),
+                              reps: serie.actualReps,
+                              onReps: (v) => setSerie({ actualReps: numVal(v) }),
+                              rir: serie.rir,
+                              onRir: (r) => setSerie({ rir: r, rpe: rpeFromRir(r) }),
+                            })}
                             <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
-                              {sug ? `Prévu ≈ ${db ? `${perHand(sug)} kg par haltère` : `${sug} kg`}. ` : ""}Reps en réserve = descentes contrôlées encore possibles. Puis ② décharger la barre et ③ remplir ci-dessous la partie classique à {mpOf(exo).conPct} %. Pas de mise à jour du RM.
+                              {sugE ? `Prévu : ${db ? `${perHand(sugE)} kg par haltère` : `${sugE} kg`} à ${p.eccPct} %` : ""}
+                              {sugC ? ` · ${db ? `${perHand(sugC)} kg par haltère` : `${sugC} kg`} à ${p.conPct} %. ` : ". "}
+                              Reps en réserve à {p.eccPct} % = descentes contrôlées encore possibles. Pas de mise à jour du RM.
                             </div>
                           </div>
                         );
@@ -11724,7 +11740,7 @@ export default function Workout() {
                     })()}
 
                     {/* Répétitions */}
-                    {["cluster", "restpause", "dropset"].includes(methodOf(currentExerciseFeedback.exercise)) ? null : isUniEx(currentExerciseFeedback.exercise) ? (
+                    {["cluster", "restpause", "dropset", "m12080"].includes(methodOf(currentExerciseFeedback.exercise)) ? null : isUniEx(currentExerciseFeedback.exercise) ? (
                       <div style={{ marginBottom: 14 }}>
                         <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: "bold" }}>
                           Répétitions effectuées (par côté)
@@ -11811,7 +11827,7 @@ export default function Workout() {
 
                     {/* Reps en réserve par série (enregistré en RPE = 10 − RIR, voir component/rir.js).
                         Cluster / rest-pause / drop set : saisi mini-série par mini-série au-dessus. */}
-                    {!["cluster", "restpause", "dropset"].includes(methodOf(currentExerciseFeedback.exercise)) && (
+                    {!["cluster", "restpause", "dropset", "m12080"].includes(methodOf(currentExerciseFeedback.exercise)) && (
                     <div style={{ marginBottom: 8 }}>
                       <label
                         style={{
