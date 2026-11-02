@@ -1,3 +1,4 @@
+import { isMobileView } from "./viewMode";
 import React, { useState } from "react";
 
 /* ===== Charte graphique commune à toute l'app =====
@@ -42,7 +43,7 @@ export function Page({ children, wide = false }) {
   return (
     <div
       style={{
-        padding: window.innerWidth <= 768 ? 12 : 20,
+        padding: isMobileView() ? 12 : 20,
         background: PAGE_BG,
         minHeight: "100vh",
         color: TEXT,

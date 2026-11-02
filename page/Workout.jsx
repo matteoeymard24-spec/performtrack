@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { isMobileView } from "../component/viewMode";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
@@ -373,7 +374,7 @@ const MAX_MEDIA_ZOOM = 250;
 
 /* Cadre d'une étape du formulaire de séance (numéro + titre + résumé + action à droite) */
 const FormSection = ({ n, title, summary, right, children }) => (
-  <div style={{ background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 12, padding: window.innerWidth <= 768 ? 12 : 16, marginBottom: 14 }}>
+  <div style={{ background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 12, padding: isMobileView() ? 12 : 16, marginBottom: 14 }}>
     <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: children ? 12 : 0 }}>
       <span style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(224,161,61,0.18)", color: "#e0a13d", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{n}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -4805,7 +4806,7 @@ export default function Workout() {
     const cells = [];
 
     for (let i = 0; i < startDow; i++) {
-      const isMobile = window.innerWidth <= 768;
+      const isMobile = isMobileView();
       cells.push(
         <div
           key={`e${i}`}
@@ -4826,7 +4827,7 @@ export default function Workout() {
         .filter((e) => calendarDateOf(e) === dateStr && isEventVisibleToFilter(e))
         .sort(byTime);
       const dSt = dayStatus(dayEvents);
-      const isMobile = window.innerWidth <= 768;
+      const isMobile = isMobileView();
       const dayCycles = cyclesOnDay(calendarCycles, dateStr).slice(0, 3);
       const dayFixtures = fixturesOnDay(calendarFixtures, dateStr);
       // Jour de match : case teintée + bordure de la couleur du type + grande icône
@@ -5033,11 +5034,11 @@ export default function Workout() {
   return (
     <div
       style={{
-        padding: window.innerWidth <= 768 ? "5px" : "20px",
+        padding: isMobileView() ? "5px" : "20px",
         background: "#0d0c0a",
         minHeight: "100vh",
         color: "#f3f0ea",
-        maxWidth: window.innerWidth <= 768 ? "100%" : "1200px",
+        maxWidth: isMobileView() ? "100%" : "1200px",
         margin: "0 auto",
         width: "100%",
         overflowX: "hidden",
@@ -5094,7 +5095,7 @@ export default function Workout() {
         <div
           style={{
             background: "#151310",
-            padding: window.innerWidth <= 768 ? "12px" : "16px 18px",
+            padding: isMobileView() ? "12px" : "16px 18px",
             borderRadius: 8,
             marginBottom: 16,
           }}
@@ -5349,7 +5350,7 @@ export default function Workout() {
                 setFormDate(date);
               }
             }}
-            style={{ fontSize: window.innerWidth <= 768 ? 14 : 15, padding: window.innerWidth <= 768 ? "10px 16px" : "11px 20px" }}
+            style={{ fontSize: isMobileView() ? 14 : 15, padding: isMobileView() ? "10px 16px" : "11px 20px" }}
           >
             {athleteFilterId
               ? "➕ Créer séance pour cet athlète"
@@ -5415,7 +5416,7 @@ export default function Workout() {
         <div
           style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
         >
-          <div style={{ background: "#151310", border: "2px solid #e0a13d", borderRadius: 12, padding: window.innerWidth <= 768 ? 16 : 24, maxWidth: 460, width: "100%", maxHeight: "85vh", overflowY: "auto", color: "#f3f0ea" }}>
+          <div style={{ background: "#151310", border: "2px solid #e0a13d", borderRadius: 12, padding: isMobileView() ? 16 : 24, maxWidth: 460, width: "100%", maxHeight: "85vh", overflowY: "auto", color: "#f3f0ea" }}>
             <div style={{ whiteSpace: "pre-wrap", fontSize: 15, lineHeight: 1.5, marginBottom: 18 }}>{confirmDlg.message}</div>
             <div style={{ display: "flex", gap: 10 }}>
               <button
@@ -6727,7 +6728,7 @@ export default function Workout() {
           <div
             style={{
               background: "#151310",
-              padding: window.innerWidth <= 768 ? 16 : 30,
+              padding: isMobileView() ? 16 : 30,
               maxHeight: "90vh",
               overflowY: "auto",
               borderRadius: 12,
@@ -6822,7 +6823,7 @@ export default function Workout() {
           <div
             style={{
               background: "#151310",
-              padding: window.innerWidth <= 768 ? 16 : 30,
+              padding: isMobileView() ? 16 : 30,
               maxHeight: "90vh",
               overflowY: "auto",
               borderRadius: 12,
@@ -6934,7 +6935,7 @@ export default function Workout() {
           <div
             style={{
               background: "#151310",
-              padding: window.innerWidth <= 768 ? 16 : 30,
+              padding: isMobileView() ? 16 : 30,
               maxHeight: "90vh",
               overflowY: "auto",
               borderRadius: 12,
@@ -7114,7 +7115,7 @@ export default function Workout() {
         <div
           style={{
             background: "#151310",
-            padding: window.innerWidth <= 768 ? 12 : 25,
+            padding: isMobileView() ? 12 : 25,
             borderRadius: 14,
             border: "1px solid #2a2620",
             boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
@@ -9392,7 +9393,7 @@ export default function Workout() {
               position: "fixed",
               left: 0,
               right: 0,
-              bottom: window.innerWidth <= 768 ? "calc(74px + env(safe-area-inset-bottom))" : "calc(14px + env(safe-area-inset-bottom))",
+              bottom: isMobileView() ? "calc(74px + env(safe-area-inset-bottom))" : "calc(14px + env(safe-area-inset-bottom))",
               zIndex: 1000,
               display: "flex",
               justifyContent: "center",
@@ -10750,7 +10751,7 @@ export default function Workout() {
               alignItems: "center",
               marginBottom: 12,
               background: "#151310",
-              padding: window.innerWidth <= 768 ? "8px 12px" : "10px 18px",
+              padding: isMobileView() ? "8px 12px" : "10px 18px",
               borderRadius: 8,
             }}
           >
@@ -10761,13 +10762,13 @@ export default function Workout() {
                 setCurrentMonth(d);
               }}
               style={{
-                padding: window.innerWidth <= 768 ? "4px 10px" : "6px 16px",
+                padding: isMobileView() ? "4px 10px" : "6px 16px",
                 background: "rgba(255,255,255,0.16)",
                 color: "white",
                 border: "none",
                 borderRadius: 6,
                 cursor: "pointer",
-                fontSize: window.innerWidth <= 768 ? 16 : 18,
+                fontSize: isMobileView() ? 16 : 18,
               }}
             >
               ←
@@ -10775,7 +10776,7 @@ export default function Workout() {
             <h3
               style={{ 
                 margin: 0, 
-                fontSize: window.innerWidth <= 768 ? 16 : 20, 
+                fontSize: isMobileView() ? 16 : 20, 
                 textTransform: "capitalize" 
               }}
             >
@@ -10791,13 +10792,13 @@ export default function Workout() {
                 setCurrentMonth(d);
               }}
               style={{
-                padding: window.innerWidth <= 768 ? "4px 10px" : "6px 16px",
+                padding: isMobileView() ? "4px 10px" : "6px 16px",
                 background: "rgba(255,255,255,0.16)",
                 color: "white",
                 border: "none",
                 borderRadius: 6,
                 cursor: "pointer",
-                fontSize: window.innerWidth <= 768 ? 16 : 18,
+                fontSize: isMobileView() ? 16 : 18,
               }}
             >
               →
@@ -10808,7 +10809,7 @@ export default function Workout() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(7, 1fr)",
-              gap: window.innerWidth <= 768 ? 1 : 5,
+              gap: isMobileView() ? 1 : 5,
               marginBottom: 6,
             }}
           >
@@ -10817,7 +10818,7 @@ export default function Workout() {
                 key={d}
                 style={{
                   textAlign: "center",
-                  fontSize: window.innerWidth <= 768 ? 9 : 12,
+                  fontSize: isMobileView() ? 9 : 12,
                   color: "#a8a199",
                   fontWeight: "bold",
                   paddingBottom: 4,
@@ -10832,8 +10833,8 @@ export default function Workout() {
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(7, 1fr)",
-              gridAutoRows: window.innerWidth <= 768 ? "70px" : "90px",  // Force la hauteur des lignes
-              gap: window.innerWidth <= 768 ? 1 : 5,
+              gridAutoRows: isMobileView() ? "70px" : "90px",  // Force la hauteur des lignes
+              gap: isMobileView() ? 1 : 5,
               marginBottom: 25,
               alignItems: "stretch",  // Force les cellules à s'étirer
             }}

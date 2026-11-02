@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { isMobileView } from "../component/viewMode";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
 import { rmSerie } from "../component/methods";
@@ -1303,6 +1304,9 @@ export default function Dashboard() {
     if (wellnessFilter === "fatigue") return a.status?.level === "fatigue";
     if (wellnessFilter === "surveiller") return a.status?.level === "watch";
     if (wellnessFilter === "forme") return a.status?.level === "fit";
+    if (wellnessFilter === "nodata") return (a.status?.level || "nodata") === "nodata";
+    if (wellnessFilter === "nowell") return !a.lastWellness; // pas de wellness rempli aujourd'hui
+    if (wellnessFilter === "noseance") return !!a.todayWorkoutTitle && !a.todayCompleted; // séance du jour pas faite
     return true;
   });
 
@@ -2659,112 +2663,89 @@ export default function Dashboard() {
   return (
     <div
       style={{
-        padding: window.innerWidth <= 768 ? "5px" : "20px",
+        padding: isMobileView() ? "5px" : "20px",
         background: "#0d0c0a",
         minHeight: "100vh",
         color: "#f3f0ea",
-        maxWidth: window.innerWidth <= 768 ? "100%" : "1200px",
+        maxWidth: isMobileView() ? "100%" : "1200px",
         margin: "0 auto",
         width: "100%",
         overflowX: "hidden",
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 20,
-          flexWrap: "wrap",
-          gap: 10,
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: 24, margin: "0 0 5px 0" }}>
-            📊 Dashboard Admin
-          </h2>
-          <p style={{ color: "#a8a199", margin: 0, fontSize: 14 }}>
-            Suivi wellness et performance
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button
-            onClick={() => setMeMode(true)}
-            style={{ padding: "12px 20px", background: "#2a2620", color: "#f3f0ea", border: "1px solid #e0a13d", borderRadius: 8, cursor: "pointer", fontWeight: "bold", fontSize: 14 }}
-          >
-            🌟 Moi (mon dashboard)
-          </button>
-        </div>
-      </div>
+      {/* EN-TÊTE */}
+      {(() => {
+        const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+        const lv = (l) => athletes.filter((a) => (a.status?.level || "nodata") === l).length;
+        const wellToday = athletes.filter((a) => !!a.lastWellness).length;
+        const withSess = athletes.filter((a) => !!a.todayWorkoutTitle);
+        const sessDone = withSess.filter((a) => a.todayCompleted).length;
+        const tile = (key, icon, label, value, color, sub) => {
+          const on = wellnessFilter === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setWellnessFilter(on && key !== "total" ? "total" : key)}
+              style={{
+                textAlign: "left",
+                padding: "12px 14px",
+                borderRadius: 12,
+                cursor: "pointer",
+                background: on ? `${color}22` : "#151310",
+                border: `1px solid ${on ? color : "#2a2620"}`,
+                boxShadow: on ? `0 0 0 1px ${color}` : "none",
+                color: "#f3f0ea",
+                minWidth: 0,
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#a8a199", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {icon} {label}
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1.2, marginTop: 2 }}>{value}</div>
+              {sub && <div style={{ fontSize: 11.5, color: "#a8a199" }}>{sub}</div>}
+            </button>
+          );
+        };
+        const F = (k) => FORM_LEVELS[k] || FORM_LEVELS.nodata;
+        return (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 12.5, color: "#e0a13d", fontWeight: 700, textTransform: "capitalize" }}>{today}</div>
+                <h2 style={{ fontSize: 24, margin: "2px 0 0" }}>📊 Tableau de bord</h2>
+                <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>État de forme, charge et séances de tes athlètes</p>
+              </div>
+              <button className="pt-btn" onClick={() => setMeMode(true)}>🌟 Mon dashboard</button>
+            </div>
 
-      <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, margin: "0 0 6px 2px" }}>État de forme</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 12 }}>
+              {tile("total", "👥", "Athlètes", athletes.length, "#e0a13d")}
+              {tile("risque", F("risk").emoji, "Risque", lv("risk"), F("risk").color)}
+              {tile("fatigue", F("fatigue").emoji, "Fatigués", lv("fatigue"), F("fatigue").color)}
+              {tile("surveiller", F("watch").emoji, "À surveiller", lv("watch"), F("watch").color)}
+              {tile("forme", F("fit").emoji, "En forme", lv("fit"), F("fit").color)}
+              {tile("nodata", F("nodata").emoji, "Sans données", lv("nodata"), F("nodata").color)}
+            </div>
+            <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, margin: "0 0 6px 2px" }}>Aujourd'hui</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginBottom: 16 }}>
+              {tile("nowell", "📝", "Wellness remplis", `${wellToday}/${athletes.length}`, wellToday === athletes.length ? "#4fae7d" : "#e0a13d", wellToday < athletes.length ? `Voir les ${athletes.length - wellToday} manquants` : "Tout le monde a répondu")}
+              {tile("noseance", "🏋️", "Séances faites", `${sessDone}/${withSess.length}`, withSess.length && sessDone === withSess.length ? "#4fae7d" : "#e0a13d", withSess.length ? (sessDone < withSess.length ? `Voir les ${withSess.length - sessDone} pas faites` : "Toutes faites") : "Pas de séance prévue")}
+            </div>
+          </>
+        );
+      })()}
+
+      {/* Recherche */}
+      <div style={{ marginBottom: 14 }}>
         <input
-          type="text"
-          placeholder="🔍 Rechercher un athlète..."
+          type="search"
+          placeholder="🔍 Rechercher un athlète…"
           value={athleteSearchQuery}
           onChange={(e) => setAthleteSearchQuery(e.target.value)}
-          style={{
-            width: "100%",
-            padding: "12px 16px",
-            background: "#151310",
-            border: "2px solid #e0a13d",
-            borderRadius: 8,
-            color: "#f3f0ea",
-            fontSize: 16,
-            outline: "none",
-          }}
+          style={{ width: "100%", boxSizing: "border-box", padding: "11px 14px", background: "#151310", border: "1px solid #2a2620", borderRadius: 10, color: "#f3f0ea", fontSize: 15, outline: "none" }}
         />
-      </div>
-
-      <div
-        style={{ marginBottom: 20, display: "flex", gap: 10, flexWrap: "wrap" }}
-      >
-        {[
-          {
-            key: "total",
-            label: `📋 Total (${athletes.length})`,
-            color: "#e0a13d",
-          },
-          {
-            key: "risque",
-            label: `⚠️ Risque de blessure (${athletes.filter((a) => a.status?.level === "risk").length})`,
-            color: "#d9695a",
-          },
-          {
-            key: "fatigue",
-            label: `😓 Fatigué (${athletes.filter((a) => a.status?.level === "fatigue").length})`,
-            color: "#e08a3d",
-          },
-          {
-            key: "surveiller",
-            label: `😌 À surveiller (${athletes.filter((a) => a.status?.level === "watch").length})`,
-            color: "#d9a441",
-          },
-          {
-            key: "forme",
-            label: `💪 En forme (${athletes.filter((a) => a.status?.level === "fit").length})`,
-            color: "#4fae7d",
-          },
-        ].map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setWellnessFilter(f.key)}
-            style={{
-              padding: "10px 20px",
-              background: wellnessFilter === f.key ? f.color : "#2a2a2a",
-              color: "white",
-              border: `2px solid ${
-                wellnessFilter === f.key ? f.color : "rgba(255,255,255,0.16)"
-              }`,
-              borderRadius: 8,
-              cursor: "pointer",
-              fontSize: 14,
-              fontWeight: "bold",
-            }}
-          >
-            {f.label}
-          </button>
-        ))}
       </div>
 
       {athletes.length === 0 ? (
@@ -2781,173 +2762,62 @@ export default function Dashboard() {
         </div>
       ) : (
         (() => {
-          const renderCard = (athlete, kp) => (
-            <div
-              key={kp + athlete.id}
-              onClick={() => loadAthleteDetail(athlete)}
-              style={{
-                background: "#151310",
-                padding: 18,
-                borderRadius: 10,
-                border: `2px solid ${athlete.status?.color || "rgba(255,255,255,0.16)"}`,
-                cursor: "pointer",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 10,
-                }}
-              >
-                <div style={{ flex: "1 1 200px" }}>
-                  <h4
-                    style={{
-                      margin: "0 0 6px 0",
-                      fontSize: 18,
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {getAthleteName(athlete)}
-                  </h4>
-                  {athlete.crossStatus && (
-                    <span
-                      title={athlete.crossStatus.detail}
-                      style={{
-                        display: "inline-block",
-                        fontSize: 11,
-                        fontWeight: "bold",
-                        color: athlete.crossStatus.color,
-                        background: "rgba(255,255,255,0.06)",
-                        border: `1px solid ${athlete.crossStatus.color}`,
-                        borderRadius: 6,
-                        padding: "2px 8px",
-                        marginBottom: 6,
-                      }}
-                    >
-                      {athlete.crossStatus.emoji} {athlete.crossStatus.label}
-                    </span>
-                  )}
-                  {athlete.lastWellness && athlete.lastWellness.sick && (
-                    <span
-                      title={athlete.lastWellness.sickType || "Malade"}
-                      style={{ display: "inline-block", fontSize: 11, fontWeight: "bold", color: "#d9695a", background: "rgba(217,105,90,0.12)", border: "1px solid #d9695a", borderRadius: 6, padding: "2px 8px", marginBottom: 6, marginLeft: 6 }}
-                    >
-                      🤒 Malade{athlete.lastWellness.sickType ? ` · ${athlete.lastWellness.sickType}` : ""}
-                    </span>
-                  )}
-                  <div style={{ fontSize: 13, color: "#a8a199" }}>
-                    Groupe : {athlete.group || "total"}
-                    {athlete.todayWorkoutTitle && (
-                      <span style={{ marginLeft: 12 }}>
-                        {athlete.todayCompleted ? (
-                          <span
-                            style={{ color: "#4fae7d", fontWeight: "bold" }}
-                          >
-                            ✅ {athlete.todayWorkoutTitle}
-                          </span>
-                        ) : athlete.todayWorkoutInProgress ? (
-                          <span
-                            style={{ color: "#d9a441", fontWeight: "bold" }}
-                          >
-                            ⏳ {athlete.todayWorkoutTitle}
-                          </span>
-                        ) : (
-                          <span style={{ color: "#d9695a" }}>
-                            ❌ {athlete.todayWorkoutTitle}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                    {!athlete.todayWorkoutTitle && (
-                      <span style={{ marginLeft: 12, color: "#a8a199" }}>
-                        Pas de séance aujourd'hui
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 20 }}>
-                  {athlete.wellnessScore !== null && (
-                    <div style={{ textAlign: "center", minWidth: 75 }}>
-                      <div
-                        style={{ fontSize: 10, color: "#a8a199", marginBottom: 3 }}
-                      >
-                        WELLNESS
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 22,
-                          fontWeight: "bold",
-                          color: athlete.wellnessStatus.color,
-                        }}
-                      >
-                        {athlete.wellnessScore.toFixed(1)}
-                      </div>
-                      <div
-                        style={{ fontSize: 11, color: athlete.wellnessStatus.color }}
-                      >
-                        {athlete.wellnessStatus.emoji} {athlete.wellnessStatus.label}
-                      </div>
-                    </div>
-                  )}
-                  {athlete.acwr !== null && (
-                    <div style={{ textAlign: "center", minWidth: 75 }}>
-                      <div
-                        style={{ fontSize: 10, color: "#a8a199", marginBottom: 3 }}
-                      >
-                        REDI
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 22,
-                          fontWeight: "bold",
-                          color: athlete.acwrStatus.color,
-                        }}
-                      >
-                        {athlete.acwr}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: athlete.acwrStatus.color,
-                        }}
-                      >
-                        {athlete.acwrStatus.label}
-                      </div>
-                    </div>
-                  )}
-                  {athlete.wellnessZ !== null && (
-                    <div style={{ textAlign: "center", minWidth: 75 }}>
-                      <div
-                        style={{ fontSize: 10, color: "#a8a199", marginBottom: 3 }}
-                      >
-                        Z-SCORE
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 22,
-                          fontWeight: "bold",
-                          color: athlete.wellnessZStatus.color,
-                        }}
-                      >
-                        {athlete.wellnessZ.toFixed(1)}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: athlete.wellnessZStatus.color,
-                        }}
-                      >
-                        {athlete.wellnessZStatus.label}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
+          const initials = (a) =>
+            `${(a.firstName || "")[0] || ""}${(a.lastName || "")[0] || ""}`.toUpperCase() || "?";
+          const metric = (label, value, color, sub) => (
+            <div style={{ background: "#0d0c0a", borderRadius: 8, padding: "6px 8px", minWidth: 0 }}>
+              <div style={{ fontSize: 10, color: "#a8a199", fontWeight: 700, letterSpacing: 0.4 }}>{label}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: value == null ? "#5f5850" : color, lineHeight: 1.25 }}>{value == null ? "—" : value}</div>
+              <div style={{ fontSize: 10.5, color: value == null ? "#5f5850" : color, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value == null ? "pas de donnée" : sub}</div>
             </div>
           );
+          const renderCard = (athlete, kp) => {
+            const fl = FORM_LEVELS[athlete.status?.level] || FORM_LEVELS.nodata;
+            const col = athlete.status?.color || fl.color;
+            const sess = athlete.todayWorkoutTitle
+              ? athlete.todayCompleted
+                ? { c: "#4fae7d", t: `✓ ${athlete.todayWorkoutTitle}` }
+                : athlete.todayWorkoutInProgress
+                ? { c: "#d9a441", t: `⏳ ${athlete.todayWorkoutTitle}` }
+                : { c: "#d9695a", t: `✗ ${athlete.todayWorkoutTitle}` }
+              : { c: "#a8a199", t: "Pas de séance aujourd'hui" };
+            return (
+              <div
+                key={kp + athlete.id}
+                onClick={() => loadAthleteDetail(athlete)}
+                style={{ background: "#151310", padding: 12, borderRadius: 12, border: "1px solid #2a2620", borderLeft: `4px solid ${col}`, cursor: "pointer", display: "grid", gap: 10 }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                  <div style={{ width: 38, height: 38, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: col, background: `${col}1f`, border: `2px solid ${col}` }}>
+                    {initials(athlete)}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 15.5, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{getAthleteName(athlete)}</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 2 }}>
+                      <span title={athlete.crossStatus?.detail} style={{ fontSize: 11, fontWeight: 700, color: col, background: `${col}1a`, border: `1px solid ${col}66`, borderRadius: 999, padding: "1px 8px" }}>
+                        {(athlete.crossStatus || fl).emoji} {(athlete.crossStatus || fl).label}
+                      </span>
+                      {athlete.lastWellness && athlete.lastWellness.sick && (
+                        <span title={athlete.lastWellness.sickType || "Malade"} style={{ fontSize: 11, fontWeight: 700, color: "#d9695a", background: "rgba(217,105,90,0.12)", border: "1px solid #d9695a66", borderRadius: 999, padding: "1px 8px" }}>
+                          🤒 Malade
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, flexWrap: "wrap" }}>
+                  <span style={{ color: sess.c, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "70%" }}>🏋️ {sess.t}</span>
+                  <span style={{ color: athlete.lastWellness ? "#4fae7d" : "#a8a199" }}>📝 {athlete.lastWellness ? "wellness ✓" : "pas de wellness"}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                  {metric("WELLNESS", athlete.wellnessScore != null ? athlete.wellnessScore.toFixed(1) : null, athlete.wellnessStatus?.color, athlete.wellnessStatus ? `${athlete.wellnessStatus.emoji} ${athlete.wellnessStatus.label}` : "")}
+                  {metric("REDI", athlete.acwr ?? null, athlete.acwrStatus?.color, athlete.acwrStatus?.label)}
+                  {metric("Z-SCORE", athlete.wellnessZ != null ? athlete.wellnessZ.toFixed(1) : null, athlete.wellnessZStatus?.color, athlete.wellnessZStatus?.label)}
+                </div>
+              </div>
+            );
+          };
+          const cardGrid = { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 300px), 1fr))", gap: 10 };
 
           const memberOf = (g, a) =>
             (g.athleteIds || []).includes(a.id) || (g.subGroups || []).some((sg) => (sg.athleteIds || []).includes(a.id));
@@ -2965,24 +2835,23 @@ export default function Dashboard() {
             <button
               key={v}
               onClick={() => setView(v)}
-              style={{
-                padding: "8px 14px",
-                background: listView === v ? "#e0a13d" : "#2a2a2a",
-                color: listView === v ? "#1a1306" : "#f3f0ea",
-                border: "1px solid rgba(255,255,255,0.16)",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: "bold",
-                cursor: "pointer",
-              }}
+              style={{ padding: "6px 12px", background: listView === v ? "#e0a13d" : "transparent", color: listView === v ? "#1a1306" : "#a8a199", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}
             >
               {text}
             </button>
           );
           const toggles = (
-            <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-              {toggleBtn("groups", "👥 Par groupe")}
-              {toggleBtn("flat", "📋 Liste simple")}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 13, color: "#a8a199" }}>
+                {filtered.length} athlète{filtered.length > 1 ? "s" : ""}
+                {wellnessFilter !== "total" && (
+                  <button onClick={() => setWellnessFilter("total")} style={{ marginLeft: 8, background: "none", border: "none", color: "#e0a13d", cursor: "pointer", fontSize: 12.5 }}>✕ retirer le filtre</button>
+                )}
+              </div>
+              <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, background: "#151310", border: "1px solid #2a2620" }}>
+                {toggleBtn("groups", "👥 Par groupe")}
+                {toggleBtn("flat", "📋 Liste")}
+              </div>
             </div>
           );
 
@@ -2990,7 +2859,7 @@ export default function Dashboard() {
             return (
               <div>
                 {toggles}
-                <div style={{ display: "grid", gap: 12 }}>{filtered.map((a) => renderCard(a, "f-"))}</div>
+                <div style={cardGrid}>{filtered.map((a) => renderCard(a, "f-"))}</div>
               </div>
             );
           }
@@ -3007,10 +2876,12 @@ export default function Dashboard() {
             return (
               <div
                 onClick={() => setCollapsedGroups((c) => ({ ...c, [key]: !c[key] }))}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, cursor: "pointer", padding: "10px 4px", borderBottom: "1px solid rgba(224,161,61,0.35)", marginBottom: 10 }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, cursor: "pointer", padding: "10px 12px", borderRadius: 10, background: "#12100e", border: "1px solid #2a2620", marginBottom: 10 }}
               >
-                <div style={{ fontSize: 17, fontWeight: 800 }}>
-                  {collapsed ? "▶" : "▼"} {title} <span style={{ color: "#a8a199", fontWeight: 400, fontSize: 13 }}>({members.length})</span>
+                <div style={{ fontSize: 16, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ color: "#a8a199", fontSize: 12, width: 12 }}>{collapsed ? "▶" : "▼"}</span>
+                  {title}
+                  <span style={{ color: "#a8a199", fontWeight: 600, fontSize: 12.5, background: "#1a1815", borderRadius: 999, padding: "1px 8px" }}>{members.length}</span>
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {summary(all).map(({ lv, n }) => {
@@ -3050,13 +2921,13 @@ export default function Dashboard() {
                     {header(key, g.name || "Groupe", members, all)}
                     {!collapsedGroups[key] && (
                       <div style={{ display: "grid", gap: 12 }}>
-                        {rest.map((a) => renderCard(a, key + "-"))}
+                        {rest.length > 0 && <div style={cardGrid}>{rest.map((a) => renderCard(a, key + "-"))}</div>}
                         {subs.map(({ sg, ms }) => (
                           <div key={sg.id}>
-                            <div style={{ fontSize: 13, color: "#e0a13d", fontWeight: 700, margin: "4px 0 8px 4px" }}>
-                              ↳ {sg.name || "Sous-groupe"} ({ms.length})
+                            <div style={{ fontSize: 12.5, color: "#e0a13d", fontWeight: 700, margin: "2px 0 8px 4px", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                              ↳ {sg.name || "Sous-groupe"} · {ms.length}
                             </div>
-                            <div style={{ display: "grid", gap: 12 }}>{ms.map((a) => renderCard(a, key + "-" + sg.id + "-"))}</div>
+                            <div style={cardGrid}>{ms.map((a) => renderCard(a, key + "-" + sg.id + "-"))}</div>
                           </div>
                         ))}
                       </div>
@@ -3067,7 +2938,7 @@ export default function Dashboard() {
               {loose.length > 0 && (
                 <div style={{ marginBottom: 22 }}>
                   {header("g:none", "Sans groupe", loose, loose)}
-                  {!collapsedGroups["g:none"] && <div style={{ display: "grid", gap: 12 }}>{loose.map((a) => renderCard(a, "none-"))}</div>}
+                  {!collapsedGroups["g:none"] && <div style={cardGrid}>{loose.map((a) => renderCard(a, "none-"))}</div>}
                 </div>
               )}
               {sections.length === 0 && loose.length === 0 && (

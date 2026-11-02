@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { getViewMode, setViewMode } from "./viewMode";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 
@@ -110,6 +111,32 @@ export default function Layout() {
             >
               {roleLabel}
             </span>
+            {/* Mode d'affichage : téléphone / ordinateur / auto (voir component/viewMode.js) */}
+            <div
+              title="Affichage : téléphone, ordinateur ou automatique"
+              style={{ display: "inline-flex", gap: 2, padding: 2, borderRadius: 8, border: `1px solid ${BORDER}`, background: "#0d0c0a" }}
+            >
+              {[
+                ["mobile", "📱", "Affichage téléphone"],
+                ["desktop", "🖥", "Affichage ordinateur"],
+                ["auto", "A", "Automatique (selon l'écran)"],
+              ].map(([m, icon, label]) => {
+                const on = getViewMode() === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    title={label}
+                    aria-label={label}
+                    aria-pressed={on}
+                    onClick={() => !on && setViewMode(m)}
+                    style={{ width: 28, height: 26, borderRadius: 6, border: "none", cursor: on ? "default" : "pointer", background: on ? ACCENT : "transparent", color: on ? "#1a1306" : "#a8a199", fontSize: m === "auto" ? 12 : 13, fontWeight: 800, lineHeight: 1 }}
+                  >
+                    {icon}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Navigation desktop */}
@@ -515,6 +542,18 @@ export default function Layout() {
           .mobile-nav { display: none !important; }
           .mobile-drawer-overlay { display: none !important; }
           .main-content { padding: 24px !important; }
+        }
+
+        /* Affichage « téléphone » forcé sur un grand écran : colonne de 440 px centrée + mise en page mobile */
+        html[data-view="mobile"] body { background: #060505; }
+        html[data-view="mobile"] #root { max-width: 440px; margin: 0 auto; box-shadow: 0 0 0 1px #1d1a16, 0 0 40px rgba(0,0,0,0.6); min-height: 100vh; }
+        html[data-view="mobile"] .desktop-nav,
+        html[data-view="mobile"] .desktop-actions { display: none !important; }
+        html[data-view="mobile"] .mobile-menu-toggle { display: flex !important; }
+        html[data-view="mobile"] .mobile-nav { display: block !important; max-width: 440px; margin: 0 auto; left: 0 !important; right: 0 !important; }
+        html[data-view="mobile"] .main-content {
+          padding: 12px !important;
+          padding-bottom: calc(66px + env(safe-area-inset-bottom)) !important;
         }
 
         @media (max-width: 767px) {
