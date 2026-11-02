@@ -12,7 +12,7 @@
    Plusieurs athlètes (groupe) : moyenne des athlètes qui ont terminé au moins une séance dans la semaine.
    Séances non terminées : ignorées (pas « réellement effectuées »).
    ===================================================================== */
-import { sessionDurationMin, sessionLoad, sessionRpe } from "./sessionLoad";
+import { sessionDurationMin, sessionLoad, sessionRpe, doneDateOf } from "./sessionLoad";
 import { mondayOf } from "./cycles";
 
 const r1 = (x) => Math.round(x * 10) / 10;
@@ -33,8 +33,8 @@ export function realizedByWeek(events, scope) {
   const perWeek = {}; // semaine -> uid -> { minutes, load, sessions }
   (events || []).forEach((w) => {
     if (!w?.date) return;
-    const wk = mondayOf(w.date);
     participantsOf(w, scope).forEach((uid) => {
+      const wk = mondayOf(doneDateOf(w, uid)); // semaine où la séance a réellement été faite
       if (sessionRpe(w, uid) == null) return; // terminée mais sans aucune note : pas de charge mesurable
       const m = sessionDurationMin(w, uid);
       const l = sessionLoad(w, uid);

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
-import { sessionLoad } from "../component/sessionLoad";
+import { sessionLoad, doneDateOf } from "../component/sessionLoad";
 import { db } from "../firebase";
 import { getWorkoutDocs, getScopedUserDocs, daysAgoStr, WINDOW } from "../component/workoutQueries";
 import { collection, getDocs } from "firebase/firestore";
@@ -120,7 +120,8 @@ export default function ACWRMonitoring() {
       if (!progress?.completedAt) return;
       const load = calculateLoad(w, userId);
       if (load <= 0) return;
-      map[w.date] = (map[w.date] || 0) + load;
+      const day = doneDateOf(w, userId); // jour réellement fait (séance validée un autre jour)
+      map[day] = (map[day] || 0) + load;
     });
     return Object.entries(map).map(([date, load]) => ({ date, load }));
   };

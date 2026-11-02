@@ -8,7 +8,7 @@ import { isDistanceMode, courseOf, targetTimeSec, distanceInTime, estimatedEffor
 import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
 import { isLoadedBodyweight, totalLoad, lestText } from "../component/bodyweightLoad";
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
-import { FOSTER_CR10 } from "../component/sessionLoad";
+import { FOSTER_CR10, doneDateOf } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
 import { FoldBtn, useFold } from "../component/ui";
@@ -2228,6 +2228,8 @@ export default function Workout() {
       const newUserProgressData = {
         ...userProgressData,
         completedAt: endTime,
+        // jour réellement fait (jour du démarrage) : la séance et sa charge y sont rattachées
+        doneDate: getLocalDateStr(new Date(startTime || endTime)),
         actualDuration: duration,
         ...(endRating && endRating.rpe != null ? { sessionRpe: endRating.rpe } : {}),
         ...(endRating && endRating.duration > 0 ? { sessionDuration: endRating.duration } : {}),
@@ -4585,6 +4587,75 @@ export default function Workout() {
   // Tri d'une journée : séances avec horaire d'abord (par heure), puis sans horaire
   const byTime = (a, b) => (a.time || "99:99").localeCompare(b.time || "99:99");
 
+  /* ===================== STATUT DES SÉANCES (calendrier) =====================
+     Point de vue : la personne affichée (athlète connecté, vue « Moi », athlète ou admin filtré) ;
+     sinon (vue groupe) tous les athlètes visés par la séance.
+       vert   = faite (par tous)      orange = faite par une partie du groupe
+       rouge  = date passée, non faite      jaune = en cours
+     Une personne qui a validé la séance un AUTRE jour la voit à ce jour-là (doneDate), en vert. */
+  const statusTodayStr = getLocalDateStr(new Date());
+  const statusSubjects = (() => {
+    if (userRole !== "admin") return currentUser?.uid ? [currentUser.uid] : [];
+    if (viewMode === "moi") return currentUser?.uid ? [currentUser.uid] : [];
+    if (viewMode === "admins") return adminFilterId ? [adminFilterId] : null;
+    if (athleteFilterId) return [athleteFilterId];
+    return null;
+  })();
+  const singleSubject = statusSubjects && statusSubjects.length === 1 ? statusSubjects[0] : null;
+  const groupMemberIds = (g) => {
+    if (!g) return [];
+    if (g === "total") return athletes.map((a) => a.id);
+    const sub = findTargetSubGroup(g, customGroups);
+    if (sub) return sub.athleteIds || [];
+    const cg = customGroups.find((x) => x.id === g);
+    if (cg) return cg.athleteIds || [];
+    return athletes.filter((a) => a.group === g).map((a) => a.id);
+  };
+  const sessionMembers = (evt) => {
+    if (evt.group === "moi") return evt.createdBy ? [evt.createdBy] : [];
+    if (evt.group === "individuel") return evt.targetUserId ? [evt.targetUserId] : [];
+    let ids = groupMemberIds(evt.group);
+    // vue filtrée sur un groupe / sous-groupe : seulement ses membres
+    if (filterSub) ids = ids.filter((id) => (filterSub.athleteIds || []).includes(id));
+    else if (filterGroup) ids = ids.filter((id) => (filterGroup.athleteIds || []).includes(id));
+    return [...new Set(ids)];
+  };
+  const STATUS = {
+    done: { color: "#4fae7d", icon: "✓", label: "Faite" },
+    partial: { color: "#e08a3d", icon: "◐", label: "Faite en partie" },
+    missed: { color: "#d9695a", icon: "✗", label: "Non faite" },
+    inprogress: { color: "#d9a441", icon: "⏳", label: "En cours" },
+    planned: { color: null, icon: "", label: "Prévue" },
+  };
+  const sessionStatus = (evt) => {
+    const members = statusSubjects || sessionMembers(evt);
+    const prog = evt.userProgress || {};
+    const n = members.length;
+    const done = members.filter((u) => prog[u]?.completedAt).length;
+    const started = members.some((u) => prog[u]?.startedAt && !prog[u]?.completedAt);
+    const past = (evt.date || "") < statusTodayStr;
+    let key = "planned";
+    if (n && done === n) key = "done";
+    else if (done > 0) key = "partial";
+    else if (started) key = "inprogress";
+    else if (past && n) key = "missed";
+    const movedFrom = singleSubject && prog[singleSubject]?.completedAt && doneDateOf(evt, singleSubject) !== evt.date ? evt.date : null;
+    return { key, done, n, movedFrom, ...STATUS[key] };
+  };
+  // Jour où la séance s'affiche : le jour réellement fait pour la personne affichée, sinon le jour prévu
+  const calendarDateOf = (evt) =>
+    singleSubject && evt.userProgress?.[singleSubject]?.completedAt ? doneDateOf(evt, singleSubject) : evt.date;
+  const dayStatus = (list) => {
+    const keys = list.map((e) => sessionStatus(e).key);
+    if (!keys.length) return null;
+    if (keys.includes("missed")) return STATUS.missed;
+    if (keys.includes("partial")) return STATUS.partial;
+    if (keys.includes("inprogress")) return STATUS.inprogress;
+    if (keys.every((k) => k === "done")) return STATUS.done;
+    return null;
+  };
+  const frDay = (d) => new Date(d + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+
   /* ===================== CALENDRIER MENSUEL ===================== */
   const renderCalendar = () => {
     const year = currentMonth.getFullYear();
@@ -4614,8 +4685,9 @@ export default function Workout() {
       const isToday = dateStr === todayStr;
       const isSelected = selectedDate === dateStr;
       const dayEvents = events
-        .filter((e) => e.date === dateStr && isEventVisibleToFilter(e))
+        .filter((e) => calendarDateOf(e) === dateStr && isEventVisibleToFilter(e))
         .sort(byTime);
+      const dSt = dayStatus(dayEvents);
       const isMobile = window.innerWidth <= 768;
       const dayCycles = cyclesOnDay(calendarCycles, dateStr).slice(0, 3);
       const dayFixtures = fixturesOnDay(calendarFixtures, dateStr);
@@ -4649,13 +4721,15 @@ export default function Workout() {
           style={{
             position: "relative",
             outline: dragOverDate === dateStr ? "2px dashed #e0a13d" : "none",
-            background: fxMain ? `${fxMain.color}2e` : isToday ? "rgba(79,174,125,0.14)" : "#1a1815",
+            background: fxMain ? `${fxMain.color}2e` : dSt ? `${dSt.color}24` : isToday ? "rgba(224,161,61,0.10)" : "#1a1815",
             border: isSelected
-              ? "2px solid #4fae7d"
+              ? "2px solid #f3f0ea"
               : fxMain
               ? `2px solid ${fxMain.color}`
+              : dSt
+              ? `2px solid ${dSt.color}`
               : isToday
-              ? "2px solid #4fae7d"
+              ? "2px solid #e0a13d"
               : "1px solid rgba(255,255,255,0.16)",
             borderRadius: isMobile ? 3 : 6,
             padding: isMobile ? 2 : 6,
@@ -4696,7 +4770,7 @@ export default function Workout() {
             style={{
               fontSize: isMobile ? 10 : 13,
               fontWeight: isToday ? "bold" : 500,
-              color: isToday ? "#4fae7d" : "#a8a199",
+              color: isToday ? "#e0a13d" : dSt ? dSt.color : "#a8a199",
               marginBottom: isMobile ? 1 : 4,
               flexShrink: 0,  // Le numéro ne rétrécit pas
               whiteSpace: "nowrap",
@@ -4763,11 +4837,17 @@ export default function Workout() {
                   setSelectedDate(dateStr);
                   setSelectedSession(evt);
                 }}
+                title={(() => {
+                  const st = sessionStatus(evt);
+                  return `${evt.title} — ${st.label}${st.n > 1 ? ` (${st.done}/${st.n})` : ""}${st.movedFrom ? ` · prévue le ${frDay(st.movedFrom)}` : ""}`;
+                })()}
                 style={{
                   WebkitTouchCallout: "none",
                   WebkitUserSelect: "none",
                   userSelect: "none",
                   background: getColor(evt),
+                  borderLeft: sessionStatus(evt).color ? `3px solid ${sessionStatus(evt).color}` : undefined,
+                  opacity: sessionStatus(evt).key === "missed" ? 0.75 : 1,
                   borderRadius: 2,
                   padding: isMobile ? "1px 2px" : "1px 5px",
                   fontSize: isMobile ? 7 : 10,
@@ -4780,6 +4860,10 @@ export default function Workout() {
                   flexShrink: 0,  // Les événements ne rétrécissent pas
                 }}
               >
+                {(() => {
+                  const st = sessionStatus(evt);
+                  return st.icon ? `${st.icon}${st.movedFrom ? "↪" : ""}${st.n > 1 && st.key === "partial" ? ` ${st.done}/${st.n}` : ""} ` : "";
+                })()}
                 {evt.time ? `${evt.time} ` : ""}{moiPrefix(evt)}{evt.title}
               </div>
             ))}
@@ -5045,6 +5129,7 @@ export default function Workout() {
               }
               isAdmin={isAdminLike}
               currentUser={currentUser}
+              sessionStatusOf={sessionStatus}
               scopes={cycleScopes}
               onReload={fetchCycles}
               onReloadFixtures={fetchFixtures}
@@ -9634,6 +9719,38 @@ export default function Workout() {
             </div>
           )}
 
+          {/* Jour réellement fait (séance terminée par la personne qui la remplit) : modifiable,
+              ex. séance saisie après coup → remettre le vrai jour. */}
+          {selectedSession.userProgress?.[actorUid]?.completedAt && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 14px", padding: "8px 12px", borderRadius: 10, background: "rgba(79,174,125,0.12)", border: "1px solid #4fae7d", fontSize: 13 }}>
+              <span style={{ color: "#4fae7d", fontWeight: 700 }}>✓ Séance faite le</span>
+              <input
+                type="date"
+                value={doneDateOf(selectedSession, actorUid)}
+                onChange={async (e) => {
+                  const d = e.target.value;
+                  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return;
+                  const id = selectedSession.id;
+                  try {
+                    await updateDoc(doc(db, "workout", id), { [`userProgress.${actorUid}.doneDate`]: d });
+                    invalidateQueryCache("workout|");
+                    const patch = (x) =>
+                      x && x.id === id
+                        ? { ...x, userProgress: { ...(x.userProgress || {}), [actorUid]: { ...(x.userProgress?.[actorUid] || {}), doneDate: d } } }
+                        : x;
+                    setSelectedSession((x) => patch(x));
+                    setEvents((list) => (Array.isArray(list) ? list.map(patch) : list));
+                  } catch (err) {
+                    alert("Date non enregistrée : " + err.message);
+                  }
+                }}
+                style={{ background: "#1a1815", color: "#f3f0ea", border: "1px solid #2a2620", borderRadius: 6, padding: "4px 6px", fontSize: 14 }}
+              />
+              {doneDateOf(selectedSession, actorUid) !== selectedSession.date && (
+                <span style={{ color: "#a8a199" }}>(prévue le {frDay(selectedSession.date)})</span>
+              )}
+            </div>
+          )}
           {/* Blocs exercices */}
           {rmPicker}
           {restTimer && (() => {
@@ -10548,6 +10665,17 @@ export default function Workout() {
           >
             {renderCalendar()}
           </div>
+          {/* Légende des couleurs du calendrier */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", fontSize: 12, color: "#a8a199", margin: "8px 2px 14px" }}>
+            {["done", "partial", "missed", "inprogress"].map((k) => (
+              <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: STATUS[k].color, display: "inline-block" }} />
+                {STATUS[k].icon} {STATUS[k].label}
+              </span>
+            ))}
+            <span>↪ faite un autre jour (affichée au jour réel)</span>
+            {!singleSubject && <span>· vue groupe : couleur selon les athlètes visés</span>}
+          </div>
 
           {selectedDate && (
             <div
@@ -10613,7 +10741,7 @@ export default function Workout() {
                 )}
               </div>
               {events.filter(
-                (e) => e.date === selectedDate && isEventVisibleToFilter(e)
+                (e) => calendarDateOf(e) === selectedDate && isEventVisibleToFilter(e)
               ).length === 0 ? (
                 <div style={{ color: "#a8a199", fontSize: 14 }}>
                   {filterAthlete
@@ -10626,7 +10754,7 @@ export default function Workout() {
                 <div style={{ display: "grid", gap: 12 }}>
                   {events
                     .filter(
-                      (e) => e.date === selectedDate && isEventVisibleToFilter(e)
+                      (e) => calendarDateOf(e) === selectedDate && isEventVisibleToFilter(e)
                     )
                     .sort(byTime)
                     .map((session) => (
@@ -10651,13 +10779,24 @@ export default function Workout() {
                           background: "#0d0c0a",
                           padding: 18,
                           borderRadius: 10,
-                          border: `2px solid ${getColor(session)}`,
+                          border: `2px solid ${sessionStatus(session).color || getColor(session)}`,
                           cursor: "pointer",
                         }}
                       >
                         <h4 style={{ margin: "0 0 6px 0", fontSize: 16 }}>
                           {moiPrefix(session)}{session.title}
                         </h4>
+                        {(() => {
+                          const st = sessionStatus(session);
+                          if (!st.color) return null;
+                          return (
+                            <div style={{ display: "inline-block", margin: "0 0 8px 0", padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, color: st.color, border: `1px solid ${st.color}`, background: `${st.color}1f` }}>
+                              {st.icon} {st.label}
+                              {st.n > 1 ? ` · ${st.done}/${st.n} athlètes` : ""}
+                              {st.movedFrom ? ` · prévue le ${frDay(st.movedFrom)}` : ""}
+                            </div>
+                          );
+                        })()}
                         {isAdminLike && (
                           <label
                             onClick={(e) => e.stopPropagation()}

@@ -54,7 +54,7 @@ import { sprintSummaryText } from "../component/sprintFeedback";
 import { rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { blockTypeOf } from "../component/blockType";
 import { isLoadedBodyweight } from "../component/bodyweightLoad";
-import { sessionLoad, sessionRpe } from "../component/sessionLoad";
+import { sessionLoad, sessionRpe, doneDateOf } from "../component/sessionLoad";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 /* ===== Charte graphique du dashboard athlète (une seule pour toutes les cartes) ===== */
@@ -413,7 +413,8 @@ export default function Dashboard() {
       if (!isWorkoutCompleted(w, userId)) return;
       const load = calcSessionLoad(w, userId);
       if (load <= 0) return;
-      map[w.date] = (map[w.date] || 0) + load;
+      const day = doneDateOf(w, userId); // jour réellement fait
+      map[day] = (map[day] || 0) + load;
     });
     return Object.entries(map).map(([date, load]) => ({ date, load }));
   };
@@ -435,8 +436,9 @@ export default function Dashboard() {
       .forEach((w) => {
         const rpe = calcSessionAvgRPE(w, userId);
         if (rpe === null) return;
-        if (!map[w.date]) map[w.date] = [];
-        map[w.date].push(rpe);
+        const day = doneDateOf(w, userId);
+        if (!map[day]) map[day] = [];
+        map[day].push(rpe);
       });
     const entries = Object.entries(map)
       .map(([date, rpes]) => ({ date, rpe: rpes.reduce((s, v) => s + v, 0) / rpes.length }))
@@ -539,7 +541,7 @@ export default function Dashboard() {
             : [];
         if (sets.length > 0) exercises.push({ key: normalizeExerciseKey(name), name, sets, rmPercent: Number(ex.rmPercent) > 0 ? Number(ex.rmPercent) : null, prescReps: parseFloat(ex.reps) > 0 ? parseFloat(ex.reps) : null });
       });
-      if (exercises.length > 0) out.push({ date: w.date, exercises });
+      if (exercises.length > 0) out.push({ date: doneDateOf(w, userId), exercises });
     });
     return out;
   };

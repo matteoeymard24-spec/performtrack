@@ -60,3 +60,12 @@ export function sessionLoad(w, uid) {
 
 /* La charge vient-elle de la note globale (méthode de Foster) ? */
 export const hasSessionRpe = (w, uid) => validRpe(progressOf(w, uid)?.sessionRpe);
+
+/* Jour où la séance a RÉELLEMENT été faite par cette personne ("AAAA-MM-JJ").
+   userProgress[uid].doneDate est enregistré à la fin de la séance (jour du démarrage) et peut être
+   corrigé à la main (« Réalisée le »). Sans doneDate (anciennes séances) : la date prévue, pour ne
+   pas déplacer l'historique déjà calculé. */
+export function doneDateOf(w, uid) {
+  const d = w?.userProgress?.[uid]?.doneDate;
+  return typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : w?.date || "";
+}

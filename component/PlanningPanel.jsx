@@ -179,6 +179,7 @@ export default function PlanningPanel({
   onReload,
   onReloadFixtures,
   onOpenSession,
+  sessionStatusOf = null, // (séance) → { key, icon, color, label, done, n } : statut affiché dans les listes
 }) {
   const todayStr = dayStr(new Date());
   const [openId, setOpenId] = useState(null);
@@ -468,12 +469,20 @@ export default function PlanningPanel({
     return out;
   })();
 
+  // Niveaux vides sur la période affichée : masqués (moins de lignes inutiles dans la frise)
   const lanes = CYCLE_LEVELS.map((lv) => {
     const inRange = shown.filter(
       (c) => c.level === lv.id && c.endDate >= rangeStart && c.startDate <= rangeEnd
     );
     return { lv, ...packRows(inRange) };
-  });
+  }).filter((l) => l.items.length > 0);
+  // Au plus ~7 dates écrites sur l'axe (les autres gardent juste leur trait) : plus de chevauchement
+  const tickLabelEvery = Math.max(1, Math.ceil(ticks.length / 7));
+  // Nom court dans la frise : « Semaine 3 » → « S3 »
+  const shortName = (c) => {
+    const m = /^\s*semaine\s*(\d+)/i.exec(c.name || "");
+    return m ? `S${m[1]}` : c.name;
+  };
 
   /* ---------------- volume / intensité par semaine ---------------- */
   const loadWeeks = useMemo(() => {
@@ -756,12 +765,12 @@ export default function PlanningPanel({
         <div style={{ position: "relative" }}>
           {/* repères de temps */}
           <div style={{ position: "relative", height: 20, borderBottom: "1px solid #2a2620", overflow: "hidden" }}>
-            {ticks.map((m) => (
+            {ticks.map((m, i) => (
               <div
                 key={m.key}
-                style={{ position: "absolute", left: `${pct(numToDay(m.at))}%`, fontSize: 10, color: MUTED, borderLeft: "1px solid #2a2620", paddingLeft: 3, height: 20, whiteSpace: "nowrap" }}
+                style={{ position: "absolute", left: `${pct(numToDay(m.at))}%`, fontSize: 11, color: MUTED, borderLeft: "1px solid #2a2620", paddingLeft: 3, height: 20, whiteSpace: "nowrap" }}
               >
-                {m.label}
+                {i % tickLabelEvery === 0 ? m.label : ""}
               </div>
             ))}
           </div>
@@ -769,7 +778,7 @@ export default function PlanningPanel({
           {/* 3 niveaux */}
           {lanes.map(({ lv, items, rowCount }) => (
             <div key={lv.id} style={{ position: "relative", height: rowCount * 24 + 6, borderBottom: "1px dashed #1d1a16" }}>
-              <div style={{ position: "absolute", left: 0, top: 2, fontSize: 9, color: "#5e584f", zIndex: 0 }}>{lv.short}</div>
+              <div style={{ position: "absolute", left: 0, top: 2, fontSize: 10, fontWeight: 700, color: MUTED, zIndex: 3, background: "rgba(13,12,10,0.85)", padding: "0 4px", borderRadius: 3, pointerEvents: "none" }}>{lv.short}</div>
               {items.map(({ c, row }) => {
                 const left = Math.max(0, pct(c.startDate));
                 const right = Math.min(100, pct(addDays(c.endDate, 1)));
@@ -797,10 +806,12 @@ export default function PlanningPanel({
                       textOverflow: "ellipsis",
                       cursor: "pointer",
                       boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.12)",
+                      outline: isIndividual(c) ? "1px dashed rgba(255,255,255,0.55)" : "none",
+                      outlineOffset: -2,
                     }}
                   >
                     {isIndividual(c) ? "👤 " : ""}
-                    {c.name}
+                    {lv.id === "micro" ? shortName(c) : c.name}
                   </div>
                 );
               })}
@@ -810,7 +821,7 @@ export default function PlanningPanel({
           {/* matchs et compétitions */}
           {!hideFix && (
           <div style={{ position: "relative", height: 26, borderBottom: "1px dashed #1d1a16" }}>
-            <div style={{ position: "absolute", left: 0, top: 2, fontSize: 9, color: "#5e584f" }}>Matchs</div>
+            <div style={{ position: "absolute", left: 0, top: 2, fontSize: 10, fontWeight: 700, color: MUTED, zIndex: 3, background: "rgba(13,12,10,0.85)", padding: "0 4px", borderRadius: 3, pointerEvents: "none" }}>Matchs</div>
             {visibleFixtures
               .filter((f) => fixtureEnd(f) >= rangeStart && f.date <= rangeEnd)
               .map((f) => {
@@ -848,11 +859,7 @@ export default function PlanningPanel({
 
           {/* volume & intensité par semaine (microcycles) — remplace l'ancienne charge en minutes */}
           <div style={{ position: "relative", height: 78, marginTop: 6 }}>
-            <div style={{ position: "absolute", left: 0, top: 0, fontSize: 9, color: "#5e584f", zIndex: 1 }}>
-              <span style={{ color: "#5b8def" }}>■</span> Volume · <span style={{ color: "#e0a13d" }}>■</span> Intensité (1-10) prévus ·{" "}
-              <span style={{ display: "inline-block", width: 8, height: 8, background: "repeating-linear-gradient(45deg, #5b8def 0 2px, transparent 2px 4px)", border: "1px solid #9dbcf5" }} />
-              <span style={{ display: "inline-block", width: 8, height: 8, marginLeft: 2, background: "repeating-linear-gradient(45deg, #e0a13d 0 2px, transparent 2px 4px)", border: "1px solid #f0c98a" }} /> réellement effectués (hachuré, à droite) · trait du haut : légère / moyenne / dure
-            </div>
+            <div style={{ position: "absolute", left: 0, top: 0, fontSize: 10, fontWeight: 700, color: MUTED, zIndex: 3, background: "rgba(13,12,10,0.85)", padding: "0 4px", borderRadius: 3, pointerEvents: "none" }}>Charge</div>
             {loadWeeks
               .filter(({ c }) => hasLoadInfo(c))
               .map(({ c }) => {
@@ -902,13 +909,25 @@ export default function PlanningPanel({
             )}
           </div>
 
-          {/* aujourd'hui */}
+          {/* aujourd'hui : trait + pastille sous l'axe (ne recouvre plus les dates) */}
           {todayStr >= rangeStart && todayStr <= rangeEnd && (
-            <div style={{ position: "absolute", left: `${pct(todayStr)}%`, top: 0, bottom: 0, width: 2, background: "#fff", opacity: 0.8, pointerEvents: "none" }}>
-              <span style={{ position: "absolute", top: -2, left: 4, fontSize: 9, color: "#fff" }}>auj.</span>
+            <div style={{ position: "absolute", left: `${pct(todayStr)}%`, top: 20, bottom: 0, width: 2, background: AMBER, opacity: 0.9, pointerEvents: "none", zIndex: 4 }}>
+              <span style={{ position: "absolute", top: 0, left: -14, fontSize: 9, fontWeight: 800, color: "#111", background: AMBER, borderRadius: 3, padding: "0 3px", whiteSpace: "nowrap" }}>auj.</span>
             </div>
           )}
         </div>
+      </div>
+
+      {/* Légende de la frise */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 11, color: MUTED, marginTop: 8, alignItems: "center" }}>
+        <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: "#5b8def", verticalAlign: "-1px" }} /> Volume prévu</span>
+        <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: "#e0a13d", verticalAlign: "-1px" }} /> Intensité prévue</span>
+        <span>
+          <span style={{ display: "inline-block", width: 10, height: 10, verticalAlign: "-1px", background: "repeating-linear-gradient(45deg, #5b8def 0 2px, transparent 2px 4px)", border: "1px solid #9dbcf5" }} />
+          <span style={{ display: "inline-block", width: 10, height: 10, marginLeft: 2, verticalAlign: "-1px", background: "repeating-linear-gradient(45deg, #e0a13d 0 2px, transparent 2px 4px)", border: "1px solid #f0c98a" }} /> réellement fait (à droite de chaque semaine)
+        </span>
+        <span>trait en haut : semaine légère / moyenne / dure</span>
+        <span><span style={{ display: "inline-block", width: 14, height: 9, borderRadius: 2, outline: "1px dashed rgba(255,255,255,0.6)", outlineOffset: -1, verticalAlign: "-1px" }} /> 👤 cycle individuel</span>
       </div>
 
       <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
@@ -1183,44 +1202,67 @@ export default function PlanningPanel({
               ref={(el) => { cardRefs.current[c.id] = el; }}
               style={{ background: DARK, borderRadius: 8, borderLeft: `5px solid ${cycleColor(c)}`, padding: 12, marginLeft: depth * 18, opacity: isHiddenCycle(c) ? 0.55 : 1, boxShadow: flashId === c.id ? `0 0 0 2px ${AMBER}` : "none", transition: "box-shadow 0.3s" }}
             >
-              <div onClick={() => setOpenId(open ? null : c.id)} style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                <div>
-                  <span style={{ color: TEXT, fontWeight: 700 }}>{c.name}</span>{" "}
+              <div onClick={() => setOpenId(open ? null : c.id)} style={{ cursor: "pointer" }}>
+                {/* Ligne 1 : nom + niveau/phase + état */}
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ color: TEXT, fontWeight: 800, fontSize: 15 }}>{c.name}</span>
                   <span style={{ background: cycleColor(c) + "33", color: cycleColor(c), padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
                     {levelOf(c.level).short} · {phaseOf(c.phase).label}
+                    {c.model === "bloc" ? " · par blocs" : c.model === "ondulation" ? " · ondulatoire" : ""}
                   </span>
-                  {(c.model === "bloc" || c.model === "ondulation") && (
-                    <span style={{ marginLeft: 6, color: MUTED, fontSize: 11 }}>({c.model === "bloc" ? "par blocs" : "ondulatoire"})</span>
+                  {isNow && (
+                    <span style={{ background: GREEN + "26", color: GREEN, padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
+                      ● en cours · S{w.idx}/{w.total}
+                    </span>
                   )}
-                  {isHiddenCycle(c) && <span style={{ marginLeft: 6, color: MUTED, fontSize: 11 }}>🙈 masqué</span>}
                   {(() => {
                     const h = hardnessOf(c);
                     return h ? (
-                      <span style={{ marginLeft: 6, color: h.color, fontSize: 11, fontWeight: 700 }}>
-                        {h.id === "dure" ? "🔥 " : ""}{h.label} · Vol {c.volume ?? "–"} · Int {c.intensity ?? "–"}
+                      <span style={{ background: h.color + "26", color: h.color, padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 700 }}>
+                        {h.id === "dure" ? "🔥 " : ""}{h.label}
                       </span>
                     ) : null;
                   })()}
-                  {c.level === "micro" && (() => {
-                    // réellement effectué sur les semaines couvertes par ce microcycle
-                    const wks = Object.entries(realized).filter(([wk]) => addDays(wk, 6) >= c.startDate && wk <= c.endDate).map(([, r]) => r);
-                    if (!wks.length) return null;
-                    const r = wks[0];
-                    return (
-                      <span style={{ marginLeft: 6, color: "#a8c7f0", fontSize: 11, fontWeight: 700 }}>
-                        · Réel : Vol {r.volume} · Int {String(r.intensity).replace(".", ",")} ({r.minutes} min)
+                  {isHiddenCycle(c) && <span style={{ color: MUTED, fontSize: 11 }}>🙈 masqué</span>}
+                  <span style={{ marginLeft: "auto", color: MUTED, fontSize: 12, whiteSpace: "nowrap" }}>
+                    {ss.length} séance{ss.length > 1 ? "s" : ""} · {mins} min
+                  </span>
+                </div>
+                {/* Ligne 2 : dates, cible, parent */}
+                <div style={{ color: MUTED, fontSize: 12, marginTop: 3 }}>
+                  📅 {fmtShort(c.startDate)} → {fmtShort(c.endDate)} · {groupName(c.scope)}
+                  {parent ? ` · dans « ${parent.name} »` : ""}
+                </div>
+                {/* Ligne 3 : volume / intensité prévus → réellement faits */}
+                {(() => {
+                  const wks = c.level === "micro"
+                    ? Object.entries(realized).filter(([wk]) => addDays(wk, 6) >= c.startDate && wk <= c.endDate).map(([, r]) => r)
+                    : [];
+                  const r = wks[0] || null;
+                  if (c.volume == null && c.intensity == null && !r) return null;
+                  const gauge = (label, color, planned, real) => (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, minWidth: 0 }}>
+                      <span style={{ color: MUTED, width: 62 }}>{label}</span>
+                      <div style={{ position: "relative", width: 90, height: 8, background: "#2a2620", borderRadius: 4, flexShrink: 0 }}>
+                        {planned != null && <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${Math.min(10, planned) * 10}%`, background: color, borderRadius: 4, opacity: 0.45 }} />}
+                        {real != null && <div style={{ position: "absolute", left: 0, top: 2, bottom: 2, width: `${Math.min(10, real) * 10}%`, background: color, borderRadius: 3 }} />}
+                      </div>
+                      <span style={{ color: TEXT, fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {planned ?? "–"}
+                        {r ? <span style={{ color }}>{" → "}{String(real).replace(".", ",")}</span> : null}
                       </span>
-                    );
-                  })()}
-                  {isNow && <span style={{ marginLeft: 6, color: GREEN, fontSize: 11, fontWeight: 700 }}>● en cours · S{w.idx}/{w.total}</span>}
-                  <div style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
-                    {fmtShort(c.startDate)} → {fmtShort(c.endDate)} · {groupName(c.scope)}
-                    {parent ? ` · dans « ${parent.name} »` : ""}
-                  </div>
-                </div>
-                <div style={{ color: MUTED, fontSize: 12, textAlign: "right" }}>
-                  {ss.length} séance(s) · {mins} min
-                </div>
+                    </div>
+                  );
+                  return (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 18px", marginTop: 6 }}>
+                      {gauge("Volume", "#5b8def", c.volume, r ? r.volume : null)}
+                      {gauge("Intensité", "#e0a13d", c.intensity, r ? r.intensity : null)}
+                      <span style={{ fontSize: 11, color: MUTED, alignSelf: "center" }}>
+                        {r ? `prévu → réel · ${r.minutes} min faites` : "prévu (/10)"}
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
               {c.objective && <div style={{ color: TEXT, fontSize: 12, marginTop: 6 }}>🎯 {c.objective}</div>}
               <div style={{ marginTop: 8 }}>
@@ -1249,9 +1291,13 @@ export default function PlanningPanel({
                         <div
                           key={e.id}
                           onClick={() => onOpenSession && onOpenSession(e)}
-                          style={{ fontSize: 12, color: TEXT, background: CARD, borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 8 }}
+                          style={{ fontSize: 12, color: TEXT, background: CARD, borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", justifyContent: "space-between", gap: 8, borderLeft: `3px solid ${(sessionStatusOf && sessionStatusOf(e).color) || "transparent"}` }}
                         >
                           <span>
+                            {(() => {
+                              const st = sessionStatusOf ? sessionStatusOf(e) : null;
+                              return st && st.icon ? <span style={{ color: st.color, fontWeight: 800 }}>{st.icon}{st.n > 1 && st.key === "partial" ? ` ${st.done}/${st.n}` : ""} </span> : null;
+                            })()}
                             {parseDay(e.date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })} · {typeIcon(e)} {e.title}
                           </span>
                           <span style={{ color: MUTED }}>{e.estimatedDuration ? `${e.estimatedDuration} min` : ""}</span>
