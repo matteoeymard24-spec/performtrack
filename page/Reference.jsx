@@ -31,6 +31,7 @@ import { targetRir, UNI_FACTOR, LOSS_WARN, LOSS_STOP } from "../component/loadAd
 import { SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { END_LOSS_WARN, END_LOSS_STOP, END_ADJ } from "../component/enduranceFeedback";
 import { COD_SEC } from "../component/enduranceTarget";
+import { VBT_LOSS_WARN, VBT_LOSS_STOP } from "../component/vbt";
 import { Z_LOOKBACK_WEEKS, Z_MIN_WEEKS, Z_SD_FLOOR_CV, Z_SD_FLOOR_MIN } from "../component/weekRealized";
 import { ZONES, DEFAULT_CS_VMA_RATIO, HR_MIN_EFFORT_SEC } from "../component/drillBank";
 import { LEVELS, LEVEL_ORDER, FAMILY_RATIO, FAMILY_LABEL, BRONCO_RECORD_S } from "../component/rugbyLevels";
@@ -343,6 +344,27 @@ masse maigre = poids × (1 − % de gras de référence DXA du niveau)`}</F>
           Chaque bloc a son type ({BLOCK_TYPES.map((b) => b.label).join(", ")}) ; un bloc sans type prend celui de la séance. Le type du bloc décide
           du formulaire, du feedback, des RM (blocs muscu seulement) et de la durée estimée (formule du type, additionnée bloc par bloc).
         </P>
+        <H>Méthodes d'entraînement</H>
+        <F>{`PAR EXERCICE (méthode de série)
+cluster    : séries coupées en mini-séries (ex. 4 × (2+2+2), 20 s de pause) → jamais utilisé pour le RM (les pauses faussent le RIR)
+rest-pause : série principale + mini-séries (10-20 s) → RM sur la série principale (RIR de la principale)
+drop set   : série puis baisse de x % sans repos (charges proposées) → RM sur la 1re série
+120-80     : excentrique ~120 % (aidé) / concentrique ~80 % → pas de RIR prédit, pas de RM (supramaximal)
+PAR BLOC
+superset / circuit : exercices enchaînés sans pause, repos après le tour
+French contrast    : ① lourd 80-90 % · ② pliométrie · ③ saut chargé 20-30 % · ④ plio assistée — 10-20 s entre, 3-5 min entre les tours
+complex            : lourd → explosif du même geste
+durée estimée : + pauses des mini-séries / drops ; contraste = pause courte entre exercices, repos du bloc entre les tours`}</F>
+        <Ref>Tufano et al. 2017, Sports Med 47:2065 (cluster) · Haff et al. 2008, Strength Cond J 30:67 · Prestes et al. 2019, J Strength Cond Res 33:S113 (rest-pause) · Schoenfeld & Grgic 2018, Strength Cond J 40:107 (drop set) · Seitz & Haff 2016, Sports Med 46:231 (potentialisation post-activation, contrastes) · Cometti, méthodes 120-80 et contrastes.</Ref>
+        <H>Vitesse de barre (VBT, optionnelle)</H>
+        <F>{`vitesse cible = saisie par le coach, sinon calculée depuis le %RM prescrit :
+  squat (dos / avant)  %1RM = −5,961·v² − 50,71·v + 117   ex. 80 % → 0,68 m/s
+  développé couché     %1RM = 110,893 − 64,187·v          ex. 70 % → 0,64 m/s
+  autres exercices : pas d'équation fiable → pas de cible automatique
+feedback : vitesse moyenne de chaque série (facultative)
+  écart à la cible (vert ≥ −0,03 · orange ≥ −0,08 · rouge)   perte vs meilleure série : > ${VBT_LOSS_WARN} % fatigue, > ${VBT_LOSS_STOP} % arrêter
+  conseil : moyenne < cible − 0,05 → baisser · > cible + 0,05 → monter`}</F>
+        <Ref>Sánchez-Medina et al. 2017, Int J Sports Med 38:480 · González-Badillo & Sánchez-Medina 2010, Int J Sports Med 31:347 · Pareja-Blanco et al. 2017, Scand J Med Sci Sports 27:724 · Weakley et al. 2021, Strength Cond J 43:31. Équations établies sur sujets entraînés : une estimation, à affiner avec le profil charge-vitesse de chaque athlète.</Ref>
         <H>Tempo</H>
         <F>{`notation 4 phases : EXCENTRIQUE - PAUSE ÉTIRÉE - CONCENTRIQUE - PAUSE CONTRACTÉE   (X = explosif)
 ex. 3-1-X-0 · ancien format 3 chiffres « 2-0-2 » = 2-0-2-0

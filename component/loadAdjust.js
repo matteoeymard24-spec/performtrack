@@ -22,6 +22,7 @@
    ===================================================================== */
 import { maxRepsAtPct, pct1RMFromRepsRpe, e1rmFromSet } from "./loadMetrics";
 import { isSpecialContraction } from "./contraction";
+import { rmSerie } from "./methods";
 
 /* UNILATÉRAL (10 reps « par côté ») :
    • Le RIR se compte PAR CÔTÉ, pas sur le total : 10 reps par jambe = chaque jambe fait 10 reps et se
@@ -107,7 +108,9 @@ export function analyzeSets(series, exercise, uni = false, bw = 0) {
   if (isSpecialContraction(exercise)) return { target: null, rows: (series || []).map((s) => ({ e1rm: null, loss: null, next: null, weight: num(s.actualWeight) })), maxLoss: null, nextSession: null, special: true };
   const tgt = targetRir(exercise?.rmPercent, exercise?.reps, uni);
   const add = bw > 0 ? Number(bw) : 0;
-  const rows = (series || []).map((s) => {
+  const rows = (series || []).map((s0) => {
+    // méthodes (cluster : plus petite mini-série ; rest-pause / drop set : série principale)
+    const s = rmSerie(s0, exercise) || { ...s0, rir: null };
     const lest = num(s.actualWeight);
     const tot = add ? (lest ?? 0) + add : lest;
     return { e1rm: setE1rm({ ...s, actualWeight: tot }, uni), weight: tot, lest, reps: num(s.actualReps), rir: s.rir };

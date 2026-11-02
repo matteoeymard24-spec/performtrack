@@ -15,7 +15,9 @@ import { FoldBtn, useFold } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
 import { TempoView, TempoEditor } from "../component/TempoView";
+import { EX_METHODS, BLOCK_METHODS, EX_DEFAULTS, BLOCK_DEFAULTS, CONTRAST_ROLES, methodOf, methodInfo, mpOf, blockMethodOf, blockMpOf, isContrastBlock, roleLabel, methodScheme, dropLoads, methodSerieDefaults, rmSerie, serieText, methodExtraSec } from "../component/methods";
 import { exRepSeconds, tempoDirOf, guessTempoDir } from "../component/tempo";
+import { vbtTargetOf, summarizeVbt, vbtColor, fmtV, VBT_LOSS_WARN, VBT_LOSS_STOP } from "../component/vbt";
 import TacticalBoard from "../component/TacticalBoard";
 import { loadExerciseImage, saveExerciseImage, deleteExerciseImage } from "../component/mediaStore";
 import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
@@ -310,13 +312,19 @@ const estimateTypeDurationSeconds = (type, blocks) => {
     if (b.timerMode === "emom" || b.timerMode === "amrap") {
       return t + blockTimerDurationSeconds(b) + ((b.restMin ?? 2) * 60 + (b.restSec || 0));
     }
+    const blockRest = (Number(b.restMin ?? 2) || 0) * 60 + (Number(b.restSec) || 0);
+    // French contrast / complex : courte pause entre les exercices, repos du bloc après le dernier (fin du tour)
+    const contrast = isContrastBlock(b);
+    const between = contrast ? Number(blockMpOf(b).betweenSec) || 15 : 0;
+    const exs = b.exercises || [];
     return (
       t +
-      (b.exercises || []).reduce(
-        (st, ex) =>
-          st + (ex.series || 3) * ((ex.reps || 8) * (exRepSeconds(ex) || 3) * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + (ex.restMin != null ? Number(ex.restMin) * 60 : (Number(b.restMin ?? 2) || 0) * 60 + (Number(b.restSec) || 0))),
-        0
-      )
+      exs.reduce((st, ex, i) => {
+        const repSec = exRepSeconds(ex) || 3;
+        const work = (ex.reps || 8) * repSec * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + methodExtraSec(ex, repSec);
+        const rest = contrast ? (i === exs.length - 1 ? blockRest : between) : ex.restMin != null ? Number(ex.restMin) * 60 : blockRest;
+        return st + (ex.series || 3) * (work + rest);
+      }, 0)
     );
   }, 0);
 };
@@ -1628,6 +1636,7 @@ export default function Workout() {
             ...(isUniEx(exercise)
               ? { actualRepsR: exercise.reps || 0, actualRepsL: exercise.reps || 0 }
               : {}),
+            ...methodSerieDefaults(exercise, defaultWeight), // méthodes : mini-séries, drops, charge excentrique…
             rpe: null // à choisir : « reps en réserve » (RPE = 10 − RIR)
           });
         }
@@ -1928,7 +1937,8 @@ export default function Workout() {
         const validPredictions = [];
         // Tractions : RM = poids du corps + lest (la saisie est le lest, 0 = poids du corps seul)
         const bwAdd = isLoadedBodyweight(exercise.name) ? bwOf(actorUid) : null;
-        normalized.series.forEach((s) => {
+        // méthodes d'entraînement : reps utilisées pour le RM (voir component/methods.js)
+        normalized.series.map((s0) => rmSerie(s0, exercise)).filter(Boolean).forEach((s) => {
           const w = bwAdd ? totalLoad(exercise.name, s.actualWeight, bwAdd) : Number(s.actualWeight);
           const r = Number(s.actualReps);
           const rpeVal = Number(s.rpe);
@@ -3205,6 +3215,69 @@ export default function Workout() {
   const updateBlock = (bIdx, field, val) => {
     setBlocks((prev) => prev.map((b, i) => (i !== bIdx ? b : { ...b, [field]: val })));
   };
+  /* Méthode d'un BLOC (superset / French contrast / complex) — voir component/methods.js.
+     Contraste : exercices pré-remplis avec leur rôle si le bloc est vide, sinon rôles attribués dans l'ordre ;
+     même nombre de séries (= tours) pour tous ; incompatible avec EMOM / AMRAP. */
+  const applyBlockMethod = (bIdx, method) => {
+    setBlocks((prev) =>
+      prev.map((b, i) => {
+        if (i !== bIdx) return b;
+        const next = { ...b, method, mp: { ...(BLOCK_DEFAULTS[method] || {}), ...(b.method === method ? b.mp || {} : {}) } };
+        if (method) next.timerMode = null;
+        const roles = CONTRAST_ROLES[method];
+        if (roles) {
+          const empty = (b.exercises || []).every((x) => !x.name);
+          if (empty) {
+            next.exercises = roles.map((r) => ({ ...defaultExerciseFor("muscu"), ...r.ex, role: r.role }));
+          } else {
+            const rounds = Number(b.exercises?.[0]?.series) || 4;
+            next.exercises = (b.exercises || []).map((x, k) => ({ ...x, role: roles[k]?.role || x.role || null, series: rounds }));
+          }
+          if (b.restMin == null || b.restMin < 3) {
+            next.restMin = 3;
+            next.restSec = 0;
+          }
+        }
+        return next;
+      })
+    );
+  };
+  const setBlockRounds = (bIdx, rounds) =>
+    setBlocks((prev) => prev.map((b, i) => (i !== bIdx ? b : { ...b, exercises: (b.exercises || []).map((x) => ({ ...x, series: rounds })) })));
+  const setBlockMp = (bIdx, patch) =>
+    setBlocks((prev) => prev.map((b, i) => (i !== bIdx ? b : { ...b, mp: { ...(b.mp || {}), ...patch } })));
+  const setExMethod = (bIdx, eIdx, method) =>
+    setBlocks((prev) =>
+      prev.map((b, i) =>
+        i !== bIdx
+          ? b
+          : {
+              ...b,
+              exercises: b.exercises.map((x, j) => {
+                if (j !== eIdx) return x;
+                const n = { ...x, method, mp: { ...(EX_DEFAULTS[method] || {}), ...(x.method === method ? x.mp || {} : {}) } };
+                if (method === "m12080") n.rmPercent = n.mp.conPct;
+                return n;
+              }),
+            }
+      )
+    );
+  const setExMp = (bIdx, eIdx, patch) =>
+    setBlocks((prev) =>
+      prev.map((b, i) =>
+        i !== bIdx
+          ? b
+          : {
+              ...b,
+              exercises: b.exercises.map((x, j) => {
+                if (j !== eIdx) return x;
+                const n = { ...x, mp: { ...(x.mp || {}), ...patch } };
+                if (x.method === "m12080" && patch.conPct != null) n.rmPercent = patch.conPct;
+                return n;
+              }),
+            }
+      )
+    );
   const updateExercise = (bIdx, eIdx, field, val) => {
     // Copie immutable (on ne modifie plus l'objet exercice partagé avec la
     // séance affichée / la liste des séances). Fonctionnelle : plusieurs appels de suite s'additionnent.
@@ -7532,6 +7605,48 @@ export default function Workout() {
                 </div>
               )}
 
+              {/* MÉTHODE DU BLOC (muscu) : superset, French contrast, complex — voir component/methods.js */}
+              {!collapsedBlocks[bIdx] && workoutType === "muscu" && (() => {
+                const bm = blockMethodOf(block);
+                const bp = blockMpOf(block);
+                const chip = (on) => ({ padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${on ? "#e0a13d" : "#2a2620"}`, background: on ? "rgba(224,161,61,0.18)" : "#0d0c0a", color: on ? "#e0a13d" : "#a8a199" });
+                const rounds = Number(block.exercises?.[0]?.series) || 4;
+                return (
+                  <div style={{ marginBottom: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(224,161,61,0.06)", border: "1px solid #2a2620" }}>
+                    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 13, color: "#e0a13d", fontWeight: 700, marginRight: 4 }}>🧪 Méthode du bloc</span>
+                      {BLOCK_METHODS.map((mm) => (
+                        <button key={mm.id || "none"} type="button" title={mm.tip || ""} onClick={() => applyBlockMethod(bIdx, mm.id)} style={chip(bm === mm.id)}>
+                          {mm.icon ? `${mm.icon} ` : ""}{mm.label}
+                        </button>
+                      ))}
+                    </div>
+                    {bm && (
+                      <div style={{ marginTop: 8, fontSize: 12, color: "#a8a199", lineHeight: 1.5 }}>
+                        {BLOCK_METHODS.find((x) => x.id === bm)?.tip}
+                        {isContrastBlock(block) && (
+                          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, alignItems: "flex-end" }}>
+                            <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                              Tours
+                              <input type="number" min="1" max="10" value={rounds} onChange={(e) => setBlockRounds(bIdx, Math.max(1, Math.min(10, Number(e.target.value) || 1)))} style={{ width: 70, padding: 6, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" }} />
+                            </label>
+                            <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
+                              Pause entre exercices
+                              <select value={bp.betweenSec} onChange={(e) => setBlockMp(bIdx, { betweenSec: Number(e.target.value) })} style={{ padding: 6, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" }}>
+                                {[0, 10, 15, 20, 30, 45, 60].map((v) => (
+                                  <option key={v} value={v}>{v} s</option>
+                                ))}
+                              </select>
+                            </label>
+                            <span style={{ fontSize: 11 }}>Repos entre les tours = « Repos après ce bloc » (3-5 min conseillées).</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* EMOM / AMRAP : remplace le calcul de durée habituel du bloc
                   par un chrono qui impose son propre rythme — intervalle de
                   départ libre (pas forcément 1 min), répété un nombre de
@@ -7557,6 +7672,7 @@ export default function Workout() {
                         onChange={(e) => {
                           const mode = e.target.value;
                           updateBlock(bIdx, "timerMode", mode === "normal" ? null : mode);
+                          if (mode !== "normal" && block.method) updateBlock(bIdx, "method", "");
                           if (mode === "emom") {
                             if (!block.timerIntervalSec || block.timerMode === "amrap") updateBlock(bIdx, "timerIntervalSec", 60);
                             updateBlock(bIdx, "timerRounds", block.timerMode === "amrap" ? 10 : block.timerRounds || 10);
@@ -7762,6 +7878,11 @@ export default function Workout() {
                     transition: "opacity 0.15s ease, border-color 0.15s ease",
                   }}
                 >
+                  {isContrastBlock(block) && roleLabel(blockMethodOf(block), ex.role, eIdx) && (
+                    <div style={{ display: "inline-block", marginBottom: 8, padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, color: "#e0a13d", background: "rgba(224,161,61,0.15)", border: "1px solid rgba(224,161,61,0.5)" }}>
+                      {roleLabel(blockMethodOf(block), ex.role, eIdx)}
+                    </div>
+                  )}
                   <div
                     style={{
                       display: "grid",
@@ -8169,7 +8290,7 @@ export default function Workout() {
                             )}
                             <div>
                               <label style={{ fontSize: 12, color: "#a8a199" }}>
-                                Reps
+                                {methodOf(ex) === "cluster" ? "Reps par mini-série" : "Reps"}
                               </label>
                               <input
                                 type="number"
@@ -8321,6 +8442,80 @@ export default function Workout() {
                             {contractionTip(ex)}
                           </div>
                         )}
+                        {/* Méthode de série (cluster, rest-pause, drop set, 120-80) — pas en EMOM / AMRAP */}
+                        {block.timerMode !== "emom" && block.timerMode !== "amrap" && (() => {
+                          const m = methodOf(ex);
+                          const p = mpOf(ex);
+                          const num = { width: 70, padding: 6, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" };
+                          const field = (label, key, min, max) => (
+                            <label key={key} style={{ fontSize: 11, color: "#a8a199", display: "grid", gap: 2 }}>
+                              {label}
+                              <input type="number" min={min} max={max} value={p[key]} onChange={(e) => setExMp(bIdx, eIdx, { [key]: Math.max(min, Math.min(max, Number(e.target.value) || min)) })} style={num} />
+                            </label>
+                          );
+                          return (
+                            <div style={{ marginTop: 10, padding: m === "classique" ? 0 : 10, borderRadius: 8, border: m === "classique" ? "none" : "1px solid #2a2620", background: m === "classique" ? "transparent" : "#151310" }}>
+                              <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>Méthode de série</label>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                {EX_METHODS.map((mm) => (
+                                  <button
+                                    key={mm.id}
+                                    type="button"
+                                    onClick={() => setExMethod(bIdx, eIdx, mm.id)}
+                                    title={mm.tip || ""}
+                                    style={{ padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${m === mm.id ? "#e0a13d" : "#2a2620"}`, background: m === mm.id ? "rgba(224,161,61,0.18)" : "#0d0c0a", color: m === mm.id ? "#e0a13d" : "#a8a199" }}
+                                  >
+                                    {mm.icon ? `${mm.icon} ` : ""}{mm.label}
+                                  </button>
+                                ))}
+                              </div>
+                              {m !== "classique" && (
+                                <>
+                                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+                                    {m === "cluster" && [field("Mini-séries", "clusters", 2, 8), field("Pause (s)", "intraRest", 5, 60)]}
+                                    {m === "restpause" && [field("Mini-séries", "miniSets", 1, 5), field("Pause (s)", "pauseSec", 5, 45)]}
+                                    {m === "dropset" && [field("Drops", "drops", 1, 4), field("Baisse (%)", "dropPct", 5, 40)]}
+                                    {m === "m12080" && [field("Excentrique (%)", "eccPct", 100, 140), field("Concentrique (%)", "conPct", 50, 95)]}
+                                  </div>
+                                  <div style={{ marginTop: 6, fontSize: 12, color: "#e0a13d", fontWeight: 700 }}>{methodScheme(ex)}</div>
+                                  <div style={{ fontSize: 11, color: "#a8a199", marginTop: 2, lineHeight: 1.5 }}>
+                                    {methodInfo(ex).tip}
+                                    {m === "cluster" ? " « Reps » = reps par mini-série. Ne met pas à jour le RM (les pauses faussent le RIR)." : ""}
+                                    {m === "restpause" ? " RM calculé sur la série principale." : ""}
+                                    {m === "dropset" ? " RM calculé sur la 1re série ; charges des drops proposées automatiquement." : ""}
+                                    {m === "m12080" ? " Charge supramaximale : pas de RIR prédit ni de mise à jour du RM. Pareurs ou crochets obligatoires." : ""}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        {/* Vitesse de barre cible (VBT) — optionnelle */}
+                        {block.timerMode !== "emom" && block.timerMode !== "amrap" && !isNoRmIntensity(ex.rmPercent) && (() => {
+                          const auto = vbtTargetOf({ ...ex, vbtTarget: null });
+                          return (
+                            <div style={{ marginTop: 10 }}>
+                              <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
+                                ⚡ Vitesse cible (m/s) <span style={{ opacity: 0.8 }}>— optionnel, pour ceux qui mesurent la vitesse de barre</span>
+                              </label>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={ex.vbtTarget ?? ""}
+                                  placeholder={auto ? `${fmtV(auto.v)} (auto)` : "ex. 0,75"}
+                                  onChange={(e) => updateExercise(bIdx, eIdx, "vbtTarget", e.target.value.replace(/[^0-9.,]/g, "") || null)}
+                                  style={{ width: 110, padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" }}
+                                />
+                                <span style={{ fontSize: 11, color: "#a8a199" }}>
+                                  {auto
+                                    ? `Vide = ${fmtV(auto.v)} m/s calculé à ${ex.rmPercent} % (${auto.label}).`
+                                    : "Pas d'équation charge-vitesse fiable pour cet exercice : saisis la cible à la main, ou laisse vide."}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </div>
                       {/* Prédiction des reps en réserve dès la construction (voir component/loadAdjust.js) */}
                       {!isNoRmIntensity(ex.rmPercent) && block.timerMode !== "amrap" && (() => {
@@ -9902,6 +10097,36 @@ export default function Workout() {
                   );
                 })()}
 
+              {sessionType === "muscu" && blockMethodOf(block) && (() => {
+                const bm = BLOCK_METHODS.find((x) => x.id === blockMethodOf(block));
+                const rounds = Number(block.exercises?.[0]?.series) || 1;
+                const rest = blockRestSec(block);
+                return (
+                  <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 10, background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.45)" }}>
+                    <div style={{ fontWeight: 800, color: "#e0a13d", fontSize: 14 }}>
+                      {bm.icon} {bm.label}
+                      {isContrastBlock(block) && (
+                        <span style={{ fontWeight: 600, color: "#f3f0ea" }}>
+                          {" "}· ↻ {rounds} tour{rounds > 1 ? "s" : ""} · {blockMpOf(block).betweenSec} s entre les exercices · {Math.floor(rest / 60)} min{rest % 60 ? ` ${String(rest % 60).padStart(2, "0")}` : ""} entre les tours
+                        </span>
+                      )}
+                    </div>
+                    {isContrastBlock(block) && (
+                      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12.5 }}>
+                        {block.exercises.map((x, k) => (
+                          <React.Fragment key={k}>
+                            {k > 0 && <span style={{ color: "#a8a199" }}>→</span>}
+                            <span style={{ padding: "2px 8px", borderRadius: 999, background: "#151310", border: "1px solid #2a2620" }}>
+                              {roleLabel(blockMethodOf(block), x.role, k) || `${k + 1}.`} {x.name ? `· ${x.name}` : ""}
+                            </span>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>{bm.tip}</div>
+                  </div>
+                );
+              })()}
               {block.exercises.map((ex, eIdx) => {
                 const key = `${bIdx}-${eIdx}`;
                 const userFeedback = getUserFeedback(selectedSession);
@@ -9918,9 +10143,33 @@ export default function Workout() {
                       marginBottom: 12,
                     }}
                   >
+                    {sessionType === "muscu" && isContrastBlock(block) && roleLabel(blockMethodOf(block), ex.role, eIdx) && (
+                      <div style={{ display: "inline-block", marginBottom: 6, padding: "2px 10px", borderRadius: 999, fontSize: 12, fontWeight: 800, color: "#e0a13d", background: "rgba(224,161,61,0.15)" }}>
+                        {roleLabel(blockMethodOf(block), ex.role, eIdx)}
+                      </div>
+                    )}
                     <h5 style={{ margin: "0 0 8px 0", fontSize: 16 }}>
                       {ex.name}
                     </h5>
+                    {sessionType === "muscu" && methodOf(ex) !== "classique" && block.timerMode !== "emom" && block.timerMode !== "amrap" && (() => {
+                      const mi = methodInfo(ex);
+                      const p = mpOf(ex);
+                      const base = activeRM ? Number(calculateWeight(ex.name, ex.rmPercent)) : null;
+                      let loads = null;
+                      if (methodOf(ex) === "dropset" && base > 0) loads = `${base} kg → ${dropLoads(base, ex).map((w) => `${w} kg`).join(" → ")}`;
+                      if (methodOf(ex) === "m12080" && activeRM) {
+                        const ecc = Number(calculateWeight(ex.name, p.eccPct));
+                        const con = Number(calculateWeight(ex.name, p.conPct));
+                        if (ecc > 0 && con > 0) loads = `excentrique ${ecc} kg · concentrique ${con} kg`;
+                      }
+                      return (
+                        <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.4)", fontSize: 13 }}>
+                          <b style={{ color: "#e0a13d" }}>{mi.icon} {mi.label}</b> · {methodScheme(ex)}
+                          {loads && <div style={{ fontWeight: 700, marginTop: 2 }}>🏋️ {loads}</div>}
+                          <div style={{ fontSize: 11.5, color: "#a8a199", marginTop: 2 }}>{mi.tip}</div>
+                        </div>
+                      );
+                    })()}
                     
                     {/* Description si présente */}
                     {ex.description && (
@@ -10079,6 +10328,14 @@ export default function Workout() {
                             </div>
                           )}
                           {(() => {
+                            const vt = isNoRmIntensity(ex.rmPercent) && !ex.vbtTarget ? null : vbtTargetOf(ex);
+                            return vt ? (
+                              <div style={{ marginTop: 6, fontSize: 12.5, color: "#7fb8d9", fontWeight: 700 }}>
+                                ⚡ Vitesse cible ≈ {fmtV(vt.v)} m/s <span style={{ color: "#a8a199", fontWeight: 400 }}>(si tu mesures la vitesse de barre)</span>
+                              </div>
+                            ) : null;
+                          })()}
+                          {(() => {
                             // RIR visé = reps max possibles à ce %RM − reps prévues (voir component/loadAdjust.js)
                             const t = isSpecialContraction(ex) ? null : targetRir(ex.rmPercent, ex.reps, isUniEx(ex));
                             if (!t) return isSpecialContraction(ex) ? (
@@ -10113,6 +10370,12 @@ export default function Workout() {
                               {normalized && normalized.series && normalized.series.map((serie, sIdx) => (
                                 <div key={sIdx} style={{ fontSize: 13, marginBottom: sIdx < normalized.series.length - 1 ? 6 : 0 }}>
                                   <strong>Série {serie.set || (sIdx + 1)}:</strong>{" "}
+                                  {serieText(serie, ex) ? (
+                                    <>
+                                      {serieText(serie, ex)} •{" "}
+                                      <strong>Effort :</strong> <span style={{ color: rirRpeColor(serie.rpe), fontWeight: 700 }}>{rirLabel(serie.rpe, serie.rir)}</span>
+                                    </>
+                                  ) : <>
                                   {isCMJEx ? (
                                     <>
                                       <strong>Hauteur:</strong> {serie.actualWeight} cm
@@ -10129,6 +10392,8 @@ export default function Workout() {
                                     : serie.actualReps}{" "}
                                   •{" "}
                                   <strong>Effort :</strong> <span style={{ color: rirRpeColor(serie.rpe), fontWeight: 700 }}>{rirLabel(serie.rpe, serie.rir)}</span>
+                                  </>}
+                                  {serie.vel ? <span style={{ color: "#7fb8d9", fontWeight: 700 }}> · ⚡ {fmtV(Number(String(serie.vel).replace(",", ".")))} m/s</span> : null}
                                 </div>
                               ))}
                               {normalized && normalized.notes && (
@@ -10404,6 +10669,15 @@ export default function Workout() {
                         }}
                       >
                         {fb ? "✏️ Modifier feedback" : "➕ Donner feedback"}
+                      </button>
+                    )}
+                    {sessionType === "muscu" && isContrastBlock(block) && eIdx < block.exercises.length - 1 && blockMpOf(block).betweenSec > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => startRest(blockMpOf(block).betweenSec, ex.name || `Exercice ${eIdx + 1}`, block.exercises[eIdx + 1]?.name || "exercice suivant")}
+                        style={{ display: "block", width: "100%", marginTop: 8, padding: 8, borderRadius: 8, border: "1px dashed #e0a13d", background: "transparent", color: "#e0a13d", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+                      >
+                        ⏱️ {blockMpOf(block).betweenSec} s → {block.exercises[eIdx + 1]?.name || "exercice suivant"}
                       </button>
                     )}
                   </div>
@@ -11176,6 +11450,10 @@ export default function Workout() {
                           ? "Hauteur de saut (cm)"
                           : isLoadedBodyweight(currentExerciseFeedback.exercise.name)
                           ? `Lest ajouté (kg) — 0 = poids du corps seul${bwOf(actorUid) ? ` (${bwOf(actorUid)} kg)` : ""}`
+                          : methodOf(currentExerciseFeedback.exercise) === "m12080"
+                          ? "Charge concentrique (kg)"
+                          : methodOf(currentExerciseFeedback.exercise) === "dropset"
+                          ? "Charge de la 1re série (kg)"
                           : "Charge réelle (kg)"}
                       </label>
                       <input
@@ -11235,8 +11513,117 @@ export default function Workout() {
                       })()}
                     </div>
 
+                    {/* Saisie propre à la méthode (component/methods.js) */}
+                    {(() => {
+                      const exo = currentExerciseFeedback.exercise;
+                      const m = methodOf(exo);
+                      if (m === "classique") return null;
+                      const setSerie = (patch) => {
+                        const ns = [...currentExerciseFeedback.series];
+                        ns[idx] = { ...ns[idx], ...patch };
+                        setCurrentExerciseFeedback({ ...currentExerciseFeedback, series: ns });
+                      };
+                      const inp = { width: "100%", padding: 10, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16, boxSizing: "border-box" };
+                      const lab = { fontSize: 12, color: "#a8a199", marginBottom: 4 };
+                      const box = { marginBottom: 14, padding: 10, borderRadius: 10, background: "rgba(224,161,61,0.06)", border: "1px solid rgba(224,161,61,0.35)" };
+                      const title = (t) => <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>{methodInfo(exo).icon} {t}</div>;
+                      const numVal = (v) => (v === "" ? "" : Number(v));
+                      if (m === "cluster") {
+                        const cl = Array.isArray(serie.clusters) ? serie.clusters : [];
+                        const total = cl.reduce((a, x) => a + (Number(x) || 0), 0);
+                        return (
+                          <div style={box}>
+                            {title(`Reps de chaque mini-série (pause ${mpOf(exo).intraRest} s)`)}
+                            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(cl.length || 1, 4)}, minmax(0, 1fr))`, gap: 8 }}>
+                              {cl.map((x, k) => (
+                                <div key={k}>
+                                  <div style={lab}>Mini {k + 1}</div>
+                                  <input
+                                    type="number"
+                                    value={x}
+                                    onChange={(e) => {
+                                      const next = cl.map((y, j) => (j === k ? numVal(e.target.value) : y));
+                                      setSerie({ clusters: next, actualReps: next.reduce((a, y) => a + (Number(y) || 0), 0) });
+                                    }}
+                                    style={inp}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Total {total} reps · RIR = en fin de série (dernière mini-série).</div>
+                          </div>
+                        );
+                      }
+                      if (m === "restpause") {
+                        const sg = Array.isArray(serie.segments) ? serie.segments : [serie.actualReps];
+                        return (
+                          <div style={box}>
+                            {title(`Série principale puis mini-séries (pause ${mpOf(exo).pauseSec} s)`)}
+                            <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(sg.length, 4)}, minmax(0, 1fr))`, gap: 8 }}>
+                              {sg.map((x, k) => (
+                                <div key={k}>
+                                  <div style={lab}>{k === 0 ? "Principale" : `Mini ${k}`}</div>
+                                  <input
+                                    type="number"
+                                    value={x}
+                                    onChange={(e) => {
+                                      const next = sg.map((y, j) => (j === k ? numVal(e.target.value) : y));
+                                      setSerie({ segments: next, actualReps: Number(next[0]) || 0 });
+                                    }}
+                                    style={inp}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Le RIR ci-dessous = celui de la série principale (c'est elle qui sert au RM).</div>
+                          </div>
+                        );
+                      }
+                      if (m === "dropset") {
+                        const dr = Array.isArray(serie.drops) ? serie.drops : [];
+                        return (
+                          <div style={box}>
+                            {title("Série puis drops (sans repos)")}
+                            <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) minmax(0, 1fr)", gap: 8, alignItems: "center" }}>
+                              <div style={{ fontSize: 13, fontWeight: 700 }}>1re série</div>
+                              <div style={{ fontSize: 13, color: "#a8a199" }}>{serie.actualWeight || 0} kg</div>
+                              <input type="number" placeholder="reps" value={serie.actualReps} onChange={(e) => setSerie({ actualReps: numVal(e.target.value) })} style={inp} />
+                              {dr.map((d, k) => (
+                                <React.Fragment key={k}>
+                                  <div style={{ fontSize: 13, fontWeight: 700 }}>Drop {k + 1}</div>
+                                  <input type="number" placeholder="kg" value={d.w} onChange={(e) => setSerie({ drops: dr.map((y, j) => (j === k ? { ...y, w: numVal(e.target.value) } : y)) })} style={inp} />
+                                  <input type="number" placeholder="reps" value={d.r} onChange={(e) => setSerie({ drops: dr.map((y, j) => (j === k ? { ...y, r: numVal(e.target.value) } : y)) })} style={inp} />
+                                </React.Fragment>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setSerie({ drops: dropLoads(serie.actualWeight, exo).map((w, k) => ({ w, r: dr[k]?.r ?? "" })) })}
+                              style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1px solid #2a2620", background: "#151310", color: "#f3f0ea", fontSize: 12, cursor: "pointer" }}
+                            >
+                              ↻ Recalculer les charges des drops (−{mpOf(exo).dropPct} %)
+                            </button>
+                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>Le RIR ci-dessous = celui de la 1re série (c'est elle qui sert au RM).</div>
+                          </div>
+                        );
+                      }
+                      if (m === "m12080") {
+                        const sug = Number(calcOwnWeight(exo.name, mpOf(exo).eccPct)) || null;
+                        return (
+                          <div style={box}>
+                            {title(`Charge excentrique (${mpOf(exo).eccPct} %)`)}
+                            <input type="number" placeholder={sug ? String(sug) : "kg"} value={serie.eccWeight ?? ""} onChange={(e) => setSerie({ eccWeight: numVal(e.target.value) })} style={inp} />
+                            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
+                              {sug ? `Prévu ≈ ${sug} kg. ` : ""}Charge supramaximale : cette série ne sert pas au calcul du RM.
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+
                     {/* Répétitions */}
-                    {isUniEx(currentExerciseFeedback.exercise) ? (
+                    {["cluster", "restpause", "dropset"].includes(methodOf(currentExerciseFeedback.exercise)) ? null : isUniEx(currentExerciseFeedback.exercise) ? (
                       <div style={{ marginBottom: 14 }}>
                         <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: "bold" }}>
                           Répétitions effectuées (par côté)
@@ -11372,6 +11759,36 @@ export default function Workout() {
                         {serie.rir === 0 ? " — échec, plus aucune rep possible" : ""}
                       </div>
                     </div>
+                    {/* Vitesse moyenne de la série (VBT) — optionnelle */}
+                    {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
+                      const exo = currentExerciseFeedback.exercise;
+                      const vt = vbtTargetOf(exo);
+                      const V = summarizeVbt(currentExerciseFeedback.series, vt ? vt.v : null);
+                      const row = V?.perSet[idx];
+                      return (
+                        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <label style={{ fontSize: 12.5, color: "#a8a199" }}>⚡ Vitesse moy. (m/s)</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder={vt ? `cible ${fmtV(vt.v)}` : "optionnel"}
+                            value={serie.vel ?? ""}
+                            onChange={(e) => {
+                              const ns = [...currentExerciseFeedback.series];
+                              ns[idx] = { ...ns[idx], vel: e.target.value.replace(/[^0-9.,]/g, "") };
+                              setCurrentExerciseFeedback({ ...currentExerciseFeedback, series: ns });
+                            }}
+                            style={{ width: 96, padding: 8, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15 }}
+                          />
+                          {row && (
+                            <span style={{ fontSize: 12.5, fontWeight: 700, color: vbtColor(row.v, vt ? vt.v : null) }}>
+                              {row.vsTarget != null ? `${row.vsTarget >= 0 ? "+" : "−"}${fmtV(Math.abs(row.vsTarget))} vs cible` : ""}
+                              {row.loss > 0.5 ? ` · −${row.loss.toFixed(0)} % vs meilleure série` : ""}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
                       // RM estimé du jour, perte vs 1re série, charge conseillée pour la série suivante
                       const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise, isUniEx(currentExerciseFeedback.exercise), isLoadedBodyweight(currentExerciseFeedback.exercise.name) ? bwOf(actorUid) || 0 : 0);
@@ -11413,6 +11830,21 @@ export default function Workout() {
                     })()}
                   </div>
                 ))}
+                {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
+                  const vt = vbtTargetOf(currentExerciseFeedback.exercise);
+                  const V = summarizeVbt(currentExerciseFeedback.series, vt ? vt.v : null);
+                  if (!V) return null;
+                  const lc = V.loss == null ? "#a8a199" : V.loss > VBT_LOSS_STOP ? "#d9695a" : V.loss > VBT_LOSS_WARN ? "#e08a3d" : "#4fae7d";
+                  return (
+                    <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, background: "#141210", border: "1px solid rgba(127,184,217,0.4)", fontSize: 13, lineHeight: 1.6 }}>
+                      ⚡ <b>Vitesse</b> : moyenne {fmtV(V.mean)} m/s · meilleure {fmtV(V.best)} m/s
+                      {vt ? <> · cible {fmtV(vt.v)} m/s</> : null}
+                      {V.loss != null && <> · perte <b style={{ color: lc }}>{V.loss.toFixed(0)} %</b></>}
+                      {V.advice && <div style={{ color: vbtColor(V.mean, vt ? vt.v : null) }}>➡️ {V.advice}</div>}
+                      {V.loss != null && V.loss > VBT_LOSS_STOP && <div style={{ color: lc }}>⚠️ Perte de vitesse &gt; {VBT_LOSS_STOP} % : fatigue nette, arrête ou allège l'exercice.</div>}
+                    </div>
+                  );
+                })()}
                 {!isCMJ(currentExerciseFeedback.exercise.name) && (() => {
                   const A = analyzeSets(currentExerciseFeedback.series, currentExerciseFeedback.exercise, isUniEx(currentExerciseFeedback.exercise), isLoadedBodyweight(currentExerciseFeedback.exercise.name) ? bwOf(actorUid) || 0 : 0);
                   if (!A.nextSession || !A.target) return null;

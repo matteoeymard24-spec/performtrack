@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { isSpecialContraction } from "./contraction";
+import { rmSerie } from "./methods";
 import { rirLabel } from "./rir";
 
 /* ExerciseFeedbackList — exercices pour lesquels l'athlète a donné un feedback
@@ -39,7 +40,7 @@ export function extractFeedbackExercises(workouts, uid) {
       const name = ex.name;
       if (!name) return;
       const raw = Array.isArray(f.series)
-        ? f.series
+        ? f.series.map((s0) => rmSerie(s0, ex) || s0)
         : f.actualWeight !== undefined || f.actualReps !== undefined
           ? [{ actualWeight: f.actualWeight, actualReps: f.actualReps, rpe: f.rpe }]
           : [];
@@ -59,7 +60,7 @@ export function extractFeedbackExercises(workouts, uid) {
         id: `${w.id || w.date}_${key}`,
         key: normName(name),
         unilateral: !!ex.unilateral,
-        special: isSpecialContraction(ex), // excentrique / iso : exclu du calcul des RM
+        special: isSpecialContraction(ex) || ex.method === "cluster", // excentrique / iso / 120-80 / cluster : exclus du calcul des RM
         exercise: name,
         date: w.date || "",
         workoutTitle: w.title || "",

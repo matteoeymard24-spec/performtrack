@@ -36,7 +36,8 @@ export const contractionOf = (ex) => {
   return /^ISO\b/i.test(String(ex?.tempo || "").trim()) ? "iso_yielding" : "classique";
 };
 
-export const isSpecialContraction = (ex) => contractionOf(ex) !== "classique";
+// La méthode 120-80 (excentrique supramaximal) suit les mêmes règles : pas de RIR prédit, pas de RM.
+export const isSpecialContraction = (ex) => contractionOf(ex) !== "classique" || ex?.method === "m12080";
 
 export const contractionLabel = (ex) => CONTRACTIONS.find((x) => x.id === contractionOf(ex))?.label || "";
 export const contractionShort = (ex) => CONTRACTIONS.find((x) => x.id === contractionOf(ex))?.short || "";

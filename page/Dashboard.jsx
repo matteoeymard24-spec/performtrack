@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { isSpecialContraction } from "../component/contraction";
+import { rmSerie } from "../component/methods";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
@@ -535,7 +536,7 @@ export default function Dashboard() {
         const name = ex.name;
         if (!name) return;
         const sets = Array.isArray(f.series)
-          ? f.series.map((st) => ({ weight: isLoadedBodyweight(name) && bw ? (Number(st.actualWeight) || 0) + Number(bw) : Number(st.actualWeight), reps: Number(st.actualReps), rpe: Number(st.rpe) }))
+          ? f.series.map((st0) => rmSerie(st0, ex)).filter(Boolean).map((st) => ({ weight: isLoadedBodyweight(name) && bw ? (Number(st.actualWeight) || 0) + Number(bw) : Number(st.actualWeight), reps: Number(st.actualReps), rpe: Number(st.rpe) }))
           : f.actualWeight !== undefined
             ? [{ weight: Number(f.actualWeight), reps: Number(f.actualReps), rpe: Number(f.rpe) }]
             : [];
