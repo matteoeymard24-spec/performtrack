@@ -349,12 +349,13 @@ masse maigre = poids × (1 − % de gras de référence DXA du niveau)`}</F>
 cluster    : séries coupées en mini-séries (ex. 4 × (2+2+2), 20 s de pause) → jamais utilisé pour le RM (les pauses faussent le RIR)
 rest-pause : série principale + mini-séries (10-20 s) → RM sur la série principale (RIR de la principale)
 drop set   : série puis baisse de x % sans repos (charges proposées) → RM sur la 1re série
-120-80     : excentrique ~120 % (aidé) / concentrique ~80 % → pas de RIR prédit, pas de RM (supramaximal)
+120-80     : à chaque série ① x reps en excentrique seul à ~120 % (partenaires remontent la barre) ② décharger à ~80 %
+             ③ y reps classiques à 80 % → pas de RIR prédit, pas de RM (supramaximal)
 PAR BLOC
-superset / circuit : exercices enchaînés sans pause, repos après le tour
-French contrast    : ① lourd 80-90 % · ② pliométrie · ③ saut chargé 20-30 % · ④ plio assistée — 10-20 s entre, 3-5 min entre les tours
-complex            : lourd → explosif du même geste
-durée estimée : + pauses des mini-séries / drops ; contraste = pause courte entre exercices, repos du bloc entre les tours`}</F>
+(un bloc classique enchaîne déjà ses exercices sans pause = superset / circuit)
+French contrast    : ① lourd 80-90 % · ② pliométrie · ③ saut chargé 20-30 % · ④ plio assistée — enchaînés sans pause, 3-5 min entre les tours
+complex            : lourd → explosif du même geste, sans pause
+durée estimée : + pauses des mini-séries / drops / déchargement (120-80) ; contraste = repos du bloc entre les tours`}</F>
         <Ref>Tufano et al. 2017, Sports Med 47:2065 (cluster) · Haff et al. 2008, Strength Cond J 30:67 · Prestes et al. 2019, J Strength Cond Res 33:S113 (rest-pause) · Schoenfeld & Grgic 2018, Strength Cond J 40:107 (drop set) · Seitz & Haff 2016, Sports Med 46:231 (potentialisation post-activation, contrastes) · Cometti, méthodes 120-80 et contrastes.</Ref>
         <H>Vitesse de barre (VBT, optionnelle)</H>
         <F>{`vitesse cible = saisie par le coach, sinon calculée depuis le %RM prescrit :

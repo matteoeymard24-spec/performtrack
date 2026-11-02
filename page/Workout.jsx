@@ -315,7 +315,7 @@ const estimateTypeDurationSeconds = (type, blocks) => {
     const blockRest = (Number(b.restMin ?? 2) || 0) * 60 + (Number(b.restSec) || 0);
     // French contrast / complex : courte pause entre les exercices, repos du bloc après le dernier (fin du tour)
     const contrast = isContrastBlock(b);
-    const between = contrast ? Number(blockMpOf(b).betweenSec) || 15 : 0;
+    const between = 0; // contrastes : exercices enchaînés sans pause
     const exs = b.exercises || [];
     return (
       t +
@@ -612,6 +612,8 @@ export default function Workout() {
   const [duplicateTargetUser, setDuplicateTargetUser] = useState("");
   const [duplicateTargetDate, setDuplicateTargetDate] = useState(null);
   const [showDuplicateDayModal, setShowDuplicateDayModal] = useState(false);
+  const [dupMenuOpen, setDupMenuOpen] = useState(false); // menu « Dupliquer » (semaine / journée)
+  const [advOpen, setAdvOpen] = useState({}); // création de séance : « Réglages avancés » ouverts par exercice
   const [duplicateDaySource, setDuplicateDaySource] = useState(null);
   const [duplicateDayTarget, setDuplicateDayTarget] = useState(null);
   const [uploadingMedia, setUploadingMedia] = useState({});
@@ -5271,15 +5273,10 @@ export default function Workout() {
       )}
 
       {userRole === "admin" && !showForm && !selectedSession && (
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            marginBottom: 20,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+          {/* Action principale */}
           <button
+            className="pt-btn pt-btn--primary"
             onClick={() => {
               const date = selectedDate
                 ? new Date(selectedDate + "T12:00:00")
@@ -5306,16 +5303,7 @@ export default function Workout() {
                 setFormDate(date);
               }
             }}
-            style={{
-              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "#4fae7d",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              fontSize: window.innerWidth <= 768 ? 13 : 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
+            style={{ fontSize: window.innerWidth <= 768 ? 14 : 15, padding: window.innerWidth <= 768 ? "10px 16px" : "11px 20px" }}
           >
             {athleteFilterId
               ? "➕ Créer séance pour cet athlète"
@@ -5327,83 +5315,52 @@ export default function Workout() {
               ? "➕ Créer ma séance perso"
               : "➕ Créer séance"}
           </button>
+
+          {/* Dupliquer : semaine ou journée */}
+          <div style={{ position: "relative" }}>
+            <button className={`pt-btn${dupMenuOpen ? " pt-btn--open" : ""}`} onClick={() => setDupMenuOpen((v) => !v)} aria-expanded={dupMenuOpen}>
+              📋 Dupliquer <span style={{ fontSize: 11, opacity: 0.8 }}>{dupMenuOpen ? "▲" : "▼"}</span>
+            </button>
+            {dupMenuOpen && (
+              <>
+                <div onClick={() => setDupMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 40 }} />
+                <div className="pt-menu" role="menu">
+                  <button role="menuitem" onClick={() => { setDupMenuOpen(false); setShowDuplicateModal(true); }}>
+                    <span style={{ fontSize: 18 }}>🗓️</span>
+                    <span>
+                      Une semaine
+                      <small>Copie toutes les séances d'une semaine sur une autre</small>
+                    </span>
+                  </button>
+                  <button role="menuitem" onClick={() => { setDupMenuOpen(false); setShowDuplicateDayModal(true); }}>
+                    <span style={{ fontSize: 18 }}>📅</span>
+                    <span>
+                      Une journée
+                      <small>Copie les séances d'un jour vers un autre jour</small>
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Outils */}
+          <span style={{ width: 1, height: 26, background: "#2a2620", margin: "0 2px" }} />
           <button
-            onClick={() => setShowDuplicateModal(true)}
-            style={{
-              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "#e0a13d",
-              color: "#1a1306",
-              border: "none",
-              borderRadius: 8,
-              fontSize: window.innerWidth <= 768 ? 13 : 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            📋 Dupliquer semaine
-          </button>
-          <button
-            onClick={() => setShowDuplicateDayModal(true)}
-            style={{
-              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "#e0a13d",
-              color: "#1a1306",
-              border: "none",
-              borderRadius: 8,
-              fontSize: window.innerWidth <= 768 ? 13 : 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            📅 Dupliquer journée
-          </button>
-          <button
+            className="pt-btn"
+            title="Créer et modifier les groupes / sous-groupes d'athlètes"
             onClick={() => {
               resetGroupForm();
               setShowGroupsManager(true);
             }}
-            style={{
-              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "#e0a13d",
-              color: "#1a1306",
-              border: "none",
-              borderRadius: 8,
-              fontSize: window.innerWidth <= 768 ? 13 : 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
           >
-            👥 Gérer les groupes
+            👥 Groupes
           </button>
-          <button
-            onClick={() => setShowExerciseNameManager(true)}
-            style={{
-              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "#e0a13d",
-              color: "#1a1306",
-              border: "none",
-              borderRadius: 8,
-              fontSize: window.innerWidth <= 768 ? 13 : 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            🔤 Noms d'exercices
+          <button className="pt-btn" title="Noms d'exercices : regrouper, renommer, catégories" onClick={() => setShowExerciseNameManager(true)}>
+            🔤 Exercices
           </button>
-          <button
-            onClick={() => setShowAdminRefs(true)}
-            style={{
-              padding: window.innerWidth <= 768 ? "10px 16px" : "12px 24px",
-              background: "#e0a13d",
-              color: "#1a1306",
-              border: "none",
-              borderRadius: 8,
-              fontSize: window.innerWidth <= 768 ? 13 : 15,
-              fontWeight: "bold",
-              cursor: "pointer",
-            }}
-          >
-            🧭 Repères (RPE, VBT, forme)
+          <button className="pt-btn" title="Repères : tables RPE / %RM, vitesse de barre, état de forme" onClick={() => setShowAdminRefs(true)}>
+            🧭 Repères
           </button>
         </div>
       )}
@@ -7630,15 +7587,7 @@ export default function Workout() {
                               Tours
                               <input type="number" min="1" max="10" value={rounds} onChange={(e) => setBlockRounds(bIdx, Math.max(1, Math.min(10, Number(e.target.value) || 1)))} style={{ width: 70, padding: 6, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" }} />
                             </label>
-                            <label style={{ display: "grid", gap: 2, fontSize: 11 }}>
-                              Pause entre exercices
-                              <select value={bp.betweenSec} onChange={(e) => setBlockMp(bIdx, { betweenSec: Number(e.target.value) })} style={{ padding: 6, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" }}>
-                                {[0, 10, 15, 20, 30, 45, 60].map((v) => (
-                                  <option key={v} value={v}>{v} s</option>
-                                ))}
-                              </select>
-                            </label>
-                            <span style={{ fontSize: 11 }}>Repos entre les tours = « Repos après ce bloc » (3-5 min conseillées).</span>
+                            <span style={{ fontSize: 11 }}>Exercices enchaînés sans pause. Repos entre les tours = « Repos après ce bloc » (3-5 min conseillées).</span>
                           </div>
                         )}
                       </div>
@@ -8253,7 +8202,7 @@ export default function Workout() {
                           <div
                             style={{
                               display: "grid",
-                              gridTemplateColumns: isTimerBlock ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))",
+                              gridTemplateColumns: isTimerBlock ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
                               gap: 10,
                               marginBottom: 10,
                             }}
@@ -8290,7 +8239,7 @@ export default function Workout() {
                             )}
                             <div>
                               <label style={{ fontSize: 12, color: "#a8a199" }}>
-                                {methodOf(ex) === "cluster" ? "Reps par mini-série" : "Reps"}
+                                {methodOf(ex) === "cluster" ? "Reps par mini-série" : methodOf(ex) === "m12080" ? `Reps classiques (à ${mpOf(ex).conPct} %)` : "Reps"}
                               </label>
                               <input
                                 type="number"
@@ -8313,6 +8262,47 @@ export default function Workout() {
                                 }}
                               />
                             </div>
+                            <div>
+                            <label style={{ fontSize: 12, color: "#a8a199" }}>
+                              Intensité
+                            </label>
+                            <select
+                              value={isNoRmIntensity(ex.rmPercent) ? ex.rmPercent : ex.rmPercent || 70}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateExercise(
+                                  bIdx,
+                                  eIdx,
+                                  "rmPercent",
+                                  isNoRmIntensity(val) ? val : Number(val)
+                                );
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: 8,
+                                borderRadius: 6,
+                                border: "1px solid #2a2620",
+                                background: "#0d0c0a",
+                                color: "#f3f0ea",
+                              }}
+                            >
+                              <option value="PDC">PDC (Poids du corps)</option>
+                              <option value="ELASTIQUE">Élastique</option>
+                              {[...Array(19)].map((_, i) => {
+                                const percent = (i + 1) * 5;
+                                return (
+                                  <option key={percent} value={percent}>
+                                    {percent}% RM
+                                  </option>
+                                );
+                              })}
+                              <option value={100}>100% RM</option>
+                              <option value={105}>105% RM</option>
+                              <option value={110}>110% RM</option>
+                              <option value={115}>115% RM</option>
+                              <option value={120}>120% RM</option>
+                            </select>
+                            </div>
                           </div>
                         );
                       })()}
@@ -8321,8 +8311,8 @@ export default function Workout() {
                           display: "flex",
                           alignItems: "center",
                           gap: 8,
-                          marginBottom: 10,
-                          fontSize: 13,
+                          marginBottom: 8,
+                          fontSize: 12.5,
                           color: isUniEx(ex) ? "#e0a13d" : "#a8a199",
                           cursor: "pointer",
                           minHeight: 36,
@@ -8343,180 +8333,6 @@ export default function Workout() {
                             : ""}
                         </span>
                       </label>
-                      {/* Tempo inutile en EMOM/AMRAP : exécution rapide
-                          imposée par le chrono, pas de cadence à respecter. */}
-                      {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
-                        <div style={{ marginBottom: 10 }}>
-                          {/* Le repos n'est plus réglé par exercice : quand un
-                              bloc contient 2+ exercices, ils s'enchaînent sans
-                              pause entre eux, et le repos ne vient qu'une fois
-                              à la fin du bloc (réglé plus haut, au niveau du
-                              bloc). */}
-                          <label style={{ fontSize: 12, color: "#a8a199", display: "block", marginBottom: 6 }}>
-                            Tempo
-                          </label>
-                          {/* Tempo visuel : sens du mouvement + 4 phases (voir component/tempo.js) */}
-                          <TempoEditor
-                            tempo={ex.tempo}
-                            dir={tempoDirOf(ex)}
-                            autoDir={guessTempoDir(ex.name)}
-                            onChange={(v) => updateExercise(bIdx, eIdx, "tempo", v)}
-                            onDirChange={(d) => updateExercise(bIdx, eIdx, "tempoDir", d)}
-                            isoSec={ex.isoSec}
-                            isoAngle={ex.isoAngle}
-                            onIsoChange={(field, v) => updateExercise(bIdx, eIdx, field, v)}
-                          />
-                        </div>
-                      )}
-                      <div style={{ marginBottom: 10 }}>
-                        {/* Le champ "Nom RM" a été retiré : le RM utilisé
-                            pour calculer le poids cible est désormais
-                            toujours celui du nom de l'exercice lui-même
-                            (ex.name), qui correspond déjà à la fiche créée
-                            automatiquement dans "Mes RM" depuis la banque
-                            d'exercices — plus besoin de ressaisir un nom à
-                            part. Les anciennes séances qui avaient un "Nom
-                            RM" différent du nom de l'exercice continuent de
-                            fonctionner (repli sur ex.rmName s'il est
-                            présent, voir calculateWeight). */}
-                        <label style={{ fontSize: 12, color: "#a8a199" }}>
-                          Intensité
-                        </label>
-                        <select
-                          value={isNoRmIntensity(ex.rmPercent) ? ex.rmPercent : ex.rmPercent || 70}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            updateExercise(
-                              bIdx,
-                              eIdx,
-                              "rmPercent",
-                              isNoRmIntensity(val) ? val : Number(val)
-                            );
-                          }}
-                          style={{
-                            width: "100%",
-                            padding: 8,
-                            borderRadius: 6,
-                            border: "1px solid #2a2620",
-                            background: "#0d0c0a",
-                            color: "#f3f0ea",
-                          }}
-                        >
-                          <option value="PDC">PDC (Poids du corps)</option>
-                          <option value="ELASTIQUE">Élastique</option>
-                          {[...Array(19)].map((_, i) => {
-                            const percent = (i + 1) * 5;
-                            return (
-                              <option key={percent} value={percent}>
-                                {percent}% RM
-                              </option>
-                            );
-                          })}
-                          <option value={100}>100% RM</option>
-                          <option value={105}>105% RM</option>
-                          <option value={110}>110% RM</option>
-                          <option value={115}>115% RM</option>
-                          <option value={120}>120% RM</option>
-                        </select>
-                        <label style={{ fontSize: 12, color: "#a8a199", display: "block", marginTop: 8 }}>
-                          Régime
-                        </label>
-                        <select
-                          value={contractionOf(ex)}
-                          onChange={(e) => updateExercise(bIdx, eIdx, "contraction", e.target.value)}
-                          style={{
-                            width: "100%",
-                            padding: 8,
-                            borderRadius: 6,
-                            border: "1px solid #2a2620",
-                            background: "#0d0c0a",
-                            color: "#f3f0ea",
-                          }}
-                        >
-                          {CONTRACTIONS.map((c) => (
-                            <option key={c.id} value={c.id}>{c.label}</option>
-                          ))}
-                        </select>
-                        {isSpecialContraction(ex) && (
-                          <div style={{ marginTop: 6, fontSize: 11, color: "#e0a13d", lineHeight: 1.5 }}>
-                            {contractionTip(ex)}
-                          </div>
-                        )}
-                        {/* Méthode de série (cluster, rest-pause, drop set, 120-80) — pas en EMOM / AMRAP */}
-                        {block.timerMode !== "emom" && block.timerMode !== "amrap" && (() => {
-                          const m = methodOf(ex);
-                          const p = mpOf(ex);
-                          const num = { width: 70, padding: 6, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" };
-                          const field = (label, key, min, max) => (
-                            <label key={key} style={{ fontSize: 11, color: "#a8a199", display: "grid", gap: 2 }}>
-                              {label}
-                              <input type="number" min={min} max={max} value={p[key]} onChange={(e) => setExMp(bIdx, eIdx, { [key]: Math.max(min, Math.min(max, Number(e.target.value) || min)) })} style={num} />
-                            </label>
-                          );
-                          return (
-                            <div style={{ marginTop: 10, padding: m === "classique" ? 0 : 10, borderRadius: 8, border: m === "classique" ? "none" : "1px solid #2a2620", background: m === "classique" ? "transparent" : "#151310" }}>
-                              <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>Méthode de série</label>
-                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
-                                {EX_METHODS.map((mm) => (
-                                  <button
-                                    key={mm.id}
-                                    type="button"
-                                    onClick={() => setExMethod(bIdx, eIdx, mm.id)}
-                                    title={mm.tip || ""}
-                                    style={{ padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${m === mm.id ? "#e0a13d" : "#2a2620"}`, background: m === mm.id ? "rgba(224,161,61,0.18)" : "#0d0c0a", color: m === mm.id ? "#e0a13d" : "#a8a199" }}
-                                  >
-                                    {mm.icon ? `${mm.icon} ` : ""}{mm.label}
-                                  </button>
-                                ))}
-                              </div>
-                              {m !== "classique" && (
-                                <>
-                                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-                                    {m === "cluster" && [field("Mini-séries", "clusters", 2, 8), field("Pause (s)", "intraRest", 5, 60)]}
-                                    {m === "restpause" && [field("Mini-séries", "miniSets", 1, 5), field("Pause (s)", "pauseSec", 5, 45)]}
-                                    {m === "dropset" && [field("Drops", "drops", 1, 4), field("Baisse (%)", "dropPct", 5, 40)]}
-                                    {m === "m12080" && [field("Excentrique (%)", "eccPct", 100, 140), field("Concentrique (%)", "conPct", 50, 95)]}
-                                  </div>
-                                  <div style={{ marginTop: 6, fontSize: 12, color: "#e0a13d", fontWeight: 700 }}>{methodScheme(ex)}</div>
-                                  <div style={{ fontSize: 11, color: "#a8a199", marginTop: 2, lineHeight: 1.5 }}>
-                                    {methodInfo(ex).tip}
-                                    {m === "cluster" ? " « Reps » = reps par mini-série. Ne met pas à jour le RM (les pauses faussent le RIR)." : ""}
-                                    {m === "restpause" ? " RM calculé sur la série principale." : ""}
-                                    {m === "dropset" ? " RM calculé sur la 1re série ; charges des drops proposées automatiquement." : ""}
-                                    {m === "m12080" ? " Charge supramaximale : pas de RIR prédit ni de mise à jour du RM. Pareurs ou crochets obligatoires." : ""}
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })()}
-                        {/* Vitesse de barre cible (VBT) — optionnelle */}
-                        {block.timerMode !== "emom" && block.timerMode !== "amrap" && !isNoRmIntensity(ex.rmPercent) && (() => {
-                          const auto = vbtTargetOf({ ...ex, vbtTarget: null });
-                          return (
-                            <div style={{ marginTop: 10 }}>
-                              <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
-                                ⚡ Vitesse cible (m/s) <span style={{ opacity: 0.8 }}>— optionnel, pour ceux qui mesurent la vitesse de barre</span>
-                              </label>
-                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={ex.vbtTarget ?? ""}
-                                  placeholder={auto ? `${fmtV(auto.v)} (auto)` : "ex. 0,75"}
-                                  onChange={(e) => updateExercise(bIdx, eIdx, "vbtTarget", e.target.value.replace(/[^0-9.,]/g, "") || null)}
-                                  style={{ width: 110, padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" }}
-                                />
-                                <span style={{ fontSize: 11, color: "#a8a199" }}>
-                                  {auto
-                                    ? `Vide = ${fmtV(auto.v)} m/s calculé à ${ex.rmPercent} % (${auto.label}).`
-                                    : "Pas d'équation charge-vitesse fiable pour cet exercice : saisis la cible à la main, ou laisse vide."}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })()}
-                      </div>
                       {/* Prédiction des reps en réserve dès la construction (voir component/loadAdjust.js) */}
                       {!isNoRmIntensity(ex.rmPercent) && block.timerMode !== "amrap" && (() => {
                         if (isSpecialContraction(ex)) return null; // excentrique / iso : la table %RM ↔ reps ne s'applique pas
@@ -8647,6 +8463,190 @@ export default function Workout() {
                           🎗️ <strong>Élastique</strong> - Aucune charge calculée, les RM ne sont pas modifiés
                         </div>
                       )}
+                      {/* RÉGLAGES AVANCÉS : tempo, méthode de série, régime, vitesse cible — repliables */}
+                      {(() => {
+                        const k = `${bIdx}-${eIdx}`;
+                        const used = {
+                          tempo: !!ex.tempo && !["2-0-2", "2-0-2-0"].includes(String(ex.tempo).trim()),
+                          method: methodOf(ex) !== "classique",
+                          regime: contractionOf(ex) !== "classique",
+                          vbt: !!ex.vbtTarget,
+                        };
+                        const open = advOpen[k] ?? Object.values(used).some(Boolean);
+                        const chips = [
+                          ex.tempo && `⏱ ${String(ex.tempo).startsWith("ISO") ? `ISO${ex.isoSec ? ` ${ex.isoSec} s` : ""}${ex.isoAngle ? ` · ${ex.isoAngle}°` : ""}` : ex.tempo}`,
+                          used.method && `${methodInfo(ex).icon} ${methodInfo(ex).label}`,
+                          used.regime && `💪 ${contractionShort(ex) || "Régime"}`,
+                          (() => {
+                            const vt = vbtTargetOf(ex);
+                            return vt && (ex.vbtTarget || !isNoRmIntensity(ex.rmPercent)) ? `⚡ ${fmtV(vt.v)} m/s` : null;
+                          })(),
+                        ].filter(Boolean);
+                        const sub = (icon, title, children) => (
+                          <div style={{ padding: 10, borderRadius: 10, background: "#0d0c0a", border: "1px solid #2a2620" }}>
+                            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8, color: "#f3f0ea" }}>{icon} {title}</div>
+                            {children}
+                          </div>
+                        );
+                        return (
+                          <div style={{ marginBottom: 10, borderRadius: 10, border: "1px solid #2a2620", background: "#12100e" }}>
+                            <button
+                              type="button"
+                              onClick={() => setAdvOpen((m) => ({ ...m, [k]: !open }))}
+                              style={{ width: "100%", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "10px 12px", background: "transparent", border: "none", color: "#f3f0ea", cursor: "pointer", textAlign: "left" }}
+                            >
+                              <span style={{ fontSize: 13, fontWeight: 800 }}>⚙️ Réglages avancés</span>
+                              {!open &&
+                                chips.map((c) => (
+                                  <span key={c} style={{ padding: "2px 8px", borderRadius: 999, fontSize: 11.5, fontWeight: 600, background: "#1a1815", border: "1px solid #2a2620", color: "#e0a13d" }}>
+                                    {c}
+                                  </span>
+                                ))}
+                              {!open && !chips.length && <span style={{ fontSize: 12, color: "#a8a199" }}>tempo, méthode, régime, vitesse</span>}
+                              <span style={{ marginLeft: "auto", color: "#a8a199", fontSize: 12 }}>{open ? "▲" : "▼"}</span>
+                            </button>
+                            {open && (
+                              <div style={{ display: "grid", gap: 10, padding: "0 10px 10px" }}>
+                                {block.timerMode !== "emom" && block.timerMode !== "amrap" &&
+                                  sub("⏱", "Tempo", (
+                                    <>
+                      {/* Tempo inutile en EMOM/AMRAP : exécution rapide
+                          imposée par le chrono, pas de cadence à respecter. */}
+                      {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
+                        <div style={{ marginBottom: 10 }}>
+                          {/* Le repos n'est plus réglé par exercice : quand un
+                              bloc contient 2+ exercices, ils s'enchaînent sans
+                              pause entre eux, et le repos ne vient qu'une fois
+                              à la fin du bloc (réglé plus haut, au niveau du
+                              bloc). */}
+                          {/* Tempo visuel : sens du mouvement + 4 phases (voir component/tempo.js) */}
+                          <TempoEditor
+                            tempo={ex.tempo}
+                            dir={tempoDirOf(ex)}
+                            autoDir={guessTempoDir(ex.name)}
+                            onChange={(v) => updateExercise(bIdx, eIdx, "tempo", v)}
+                            onDirChange={(d) => updateExercise(bIdx, eIdx, "tempoDir", d)}
+                            isoSec={ex.isoSec}
+                            isoAngle={ex.isoAngle}
+                            onIsoChange={(field, v) => updateExercise(bIdx, eIdx, field, v)}
+                          />
+                        </div>
+                      )}
+                                    </>
+                                  ))}
+                                {block.timerMode !== "emom" && block.timerMode !== "amrap" &&
+                                  sub("🧪", "Méthode de série", (
+                                    <>
+                        {/* Méthode de série (cluster, rest-pause, drop set, 120-80) — pas en EMOM / AMRAP */}
+                        {block.timerMode !== "emom" && block.timerMode !== "amrap" && (() => {
+                          const m = methodOf(ex);
+                          const p = mpOf(ex);
+                          const num = { width: 70, padding: 6, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" };
+                          const field = (label, key, min, max) => (
+                            <label key={key} style={{ fontSize: 11, color: "#a8a199", display: "grid", gap: 2 }}>
+                              {label}
+                              <input type="number" min={min} max={max} value={p[key]} onChange={(e) => setExMp(bIdx, eIdx, { [key]: Math.max(min, Math.min(max, Number(e.target.value) || min)) })} style={num} />
+                            </label>
+                          );
+                          return (
+                            <div style={{ marginTop: 10, padding: m === "classique" ? 0 : 10, borderRadius: 8, border: m === "classique" ? "none" : "1px solid #2a2620", background: m === "classique" ? "transparent" : "#151310" }}>
+                                                            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 4 }}>
+                                {EX_METHODS.map((mm) => (
+                                  <button
+                                    key={mm.id}
+                                    type="button"
+                                    onClick={() => setExMethod(bIdx, eIdx, mm.id)}
+                                    title={mm.tip || ""}
+                                    style={{ padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: `1px solid ${m === mm.id ? "#e0a13d" : "#2a2620"}`, background: m === mm.id ? "rgba(224,161,61,0.18)" : "#0d0c0a", color: m === mm.id ? "#e0a13d" : "#a8a199" }}
+                                  >
+                                    {mm.icon ? `${mm.icon} ` : ""}{mm.label}
+                                  </button>
+                                ))}
+                              </div>
+                              {m !== "classique" && (
+                                <>
+                                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
+                                    {m === "cluster" && [field("Mini-séries", "clusters", 2, 8), field("Pause (s)", "intraRest", 5, 60)]}
+                                    {m === "restpause" && [field("Mini-séries", "miniSets", 1, 5), field("Pause (s)", "pauseSec", 5, 45)]}
+                                    {m === "dropset" && [field("Drops", "drops", 1, 4), field("Baisse (%)", "dropPct", 5, 40)]}
+                                    {m === "m12080" && [field("Reps excentriques", "eccReps", 1, 10), field("Excentrique (%)", "eccPct", 100, 140), field("Classique (%)", "conPct", 50, 95)]}
+                                  </div>
+                                  <div style={{ marginTop: 6, fontSize: 12, color: "#e0a13d", fontWeight: 700 }}>{methodScheme(ex)}</div>
+                                  <div style={{ fontSize: 11, color: "#a8a199", marginTop: 2, lineHeight: 1.5 }}>
+                                    {methodInfo(ex).tip}
+                                    {m === "cluster" ? " « Reps » = reps par mini-série. Ne met pas à jour le RM (les pauses faussent le RIR)." : ""}
+                                    {m === "restpause" ? " RM calculé sur la série principale." : ""}
+                                    {m === "dropset" ? " RM calculé sur la 1re série ; charges des drops proposées automatiquement." : ""}
+                                    {m === "m12080" ? " « Reps » = reps classiques après avoir déchargé la barre. Charge supramaximale : pas de RIR prédit ni de mise à jour du RM ; 2 partenaires (ou crochets) obligatoires pour remonter la barre." : ""}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })()}
+                                    </>
+                                  ))}
+                                {sub("💪", "Régime de contraction", (
+                                  <>
+                        <select
+                          value={contractionOf(ex)}
+                          onChange={(e) => updateExercise(bIdx, eIdx, "contraction", e.target.value)}
+                          style={{
+                            width: "100%",
+                            padding: 8,
+                            borderRadius: 6,
+                            border: "1px solid #2a2620",
+                            background: "#0d0c0a",
+                            color: "#f3f0ea",
+                          }}
+                        >
+                          {CONTRACTIONS.map((c) => (
+                            <option key={c.id} value={c.id}>{c.label}</option>
+                          ))}
+                        </select>
+                        {isSpecialContraction(ex) && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#e0a13d", lineHeight: 1.5 }}>
+                            {contractionTip(ex)}
+                          </div>
+                        )}
+                                  </>
+                                ))}
+                                {!isNoRmIntensity(ex.rmPercent) &&
+                                  sub("⚡", "Vitesse de barre (optionnel)", (
+                                    <>
+                        {/* Vitesse de barre cible (VBT) — optionnelle */}
+                        {block.timerMode !== "emom" && block.timerMode !== "amrap" && !isNoRmIntensity(ex.rmPercent) && (() => {
+                          const auto = vbtTargetOf({ ...ex, vbtTarget: null });
+                          return (
+                            <div style={{ marginTop: 10 }}>
+                              <label style={{ fontSize: 12, color: "#a8a199", display: "block" }}>
+                                ⚡ Vitesse cible (m/s) <span style={{ opacity: 0.8 }}>— optionnel, pour ceux qui mesurent la vitesse de barre</span>
+                              </label>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={ex.vbtTarget ?? ""}
+                                  placeholder={auto ? `${fmtV(auto.v)} (auto)` : "ex. 0,75"}
+                                  onChange={(e) => updateExercise(bIdx, eIdx, "vbtTarget", e.target.value.replace(/[^0-9.,]/g, "") || null)}
+                                  style={{ width: 110, padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" }}
+                                />
+                                <span style={{ fontSize: 11, color: "#a8a199" }}>
+                                  {auto
+                                    ? `Vide = ${fmtV(auto.v)} m/s calculé à ${ex.rmPercent} % (${auto.label}).`
+                                    : "Pas d'équation charge-vitesse fiable pour cet exercice : saisis la cible à la main, ou laisse vide."}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                                    </>
+                                  ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
 
@@ -10107,7 +10107,7 @@ export default function Workout() {
                       {bm.icon} {bm.label}
                       {isContrastBlock(block) && (
                         <span style={{ fontWeight: 600, color: "#f3f0ea" }}>
-                          {" "}· ↻ {rounds} tour{rounds > 1 ? "s" : ""} · {blockMpOf(block).betweenSec} s entre les exercices · {Math.floor(rest / 60)} min{rest % 60 ? ` ${String(rest % 60).padStart(2, "0")}` : ""} entre les tours
+                          {" "}· ↻ {rounds} tour{rounds > 1 ? "s" : ""} · enchaînés sans pause · {Math.floor(rest / 60)} min{rest % 60 ? ` ${String(rest % 60).padStart(2, "0")}` : ""} entre les tours
                         </span>
                       )}
                     </div>
@@ -10157,10 +10157,18 @@ export default function Workout() {
                       const base = activeRM ? Number(calculateWeight(ex.name, ex.rmPercent)) : null;
                       let loads = null;
                       if (methodOf(ex) === "dropset" && base > 0) loads = `${base} kg → ${dropLoads(base, ex).map((w) => `${w} kg`).join(" → ")}`;
-                      if (methodOf(ex) === "m12080" && activeRM) {
-                        const ecc = Number(calculateWeight(ex.name, p.eccPct));
-                        const con = Number(calculateWeight(ex.name, p.conPct));
-                        if (ecc > 0 && con > 0) loads = `excentrique ${ecc} kg · concentrique ${con} kg`;
+                      if (methodOf(ex) === "m12080") {
+                        const ecc = activeRM ? Number(calculateWeight(ex.name, p.eccPct)) : null;
+                        const con = activeRM ? Number(calculateWeight(ex.name, p.conPct)) : null;
+                        return (
+                          <div style={{ marginBottom: 8, padding: "8px 10px", borderRadius: 8, background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.4)", fontSize: 13, lineHeight: 1.6 }}>
+                            <b style={{ color: "#e0a13d" }}>{mi.icon} Méthode 120-80</b> · à chaque série ({ex.series} séries) :
+                            <div>① <b>{p.eccReps} reps en excentrique seul</b> à {p.eccPct} %{ecc > 0 ? <b> ({ecc} kg)</b> : ""} : descente lente (3-5 s), les partenaires remontent la barre.</div>
+                            <div>② <b>Décharger la barre</b> à {p.conPct} %{con > 0 ? <b> ({con} kg)</b> : ""}.</div>
+                            <div>③ <b>{p.conReps} reps classiques</b> (descente + montée) à {p.conPct} %, sans repos.</div>
+                            <div style={{ fontSize: 11.5, color: "#a8a199" }}>2 partenaires ou crochets de sécurité obligatoires. Charge supramaximale : ne met pas à jour le RM.</div>
+                          </div>
+                        );
                       }
                       return (
                         <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.4)", fontSize: 13 }}>
@@ -10669,15 +10677,6 @@ export default function Workout() {
                         }}
                       >
                         {fb ? "✏️ Modifier feedback" : "➕ Donner feedback"}
-                      </button>
-                    )}
-                    {sessionType === "muscu" && isContrastBlock(block) && eIdx < block.exercises.length - 1 && blockMpOf(block).betweenSec > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => startRest(blockMpOf(block).betweenSec, ex.name || `Exercice ${eIdx + 1}`, block.exercises[eIdx + 1]?.name || "exercice suivant")}
-                        style={{ display: "block", width: "100%", marginTop: 8, padding: 8, borderRadius: 8, border: "1px dashed #e0a13d", background: "transparent", color: "#e0a13d", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-                      >
-                        ⏱️ {blockMpOf(block).betweenSec} s → {block.exercises[eIdx + 1]?.name || "exercice suivant"}
                       </button>
                     )}
                   </div>
@@ -11451,7 +11450,7 @@ export default function Workout() {
                           : isLoadedBodyweight(currentExerciseFeedback.exercise.name)
                           ? `Lest ajouté (kg) — 0 = poids du corps seul${bwOf(actorUid) ? ` (${bwOf(actorUid)} kg)` : ""}`
                           : methodOf(currentExerciseFeedback.exercise) === "m12080"
-                          ? "Charge concentrique (kg)"
+                          ? "③ Charge classique après déchargement (kg)"
                           : methodOf(currentExerciseFeedback.exercise) === "dropset"
                           ? "Charge de la 1re série (kg)"
                           : "Charge réelle (kg)"}
@@ -11611,10 +11610,19 @@ export default function Workout() {
                         const sug = Number(calcOwnWeight(exo.name, mpOf(exo).eccPct)) || null;
                         return (
                           <div style={box}>
-                            {title(`Charge excentrique (${mpOf(exo).eccPct} %)`)}
-                            <input type="number" placeholder={sug ? String(sug) : "kg"} value={serie.eccWeight ?? ""} onChange={(e) => setSerie({ eccWeight: numVal(e.target.value) })} style={inp} />
+                            {title(`① Excentrique seul à ${mpOf(exo).eccPct} %`)}
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+                              <div>
+                                <div style={lab}>Charge (kg)</div>
+                                <input type="number" placeholder={sug ? String(sug) : "kg"} value={serie.eccWeight ?? ""} onChange={(e) => setSerie({ eccWeight: numVal(e.target.value) })} style={inp} />
+                              </div>
+                              <div>
+                                <div style={lab}>Reps excentriques</div>
+                                <input type="number" value={serie.eccReps ?? mpOf(exo).eccReps} onChange={(e) => setSerie({ eccReps: numVal(e.target.value) })} style={inp} />
+                              </div>
+                            </div>
                             <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
-                              {sug ? `Prévu ≈ ${sug} kg. ` : ""}Charge supramaximale : cette série ne sert pas au calcul du RM.
+                              {sug ? `Prévu ≈ ${sug} kg. ` : ""}Puis ② décharger la barre et ③ saisir ci-dessous la charge et les reps classiques à {mpOf(exo).conPct} %. Cette série ne sert pas au calcul du RM.
                             </div>
                           </div>
                         );
@@ -11679,7 +11687,7 @@ export default function Workout() {
                           fontWeight: "bold",
                         }}
                       >
-                        Répétitions effectuées
+                        {methodOf(currentExerciseFeedback.exercise) === "m12080" ? "③ Reps classiques" : "Répétitions effectuées"}
                       </label>
                       <input
                         type="number"

@@ -1794,40 +1794,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {pendingRM.length > 0 && (
-          <div
-            style={{
-              background: "rgba(224,161,61,0.14)",
-              padding: 20,
-              borderRadius: 12,
-              border: "1px solid #e0a13d66",
-              marginBottom: 16,
-            }}
-          >
-            <h3 style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 700, color: "#e0a13d" }}>
-              🎯 {pendingRM.length} RM en attente de validation
-            </h3>
-            <p style={{ margin: "0 0 12px 0", fontSize: 14, color: "#f0d9ae" }}>
-              {pendingRM.map((r) => r.exercise).slice(0, 4).join(", ")}
-              {pendingRM.length > 4 ? "…" : ""}
-            </p>
-            <button
-              onClick={() => navigate("/myrm")}
-              style={{
-                padding: "10px 16px",
-                background: "#e0a13d",
-                color: "#1a1306",
-                border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontWeight: "bold",
-                fontSize: 14,
-              }}
-            >
-              Aller sur Mes RM →
-            </button>
-          </div>
-        )}
+        {/* Encadré « RM en attente » retiré : les RM se remplissent tout seuls à la fin des séances. */}
 
         {todayScore !== null && (
           <div
