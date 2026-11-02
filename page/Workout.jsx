@@ -517,6 +517,10 @@ export default function Workout() {
      les tours déjà faits. Un seul setInterval global (pas un par bloc) —
      voir le useEffect juste après le composant. */
   const [emomTimer, setEmomTimer] = useState(null);
+  /* Minuteur de REPOS entre les blocs (bouton en bas de chaque bloc). Basé sur une heure de fin
+     (endAt) et pas sur un décompte : il reste juste même si le téléphone met l'onglet en veille. */
+  const [restTimer, setRestTimer] = useState(null); // { endAt, totalSec, label, next, pausedLeft }
+  const [restNow, setRestNow] = useState(Date.now());
   // Feedbacks en cours de saisie, UN BROUILLON PAR PERSONNE (le coach peut passer d'un athlète à
   // l'autre pendant la séance sans perdre ce que chacun a déjà rempli). Chaque brouillon est aussi
   // sauvegardé dans la base (persistDraftFeedback) dès que la personne a démarré la séance.
@@ -1976,6 +1980,59 @@ export default function Workout() {
     }, 1000);
     return () => clearInterval(id);
   }, [emomTimer?.running]);
+
+  /* ===================== REPOS ENTRE LES BLOCS ===================== */
+  const blockRestSec = (block) => {
+    const min = Number(block?.restMin ?? block?.exercises?.[0]?.restMin ?? 2) || 0;
+    return Math.max(0, Math.round(min * 60 + (Number(block?.restSec) || 0)));
+  };
+  const restLeft = (rt, now) => (!rt ? 0 : rt.pausedLeft != null ? rt.pausedLeft : Math.max(0, Math.ceil((rt.endAt - now) / 1000)));
+  const startRest = (sec, label, next) => {
+    if (!(sec > 0)) return;
+    playBeep(false); // débloque le son sur mobile (clic utilisateur)
+    setRestTimer({ endAt: Date.now() + sec * 1000, totalSec: sec, label, next, pausedLeft: null, beeped: {} });
+    setRestNow(Date.now());
+  };
+  const shiftRest = (delta) =>
+    setRestTimer((rt) => {
+      if (!rt) return rt;
+      if (rt.pausedLeft != null) return { ...rt, pausedLeft: Math.max(0, rt.pausedLeft + delta), totalSec: Math.max(1, rt.totalSec + delta) };
+      return { ...rt, endAt: rt.endAt + delta * 1000, totalSec: Math.max(1, rt.totalSec + delta), done: false };
+    });
+  const toggleRestPause = () =>
+    setRestTimer((rt) => {
+      if (!rt) return rt;
+      if (rt.pausedLeft != null) return { ...rt, endAt: Date.now() + rt.pausedLeft * 1000, pausedLeft: null };
+      return { ...rt, pausedLeft: restLeft(rt, Date.now()) };
+    });
+  useEffect(() => {
+    if (!restTimer || restTimer.pausedLeft != null || restTimer.done) return;
+    const id = setInterval(() => {
+      const now = Date.now();
+      setRestNow(now);
+      setRestTimer((rt) => {
+        if (!rt || rt.pausedLeft != null || rt.done) return rt;
+        const left = Math.max(0, Math.ceil((rt.endAt - now) / 1000));
+        if (left <= 3 && left > 0 && !rt.beeped[left]) {
+          playBeep(false);
+          return { ...rt, beeped: { ...rt.beeped, [left]: true } };
+        }
+        if (left === 0) {
+          playBeep(true);
+          try { navigator.vibrate && navigator.vibrate([300, 150, 300]); } catch (_) { /* ignore */ }
+          return { ...rt, done: true };
+        }
+        return rt;
+      });
+    }, 250);
+    return () => clearInterval(id);
+  }, [restTimer?.endAt, restTimer?.pausedLeft, restTimer?.done]);
+  // Message « repos terminé » : disparaît tout seul après 8 s
+  useEffect(() => {
+    if (!restTimer?.done) return;
+    const id = setTimeout(() => setRestTimer((rt) => (rt && rt.done ? null : rt)), 8000);
+    return () => clearTimeout(id);
+  }, [restTimer?.done]);
 
   const startBlockTimer = (bIdx, block) => {
     setEmomTimer({
@@ -9508,6 +9565,43 @@ export default function Workout() {
 
           {/* Blocs exercices */}
           {rmPicker}
+          {restTimer && (() => {
+            const left = restLeft(restTimer, restNow);
+            const paused = restTimer.pausedLeft != null;
+            const pct = restTimer.totalSec ? Math.min(100, (1 - left / restTimer.totalSec) * 100) : 100;
+            const mm = Math.floor(left / 60);
+            const ss = String(left % 60).padStart(2, "0");
+            const btn = { padding: "8px 12px", borderRadius: 10, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 14, fontWeight: 700, cursor: "pointer" };
+            return (
+              <div style={{ position: "fixed", left: 12, right: 12, bottom: 78, zIndex: 900, maxWidth: 520, margin: "0 auto", padding: 12, borderRadius: 14, background: restTimer.done ? "#173324" : "#1a1714", border: `1px solid ${restTimer.done ? "#4fae7d" : "#e0a13d"}`, boxShadow: "0 8px 24px rgba(0,0,0,0.5)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ fontSize: 34, fontWeight: 800, fontVariantNumeric: "tabular-nums", color: restTimer.done ? "#4fae7d" : left <= 10 ? "#e08a3d" : "#f3f0ea", minWidth: 96 }}>
+                    {restTimer.done ? "✓" : `${mm}:${ss}`}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0, fontSize: 13, lineHeight: 1.4 }}>
+                    <div style={{ fontWeight: 700, color: restTimer.done ? "#4fae7d" : "#e0a13d" }}>
+                      {restTimer.done ? "Repos terminé" : paused ? "Repos en pause" : "Repos"} · {restTimer.label}
+                    </div>
+                    {restTimer.next && <div style={{ color: "#a8a199", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Ensuite : {restTimer.next}</div>}
+                  </div>
+                  <button type="button" onClick={() => setRestTimer(null)} style={{ ...btn, padding: "6px 10px" }} aria-label="Fermer le minuteur de repos">✕</button>
+                </div>
+                {!restTimer.done && (
+                  <>
+                    <div style={{ height: 4, borderRadius: 2, background: "#2a2620", margin: "10px 0" }}>
+                      <div style={{ height: 4, borderRadius: 2, width: `${pct}%`, background: "#e0a13d", transition: "width 0.25s linear" }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button type="button" style={btn} onClick={() => shiftRest(-15)}>−15 s</button>
+                      <button type="button" style={btn} onClick={() => shiftRest(15)}>+15 s</button>
+                      <button type="button" style={{ ...btn, flex: 1 }} onClick={toggleRestPause}>{paused ? "▶️ Reprendre" : "⏸️ Pause"}</button>
+                      <button type="button" style={btn} onClick={() => setRestTimer(null)}>Passer</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
           {selectedSession.blocks?.map((block, bIdx) => {
             // Type de CE bloc (séance mixte) : affichage et feedback suivent ce type
             const sessionType = blockTypeOf(block, selectedSession.type); // eslint-disable-line no-shadow
@@ -10259,6 +10353,22 @@ export default function Workout() {
                   </div>
                 );
               })}
+              {(() => {
+                // Bouton : lance le repos réglé après ce bloc (minuteur en bas de l'écran)
+                const sec = blockRestSec(block);
+                if (!sec) return null;
+                const nextBlock = selectedSession.blocks?.[bIdx + 1];
+                const fmt = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => startRest(sec, block.name || `Bloc ${bIdx + 1}`, nextBlock ? nextBlock.name || `Bloc ${bIdx + 2}` : "fin de la séance")}
+                    style={{ width: "100%", marginTop: 4, padding: 12, borderRadius: 10, border: "1px solid #e0a13d", background: "rgba(224,161,61,0.12)", color: "#e0a13d", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    ⏱️ Lancer le repos ({fmt}){nextBlock ? ` avant ${nextBlock.name || "le bloc suivant"}` : ""}
+                  </button>
+                );
+              })()}
               </>
               )}
             </div>
