@@ -13,6 +13,7 @@ import { FOSTER_CR10, doneDateOf } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
 import { FoldBtn, useFold, PageHeader } from "../component/ui";
+import { GroupChips } from "../component/PersonPicker";
 import { REC_TYPES, REC_PRESETS, REC_DEFAULT_PCT, recKeys, recTypeOf, recPctOf, recSecOf, recText } from "../component/enduranceRecovery";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
@@ -5185,36 +5186,17 @@ export default function Workout() {
             const label = (t) => <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, marginBottom: 6 }}>{t}</div>;
             return (
               <div style={{ display: "grid", gap: 12 }}>
-                <div>
-                  {label("🏷️ Groupe")}
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    <button type="button" onClick={() => { pickGroup(""); }} style={chip(!groupFilterId && !athleteFilterId)}>
-                      Tous <span style={{ opacity: 0.7, fontWeight: 500 }}>{athletes.length}</span>
-                    </button>
-                    {customGroups.map((g) => (
-                      <button key={g.id} type="button" onClick={() => pickGroup(g.id)} style={chip(groupFilterId === g.id)}>
-                        {dot(g.color)} {g.name} <span style={{ opacity: 0.7, fontWeight: 500 }}>{(g.athleteIds || []).length}</span>
-                      </button>
-                    ))}
-                  </div>
-                  {selGroup && (selGroup.subGroups || []).length > 0 && (
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, paddingLeft: 10, borderLeft: "2px solid #2a2620" }}>
-                      <button type="button" onClick={() => { setAthleteFilterId(""); setSubFilterId(""); }} style={{ ...chip(!subFilterId), fontSize: 12, padding: "4px 10px" }}>
-                        Tout le groupe
-                      </button>
-                      {(selGroup.subGroups || []).map((sg) => (
-                        <button
-                          key={sg.id}
-                          type="button"
-                          onClick={() => { setAthleteFilterId(""); setSubFilterId(sg.id); }}
-                          style={{ ...chip(subFilterId === sg.id), fontSize: 12, padding: "4px 10px" }}
-                        >
-                          ↳ {sg.name} <span style={{ opacity: 0.7, fontWeight: 500 }}>{(sg.athleteIds || []).length}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <GroupChips
+                  groups={customGroups}
+                  groupId={groupFilterId}
+                  subId={subFilterId}
+                  total={athletes.length}
+                  onGroup={(gid) => pickGroup(gid)}
+                  onSub={(sid) => {
+                    setAthleteFilterId("");
+                    setSubFilterId(sid);
+                  }}
+                />
                 <div style={{ maxWidth: 420 }}>
                   {label(selGroup ? `👤 Athlète de ${selGroup.name}${subFilterId ? " (sous-groupe)" : ""}` : "👤 Athlète")}
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>

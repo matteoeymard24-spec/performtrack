@@ -49,6 +49,7 @@ import { CYCLING_LEVELS, CYCLING_SEXES, normSex } from "../component/cycling";
 import { cyclingBilan } from "../component/cyclingRows";
 import { FoldBtn, useFold, PageHeader } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
+import PersonPicker from "../component/PersonPicker";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 const ACCENT = "#e0a13d";
@@ -274,7 +275,7 @@ export default function Tests() {
   const [athletes, setAthletes] = useState([]);
   const [groups, setGroups] = useState([]);
   const [uid, setUid] = useState("");
-  const [pickMode, setPickMode] = useState(""); // "" | "athletes" | "admins" (carrés de choix, comme Workout)
+  const [pickMode, setPickMode] = useState(""); // "" | "athletes" | "moi" | "admins" (sélecteur commun PersonPicker)
   const [tab, setTab] = useState("saisie");
   const [group, setGroup] = useState("endurance");
   const [testId, setTestId] = useState("leger");
@@ -908,63 +909,22 @@ export default function Tests() {
         </div>
         {showParams && isCoach && (
           <div style={{ marginTop: 10 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          {[
-            { id: "athletes", label: "🏉 Athlètes" },
-            { id: "moi", label: "🌟 Moi" },
-            { id: "admins", label: "👥 Admins" },
-          ].map((m) => {
-            const active =
-              m.id === "moi" ? !!uid && uid === currentUser?.uid : pickMode === m.id;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => {
-                  if (m.id === "moi") {
-                    setPickMode("");
-                    if (currentUser?.uid) setUid(currentUser.uid);
-                  } else {
-                    setPickMode(pickMode === m.id ? "" : m.id);
-                  }
-                }}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: 999,
-                  border: `1px solid ${active ? "#e0a13d" : "rgba(255,255,255,0.16)"}`,
-                  background: active ? "rgba(224,161,61,0.2)" : "transparent",
-                  color: TEXT,
-                  fontWeight: 700,
-                  fontSize: 14,
-                  cursor: "pointer",
-                }}
-              >
-                {m.label}
-              </button>
-            );
-          })}
-        </div>
-        {pickMode && (
-          <select
-            style={{ ...inputStyle, marginTop: 10 }}
-            value={(pickMode === "admins" ? adminOnly : athleteOnly).some((a) => a.id === uid) ? uid : ""}
-            onChange={(e) => setUid(e.target.value)}
-          >
-            <option value="">
-              {pickMode === "admins" ? "— Choisir un admin —" : "— Choisir un athlète —"}
-            </option>
-            {(pickMode === "admins" ? adminOnly : athleteOnly).map((a) => (
-              <option key={a.id} value={a.id}>
-                {athleteName(a)}
-              </option>
-            ))}
-          </select>
-        )}
-        {uid && selectedAthlete && (
-          <div style={{ marginTop: 8, fontSize: 13, color: MUTED }}>
-            Sélection : <b style={{ color: TEXT }}>{uid === currentUser?.uid ? "🌟 Moi — " : ""}{athleteName(selectedAthlete)}</b>
-          </div>
-        )}
+        <PersonPicker
+          bare
+          mode={pickMode === "admins" ? "admins" : pickMode === "athletes" ? "athletes" : uid && uid === currentUser?.uid ? "moi" : "athletes"}
+          onMode={(m) => {
+            setPickMode(m === "moi" ? "moi" : m);
+            if (m === "moi" && currentUser?.uid) setUid(currentUser.uid);
+          }}
+          athletes={athleteOnly.filter((a) => a.id !== currentUser?.uid)}
+          admins={adminOnly}
+          groups={groups}
+          selectedId={uid && uid !== currentUser?.uid ? uid : ""}
+          onSelect={(id) => {
+            if (id) setUid(id);
+          }}
+          showAdmins={adminOnly.length > 0}
+        />
         {uid && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
             <select

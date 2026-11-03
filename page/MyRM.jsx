@@ -14,8 +14,10 @@ import {
   setDoc,
   addDoc,
   deleteDoc,
+  updateDoc,
 } from "firebase/firestore";
 import { getTest, computeResult, toStoredResult, sprintVmax } from "../component/testsCalc";
+import PersonPicker from "../component/PersonPicker";
 import { Page, FoldCard, useFold, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE, PageHeader, Kpi, KpiGrid } from "../component/ui";
 import {
   LineChart,
@@ -135,6 +137,10 @@ export default function MyRM() {
   const [bankUni, setBankUni] = useState([]);
   const [showRmSuggest, setShowRmSuggest] = useState(false);
   const [rmCategoryFilter, setRmCategoryFilter] = useState("all");
+  const [rmDocIds, setRmDocIds] = useState({}); // nom normalisé -> ids des fiches users/{uid}/rm
+  const [bankDocs, setBankDocs] = useState({}); // nom normalisé -> { id, createdBy } (banque exerciseMedia)
+  const [reclassMode, setReclassMode] = useState(false);
+  const [reclassBusy, setReclassBusy] = useState(null); // nom de l'exo en cours d'enregistrement
   // Temps de sprint saisis ici (enregistrés comme un test « sprint » : visibles dans Tests, Dashboard et normes)
   const todayIso = () => {
     const d = new Date();
@@ -207,10 +213,14 @@ export default function MyRM() {
       // resynchronisée (voir bouton admin "Resynchroniser les catégories").
       const catalogCategoryByKey = {};
       setBankUni(exerciseMediaSnap.docs.filter((d) => d.data().unilateral).map((d) => normKey(d.id)));
+      const bank = {};
       exerciseMediaSnap.docs.forEach((d) => {
         const cat = d.data().category;
         if (cat) catalogCategoryByKey[normKey(d.id)] = normalizeCategoryValue(cat);
+        bank[normKey(d.id)] = { id: d.id, createdBy: d.data().createdBy || null };
       });
+      setBankDocs(bank);
+      const docIds = {};
 
       // Séparer VMA, CMJ et RM
       const grouped = {};
@@ -235,6 +245,7 @@ export default function MyRM() {
           cmjData = data;
           cmjHist = data.history || [];
         } else {
+          docIds[name] = [...(docIds[name] || []), d.id];
           // Doublon accentué / non accentué du même exo : on garde la fiche qui a des données.
           if (grouped[name] && grouped[name].length > 0 && (data.kg === null || data.kg === undefined) && !(data.history || []).length) return;
           // RM normaux — l'historique complet (plusieurs points dans le
@@ -317,6 +328,7 @@ export default function MyRM() {
       if (uidRef.current !== loadedFor) return;
       setRmHistory(grouped);
       setRmCategories(categories);
+      setRmDocIds(docIds);
       setRmAutoCreated(autoCreatedMap);
       setVma(vmaData);
       setVmaHistory(vmaHist);
@@ -704,6 +716,53 @@ export default function MyRM() {
       .slice(0, 8);
   })();
 
+  /* ---- Reclasser un exercice (coach) ----
+     La banque d'exercices (exerciseMedia) est la source de vérité de la catégorie : on la met à jour,
+     puis on resynchronise les fiches RM existantes de la personne affichée et des athlètes du coach
+     (même principe que « propagateExerciseToAllAthletes » dans Workout). Règles Firestore : un coach
+     ne modifie que les fiches de banque qu'il a créées ; le superadmin, toutes. */
+  const setExerciseCategory = async (name, category) => {
+    if (!isAdminLike || !name || !category || rmCategories[name] === category) return;
+    const b = bankDocs[name];
+    const myId = currentUser?.uid;
+    if (b && b.createdBy && b.createdBy !== myId && !isSuperAdmin) {
+      alert("Exercice commun créé par un autre coach : seul son auteur ou le superadmin peut changer sa catégorie.");
+      return;
+    }
+    const bankId = b?.id || name.trim().replace(/\s+/g, " ");
+    const prevCat = rmCategories[name];
+    setReclassBusy(name);
+    setRmCategories((c) => ({ ...c, [name]: category }));
+    try {
+      await setDoc(
+        doc(db, "exerciseMedia", bankId),
+        { category, updatedAt: new Date().toISOString(), ...(b ? {} : { name, createdBy: myId }) },
+        { merge: true }
+      );
+      setBankDocs((m) => ({ ...m, [name]: { id: bankId, createdBy: b?.createdBy || myId } }));
+      const ids = Array.from(new Set([...(rmDocIds[name] || []), bankId]));
+      // fiches de la personne affichée
+      await Promise.all((rmDocIds[name] || []).map((id) => updateDoc(doc(db, "users", uid, "rm", id), { category }).catch(() => null)));
+      // fiches des athlètes du coach (sans en créer : la banque les crée déjà au besoin)
+      const usersSnap = await getScopedUserDocs();
+      const others = usersSnap.docs.map((d) => d.id).filter((id) => id !== uid);
+      await Promise.all(
+        others.flatMap((u) =>
+          ids.map(async (id) => {
+            const ref = doc(db, "users", u, "rm", id);
+            const snap = await getDoc(ref).catch(() => null);
+            if (snap && snap.exists() && snap.data().category !== category) await updateDoc(ref, { category }).catch(() => null);
+          })
+        )
+      );
+    } catch (e) {
+      setRmCategories((c) => ({ ...c, [name]: prevCat }));
+      alert("❌ Catégorie non enregistrée : " + e.message);
+    } finally {
+      setReclassBusy(null);
+    }
+  };
+
   const exercises = Object.keys(rmHistory)
     .filter((ex) => ex !== "vma")
     .filter((ex) =>
@@ -739,87 +798,30 @@ export default function MyRM() {
         subtitle="Charges maximales estimées, mises à jour à chaque séance"
       />
 
-      {isAdminLike && (
-        <div style={{ ...CARD_STYLE, padding: 14, marginBottom: 12, ...(viewUid ? { border: CARD_ACCENT_BORDER } : {}) }}>
-          <label style={{ display: "block", fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
-            👤 Voir / modifier les RM de :
-          </label>
-          {(() => {
-            const nameOf = (a) => (a.firstName && a.lastName ? `${a.firstName} ${a.lastName}` : a.displayName || a.email || a.id);
-            const sortByName = (arr) => arr.slice().sort((x, y) => nameOf(x).localeCompare(nameOf(y)));
-            const selStyle = { width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 8, border: "1px solid #2a2620", background: "#1a1815", color: "#f3f0ea", fontSize: 16, marginTop: 8 };
-            const reset = () => { setSelectedExercise(null); setShowAddForm(false); setEditingRM(null); setRmSearchQuery(""); };
-            const pickMode = (m) => { setViewMode(m); setViewUid(""); setViewGroup(""); reset(); };
-            // athlètes selon le groupe / sous-groupe choisi
-            let list = rmAthletes;
-            if (viewGroup === "none") {
-              const inAny = new Set(rmGroups.flatMap((g) => g.athleteIds || []));
-              list = rmAthletes.filter((a) => !inAny.has(a.id));
-            } else if (viewGroup.startsWith("sg:")) {
-              const [, gid, sid] = viewGroup.split(":");
-              const sub = (rmGroups.find((g) => g.id === gid)?.subGroups || []).find((x) => x.id === sid);
-              list = rmAthletes.filter((a) => (sub?.athleteIds || []).includes(a.id));
-            } else if (viewGroup) {
-              const g = rmGroups.find((x) => x.id === viewGroup);
-              list = rmAthletes.filter((a) => (g?.athleteIds || []).includes(a.id));
-            }
-            return (
-              <>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {[["moi", "🌟 Moi"], ["admin", "👤 Admin"], ["athlete", "🏉 Athlète"]].map(([m, lab]) => {
-                    const on = viewMode === m;
-                    return (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => pickMode(m)}
-                        style={{ flex: 1, minHeight: 44, borderRadius: 10, cursor: "pointer", fontSize: 14, fontWeight: on ? 700 : 400, border: on ? "1px solid #e0a13d" : "1px solid #2a2620", background: on ? "rgba(224,161,61,0.18)" : "#1a1815", color: on ? "#e0a13d" : "#f3f0ea" }}
-                      >
-                        {lab}
-                      </button>
-                    );
-                  })}
-                </div>
-                {viewMode === "admin" && (
-                  <select value={viewUid} onChange={(e) => { setViewUid(e.target.value); reset(); }} style={selStyle}>
-                    <option value="">-- Choisir l'admin --</option>
-                    {sortByName(rmAdmins).map((a) => (
-                      <option key={a.id} value={a.id}>{nameOf(a)}</option>
-                    ))}
-                  </select>
-                )}
-                {viewMode === "athlete" && (
-                  <>
-                    <select value={viewGroup} onChange={(e) => { setViewGroup(e.target.value); setViewUid(""); reset(); }} style={selStyle}>
-                      <option value="">Tous les athlètes</option>
-                      {rmGroups.map((g) => (
-                        <React.Fragment key={g.id}>
-                          <option value={g.id}>👥 {g.name}</option>
-                          {(g.subGroups || []).map((sg) => (
-                            <option key={sg.id} value={`sg:${g.id}:${sg.id}`}>↳ {sg.name}</option>
-                          ))}
-                        </React.Fragment>
-                      ))}
-                      <option value="none">Sans groupe</option>
-                    </select>
-                    <select value={viewUid} onChange={(e) => { setViewUid(e.target.value); reset(); }} style={selStyle}>
-                      <option value="">-- Choisir l'athlète ({list.length}) --</option>
-                      {sortByName(list).map((a) => (
-                        <option key={a.id} value={a.id}>{nameOf(a)}</option>
-                      ))}
-                    </select>
-                  </>
-                )}
-              </>
-            );
-          })()}
-          {viewUid && (
-            <div style={{ fontSize: 12, color: "#e0a13d", marginTop: 6 }}>
-              Tu modifies les données de cet athlète : chaque changement est enregistré sur son compte.
-            </div>
-          )}
-        </div>
-      )}
+      {isAdminLike && (() => {
+        const reset = () => { setSelectedExercise(null); setShowAddForm(false); setEditingRM(null); setRmSearchQuery(""); };
+        return (
+          <PersonPicker
+            mode={viewMode === "athlete" ? "athletes" : viewMode === "admin" ? "admins" : "moi"}
+            onMode={(m) => {
+              setViewMode(m === "athletes" ? "athlete" : m === "admins" ? "admin" : "moi");
+              setViewUid("");
+              setViewGroup("");
+              reset();
+            }}
+            athletes={rmAthletes}
+            admins={rmAdmins}
+            groups={rmGroups}
+            selectedId={viewUid}
+            onSelect={(id) => {
+              setViewUid(id);
+              reset();
+            }}
+            showAdmins={rmAdmins.length > 0}
+            note={viewUid ? "tu modifies ses données : chaque changement est enregistré sur son compte." : null}
+          />
+        );
+      })()}
 
       {(() => {
         const list = Object.keys(rmHistory).filter((ex) => ex !== "vma");
@@ -1389,7 +1391,33 @@ export default function MyRM() {
                 {c.label}
               </button>
             ))}
+            {isAdminLike && (
+              <button
+                type="button"
+                onClick={() => setReclassMode((v) => !v)}
+                title="Changer la catégorie des exercices (mise à jour de la banque d'exercices)"
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 20,
+                  border: `1px solid ${reclassMode ? "#4fae7d" : "#3a342a"}`,
+                  background: reclassMode ? "rgba(79,174,125,0.18)" : "transparent",
+                  color: reclassMode ? "#4fae7d" : "#a8a199",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  marginLeft: "auto",
+                }}
+              >
+                {reclassMode ? "✓ Terminer" : "🏷️ Reclasser"}
+              </button>
+            )}
           </div>
+          {reclassMode && (
+            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 8 }}>
+              Choisis la catégorie de chaque exercice dans sa fiche ci-dessous. Elle est enregistrée dans la banque d'exercices et
+              appliquée aux « Mes RM » de tes athlètes.
+            </div>
+          )}
         </div>
       )}
 
@@ -1448,9 +1476,24 @@ export default function MyRM() {
                         >
                           {exercise}
                         </h4>
-                        <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
-                          {getExerciseCategoryLabel(rmCategories[exercise])}
-                        </div>
+                        {reclassMode && isAdminLike ? (
+                          <select
+                            value={normalizeCategoryValue(rmCategories[exercise]) || "autre"}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setExerciseCategory(exercise, e.target.value)}
+                            disabled={reclassBusy === exercise}
+                            style={{ margin: "2px 0 6px", padding: "5px 8px", borderRadius: 8, border: "1px solid #4fae7d88", background: "#0d0c0a", color: "#f3f0ea", fontSize: 12.5 }}
+                          >
+                            {EXERCISE_CATEGORIES.map((c) => (
+                              <option key={c.value} value={c.value}>{c.label}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
+                            {getExerciseCategoryLabel(rmCategories[exercise])}
+                            {reclassBusy === exercise ? " · enregistrement…" : ""}
+                          </div>
+                        )}
                         {loadNote(exercise, hasData ? latest.kg : null) && (
                           <div style={{ fontSize: 11, color: "#e0a13d", marginBottom: 4 }}>
                             ⚖️ {loadNote(exercise, hasData ? latest.kg : null)}
@@ -1617,6 +1660,27 @@ export default function MyRM() {
                   </button>
                 </div>
               </div>
+
+              {isAdminLike && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", margin: "-8px 0 18px" }}>
+                  <span style={{ fontSize: 11.5, letterSpacing: 0.5, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, marginRight: 2 }}>🏷️ Catégorie</span>
+                  {EXERCISE_CATEGORIES.map((c) => {
+                    const on = (normalizeCategoryValue(rmCategories[selectedExercise]) || "autre") === c.value;
+                    return (
+                      <button
+                        key={c.value}
+                        type="button"
+                        disabled={reclassBusy === selectedExercise}
+                        onClick={() => setExerciseCategory(selectedExercise, c.value)}
+                        style={{ padding: "5px 11px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? "#e0a13d" : "#2a2620"}`, background: on ? "rgba(224,161,61,0.18)" : "#0d0c0a", color: on ? "#e0a13d" : "#a8a199" }}
+                      >
+                        {c.label}
+                      </button>
+                    );
+                  })}
+                  {reclassBusy === selectedExercise && <span style={{ fontSize: 12, color: "#a8a199" }}>enregistrement…</span>}
+                </div>
+              )}
 
               {/* Graphique d'évolution */}
               <div style={{ marginBottom: 25 }}>
