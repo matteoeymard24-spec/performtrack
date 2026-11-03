@@ -273,10 +273,27 @@ const blockTimerDurationSeconds = (b) =>
     ? b.timerIntervalSec || 60
     : (b.timerIntervalSec || 60) * (b.timerRounds || 10);
 
-// Séances mixtes : chaque bloc est estimé avec la formule de SON type (blockType, sinon type de séance).
+/* Récups d'un bloc (en secondes) :
+   • entre les tours : après avoir enchaîné tous les exercices du bloc une fois (restMin / restSec) ;
+   • avant le bloc suivant (A → B) : nextRestMin / nextRestSec — par défaut = récup entre les tours
+     (anciennes séances inchangées). */
+const restOf = (min, sec, defMin = 2) => Math.max(0, Math.round((Number(min ?? defMin) || 0) * 60 + (Number(sec) || 0)));
+const roundRestSec = (b) => restOf(b?.restMin ?? b?.exercises?.[0]?.restMin, b?.restSec);
+const nextRestSec = (b) => (b?.nextRestMin == null && b?.nextRestSec == null ? roundRestSec(b) : restOf(b.nextRestMin, b.nextRestSec, 0));
+const fmtRest = (t) => {
+  const m = Math.floor(t / 60);
+  const sec = t % 60;
+  return m && sec ? `${m} min ${String(sec).padStart(2, "0")}` : m ? `${m} min` : `${sec} s`;
+};
+
+// Séances mixtes : chaque bloc est estimé avec la formule de SON type (blockType, sinon type de séance),
+// + la récup entre deux blocs.
 const estimateSessionDurationSeconds = (type, blocks) => {
   if (!Array.isArray(blocks)) return 0;
-  return blocks.reduce((t, b) => t + estimateTypeDurationSeconds(blockTypeOf(b, type), [b]), 0);
+  return blocks.reduce(
+    (t, b, i) => t + estimateTypeDurationSeconds(blockTypeOf(b, type), [b]) + (i < blocks.length - 1 ? nextRestSec(b) : 0),
+    0
+  );
 };
 
 const estimateTypeDurationSeconds = (type, blocks) => {
@@ -298,7 +315,7 @@ const estimateTypeDurationSeconds = (type, blocks) => {
   if (type === "endurance" || type === "vma") {
     return blocks.reduce((t, b) => {
       if (b.timerMode === "emom" || b.timerMode === "amrap") {
-        return t + blockTimerDurationSeconds(b) + ((b.restMin ?? 2) * 60 + (b.restSec || 0));
+        return t + blockTimerDurationSeconds(b); // récup avant le bloc suivant ajoutée par estimateSessionDurationSeconds
       }
       return (
         t +
@@ -313,29 +330,22 @@ const estimateTypeDurationSeconds = (type, blocks) => {
       );
     }, 0);
   }
-  // Muscu (et tout type inconnu) : formule simple, additive, par exercice.
+  // Muscu (et tout type inconnu) : les exercices d'un tour s'enchaînent sans pause, puis la récup
+  // entre les tours (sauf après le dernier tour). La récup avant le bloc suivant est ajoutée à part.
   return blocks.reduce((t, b) => {
-    if (b.timerMode === "emom" || b.timerMode === "amrap") {
-      return t + blockTimerDurationSeconds(b) + ((b.restMin ?? 2) * 60 + (b.restSec || 0));
-    }
-    const blockRest = (Number(b.restMin ?? 2) || 0) * 60 + (Number(b.restSec) || 0);
-    // French contrast / complex : courte pause entre les exercices, repos du bloc après le dernier (fin du tour)
-    const contrast = isContrastBlock(b);
-    const between = 0; // contrastes : exercices enchaînés sans pause
+    if (b.timerMode === "emom" || b.timerMode === "amrap") return t + blockTimerDurationSeconds(b);
     const exs = b.exercises || [];
-    return (
-      t +
-      exs.reduce((st, ex, i) => {
-        const repSec = exRepSeconds(ex) || 3;
-        // ISO : comme le classique ; si plusieurs reps, + leur récup (ex.isoRepRest)
-        const iso = isIsoEx(ex);
-        const reps = Math.max(1, Number(ex.reps) || (iso ? 1 : 8));
-        const isoRest = iso && reps > 1 ? (reps - 1) * (Number(ex.isoRepRest) || 0) : 0;
-        const work = reps * repSec * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + methodExtraSec(ex, repSec) + isoRest;
-        const rest = contrast ? (i === exs.length - 1 ? blockRest : between) : ex.restMin != null ? Number(ex.restMin) * 60 : blockRest;
-        return st + (ex.series || 3) * (work + rest);
-      }, 0)
-    );
+    const rounds = Math.max(1, ...exs.map((ex) => Number(ex.series) || 3));
+    const work = exs.reduce((st, ex) => {
+      const repSec = exRepSeconds(ex) || 3;
+      // ISO : comme le classique ; si plusieurs reps, + leur récup (ex.isoRepRest)
+      const iso = isIsoEx(ex);
+      const reps = Math.max(1, Number(ex.reps) || (iso ? 1 : 8));
+      const isoRest = iso && reps > 1 ? (reps - 1) * (Number(ex.isoRepRest) || 0) : 0;
+      const w = reps * repSec * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + methodExtraSec(ex, repSec) + isoRest;
+      return st + (Number(ex.series) || 3) * w;
+    }, 0);
+    return t + work + (rounds - 1) * roundRestSec(b);
   }, 0);
 };
 
@@ -2108,6 +2118,7 @@ export default function Workout() {
   }, [emomTimer?.running]);
 
   /* ===================== REPOS ENTRE LES BLOCS ===================== */
+  const blockNextRestSec = (block) => nextRestSec(block);
   const blockRestSec = (block) => {
     const min = Number(block?.restMin ?? block?.exercises?.[0]?.restMin ?? 2) || 0;
     return Math.max(0, Math.round(min * 60 + (Number(block?.restSec) || 0)));
@@ -7545,64 +7556,69 @@ export default function Workout() {
               {!collapsedBlocks[bIdx] &&
                 (workoutType === "muscu" ||
                   (workoutType === "endurance" &&
-                    (block.timerMode === "emom" || block.timerMode === "amrap"))) && (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    marginBottom: 12,
-                    padding: "8px 10px",
-                    background: "rgba(224,161,61,0.08)",
-                    borderRadius: 6,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <label style={{ fontSize: 13, color: "#e0a13d", fontWeight: "bold", whiteSpace: "nowrap" }}>
-                    ⏱️ Repos après ce bloc
-                  </label>
-                  {(() => {
-                    // Repos en minutes + secondes (ex. 1 min 30) pour TOUS les blocs. Total en secondes :
-                    // les anciennes valeurs décimales (1,5 min) s'affichent en 1 min 30 s.
-                    const total = Math.max(0, Math.round((Number(block.restMin ?? 2) || 0) * 60 + (Number(block.restSec) || 0)));
-                    const setTotal = (t) => {
-                      const v = Math.max(0, Math.round(t));
-                      updateBlock(bIdx, "restMin", Math.floor(v / 60));
-                      updateBlock(bIdx, "restSec", v % 60);
-                    };
-                    const inp = { width: 70, padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" };
-                    return (
-                      <>
-                        <div>
-                          <label style={{ fontSize: 11, color: "#a8a199", display: "block" }}>Min</label>
-                          <input
-                            type="number"
-                            min="0"
-                            inputMode="numeric"
-                            value={Math.floor(total / 60)}
-                            onChange={(e) => setTotal((Number(e.target.value) || 0) * 60 + (total % 60))}
-                            style={inp}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, color: "#a8a199", display: "block" }}>Sec</label>
-                          <select value={total % 60} onChange={(e) => setTotal(Math.floor(total / 60) * 60 + Number(e.target.value))} style={{ ...inp, width: 76 }}>
-                            {[...new Set([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, total % 60])].sort((a, b) => a - b).map((v) => (
-                              <option key={v} value={v}>{String(v).padStart(2, "0")}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </>
-                    );
-                  })()}
-                  {block.exercises.length > 1 && (
-                    <span style={{ fontSize: 12, color: "#a8a199" }}>
-                      Les {block.exercises.length} exercices s'enchaînent sans pause, puis ce repos s'applique une fois.
-                      Utilise un 2ᵉ bloc (avec d'autres exercices) pour une récup entre deux groupes d'exercices distincts.
-                    </span>
-                  )}
-                </div>
-              )}
+                    (block.timerMode === "emom" || block.timerMode === "amrap"))) && (() => {
+                // Deux récups (min + sec) : entre les tours du bloc, puis avant le bloc suivant (A → B).
+                const inp = { width: 70, padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" };
+                const minSec = (total, setTotal) => (
+                  <>
+                    <div>
+                      <label style={{ fontSize: 11, color: "#a8a199", display: "block" }}>Min</label>
+                      <input type="number" min="0" inputMode="numeric" value={Math.floor(total / 60)} onChange={(e) => setTotal((Number(e.target.value) || 0) * 60 + (total % 60))} style={inp} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: "#a8a199", display: "block" }}>Sec</label>
+                      <select value={total % 60} onChange={(e) => setTotal(Math.floor(total / 60) * 60 + Number(e.target.value))} style={{ ...inp, width: 76 }}>
+                        {[...new Set([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, total % 60])].sort((a, b) => a - b).map((v) => (
+                          <option key={v} value={v}>{String(v).padStart(2, "0")}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                );
+                const row = (accent, label, total, setTotal, hint) => (
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, padding: "8px 10px", background: `${accent}14`, border: `1px solid ${accent}33`, borderRadius: 8, flexWrap: "wrap" }}>
+                    <label style={{ fontSize: 13, color: accent, fontWeight: "bold", whiteSpace: "nowrap", minWidth: 190 }}>{label}</label>
+                    {minSec(total, setTotal)}
+                    {hint && <span style={{ fontSize: 12, color: "#a8a199", flex: "1 1 200px" }}>{hint}</span>}
+                  </div>
+                );
+                const isTimer = block.timerMode === "emom" || block.timerMode === "amrap";
+                const isLast = bIdx === blocks.length - 1;
+                const roundTotal = roundRestSec(block);
+                const setRound = (t) => {
+                  const v = Math.max(0, Math.round(t));
+                  updateBlock(bIdx, "restMin", Math.floor(v / 60));
+                  updateBlock(bIdx, "restSec", v % 60);
+                };
+                const nextTotal = nextRestSec(block);
+                const setNext = (t) => {
+                  const v = Math.max(0, Math.round(t));
+                  updateBlock(bIdx, "nextRestMin", Math.floor(v / 60));
+                  updateBlock(bIdx, "nextRestSec", v % 60);
+                };
+                const n = block.exercises.length;
+                return (
+                  <div style={{ marginBottom: 12 }}>
+                    {/* EMOM / AMRAP : le chrono fixe déjà le rythme, seule la récup avant le bloc suivant compte */}
+                    {!isTimer &&
+                      row(
+                        "#e0a13d",
+                        "⏱️ Récup entre les tours",
+                        roundTotal,
+                        setRound,
+                        n > 1 ? `On enchaîne les ${n} exercices du bloc sans pause, puis cette récup avant le tour suivant.` : "Entre deux séries de l'exercice."
+                      )}
+                    {!isLast &&
+                      row(
+                        "#4a90d9",
+                        `➡️ Récup avant ${blocks[bIdx + 1]?.name || "le bloc suivant"}`,
+                        isTimer ? roundTotal : nextTotal,
+                        isTimer ? setRound : setNext,
+                        "Après le dernier tour de ce bloc."
+                      )}
+                  </div>
+                );
+              })()}
 
               {/* MÉTHODE DU BLOC (muscu) : superset, French contrast, complex — voir component/methods.js */}
               {!collapsedBlocks[bIdx] && workoutType === "muscu" && (() => {
@@ -9803,13 +9819,9 @@ export default function Workout() {
                 {sessionType === "muscu" &&
                   !block.timerMode && (
                     <span style={{ fontSize: 13, color: "#e0a13d", fontWeight: "normal" }}>
-                      ⏱️ Repos après le bloc : {(() => {
-                        const t = blockRestSec(block);
-                        const m = Math.floor(t / 60);
-                        const sec = t % 60;
-                        return m && sec ? `${m} min ${String(sec).padStart(2, "0")}` : m ? `${m} min` : `${sec} s`;
-                      })()}
+                      ⏱️ Récup entre les tours : {fmtRest(blockRestSec(block))}
                       {block.exercises?.length > 1 && " (exercices enchaînés sans pause)"}
+                      {bIdx < (selectedSession.blocks || []).length - 1 && <> · ➡️ avant le bloc suivant : {fmtRest(blockNextRestSec(block))}</>}
                     </span>
                   )}
                 {(block.timerMode === "emom" || block.timerMode === "amrap") && (
@@ -10580,19 +10592,30 @@ export default function Workout() {
                 );
               })}
               {(() => {
-                // Bouton : lance le repos réglé après ce bloc (minuteur en bas de l'écran)
-                const sec = blockRestSec(block);
-                if (!sec) return null;
+                // Deux minuteurs : récup entre les tours du bloc, puis récup avant le bloc suivant.
+                const isTimer = block.timerMode === "emom" || block.timerMode === "amrap";
+                const rounds = Math.max(1, ...(block.exercises || []).map((x) => Number(x.series) || 1));
+                const roundSec = isTimer ? 0 : blockRestSec(block);
                 const nextBlock = selectedSession.blocks?.[bIdx + 1];
-                const fmt = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+                const nextSec = nextBlock ? blockNextRestSec(block) : 0;
+                const fmt = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+                const bname = block.name || `Bloc ${bIdx + 1}`;
+                const nname = nextBlock ? nextBlock.name || `Bloc ${bIdx + 2}` : "";
+                const btn = (color) => ({ flex: "1 1 220px", padding: 12, borderRadius: 10, border: `1px solid ${color}`, background: `${color}1f`, color, fontSize: 15, fontWeight: 700, cursor: "pointer" });
+                if (!(roundSec && rounds > 1) && !nextSec) return null;
                 return (
-                  <button
-                    type="button"
-                    onClick={() => startRest(sec, block.name || `Bloc ${bIdx + 1}`, nextBlock ? nextBlock.name || `Bloc ${bIdx + 2}` : "fin de la séance")}
-                    style={{ width: "100%", marginTop: 4, padding: 12, borderRadius: 10, border: "1px solid #e0a13d", background: "rgba(224,161,61,0.12)", color: "#e0a13d", fontSize: 15, fontWeight: 700, cursor: "pointer" }}
-                  >
-                    ⏱️ Lancer le repos ({fmt}){nextBlock ? ` avant ${nextBlock.name || "le bloc suivant"}` : ""}
-                  </button>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+                    {roundSec > 0 && rounds > 1 && (
+                      <button type="button" onClick={() => startRest(roundSec, `${bname} · entre les tours`, "tour suivant")} style={btn("#e0a13d")}>
+                        ⏱️ Récup entre les tours ({fmt(roundSec)})
+                      </button>
+                    )}
+                    {nextSec > 0 && (
+                      <button type="button" onClick={() => startRest(nextSec, `${bname} terminé`, nname)} style={btn("#4a90d9")}>
+                        ➡️ Récup avant {nname} ({fmt(nextSec)})
+                      </button>
+                    )}
+                  </div>
                 );
               })()}
               </>
