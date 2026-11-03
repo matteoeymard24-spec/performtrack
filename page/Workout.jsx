@@ -21,7 +21,7 @@ import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
 import { TempoView, TempoEditor } from "../component/TempoView";
 import { EX_METHODS, BLOCK_METHODS, EX_DEFAULTS, BLOCK_DEFAULTS, CONTRAST_ROLES, methodOf, methodInfo, mpOf, blockMethodOf, blockMpOf, isContrastBlock, roleLabel, methodScheme, dropLoads, methodSerieDefaults, rmSerie, serieText, methodExtraSec } from "../component/methods";
-import { exRepSeconds, tempoDirOf, guessTempoDir, isIsoEx, isoSchemeText } from "../component/tempo";
+import { exRepSeconds, tempoDirOf, guessTempoDir, isIsoEx, isoSchemeText, isoTypeOf } from "../component/tempo";
 import { vbtTargetOf, summarizeVbt, vbtColor, fmtV, VBT_LOSS_WARN, VBT_LOSS_STOP } from "../component/vbt";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import TacticalBoard from "../component/TacticalBoard";
@@ -1384,6 +1384,10 @@ export default function Workout() {
     if (!rm) return "-";
     return Math.round((rm * percent) / 100); // charge TOTALE (tractions : voir activeLestText)
   };
+  // RM servant au calcul de la charge : ISO yielding → RM de référence choisi (ex.isoRefRm, ex. « Squat »
+  // pour un « Squat iso »), sinon le nom de l'exercice. ISO overcoming : pas de charge (effort maximal).
+  const rmNameOf = (ex) => (isIsoEx(ex) && isoTypeOf(ex) === "yielding" && ex.isoRefRm ? ex.isoRefRm : ex?.name);
+  const isOvercoming = (ex) => isIsoEx(ex) && isoTypeOf(ex) === "overcoming";
   // Personne dont les RM sont affichés (athlète choisi / qui fait la séance / moi)
   const activeRmUid = actingUid || (isAdminLike && !adminOwnSession && rmCandidates.length > 0 ? rmViewId : currentUser?.uid);
   const activeLestText = (rmName, percent) => {
@@ -1653,7 +1657,7 @@ export default function Workout() {
         series = normalized.series;
       } else {
         // Créer de nouvelles séries
-        const defaultWeight = Number(calcOwnWeight(exercise.name, exercise.rmPercent)) || 0;
+        const defaultWeight = isOvercoming(exercise) ? 0 : Number(calcOwnWeight(rmNameOf(exercise), exercise.rmPercent)) || 0;
         for (let i = 0; i < numSeries; i++) {
           series.push({
             set: i + 1,
@@ -8388,10 +8392,38 @@ export default function Workout() {
                       {/* CALCUL POIDS CIBLE — basé sur ex.rmName s'il existe
                           encore (anciennes séances), sinon directement sur
                           le nom de l'exercice. */}
-                      {!isNoRmIntensity(ex.rmPercent) && ex.name &&
+                      {isIsoEx(ex) && isoTypeOf(ex) === "yielding" && (() => {
+                        const keys = Object.keys(activeRM || {}).filter((k) => activeRM[k]);
+                        const label = (k) => rmExerciseNames[k]?.name || k;
+                        return (
+                          <div style={{ marginBottom: 10 }}>
+                            <label style={{ fontSize: 12, color: "#a8a199", display: "block", marginBottom: 2 }}>
+                              ⏸ Charge du maintien calculée sur le RM de :
+                            </label>
+                            <select
+                              value={ex.isoRefRm || ""}
+                              onChange={(e) => updateExercise(bIdx, eIdx, "isoRefRm", e.target.value || "")}
+                              style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea" }}
+                            >
+                              <option value="">Cet exercice ({ex.name || "sans nom"})</option>
+                              {keys
+                                .sort((a, b) => label(a).localeCompare(label(b)))
+                                .map((k) => (
+                                  <option key={k} value={label(k)}>{label(k)} — RM {activeRM[k]} kg</option>
+                                ))}
+                            </select>
+                          </div>
+                        );
+                      })()}
+                      {isOvercoming(ex) && (
+                        <div style={{ marginBottom: 10, fontSize: 12.5, color: "#e0a13d" }}>
+                          🧱 Overcoming : pas de charge à calculer, l'athlète pousse / tire au maximum contre une résistance immobile.
+                        </div>
+                      )}
+                      {!isNoRmIntensity(ex.rmPercent) && ex.name && !isOvercoming(ex) &&
                         ex.rmPercent &&
                         (() => {
-                          const lookupName = ex.name;
+                          const lookupName = rmNameOf(ex);
                           const normalizedName = normalizeExerciseName(lookupName);
                           if (!activeRM) {
                             return (
@@ -8497,7 +8529,7 @@ export default function Workout() {
                         };
                         const open = advOpen[k] ?? Object.values(used).some(Boolean);
                         const chips = [
-                          ex.tempo && `⏱ ${String(ex.tempo).startsWith("ISO") ? `ISO${ex.isoSec ? ` ${ex.isoSec} s` : ""}${ex.isoAngle ? ` · ${ex.isoAngle}°` : ""}` : ex.tempo}`,
+                          ex.tempo && `⏱ ${String(ex.tempo).startsWith("ISO") ? `ISO${isoTypeOf(ex) ? ` ${isoTypeOf(ex)}` : ""}${ex.isoSec ? ` ${ex.isoSec} s` : ""}${ex.isoAngle ? ` · ${ex.isoAngle}°` : ""}` : ex.tempo}`,
                           used.method && `${methodInfo(ex).icon} ${methodInfo(ex).label}`,
                           used.regime && `💪 ${contractionShort(ex) || "Régime"}`,
                           (() => {
@@ -8551,6 +8583,7 @@ export default function Workout() {
                             onDirChange={(d) => updateExercise(bIdx, eIdx, "tempoDir", d)}
                             isoSec={ex.isoSec}
                             isoAngle={ex.isoAngle}
+                            isoType={isoTypeOf(ex)}
                             onIsoChange={(field, v) => updateExercise(bIdx, eIdx, field, v)}
                           />
                         </div>
@@ -10187,7 +10220,9 @@ export default function Workout() {
                             ? `${isoSchemeText(ex)}${isUniEx(ex) ? " /côté (D+G)" : ""}`
                             : `${Math.max(1, Number(ex.series) || 1)} × ${Math.max(1, Number(ex.reps) || 1)}${isUniEx(ex) ? " /côté (D+G)" : ""}`}{" "}
                           @{" "}
-                          {ex.rmPercent === "PDC" ? (
+                          {isOvercoming(ex) ? (
+                            <strong style={{ color: "#e0a13d" }}>effort maximal (résistance immobile)</strong>
+                          ) : ex.rmPercent === "PDC" ? (
                             <strong style={{ color: "#e0a13d" }}>PDC</strong>
                           ) : ex.rmPercent === "ELASTIQUE" ? (
                             <strong style={{ color: "#e0a13d" }}>Élastique</strong>
@@ -10197,13 +10232,13 @@ export default function Workout() {
                               {activeRM
                                 ? isLoadedBodyweight(ex.name) && activeLestText(ex.name, ex.rmPercent)
                                   ? `(${activeLestText(ex.name, ex.rmPercent)})`
-                                  : `(${calculateWeight(ex.name, ex.rmPercent)} kg${dbSplit(ex, calculateWeight(ex.name, ex.rmPercent))})`
+                                  : `(${calculateWeight(rmNameOf(ex), ex.rmPercent)} kg${dbSplit(ex, calculateWeight(rmNameOf(ex), ex.rmPercent))}${rmNameOf(ex) !== ex.name ? ` · ${ex.rmPercent} % du RM ${rmNameOf(ex)}` : ""})`
                                 : "(choisis un athlète)"}
                             </>
                           )}
                           {block.timerMode !== "emom" && block.timerMode !== "amrap" && ex.tempo && (
                             <div>
-                              <TempoView tempo={ex.tempo} dir={tempoDirOf(ex)} isoSec={ex.isoSec} isoAngle={ex.isoAngle} compact />
+                              <TempoView tempo={ex.tempo} dir={tempoDirOf(ex)} isoSec={ex.isoSec} isoAngle={ex.isoAngle} isoType={isoTypeOf(ex)} compact />
                             </div>
                           )}
                           {(() => {
@@ -10217,7 +10252,7 @@ export default function Workout() {
                           {(() => {
                             // RIR visé = reps max possibles à ce %RM − reps prévues (voir component/loadAdjust.js)
                             const t = isSpecialContraction(ex) ? null : targetRir(ex.rmPercent, ex.reps, isUniEx(ex));
-                            if (!t) return isSpecialContraction(ex) && contractionShort(ex) ? (
+                            if (!t) return isSpecialContraction(ex) && contractionShort(ex) && !isIsoEx(ex) ? (
                               <div style={{ fontSize: 12, marginTop: 4, color: "#e0a13d", fontWeight: 700 }}>
                                 {contractionShort(ex) === "EXC" ? "⬇️ Excentrique supramax" : contractionShort(ex) === "ISO-O" ? "🧱 Iso overcoming" : "⏸️ Iso yielding"}
                               </div>
@@ -11358,7 +11393,7 @@ export default function Workout() {
                         const isDb = /halt[eè]re|dumbbell|\bdb\b/i.test(exo.name || "");
                         const uni = isUniEx(exo);
                         const w = Number(serie.actualWeight) || 0;
-                        const target = Number(calcOwnWeight(exo.name, exo.rmPercent)) || 0;
+                        const target = isOvercoming(exo) ? 0 : Number(calcOwnWeight(rmNameOf(exo), exo.rmPercent)) || 0;
                         const suspicious = false; // saisie par haltère : plus de confusion total / une main
                         return (
                           <div style={{ marginTop: 6, fontSize: 12 }}>

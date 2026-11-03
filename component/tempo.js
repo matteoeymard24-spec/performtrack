@@ -80,6 +80,20 @@ export const isoInfoOf = (ex) => ({
 /* Exercice en isométrie (tempo « ISO » ou ancien régime iso) : même écriture que le classique
    (séries × reps, minimum 1) ; si plus d'une rep, la récup entre les reps (ex.isoRepRest, en s)
    est indiquée, sans chrono. */
+/* Type d'isométrie : "overcoming" (surmontante : pousser / tirer contre une résistance immobile, intention max)
+   ou "yielding" (cédante : maintenir une charge immobile). Repris de l'ancien régime (contraction) si besoin. */
+export const ISO_TYPES = [
+  { id: "overcoming", icon: "🧱", label: "Overcoming", long: "Isométrie overcoming (surmontante)", tip: "Pousser / tirer au maximum contre une résistance qui ne bouge pas (butées, barre bloquée, sangle). L'intention maximale compte, pas la charge." },
+  { id: "yielding", icon: "⏸", label: "Yielding", long: "Isométrie yielding (cédante)", tip: "Maintenir une charge immobile à l'angle choisi, sans céder." },
+];
+export const isoTypeOf = (ex) =>
+  ex?.isoType === "overcoming" || ex?.isoType === "yielding"
+    ? ex.isoType
+    : ex?.contraction === "iso_overcoming"
+    ? "overcoming"
+    : ex?.contraction === "iso_yielding"
+    ? "yielding"
+    : null;
 export const isIsoEx = (ex) => parseTempo(ex?.tempo)?.special === "ISO" || String(ex?.contraction || "").startsWith("iso");
 export const isoSchemeText = (ex) => {
   const s = Math.max(1, Number(ex?.series) || 1);

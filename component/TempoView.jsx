@@ -1,5 +1,5 @@
 import React from "react";
-import { parseTempo, formatTempo, repSeconds, tempoPhases, fmtPhase, TEMPO_PRESETS, ISO_SEC_PRESETS, ISO_ANGLE_PRESETS } from "./tempo";
+import { parseTempo, formatTempo, repSeconds, tempoPhases, fmtPhase, TEMPO_PRESETS, ISO_SEC_PRESETS, ISO_ANGLE_PRESETS, ISO_TYPES } from "./tempo";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -80,7 +80,7 @@ export function AngleDial({ angle, size = 64 }) {
 }
 
 /* Affichage du tempo (création + séance) */
-export function TempoView({ tempo, dir = "up", isoSec = null, isoAngle = null, compact = false }) {
+export function TempoView({ tempo, dir = "up", isoSec = null, isoAngle = null, isoType = null, compact = false }) {
   const t = parseTempo(tempo);
   if (!t) return null;
   if (t.special === "ISO")
@@ -88,9 +88,14 @@ export function TempoView({ tempo, dir = "up", isoSec = null, isoAngle = null, c
       <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginTop: compact ? 6 : 0, padding: "6px 12px", borderRadius: 10, background: "#151310", border: `1px solid ${LINE}` }}>
         {isoAngle ? <AngleDial angle={isoAngle} size={compact ? 52 : 64} /> : <span style={{ fontSize: 20 }}>⏸</span>}
         <div style={{ lineHeight: 1.35 }}>
-          <div style={{ fontWeight: 800, color: TEXT, fontSize: 14 }}>Isométrie</div>
+          <div style={{ fontWeight: 800, color: TEXT, fontSize: 14 }}>
+            {(() => {
+              const ty = ISO_TYPES.find((x) => x.id === isoType);
+              return ty ? <>{ty.icon} Isométrie <span style={{ color: COLORS.con }}>{ty.label.toLowerCase()}</span></> : "Isométrie";
+            })()}
+          </div>
           <div style={{ fontSize: 12.5, color: MUTED }}>
-            {isoSec ? <b style={{ color: COLORS.con }}>{isoSec} s</b> : "durée libre"} de maintien
+            {isoSec ? <b style={{ color: COLORS.con }}>{isoSec} s</b> : "durée libre"} {isoType === "overcoming" ? "de poussée max" : "de maintien"}
             {isoAngle ? <> · angle <b style={{ color: COLORS.con }}>{isoAngle}°</b></> : ""}
           </div>
         </div>
@@ -123,7 +128,7 @@ export function TempoView({ tempo, dir = "up", isoSec = null, isoAngle = null, c
 }
 
 /* Éditeur du tempo (création de séance) */
-export function TempoEditor({ tempo, dir, autoDir, onChange, onDirChange, isoSec, isoAngle, onIsoChange }) {
+export function TempoEditor({ tempo, dir, autoDir, onChange, onDirChange, isoSec, isoAngle, isoType, onIsoChange }) {
   const t = parseTempo(tempo);
   const special = t && t.special;
   const base = t && !t.special && !t.raw ? t : { e: 2, pb: 0, c: 2, pt: 0 };
@@ -153,7 +158,26 @@ export function TempoEditor({ tempo, dir, autoDir, onChange, onDirChange, isoSec
       {special === "ISO" && (
         <div style={{ display: "grid", gap: 12 }}>
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Durée du maintien</div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>Type d'isométrie</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 210px), 1fr))", gap: 8 }}>
+              {ISO_TYPES.map((ty) => {
+                const on = isoType === ty.id;
+                return (
+                  <button
+                    key={ty.id}
+                    type="button"
+                    onClick={() => onIsoChange("isoType", ty.id)}
+                    style={{ textAlign: "left", padding: "10px 12px", borderRadius: 10, cursor: "pointer", border: `1px solid ${on ? "#e0a13d" : LINE}`, background: on ? "rgba(224,161,61,0.14)" : "#151310", boxShadow: on ? "0 0 0 1px #e0a13d" : "none", color: TEXT }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 14, color: on ? "#e0a13d" : TEXT }}>{ty.icon} {ty.label}</div>
+                    <div style={{ fontSize: 12, color: MUTED, marginTop: 2, lineHeight: 1.4 }}>{ty.tip}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>{isoType === "overcoming" ? "Durée de la poussée" : "Durée du maintien"}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button type="button" style={btn} onClick={() => onIsoChange("isoSec", Math.max(1, (sec || 5) - 1))}>−</button>
               <span style={{ minWidth: 52, textAlign: "center", fontSize: 18, fontWeight: 800 }}>{sec ? `${sec} s` : "—"}</span>
@@ -188,7 +212,7 @@ export function TempoEditor({ tempo, dir, autoDir, onChange, onDirChange, isoSec
               ) : null}
             </div>
           </div>
-          <TempoView tempo="ISO" isoSec={sec || null} isoAngle={ang || null} />
+          <TempoView tempo="ISO" isoSec={sec || null} isoAngle={ang || null} isoType={isoType} />
         </div>
       )}
 
