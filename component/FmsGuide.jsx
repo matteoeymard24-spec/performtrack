@@ -138,7 +138,7 @@ export default function FmsGuide({ measures, media, canEdit, onSavePhotos }) {
   };
   const allOpen = fold.isOpen("__all");
   return (
-    <div style={{ marginBottom: 12, background: "#0d0c0a", borderRadius: 10, padding: 12, border: "1px solid rgba(255,255,255,0.08)" }}>
+    <div style={{ marginBottom: 12, background: "#0d0c0a", borderRadius: 10, padding: 12, border: "1px solid #2a2620" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <div style={{ flex: 1, fontSize: 13, fontWeight: 700 }}>
           📖 Comment noter chaque mouvement{" "}

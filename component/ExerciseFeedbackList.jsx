@@ -171,7 +171,7 @@ export function FeedbackList({ entries, mode = "all", limit = 20, searchable = f
           value={q}
           onChange={(ev) => setQ(ev.target.value)}
           placeholder={`🔍 Chercher un exercice (${new Set(entries.map((e) => e.key)).size})`}
-          style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", background: "#0d0c0a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: TEXT, fontSize: 14, outline: "none", marginBottom: 10 }}
+          style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 8, color: TEXT, fontSize: 14, outline: "none", marginBottom: 10 }}
         />
       )}
       {rows.length === 0 && (

@@ -12,7 +12,7 @@ import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import BodyScan from "../component/BodyScan";
-import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB } from "../component/ui";
+import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB, PageHeader, Kpi, KpiGrid } from "../component/ui";
 
 import {
   LineChart,
@@ -50,7 +50,7 @@ const formatShortDate = (d) => {
 
 const tooltipStyle = {
   background: "#151310",
-  border: "1px solid rgba(255,255,255,0.16)",
+  border: "1px solid #3a342a",
   borderRadius: 8,
 };
 
@@ -158,93 +158,62 @@ export default function Wellness() {
 
   return (
     <Page>
-      <h2 style={PAGE_TITLE}>Wellness – Suivi détaillé</h2>
-      <p style={PAGE_SUB}>
-        Suivez votre état de forme quotidien et votre récupération
-        {!allHistory && (
+      <PageHeader
+        title="🧘 Wellness"
+        subtitle={
           <>
-            {" "}· 6 derniers mois{" "}
-            <button
-              type="button"
-              onClick={() => setAllHistory(true)}
-              style={{ background: "none", border: "none", color: "#e0a13d", textDecoration: "underline", cursor: "pointer", fontSize: "inherit", padding: 0 }}
-            >
-              (tout afficher)
-            </button>
+            Ton état de forme quotidien et ta récupération
+            {!allHistory && (
+              <>
+                {" "}· 6 derniers mois{" "}
+                <button
+                  type="button"
+                  onClick={() => setAllHistory(true)}
+                  style={{ background: "none", border: "none", color: "#e0a13d", textDecoration: "underline", cursor: "pointer", fontSize: "inherit", padding: 0 }}
+                >
+                  (tout afficher)
+                </button>
+              </>
+            )}
           </>
-        )}
-      </p>
+        }
+        actions={
+          <button className="pt-btn pt-btn--primary" onClick={() => navigate("/wellness-form")}>
+            📝 {todayEntry ? "Modifier le questionnaire" : "Remplir le questionnaire"}
+          </button>
+        }
+      />
 
-      <button
-        onClick={() => navigate("/wellness-form")}
-        style={{
-          padding: "12px 24px",
-          background: "#4fae7d",
-          color: "white",
-          border: "none",
-          borderRadius: 8,
-          cursor: "pointer",
-          fontSize: 16,
-          fontWeight: "bold",
-          marginBottom: 20,
-        }}
-      >
-        📝 Remplir le questionnaire
-      </button>
-
-      {/* Scores */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-          gap: 12,
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            ...CARD_STYLE,
-            marginBottom: 0,
-            border: "1px solid #e0a13d88",
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8 }}>
-            SCORE D'AUJOURD'HUI
-          </div>
-          {dailyScore !== null ? (
-            <div style={{ fontSize: 48, fontWeight: "bold", color: "#e0a13d" }}>
-              {dailyScore}
-              <span style={{ fontSize: 24, marginLeft: 5 }}>/10</span>
-            </div>
-          ) : (
-            <div style={{ fontSize: 16, color: "#a8a199", padding: "20px 0" }}>
-              Pas encore rempli aujourd'hui
-            </div>
-          )}
-        </div>
-
-        <div
-          style={{
-            ...CARD_STYLE,
-            marginBottom: 0,
-            border: "1px solid #4fae7d88",
-          }}
-        >
-          <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8 }}>
-            MOYENNE CETTE SEMAINE
-          </div>
-          {weeklyAverage !== null ? (
-            <div style={{ fontSize: 48, fontWeight: "bold", color: "#4fae7d" }}>
-              {weeklyAverage}
-              <span style={{ fontSize: 24, marginLeft: 5 }}>/10</span>
-            </div>
-          ) : (
-            <div style={{ fontSize: 16, color: "#a8a199", padding: "20px 0" }}>
-              Aucune donnée cette semaine
-            </div>
-          )}
-        </div>
-      </div>
+      {(() => {
+        const sc = (v) => (v === null ? "#6f6a62" : Number(v) >= 7 ? "#4fae7d" : Number(v) >= 5 ? "#d9a441" : "#d9695a");
+        const dow = (new Date().getDay() + 6) % 7 + 1; // jours écoulés de la semaine (lundi = 1)
+        return (
+          <KpiGrid>
+            <Kpi
+              icon="📅"
+              label="Aujourd'hui"
+              value={dailyScore !== null ? `${dailyScore}/10` : "À remplir"}
+              color={dailyScore !== null ? sc(dailyScore) : "#e0a13d"}
+              sub={dailyScore !== null ? "Questionnaire rempli" : "Touche pour le remplir"}
+              onClick={() => navigate("/wellness-form")}
+            />
+            <Kpi
+              icon="📊"
+              label="Moyenne semaine"
+              value={weeklyAverage !== null ? `${weeklyAverage}/10` : "—"}
+              color={sc(weeklyAverage)}
+              sub={weeklyAverage !== null ? "Semaine en cours" : "Aucune donnée cette semaine"}
+            />
+            <Kpi
+              icon="✅"
+              label="Régularité"
+              value={`${thisWeekEntries.length}/${dow}`}
+              color={thisWeekEntries.length >= dow ? "#4fae7d" : thisWeekEntries.length >= dow / 2 ? "#d9a441" : "#d9695a"}
+              sub="Questionnaires remplis cette semaine"
+            />
+          </KpiGrid>
+        );
+      })()}
 
       {todayEntry && todayEntry.sick && (
         <div style={{ marginBottom: 16, padding: "12px 16px", borderRadius: 12, background: "rgba(217,105,90,0.12)", border: "1px solid rgba(217,105,90,0.5)", color: "#f0b3aa", fontSize: 14 }}>
@@ -298,7 +267,7 @@ export default function Wellness() {
                   padding: "10px 12px",
                   background: "#0d0c0a",
                   borderRadius: 10,
-                  border: e.date === today ? "1px solid #e0a13d66" : "1px solid rgba(255,255,255,0.06)",
+                  border: e.date === today ? "1px solid #e0a13d66" : "1px solid #2a2620",
                 }}
               >
                 <div>
@@ -321,7 +290,7 @@ export default function Wellness() {
                     <button
                       type="button"
                       onClick={() => setConfirmId(null)}
-                      style={{ padding: "7px 12px", background: "transparent", color: "#a8a199", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
+                      style={{ padding: "7px 12px", background: "transparent", color: "#a8a199", border: "1px solid #3a342a", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
                     >
                       Annuler
                     </button>

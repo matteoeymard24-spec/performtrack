@@ -67,7 +67,7 @@ export default function FatigueFeedback({ athleteId, date, level, label, reasons
   });
 
   return (
-    <div style={{ marginBottom: 14, background: "#0d0c0a", borderRadius: 10, padding: 12, border: "1px solid rgba(255,255,255,0.06)" }}>
+    <div style={{ marginBottom: 14, background: "#0d0c0a", borderRadius: 10, padding: 12, border: "1px solid #2a2620" }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 6 }}>🎯 Ce statut était-il juste ?</div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button disabled={busy} onClick={() => save("right")} style={btn("right", "", "#4fae7d")}>✅ Juste</button>

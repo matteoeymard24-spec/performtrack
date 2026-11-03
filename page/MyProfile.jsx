@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { Page, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE, PAGE_SUB } from "../component/ui";
+import { Page, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE, PAGE_SUB, PageHeader } from "../component/ui";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
@@ -112,8 +112,7 @@ export default function MyProfile() {
 
   return (
     <Page>
-      <h2 style={PAGE_TITLE}>👤 Mon Profil</h2>
-      <p style={PAGE_SUB}>{isAdmin ? "👑 Administrateur" : "🏃 Athlète"}</p>
+      <PageHeader title="👤 Mon profil" subtitle={isAdmin ? "👑 Administrateur" : "🏃 Athlète"} />
 
       {/* Carte principale */}
       <div style={CARD_STYLE}>

@@ -5,7 +5,7 @@ import { db } from "../firebase";
 import { getWorkoutDocs, getScopedUserDocs, daysAgoStr, WINDOW } from "../component/workoutQueries";
 import { collection, getDocs } from "firebase/firestore";
 import { Navigate } from "react-router-dom";
-import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB, FIELD_STYLE } from "../component/ui";
+import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB, FIELD_STYLE, PageHeader } from "../component/ui";
 import {
   LineChart,
   Line,
@@ -229,8 +229,7 @@ export default function ACWRMonitoring() {
 
   return (
     <Page>
-      <h2 style={PAGE_TITLE}>Monitoring REDI</h2>
-      <p style={PAGE_SUB}>Charge d'entraînement pondérée (sRPE) et z-score individualisé</p>
+      <PageHeader title="📈 Monitoring REDI" subtitle="Charge d'entraînement pondérée (sRPE) et z-score individualisé" />
 
       <FoldCard id="intro" fold={fold} title="ℹ️ Comprendre le REDI">
         <p style={{ color: "#a8a199", margin: "0 0 10px 0", fontSize: 13, lineHeight: 1.5 }}>
@@ -489,7 +488,7 @@ export default function ACWRMonitoring() {
                       <Tooltip
                         contentStyle={{
                           background: "#151310",
-                          border: "1px solid rgba(255,255,255,0.16)",
+                          border: "1px solid #3a342a",
                           borderRadius: 8,
                         }}
                         labelStyle={{ color: "#f3f0ea" }}

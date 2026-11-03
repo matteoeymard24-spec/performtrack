@@ -9,7 +9,7 @@ import { SUPRA_MAX_PCT } from "../component/contraction";
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
-import { Page, FoldCard, useFold, PAGE_TITLE, PAGE_SUB, MUTED, TEXT, ACCENT } from "../component/ui";
+import { Page, FoldCard, useFold, PAGE_TITLE, PAGE_SUB, MUTED, TEXT, ACCENT, PageHeader } from "../component/ui";
 import {
   REDI_ACUTE_N,
   REDI_ACUTE_LAMBDA,
@@ -89,11 +89,11 @@ export default function Reference() {
 
   return (
     <Page>
-      <h2 style={PAGE_TITLE}>📚 Référence</h2>
-      <p style={PAGE_SUB}>
-        Tous les calculs de l'app, modalité par modalité, avec leurs sources. Visible uniquement par le superadmin. Les
-        chiffres de cette page sont lus directement dans le code de calcul : ils se mettent à jour tout seuls quand un réglage change.
-      </p>
+      <PageHeader
+        eyebrow="Superadmin"
+        title="📚 Référence"
+        subtitle="Tous les calculs de l'app, modalité par modalité, avec leurs sources. Les chiffres sont lus directement dans le code de calcul : ils se mettent à jour tout seuls."
+      />
 
       {/* ============ CHARGE ============ */}
       <FoldCard id="charge" fold={fold} title="⚖️ Charge d'entraînement (sRPE, REDI, monotonie)">

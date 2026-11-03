@@ -47,7 +47,7 @@ import { LEVELS as RUGBY_LEVELS } from "../component/rugbyLevels";
 import CyclingRadar, { CyclingNorms } from "../component/CyclingRadar";
 import { CYCLING_LEVELS, CYCLING_SEXES, normSex } from "../component/cycling";
 import { cyclingBilan } from "../component/cyclingRows";
-import { FoldBtn, useFold } from "../component/ui";
+import { FoldBtn, useFold, PageHeader } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
@@ -93,7 +93,7 @@ function FoldHead({ title, color, open, onToggle, right, gap = 6 }) {
   );
 }
 
-const cardStyle = { background: SURFACE, padding: 16, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", marginBottom: 16 };
+const cardStyle = { background: SURFACE, padding: 16, borderRadius: 12, border: "1px solid #2a2620", marginBottom: 16 };
 const pill = (active) => ({
   padding: "8px 14px",
   borderRadius: 999,
@@ -865,12 +865,12 @@ export default function Tests() {
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", color: TEXT }}>
-      <h2 style={{ margin: "0 0 4px 0", fontSize: 24, fontWeight: 700 }}>🧪 Tests</h2>
-      <div style={{ color: MUTED, fontSize: 13, marginBottom: 14 }}>
-        {isCoach
+      <PageHeader
+        title="🧪 Tests"
+        subtitle={isCoach
           ? "Saisis les tests d'endurance, de mobilité, de force isométrique et de puissance. Les séances énergétiques s'appuient sur le test de référence choisi pour chaque athlète."
           : "Consulte tes résultats, tes normes et ton bilan. La saisie des tests est faite par ton coach."}
-      </div>
+      />
 
       {/* Choix de l'athlète + paramètres (repliables, l'onglet reste visible) */}
       <div style={cardStyle}>

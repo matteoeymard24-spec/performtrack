@@ -4,7 +4,7 @@ import { collection, getDocs, getDoc, setDoc, updateDoc, doc, query, where, dele
 import { useEffect, useState, useRef } from "react";
 import { generateCoachCode, coachIdsOf, coachFields } from "../component/coachScope";
 import { useAuth } from "../auth/AuthProvider";
-import { Page, CARD_STYLE, CARD_ACCENT_BORDER, CARD_TITLE, PAGE_TITLE, FIELD_STYLE, FoldBtn } from "../component/ui";
+import { Page, CARD_STYLE, CARD_ACCENT_BORDER, CARD_TITLE, PAGE_TITLE, FIELD_STYLE, FoldBtn, PageHeader, Kpi, KpiGrid } from "../component/ui";
 import { Navigate } from "react-router-dom";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
@@ -622,7 +622,18 @@ export default function Athletes() {
 
   return (
     <Page>
-      <h2 style={{ ...PAGE_TITLE, marginBottom: 18 }}>👥 Gestion des Athlètes</h2>
+      <PageHeader title="👥 Athlètes" subtitle="Ton code coach, les demandes d'inscription et la gestion des comptes" />
+      {(() => {
+        const ath = scopedUsers.filter((u) => u.status !== "pending" && u.role !== "admin" && u.superAdmin !== true);
+        const adm = scopedUsers.filter((u) => u.role === "admin" || u.superAdmin === true);
+        return (
+          <KpiGrid>
+            <Kpi icon="🏉" label="Athlètes" value={ath.length} color="#e0a13d" sub="Comptes actifs" />
+            <Kpi icon="⏳" label="Demandes" value={pendingUsers.length} color={pendingUsers.length ? "#d9a441" : "#6f6a62"} sub={pendingUsers.length ? "En attente de validation" : "Aucune en attente"} />
+            {isSuperAdmin && <Kpi icon="🛡️" label="Coachs / admins" value={adm.length} color="#4a90d9" sub="Comptes admin" />}
+          </KpiGrid>
+        );
+      })()}
 
       {/* Mon code coach : à donner aux athlètes pour qu'ils te rejoignent à l'inscription */}
       <div style={{ ...CARD_STYLE, border: CARD_ACCENT_BORDER }}>

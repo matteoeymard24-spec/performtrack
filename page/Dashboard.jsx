@@ -72,7 +72,7 @@ const CARD_ACCENT_BORDER = "1px solid rgba(224,161,61,0.55)";
 const CARD_TITLE = { margin: "0 0 14px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" };
 const CHART_TOOLTIP = {
   background: "#1a1815",
-  border: "1px solid rgba(255,255,255,0.16)",
+  border: "1px solid #3a342a",
   borderRadius: 8,
   fontSize: 12,
 };
@@ -172,7 +172,8 @@ export default function Dashboard() {
   // l'en-tête de chaque partie reste toujours visible, avec un bouton ▾/▸
   // qui replie juste son contenu. Permet de se concentrer sur une seule
   // donnée (ex: juste le CMJ, sans la VMA) sans rien masquer en bloc.
-  const [sectionVisibility, setSectionVisibility] = useState({
+  const [sectionVisibility, setSectionVisibility] = useState(() => {
+    const base = {
     cmjSessions: true,
     cross: true,
     todayWorkout: true,
@@ -182,9 +183,21 @@ export default function Dashboard() {
     weight: true,
     vma: true,
     cmj: true,
+    vmacmj: true,
+    };
+    try {
+      return { ...base, ...JSON.parse(localStorage.getItem("pt_dash_sections") || "{}") };
+    } catch (e) {
+      return base;
+    }
   });
+  // Mémorisé sur l'appareil : une carte repliée le reste à la prochaine ouverture de fiche.
   const toggleSection = (key) =>
-    setSectionVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
+    setSectionVisibility((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try { localStorage.setItem("pt_dash_sections", JSON.stringify(next)); } catch (e) { /* stockage indisponible */ }
+      return next;
+    });
 
   // Vue "Moi" du coach : il voit SON propre dashboard, exactement comme un
   // athlète le voit (mêmes blocs, mêmes réglages d'affichage).
@@ -237,16 +250,7 @@ export default function Dashboard() {
     <button
       onClick={() => toggleSection(sectionKey)}
       title={sectionVisibility[sectionKey] ? "Replier" : "Déplier"}
-      style={{
-        padding: "4px 10px",
-        background: "#2a2620",
-        color: "#f3f0ea",
-        border: "none",
-        borderRadius: 6,
-        cursor: "pointer",
-        fontSize: 13,
-        flexShrink: 0,
-      }}
+      style={{ padding: "3px 10px", background: "transparent", color: "#a8a199", border: "1px solid #2a2620", borderRadius: 8, cursor: "pointer", fontSize: 13, flexShrink: 0 }}
     >
       {sectionVisibility[sectionKey] ? "▾" : "▸"}
     </button>
@@ -1957,7 +1961,7 @@ export default function Dashboard() {
                     padding: 12,
                     background: "#2a2620",
                     color: "#f3f0ea",
-                    border: "1px solid rgba(255,255,255,0.12)",
+                    border: "1px solid #2a2620",
                     borderRadius: 8,
                     cursor: "pointer",
                     fontWeight: "bold",
@@ -2094,7 +2098,7 @@ export default function Dashboard() {
                   <Tooltip
                     contentStyle={{
                       background: "#1a1815",
-                      border: "1px solid rgba(255,255,255,0.16)",
+                      border: "1px solid #3a342a",
                       borderRadius: 8,
                       fontSize: 12,
                     }}
@@ -2554,7 +2558,7 @@ export default function Dashboard() {
                         <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
                         <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
                         <Tooltip
-                          contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                          contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
                           formatter={(value) => [`${value} km/h`, "VMA"]}
                         />
                         <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
@@ -2582,7 +2586,7 @@ export default function Dashboard() {
                         <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
                         <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
                         <Tooltip
-                          contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                          contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
                           formatter={(value) => [`${value} cm`, "CMJ"]}
                         />
                         <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
@@ -2643,7 +2647,7 @@ export default function Dashboard() {
                     value={rmSearchSelf}
                     onChange={(e) => setRmSearchSelf(e.target.value)}
                     placeholder={`🔍 Chercher un exercice (${Object.keys(athleteRMFullHistory).length})`}
-                    style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", background: "#0d0c0a", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, color: "#f3f0ea", fontSize: 14, outline: "none", marginBottom: 12 }}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 8, color: "#f3f0ea", fontSize: 14, outline: "none", marginBottom: 12 }}
                   />
                   {total === 0 && (
                     <div style={{ fontSize: 13, color: "#a8a199", textAlign: "center", padding: 12 }}>Aucun exercice trouvé.</div>
@@ -3039,10 +3043,11 @@ export default function Dashboard() {
             left: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(0,0,0,0.95)",
+            background: "rgba(8,7,6,0.82)",
+            backdropFilter: "blur(4px)",
             zIndex: 1000,
             overflowY: "auto",
-            padding: 20,
+            padding: isMobileView() ? 8 : 20,
           }}
         >
           <div
@@ -3050,69 +3055,71 @@ export default function Dashboard() {
               maxWidth: 1100,
               margin: "0 auto",
               background: "#0d0c0a",
-              borderRadius: 12,
-              padding: 30,
+              borderRadius: 14,
+              border: "1px solid #2a2620",
+              padding: isMobileView() ? 14 : 26,
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 25,
-                borderBottom: "2px solid #e0a13d",
-                paddingBottom: 15,
-              }}
-            >
-              <h2 style={{ margin: 0, fontSize: 24 }}>
-                📊 {getAthleteName(showAthleteDetail)}
-              </h2>
-              <button
-                onClick={() => {
-                  setShowAthleteDetail(null);
-                  setAthleteDetails(null);
-                  setDetailedAthleteRMHistory({});
-                  setAcwrHistory([]);
-                }}
-                style={{
-                  padding: "10px 20px",
-                  background: "#d9695a",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 16,
-                  fontWeight: "bold",
-                }}
-              >
-                ✕ Fermer
-              </button>
-            </div>
+            {(() => {
+              const nm = getAthleteName(showAthleteDetail) || "";
+              const ini = nm.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+              const st = showAthleteDetail.status || null;
+              const col = st?.color || "#e0a13d";
+              return (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                    <div style={{ width: 48, height: 48, borderRadius: 24, background: `${col}22`, border: `2px solid ${col}`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 17, color: col, flexShrink: 0 }}>
+                      {ini || "?"}
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700 }}>Fiche athlète</div>
+                      <h2 style={{ margin: 0, fontSize: 22, lineHeight: 1.2 }}>{nm}</h2>
+                      {st?.label && (
+                        <span style={{ display: "inline-block", marginTop: 4, fontSize: 12, fontWeight: 700, color: col, border: `1px solid ${col}66`, borderRadius: 999, padding: "1px 9px" }}>
+                          {st.label}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    className="pt-btn"
+                    onClick={() => {
+                      setShowAthleteDetail(null);
+                      setAthleteDetails(null);
+                      setDetailedAthleteRMHistory({});
+                      setAcwrHistory([]);
+                    }}
+                  >
+                    ✕ Fermer
+                  </button>
+                </div>
+              );
+            })()}
 
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: 15,
-                marginBottom: 25,
+                gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 150px), 1fr))",
+                gap: 10,
+                marginBottom: 18,
               }}
             >
               {showAthleteDetail.wellnessScore !== null && (
                 <div
                   style={{
                     background: "#151310",
-                    padding: 18,
-                    borderRadius: 10,
-                    textAlign: "center",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #2a2620",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 2, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                     WELLNESS
                   </div>
                   <div
                     style={{
-                      fontSize: 30,
-                      fontWeight: "bold",
+                      fontSize: 24,
+                      fontWeight: 800,
                       color: showAthleteDetail.wellnessStatus.color,
                     }}
                   >
@@ -3134,18 +3141,18 @@ export default function Dashboard() {
                 <div
                   style={{
                     background: "#151310",
-                    padding: 18,
-                    borderRadius: 10,
-                    textAlign: "center",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #2a2620",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 2, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                     MOY. HEBDOMADAIRE
                   </div>
                   <div
                     style={{
-                      fontSize: 30,
-                      fontWeight: "bold",
+                      fontSize: 24,
+                      fontWeight: 800,
                       color: "#4fae7d",
                     }}
                   >
@@ -3157,18 +3164,18 @@ export default function Dashboard() {
                 <div
                   style={{
                     background: "#151310",
-                    padding: 18,
-                    borderRadius: 10,
-                    textAlign: "center",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #2a2620",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 2, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                     REDI
                   </div>
                   <div
                     style={{
-                      fontSize: 30,
-                      fontWeight: "bold",
+                      fontSize: 24,
+                      fontWeight: 800,
                       color: showAthleteDetail.acwrStatus.color,
                     }}
                   >
@@ -3188,18 +3195,18 @@ export default function Dashboard() {
                 <div
                   style={{
                     background: "#151310",
-                    padding: 18,
-                    borderRadius: 10,
-                    textAlign: "center",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #2a2620",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 2, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                     Z-SCORE WELLNESS
                   </div>
                   <div
                     style={{
-                      fontSize: 30,
-                      fontWeight: "bold",
+                      fontSize: 24,
+                      fontWeight: 800,
                       color: showAthleteDetail.wellnessZStatus.color,
                     }}
                   >
@@ -3219,18 +3226,18 @@ export default function Dashboard() {
                 <div
                   style={{
                     background: "#151310",
-                    padding: 18,
-                    borderRadius: 10,
-                    textAlign: "center",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #2a2620",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 2, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                     CMJ (vs baseline)
                   </div>
                   <div
                     style={{
-                      fontSize: 30,
-                      fontWeight: "bold",
+                      fontSize: 24,
+                      fontWeight: 800,
                       color: showAthleteDetail.cmjStatus.color,
                     }}
                   >
@@ -3251,18 +3258,18 @@ export default function Dashboard() {
                 <div
                   style={{
                     background: "#151310",
-                    padding: 18,
-                    borderRadius: 10,
-                    textAlign: "center",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #2a2620",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                  <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 2, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                     FIABILITÉ RPE
                   </div>
                   <div
                     style={{
-                      fontSize: 30,
-                      fontWeight: "bold",
+                      fontSize: 24,
+                      fontWeight: 800,
                       color: showAthleteDetail.rpeReliabilityStatus.color,
                     }}
                   >
@@ -3281,16 +3288,16 @@ export default function Dashboard() {
               <div
                 style={{
                   background: "#151310",
-                  padding: 18,
-                  borderRadius: 10,
-                  textAlign: "center",
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #2a2620",
                 }}
               >
-                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 2, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                   POIDS
                 </div>
                 <div
-                  style={{ fontSize: 30, fontWeight: "bold", color: "#e0a13d" }}
+                  style={{ fontSize: 24, fontWeight: 800, color: "#e0a13d" }}
                 >
                   {showAthleteDetail.weight
                     ? `${showAthleteDetail.weight} kg`
@@ -3301,16 +3308,16 @@ export default function Dashboard() {
               <div
                 style={{
                   background: "#151310",
-                  padding: 18,
-                  borderRadius: 10,
-                  textAlign: "center",
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #2a2620",
                 }}
               >
-                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 5 }}>
+                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 2, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase" }}>
                   SÉANCES
                 </div>
                 <div
-                  style={{ fontSize: 30, fontWeight: "bold", color: "#4fae7d" }}
+                  style={{ fontSize: 24, fontWeight: 800, color: "#4fae7d" }}
                 >
                   {showAthleteDetail.completedSessions || 0} / {showAthleteDetail.totalSessions || 0}
                 </div>
@@ -3327,9 +3334,9 @@ export default function Dashboard() {
                 style={{
                   background: "#151310",
                   padding: 18,
-                  borderRadius: 10,
-                  marginBottom: 25,
-                  border: "1px solid rgba(255,255,255,0.16)",
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid #2a2620",
                 }}
               >
                 <div
@@ -3341,7 +3348,7 @@ export default function Dashboard() {
                     marginBottom: sectionVisibility.cmjSessions ? 12 : 0,
                   }}
                 >
-                  <h3 style={{ margin: 0, fontSize: 16, color: "#d9a441" }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                     🦘 Évolution CMJ (détente verticale)
                   </h3>
                   <SectionToggleBtn sectionKey="cmjSessions" />
@@ -3363,7 +3370,7 @@ export default function Dashboard() {
                     <Tooltip
                       contentStyle={{
                         background: "#1a1815",
-                        border: "1px solid rgba(255,255,255,0.16)",
+                        border: "1px solid #3a342a",
                         borderRadius: 8,
                         fontSize: 12,
                       }}
@@ -3391,8 +3398,9 @@ export default function Dashboard() {
                 style={{
                   background: "#151310",
                   padding: 18,
-                  borderRadius: 10,
-                  marginBottom: 25,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid #2a2620",
                   border: "1px solid rgba(217,105,90,0.4)",
                 }}
               >
@@ -3410,7 +3418,7 @@ export default function Dashboard() {
                     color: "#d9695a",
                   }}
                 >
-                  <h3 style={{ margin: 0, fontSize: 16, color: "#d9695a" }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                     🚑 Historique de blessures ({showAthleteDetail.injuries.length})
                   </h3>
                   <span style={{ fontSize: 13, color: "#a8a199" }}>
@@ -3444,7 +3452,7 @@ export default function Dashboard() {
                                 type="date"
                                 value={injuryEditDraft?.date || ""}
                                 onChange={(e) => setInjuryEditDraft((d) => ({ ...d, date: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
                               />
                             </div>
                             <div>
@@ -3453,7 +3461,7 @@ export default function Dashboard() {
                                 type="text"
                                 value={injuryEditDraft?.zone || ""}
                                 onChange={(e) => setInjuryEditDraft((d) => ({ ...d, zone: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
                               />
                             </div>
                             <div>
@@ -3461,7 +3469,7 @@ export default function Dashboard() {
                               <select
                                 value={injuryEditDraft?.tissueType || "muscle"}
                                 onChange={(e) => setInjuryEditDraft((d) => ({ ...d, tissueType: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
                               >
                                 {Object.entries(TISSUE_LABELS).map(([k, label]) => (
                                   <option key={k} value={k}>{label}</option>
@@ -3473,7 +3481,7 @@ export default function Dashboard() {
                               <select
                                 value={injuryEditDraft?.mechanism || "surcharge"}
                                 onChange={(e) => setInjuryEditDraft((d) => ({ ...d, mechanism: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
                               >
                                 {Object.entries(MECHANISM_LABELS).map(([k, label]) => (
                                   <option key={k} value={k}>{label}</option>
@@ -3487,7 +3495,7 @@ export default function Dashboard() {
                                 min="0"
                                 value={injuryEditDraft?.daysLost ?? ""}
                                 onChange={(e) => setInjuryEditDraft((d) => ({ ...d, daysLost: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea" }}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
                               />
                             </div>
                             <div style={{ gridColumn: "1 / -1" }}>
@@ -3496,7 +3504,7 @@ export default function Dashboard() {
                                 value={injuryEditDraft?.notes || ""}
                                 onChange={(e) => setInjuryEditDraft((d) => ({ ...d, notes: e.target.value }))}
                                 rows={2}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid rgba(255,255,255,0.16)", background: "#151310", color: "#f3f0ea", resize: "vertical" }}
+                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea", resize: "vertical" }}
                               />
                             </div>
                           </div>
@@ -3529,7 +3537,7 @@ export default function Dashboard() {
                             </button>
                             <button
                               onClick={() => { setEditingInjury(null); setInjuryEditDraft(null); }}
-                              style={{ padding: "8px 14px", background: "transparent", color: "#a8a199", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
+                              style={{ padding: "8px 14px", background: "transparent", color: "#a8a199", border: "1px solid #3a342a", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
                             >
                               Annuler
                             </button>
@@ -3546,7 +3554,7 @@ export default function Dashboard() {
                             color: "#a8a199",
                             marginBottom: 8,
                             paddingBottom: 8,
-                            borderBottom: "1px solid rgba(255,255,255,0.08)",
+                            borderBottom: "1px solid #2a2620",
                           }}
                         >
                           <div>
@@ -3603,8 +3611,9 @@ export default function Dashboard() {
               style={{
                 background: "#151310",
                 padding: 18,
-                borderRadius: 10,
-                marginBottom: 25,
+                borderRadius: 12,
+                marginBottom: 16,
+                border: "1px solid #2a2620",
               }}
             >
               <div
@@ -3616,7 +3625,7 @@ export default function Dashboard() {
                   marginBottom: sectionVisibility.todayWorkout ? 12 : 0,
                 }}
               >
-                <h3 style={{ margin: 0, fontSize: 17 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                   🏋️ Séance aujourd'hui
                 </h3>
                 <SectionToggleBtn sectionKey="todayWorkout" />
@@ -3687,11 +3696,12 @@ export default function Dashboard() {
               style={{
                 background: "#151310",
                 padding: 20,
-                borderRadius: 10,
-                marginBottom: 25,
+                borderRadius: 12,
+                marginBottom: 16,
+                border: "1px solid #2a2620",
               }}
             >
-              <h3 style={{ margin: "0 0 12px 0", fontSize: 17 }}>
+              <h3 style={{ margin: "0 0 12px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                 📋 Séances & feedbacks
               </h3>
               {(() => {
@@ -3941,8 +3951,9 @@ export default function Dashboard() {
                 style={{
                   background: "#151310",
                   padding: 20,
-                  borderRadius: 10,
-                  marginBottom: 25,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid #2a2620",
                 }}
               >
                 <div
@@ -3954,7 +3965,7 @@ export default function Dashboard() {
                     marginBottom: sectionVisibility.redi ? 15 : 0,
                   }}
                 >
-                  <h3 style={{ margin: 0, fontSize: 17 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                     📊 Évolution REDI
                   </h3>
                   <SectionToggleBtn sectionKey="redi" />
@@ -4008,8 +4019,9 @@ export default function Dashboard() {
                 style={{
                   background: "#151310",
                   padding: 20,
-                  borderRadius: 10,
-                  marginBottom: 25,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid #2a2620",
                   textAlign: "center",
                 }}
               >
@@ -4047,11 +4059,12 @@ export default function Dashboard() {
                   style={{
                     background: "#151310",
                     padding: 20,
-                    borderRadius: 10,
-                    marginBottom: 20,
+                    borderRadius: 12,
+                    marginBottom: 16,
+                    border: "1px solid #2a2620",
                   }}
                 >
-                  <h3 style={{ margin: "0 0 4px 0", fontSize: 17, color: "#d9695a" }}>
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                     ⚠️ Indicateurs à surveiller
                   </h3>
                   <p style={{ margin: "0 0 15px 0", fontSize: 12, color: "#a8a199" }}>
@@ -4070,7 +4083,7 @@ export default function Dashboard() {
                       <Tooltip
                         contentStyle={{
                           background: "#1a1815",
-                          border: "1px solid rgba(255,255,255,0.16)",
+                          border: "1px solid #3a342a",
                           borderRadius: 8,
                           fontSize: 12,
                         }}
@@ -4088,11 +4101,12 @@ export default function Dashboard() {
                   style={{
                     background: "#151310",
                     padding: 20,
-                    borderRadius: 10,
-                    marginBottom: 25,
+                    borderRadius: 12,
+                    marginBottom: 16,
+                    border: "1px solid #2a2620",
                   }}
                 >
-                  <h3 style={{ margin: "0 0 4px 0", fontSize: 17, color: "#4fae7d" }}>
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                     ✅ Indicateurs positifs
                   </h3>
                   <p style={{ margin: "0 0 15px 0", fontSize: 12, color: "#a8a199" }}>
@@ -4111,7 +4125,7 @@ export default function Dashboard() {
                       <Tooltip
                         contentStyle={{
                           background: "#1a1815",
-                          border: "1px solid rgba(255,255,255,0.16)",
+                          border: "1px solid #3a342a",
                           borderRadius: 8,
                           fontSize: 12,
                         }}
@@ -4135,8 +4149,9 @@ export default function Dashboard() {
                 style={{
                   background: "#151310",
                   padding: 20,
-                  borderRadius: 10,
-                  marginBottom: 25,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid #2a2620",
                 }}
               >
                 <div
@@ -4148,7 +4163,7 @@ export default function Dashboard() {
                     marginBottom: sectionVisibility.weight ? 15 : 0,
                   }}
                 >
-                  <h3 style={{ margin: 0, fontSize: 17 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                     ⚖️ Évolution du poids
                   </h3>
                   <SectionToggleBtn sectionKey="weight" />
@@ -4226,11 +4241,13 @@ export default function Dashboard() {
 
             {showAthleteDetail && (
               <div
-                style={{ background: "#151310", padding: 20, borderRadius: 10 }}
+                style={{ background: "#151310", padding: 20, borderRadius: 12, border: "1px solid #2a2620", marginBottom: 16 }}
               >
-                <h3 style={{ margin: "0 0 15px 0", fontSize: 17, color: "#f3f0ea" }}>
-                  🏃 VMA & 🦘 CMJ
-                </h3>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: sectionVisibility.vmacmj ? 14 : 0 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>🏃 VMA & 🦘 CMJ</h3>
+                  <SectionToggleBtn sectionKey="vmacmj" />
+                </div>
+                {sectionVisibility.vmacmj && (
                 <div
                   style={{
                     display: "grid",
@@ -4270,7 +4287,7 @@ export default function Dashboard() {
                           <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
                           <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
                           <Tooltip
-                            contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                            contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
                             labelStyle={{ color: "#f3f0ea" }}
                             formatter={(value) => [`${value} km/h`, "VMA"]}
                           />
@@ -4366,7 +4383,7 @@ export default function Dashboard() {
                           <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
                           <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
                           <Tooltip
-                            contentStyle={{ background: "#1a1815", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 8, fontSize: 12 }}
+                            contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
                             labelStyle={{ color: "#f3f0ea" }}
                             formatter={(value) => [`${value} cm`, "CMJ"]}
                           />
@@ -4431,6 +4448,7 @@ export default function Dashboard() {
                     )}
                   </div>
                 </div>
+                )}
               </div>
             )}
 
@@ -4554,9 +4572,9 @@ export default function Dashboard() {
 
               return (
                 <div
-                  style={{ background: "#151310", padding: 20, borderRadius: 10 }}
+                  style={{ background: "#151310", padding: 20, borderRadius: 12, border: "1px solid #2a2620", marginBottom: 16 }}
                 >
-                  <h3 style={{ margin: "0 0 4px 0", fontSize: 17, color: "#f3f0ea" }}>
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
                     💪 Évolution des RM / charges
                   </h3>
                   <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 12 }}>
@@ -4716,7 +4734,7 @@ export default function Dashboard() {
                           <Tooltip
                             contentStyle={{
                               background: "#1a1815",
-                              border: "1px solid rgba(255,255,255,0.16)",
+                              border: "1px solid #3a342a",
                               borderRadius: 8,
                               fontSize: 12,
                             }}

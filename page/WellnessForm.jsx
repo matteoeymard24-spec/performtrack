@@ -288,7 +288,7 @@ export default function WellnessForm() {
             background: "#1a1815",
             padding: 20,
             borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.16)",
+            border: "1px solid #3a342a",
           }}
         >
           <h3 style={{ marginTop: 0, color: "#d9695a" }}>

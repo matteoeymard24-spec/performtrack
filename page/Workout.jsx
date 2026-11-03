@@ -12,7 +12,7 @@ import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockTy
 import { FOSTER_CR10, doneDateOf } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
-import { FoldBtn, useFold } from "../component/ui";
+import { FoldBtn, useFold, PageHeader } from "../component/ui";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
 import { TempoView, TempoEditor } from "../component/TempoView";
@@ -4869,7 +4869,7 @@ export default function Workout() {
               ? `2px solid ${dSt.color}`
               : isToday
               ? "2px solid #e0a13d"
-              : "1px solid rgba(255,255,255,0.16)",
+              : "1px solid #3a342a",
             borderRadius: isMobile ? 3 : 6,
             padding: isMobile ? 2 : 6,
             height: isMobile ? 70 : 90,  // height fixe au lieu de minHeight
@@ -5044,10 +5044,7 @@ export default function Workout() {
         overflowX: "hidden",
       }}
     >
-      <h2 style={{ fontSize: 24, marginBottom: 10 }}>🏋️ Workout</h2>
-      <p style={{ color: "#a8a199", marginBottom: 20, fontSize: 14 }}>
-        Planifie et suis tes séances
-      </p>
+      <PageHeader title="🏋️ Workout" subtitle="Planifie et suis tes séances" />
 
       {/* Bouton flottant "Annuler la suppression" : toujours visible en bas de
           l'écran tant qu'il reste une suppression à annuler. */}
@@ -5858,7 +5855,7 @@ export default function Workout() {
                               padding: "6px 14px",
                               background: "#2a2620",
                               color: "#f3f0ea",
-                              border: "1px solid rgba(255,255,255,0.12)",
+                              border: "1px solid #2a2620",
                               borderRadius: 6,
                               cursor: "pointer",
                               fontSize: 13,
@@ -5981,7 +5978,7 @@ export default function Workout() {
                               padding: "6px 10px",
                               background: "#2a2620",
                               color: "#f3f0ea",
-                              border: "1px solid rgba(255,255,255,0.12)",
+                              border: "1px solid #2a2620",
                               borderRadius: 6,
                               cursor: "pointer",
                               fontSize: 13,
@@ -5995,7 +5992,7 @@ export default function Workout() {
                               padding: "6px 10px",
                               background: "#2a2620",
                               color: "#f3f0ea",
-                              border: "1px solid rgba(255,255,255,0.12)",
+                              border: "1px solid #2a2620",
                               borderRadius: 6,
                               cursor: uploadingMedia[`catalog-${entry.key}`] ? "wait" : "pointer",
                               fontSize: 13,
@@ -6025,7 +6022,7 @@ export default function Workout() {
                               padding: "6px 10px",
                               background: entry.videoUrl ? "rgba(224,161,61,0.18)" : "#2a2620",
                               color: entry.videoUrl ? "#e0a13d" : "#f3f0ea",
-                              border: "1px solid rgba(255,255,255,0.12)",
+                              border: "1px solid #2a2620",
                               borderRadius: 6,
                               cursor: "pointer",
                               fontSize: 13,
@@ -6040,7 +6037,7 @@ export default function Workout() {
                               padding: "6px 10px",
                               background: "#2a2620",
                               color: "#f3f0ea",
-                              border: "1px solid rgba(255,255,255,0.12)",
+                              border: "1px solid #2a2620",
                               borderRadius: 6,
                               cursor: "pointer",
                               fontSize: 13,
@@ -6509,7 +6506,7 @@ export default function Workout() {
                   borderRadius: 8,
                   padding: 12,
                   marginBottom: 10,
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  border: "1px solid #2a2620",
                 }}
               >
                 <div
@@ -7942,7 +7939,7 @@ export default function Workout() {
                               right: 0,
                               zIndex: 20,
                               background: "#1a1815",
-                              border: "1px solid rgba(255,255,255,0.16)",
+                              border: "1px solid #3a342a",
                               borderRadius: 8,
                               marginTop: 4,
                               maxHeight: 260,
@@ -7966,7 +7963,7 @@ export default function Workout() {
                                   cursor: "pointer",
                                   borderBottom:
                                     i < getSuggestionsFor(ex.name, workoutType).length - 1
-                                      ? "1px solid rgba(255,255,255,0.08)"
+                                      ? "1px solid #2a2620"
                                       : "none",
                                 }}
                               >
@@ -11450,7 +11447,7 @@ export default function Workout() {
                       padding: 16,
                       background: "#151310",
                       borderRadius: 8,
-                      border: "1px solid rgba(255,255,255,0.16)"
+                      border: "1px solid #3a342a"
                     }}
                   >
                     <h4 style={{ 

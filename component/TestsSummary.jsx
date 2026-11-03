@@ -125,7 +125,7 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = f
     strengthS.forEach((r) => items.push({ label: r.label, row: r }));
 
     return (
-      <div style={{ background: "#151310", padding: 20, borderRadius: 12, border: "1px solid rgba(255,255,255,0.08)", marginBottom: 16 }}>
+      <div style={{ background: "#151310", padding: 20, borderRadius: 12, border: "1px solid #2a2620", marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: collapsed ? 0 : 10 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: TEXT }}>{title}</h3>
           {onToggle && (

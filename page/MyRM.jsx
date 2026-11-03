@@ -16,7 +16,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { getTest, computeResult, toStoredResult } from "../component/testsCalc";
-import { Page, FoldCard, useFold, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE } from "../component/ui";
+import { Page, FoldCard, useFold, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE, PageHeader, Kpi, KpiGrid } from "../component/ui";
 import {
   LineChart,
   Line,
@@ -729,7 +729,10 @@ export default function MyRM() {
 
   return (
     <Page>
-      <h2 style={{ ...PAGE_TITLE, marginBottom: 16 }}>💪 {viewUid ? "RM de l'athlète" : "Mes RM"}</h2>
+      <PageHeader
+        title={`💪 ${viewUid ? "RM de l'athlète" : "Mes RM"}`}
+        subtitle="Charges maximales estimées, mises à jour à chaque séance"
+      />
 
       {isAdminLike && (
         <div style={{ ...CARD_STYLE, padding: 14, marginBottom: 12, ...(viewUid ? { border: CARD_ACCENT_BORDER } : {}) }}>
@@ -812,6 +815,22 @@ export default function MyRM() {
           )}
         </div>
       )}
+
+      {(() => {
+        const list = Object.keys(rmHistory).filter((ex) => ex !== "vma");
+        const lastOf = (ex) => (rmHistory[ex] || [])[rmHistory[ex].length - 1];
+        const filled = list.filter((ex) => lastOf(ex) && lastOf(ex).kg != null);
+        const since = Date.now() - 30 * 86400000;
+        const recent = filled.filter((ex) => new Date(lastOf(ex).date).getTime() >= since);
+        return (
+          <KpiGrid>
+            <Kpi icon="💪" label="RM enregistrés" value={filled.length} color="#e0a13d" sub={`${list.length - filled.length} en attente d'une séance`} />
+            <Kpi icon="🔄" label="Mis à jour (30 j)" value={recent.length} color={recent.length ? "#4fae7d" : "#6f6a62"} sub="RM recalculés récemment" />
+            <Kpi icon="🏃" label="VMA" value={vma ? `${vma.kg} km/h` : "—"} color={vma ? "#4fae7d" : "#6f6a62"} sub={vma?.sourceTest || "Mesurée lors des tests"} />
+            <Kpi icon="🦘" label="CMJ" value={cmj ? `${cmj.kg} cm` : "—"} color={cmj ? "#e0a13d" : "#6f6a62"} sub="Détente verticale" />
+          </KpiGrid>
+        );
+      })()}
 
       {/* Info */}
       <FoldCard id="info" fold={fold} title="💡 Comment ça fonctionne ?">
@@ -901,7 +920,7 @@ export default function MyRM() {
                 value={sprintVals[k]}
                 placeholder={ph}
                 onChange={(e) => setSprintVals((v) => ({ ...v, [k]: e.target.value }))}
-                style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid rgba(255,255,255,0.16)", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
+                style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #3a342a", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
               />
             </div>
           ))}
@@ -911,7 +930,7 @@ export default function MyRM() {
               type="date"
               value={sprintDate}
               onChange={(e) => setSprintDate(e.target.value)}
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid rgba(255,255,255,0.16)", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
+              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #3a342a", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
             />
           </div>
         </div>
@@ -1138,7 +1157,7 @@ export default function MyRM() {
                   right: 0,
                   zIndex: 20,
                   background: "#1a1815",
-                  border: "1px solid rgba(255,255,255,0.16)",
+                  border: "1px solid #3a342a",
                   borderRadius: 8,
                   marginTop: 4,
                   maxHeight: 260,
@@ -1162,7 +1181,7 @@ export default function MyRM() {
                       fontSize: 14,
                       color: "#f3f0ea",
                       textTransform: "capitalize",
-                      borderBottom: i < rmSuggestions.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none",
+                      borderBottom: i < rmSuggestions.length - 1 ? "1px solid #2a2620" : "none",
                     }}
                   >
                     {name}
@@ -1475,7 +1494,7 @@ export default function MyRM() {
                     <Tooltip
                       contentStyle={{
                         background: "#151310",
-                        border: "1px solid rgba(255,255,255,0.16)",
+                        border: "1px solid #3a342a",
                         borderRadius: 8,
                         fontSize: 12,
                       }}
@@ -1524,7 +1543,7 @@ export default function MyRM() {
                           background: "#0d0c0a",
                           padding: 14,
                           borderRadius: 10,
-                          border: "1px solid rgba(255,255,255,0.08)",
+                          border: "1px solid #2a2620",
                         }}
                       >
                         <div
