@@ -6,6 +6,7 @@ import { getWorkoutDocs, getScopedUserDocs, daysAgoStr, WINDOW } from "../compon
 import { collection, getDocs } from "firebase/firestore";
 import { Navigate } from "react-router-dom";
 import PersonPicker from "../component/PersonPicker";
+import { groupTargetMatches } from "../component/groupHistory";
 import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB, FIELD_STYLE, PageHeader } from "../component/ui";
 import {
   LineChart,
@@ -159,7 +160,7 @@ export default function ACWRMonitoring() {
           w.group === "total" ||
           w.group === athleteGroup ||
           w.targetUserId === athlete.id ||
-          myGroupIds.includes(w.group)
+          groupTargetMatches(w, athlete.id, customGroups) // groupe actuel, depuis sa date d'entrée
       );
 
       const dailyLoads = buildDailyLoads(relevantWorkouts, athlete.id);

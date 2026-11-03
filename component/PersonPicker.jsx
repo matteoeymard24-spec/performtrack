@@ -70,7 +70,8 @@ export function GroupChips({ groups = [], groupId, subId, onGroup, onSub, total,
         )}
       </div>
       {/* Sous-groupes : panneau rattaché au groupe choisi, à sa couleur */}
-      {sel && (sel.subGroups || []).length > 0 && (
+      {/* Un seul sous-groupe = le groupe lui-même : pas de panneau, le total du groupe suffit */}
+      {sel && (sel.subGroups || []).length > 1 && (
         <div
           style={{
             position: "relative",
@@ -108,7 +109,7 @@ export function GroupChips({ groups = [], groupId, subId, onGroup, onSub, total,
 }
 
 /* Liste de personnes en pastilles (initiales), ou liste déroulante au-delà de `max` personnes */
-function PeoplePick({ people, selectedId, onSelect, max = 30, placeholder }) {
+export function PeoplePick({ people, selectedId, onSelect, max = 30, placeholder }) {
   const sorted = people.slice().sort((a, b) => personName(a).localeCompare(personName(b)));
   if (!sorted.length) return <div style={{ fontSize: 13, color: MUTED }}>Personne dans cette sélection.</div>;
   if (sorted.length > max)

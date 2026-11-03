@@ -14,6 +14,7 @@ import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WAR
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
 import { FoldBtn, useFold, PageHeader } from "../component/ui";
 import { GroupChips } from "../component/PersonPicker";
+import { withMembershipHistory, groupTargetMatches, hasProgress, formerTargetsOf } from "../component/groupHistory";
 import { REC_TYPES, REC_PRESETS, REC_DEFAULT_PCT, recKeys, recTypeOf, recPctOf, recSecOf, recText } from "../component/enduranceRecovery";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
@@ -748,7 +749,8 @@ export default function Workout() {
             if ((sg.athleteIds || []).includes(currentUser.uid)) athleteGroups.push(makeSubGroupTarget(g.id, sg.id));
           });
         });
-        athleteGroups = [...new Set(athleteGroups)];
+        // + groupes quittés : pour retrouver les séances qu'il y a faites (voir groupHistory.js)
+        athleteGroups = [...new Set([...athleteGroups, ...formerTargetsOf(currentUser.uid, customGroups)])].slice(0, 30);
       }
       // Une séance vient peut-être d'être créée / modifiée / terminée : on vide le cache court des
       // séances pour que Dashboard, ACWR et Mes RM relisent la base à la prochaine visite.
@@ -774,20 +776,15 @@ export default function Workout() {
         // 3. Séances "moi" créées par lui
         // 4. Séances individuelles ciblées sur lui
         // 5. Séances ciblées sur un groupe personnalisé dont il fait partie
-        const myGroupIds = customGroups
-          .filter((g) => (g.athleteIds || []).includes(currentUser.uid))
-          .map((g) => g.id);
+        // 6. Changement de groupe : une séance commencée / faite reste toujours visible ; celles
+        //    d'un groupe (ou sous-groupe) ne s'affichent qu'à partir de sa date d'entrée (groupHistory.js).
         filtered = allWorkouts.filter((w) => {
+          if (hasProgress(w, currentUser.uid)) return true;
           if (w.group === "total") return true;
           if (w.group === userGroup) return true;
           if (w.group === "moi" && w.createdBy === currentUser.uid) return true;
           if (w.targetUserId === currentUser.uid) return true;
-          if (myGroupIds.includes(w.group)) return true;
-          const targetSub = findTargetSubGroup(w.group, customGroups);
-          if (targetSub && (targetSub.athleteIds || []).includes(currentUser.uid)) {
-            return true;
-          }
-          return false;
+          return groupTargetMatches(w, currentUser.uid, customGroups);
         });
       }
 
@@ -1012,12 +1009,15 @@ export default function Workout() {
             await fetchSessions();
           }
         }
-        await updateDoc(doc(db, "groups", editingGroupId), {
-          name: groupNameInput.trim(),
-          athleteIds: groupAthleteIds,
-          subGroups: cleanSubGroups,
-          color: groupColorInput || "",
-        });
+        await updateDoc(
+          doc(db, "groups", editingGroupId),
+          withMembershipHistory(before, {
+            name: groupNameInput.trim(),
+            athleteIds: groupAthleteIds,
+            subGroups: cleanSubGroups,
+            color: groupColorInput || "",
+          })
+        );
       } else {
         await addDoc(collection(db, "groups"), {
           name: groupNameInput.trim(),
@@ -4616,16 +4616,12 @@ export default function Workout() {
 
   const isEventVisibleToAthlete = (evt, athlete) => {
     if (!athlete) return true;
+    if (hasProgress(evt, athlete.id)) return true; // faite / commencée : toujours (même groupe quitté)
     if (evt.group === "total") return true;
     if (evt.targetUserId === athlete.id) return true;
     if (evt.group === "moi") return evt.createdBy === athlete.id;
     if (athlete.group && evt.group === athlete.group) return true;
-    const memberGroupIds = customGroups
-      .filter((g) => (g.athleteIds || []).includes(athlete.id))
-      .map((g) => g.id);
-    if (memberGroupIds.includes(evt.group)) return true;
-    const targetSub = findTargetSubGroup(evt.group, customGroups);
-    return !!targetSub && (targetSub.athleteIds || []).includes(athlete.id);
+    return groupTargetMatches(evt, athlete.id, customGroups); // groupe actuel, depuis sa date d'entrée
   };
 
   // Ouvre le formulaire de création pré-rempli pour CET athlète (ciblage
@@ -6207,13 +6203,16 @@ export default function Workout() {
                   };
                   const removeFromGroup = async (id) => {
                     try {
-                      await updateDoc(doc(db, "groups", g.id), {
-                        athleteIds: (g.athleteIds || []).filter((x) => x !== id),
-                        subGroups: (g.subGroups || []).map((sg) => ({
-                          ...sg,
-                          athleteIds: (sg.athleteIds || []).filter((x) => x !== id),
-                        })),
-                      });
+                      await updateDoc(
+                        doc(db, "groups", g.id),
+                        withMembershipHistory(g, {
+                          athleteIds: (g.athleteIds || []).filter((x) => x !== id),
+                          subGroups: (g.subGroups || []).map((sg) => ({
+                            ...sg,
+                            athleteIds: (sg.athleteIds || []).filter((x) => x !== id),
+                          })),
+                        })
+                      );
                       await fetchGroupsList();
                     } catch (e) {
                       alert("❌ " + e.message);

@@ -55,10 +55,23 @@ service cloud.firestore {
         request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.get('athleteIds', []);
     }
 
-    // Séance ciblant un groupe ("<id>") ou un sous-groupe ("sg:<id>:<sous-groupe>") dont il est membre.
+    // L'athlète connecté a-t-il fait partie du groupe gid (historique « formerMembers » posé par l'app
+    // quand un coach le retire / le change de groupe) ? Lui permet de relire les séances de son
+    // ancien groupe — même créées par un autre coach — pour garder ses séances faites.
+    function groupHadMe(gid) {
+      return exists(/databases/$(database)/documents/groups/$(gid)) &&
+        request.auth.uid in get(/databases/$(database)/documents/groups/$(gid)).data.get('formerMembers', {});
+    }
+
+    function groupHasOrHadMe(gid) {
+      return groupHasMe(gid) || groupHadMe(gid);
+    }
+
+    // Séance ciblant un groupe ("<id>") ou un sous-groupe ("sg:<id>:<sous-groupe>") dont il est
+    // (ou a été) membre. L'app n'affiche ensuite que les séances qu'il a faites dans un ancien groupe.
     function athleteInGroup(g) {
-      return (g.matches('sg:.*') && groupHasMe(g.split(':')[1])) ||
-        (!g.matches('sg:.*') && g != 'moi' && g != 'total' && groupHasMe(g));
+      return (g.matches('sg:.*') && groupHasOrHadMe(g.split(':')[1])) ||
+        (!g.matches('sg:.*') && g != 'moi' && g != 'total' && groupHasOrHadMe(g));
     }
 
     // ===================== USERS =====================

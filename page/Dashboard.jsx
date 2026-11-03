@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { isMobileView } from "../component/viewMode";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
+import { groupTargetMatches, formerTargetsOf, hasProgress } from "../component/groupHistory";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
 import { rmSerie } from "../component/methods";
@@ -597,12 +598,13 @@ export default function Dashboard() {
         const allWorkouts = (
           await getWorkoutDocs({
             since: daysAgoStr(WINDOW.athlete),
-            groups: [...new Set(["total", userGrp, ...myGroupIds])],
+            // + groupes quittés : pour retrouver les séances faites là-bas (groupHistory.js)
+            groups: [...new Set(["total", userGrp, ...myGroupIds, ...formerTargetsOf(currentUser.uid, customGroups)])].slice(0, 30),
           })
         ).docs.map((d) => ({ id: d.id, ...d.data() }));
 
         userWorkouts = allWorkouts.filter((w) => {
-          if (w.userProgress?.[currentUser.uid]?.completedAt) return true; // terminée par moi : compte toujours
+          if (hasProgress(w, currentUser.uid)) return true; // commencée / terminée par moi : compte toujours
           // séances du coach de l'athlète uniquement (athlète sans coach : tout, comme avant)
           if (!athleteCanSeeWorkout(w, { id: currentUser.uid, coachId: userProfile?.coachId || null, coachIds: userProfile?.coachIds || [] }, myGroupIds)) return false;
           return (
@@ -610,7 +612,7 @@ export default function Dashboard() {
             w.group === userGrp ||
             (w.group === "moi" && w.createdBy === currentUser.uid) ||
             w.targetUserId === currentUser.uid ||
-            myGroupIds.includes(w.group)
+            groupTargetMatches(w, currentUser.uid, customGroups) // groupe actuel, depuis ma date d'entrée
           );
         });
 
@@ -1003,7 +1005,7 @@ export default function Dashboard() {
                 (w.group === "total" ||
                   w.group === uGrp ||
                   w.targetUserId === u.id ||
-                  uGroupIds.includes(w.group)))
+                  groupTargetMatches(w, u.id, customGroups)))
           );
           const todayWorkout = uWorkouts.find((w) => w.date === today);
 
@@ -1221,7 +1223,7 @@ export default function Dashboard() {
           w.group === "total" ||
           w.group === uGrp ||
           w.targetUserId === athlete.id ||
-          uGroupIds.includes(w.group)
+          groupTargetMatches(w, athlete.id, customGroups) // groupe actuel, depuis sa date d'entrée
       );
       const todayW = uWorkouts.find((w) => w.date === today) || null;
 
@@ -2960,7 +2962,8 @@ export default function Dashboard() {
               {sections.map(({ g, members, all }) => {
                 const key = "g:" + g.id;
                 const inSub = new Set();
-                const subs = (g.subGroups || [])
+                // un seul sous-groupe = le groupe lui-même : pas de sous-titre, juste le groupe
+                const subs = ((g.subGroups || []).length > 1 ? g.subGroups : [])
                   .map((sg) => {
                     const ms = members.filter((a) => (sg.athleteIds || []).includes(a.id));
                     ms.forEach((a) => inSub.add(a.id));

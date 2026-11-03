@@ -134,6 +134,20 @@ export const getMemberTargets = async (uid) => {
         if ((sg.athleteIds || []).includes(uid)) out.push(`sg:${d.id}:${sg.id}`);
       });
     });
+    // Groupes quittés (historique formerMembers, voir groupHistory.js) : pour relire les séances
+    // qu'il y a faites. Facultatif : en cas d'erreur (index…), on garde les groupes actuels.
+    try {
+      const former = await getDocs(query(collection(db, "groups"), where(`formerMembers.${uid}`, "!=", null)));
+      former.docs.forEach((d) => {
+        if (!out.includes(d.id)) out.push(d.id);
+        (d.data().subGroups || []).forEach((sg) => {
+          const t = `sg:${d.id}:${sg.id}`;
+          if (sg.formerMembers?.[uid] && !out.includes(t)) out.push(t);
+        });
+      });
+    } catch (e) {
+      console.warn("workoutQueries: anciens groupes illisibles", e);
+    }
     memberCache = { uid, at: Date.now(), value: out };
     return out;
   } catch (e) {

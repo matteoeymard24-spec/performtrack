@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { GroupChips, PeoplePick, pickerLabel } from "./PersonPicker";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -15,6 +16,8 @@ export default function TargetPicker({ selected, onChange, customGroups, makeSub
   const mode = sel.includes("individuel") ? "athlete" : sel.length === 1 && sel[0] === "moi" ? "moi" : "groups";
   const [openMembers, setOpenMembers] = useState(null); // id du groupe dont on montre les athlètes
   const [query, setQuery] = useState("");
+  const [pickGroup, setPickGroup] = useState(""); // filtre de l'onglet « Un athlète »
+  const [pickSub, setPickSub] = useState("");
 
   const nameById = useMemo(() => {
     const m = {};
@@ -119,11 +122,22 @@ export default function TargetPicker({ selected, onChange, customGroups, makeSub
     return customGroups.find((x) => x.id === v)?.name || v;
   };
 
+  // Onglet « Un athlète » : jamais soi-même (il y a l'onglet 🌟 Moi), filtre groupe / sous-groupe + recherche
   const q = query.trim().toLowerCase();
-  const pickList = [
-    ...(athletes || []).map((a) => ({ a, admin: false })),
-    ...(adminUsers || []).filter((a) => !(athletes || []).some((x) => x.id === a.id)).map((a) => ({ a, admin: true })),
-  ].filter(({ a }) => !q || nameOf(a).toLowerCase().includes(q));
+  const match = (a) => !q || nameOf(a).toLowerCase().includes(q);
+  const athletePool = (athletes || []).filter((a) => a.id !== currentUid);
+  const inAnyGroup = new Set(customGroups.flatMap((g) => g.athleteIds || []));
+  const fGroup = customGroups.find((g) => g.id === pickGroup) || null;
+  let athleteList = athletePool;
+  if (pickGroup === "none") athleteList = athletePool.filter((a) => !inAnyGroup.has(a.id));
+  else if (fGroup) {
+    const ids = new Set(pickSub ? (fGroup.subGroups || []).find((x) => x.id === pickSub)?.athleteIds || [] : fGroup.athleteIds || []);
+    athleteList = athletePool.filter((a) => ids.has(a.id));
+  }
+  athleteList = athleteList.filter(match);
+  const adminList = (adminUsers || [])
+    .filter((a) => a.id !== currentUid && !athletePool.some((x) => x.id === a.id))
+    .filter(match);
 
   return (
     <div>
@@ -193,7 +207,8 @@ export default function TargetPicker({ selected, onChange, customGroups, makeSub
                         👀
                       </button>
                     </div>
-                    {subs.length > 0 && (
+                    {/* un seul sous-groupe = le groupe lui-même : on n'affiche que le groupe */}
+                    {subs.length > 1 && (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "0 12px 10px" }}>
                         {subs.map((sg) => {
                           const v = makeSubGroupTarget(g.id, sg.id);
@@ -244,43 +259,40 @@ export default function TargetPicker({ selected, onChange, customGroups, makeSub
       )}
 
       {mode === "athlete" && (
-        <div style={{ display: "grid", gap: 8 }}>
+        <div style={{ display: "grid", gap: 12 }}>
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="🔎 Rechercher un athlète…"
-            style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: `1px solid ${LINE}`, background: CARD, color: TEXT, fontSize: 15 }}
+            style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", borderRadius: 10, border: `1px solid ${LINE}`, background: "#0d0c0a", color: TEXT, fontSize: 15 }}
           />
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 220, overflowY: "auto" }}>
-            {pickList.map(({ a, admin }) => {
-              const on = userId === a.id;
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => onUserChange(a.id)}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    border: `1px solid ${on ? accent : LINE}`,
-                    background: on ? `${accent}26` : "#0d0c0a",
-                    color: on ? accent : TEXT,
-                  }}
-                >
-                  {on ? "✓ " : admin ? "👤 " : ""}
-                  {nameOf(a)}
-                  {a.id === currentUid ? " (moi)" : ""}
-                </button>
-              );
-            })}
-            {pickList.length === 0 && <span style={{ fontSize: 12, color: MUTED }}>Aucun athlète trouvé.</span>}
+          {customGroups.length > 0 && (
+            <GroupChips
+              groups={customGroups}
+              groupId={pickGroup}
+              subId={pickSub}
+              total={athletePool.length}
+              noneCount={athletePool.filter((a) => !inAnyGroup.has(a.id)).length}
+              onGroup={(g) => {
+                setPickGroup(g);
+                setPickSub("");
+              }}
+              onSub={setPickSub}
+            />
+          )}
+          <div>
+            {pickerLabel(fGroup ? `👤 Athlète · ${fGroup.name}${pickSub ? " (sous-groupe)" : ""}` : pickGroup === "none" ? "👤 Athlète · sans groupe" : "👤 Athlète")}
+            <PeoplePick people={athleteList} selectedId={userId} onSelect={(id) => id && onUserChange(id)} placeholder="— Choisir un athlète —" />
           </div>
-          <div style={{ fontSize: 12.5, color: userId ? TEXT : "#e08a3d" }}>
-            {userId ? `Séance individuelle pour ${nameById[userId] || "cet athlète"}.` : "Choisis l'athlète ci-dessus."}
+          {adminList.length > 0 && (
+            <div>
+              {pickerLabel("👥 Admin")}
+              <PeoplePick people={adminList} selectedId={userId} onSelect={(id) => id && onUserChange(id)} placeholder="— Choisir un admin —" />
+            </div>
+          )}
+          <div style={{ fontSize: 12.5, color: userId ? accent : "#e08a3d", fontWeight: userId ? 700 : 400 }}>
+            {userId ? `✓ Séance individuelle pour ${nameById[userId] || "cet athlète"}` : "Choisis l'athlète ci-dessus."}
           </div>
         </div>
       )}

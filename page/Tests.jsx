@@ -50,6 +50,7 @@ import { cyclingBilan } from "../component/cyclingRows";
 import { FoldBtn, useFold, PageHeader } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
 import PersonPicker from "../component/PersonPicker";
+import { withMembershipHistory } from "../component/groupHistory";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 const ACCENT = "#e0a13d";
@@ -574,7 +575,7 @@ export default function Tests() {
           return s.id === sid ? { ...s, athleteIds: [...rest, uid] } : { ...s, athleteIds: rest };
         });
       }
-      await updateDoc(doc(db, "groups", gid), patch);
+      await updateDoc(doc(db, "groups", gid), withMembershipHistory(g, patch));
       const sg = kind === "s" ? (g.subGroups || []).find((s) => s.id === sid) : null;
       setMsg(`✅ Athlète placé dans « ${g.name}${sg ? " › " + sg.name : ""} ».`);
       setGroups((gs) => gs.map((x) => (x.id === gid ? { ...x, ...patch } : x)));
