@@ -3014,6 +3014,23 @@ export default function Workout() {
 
   // Suppression groupée : toutes les séances d'un jour donné, tous
   // athlètes/groupes confondus (celles visibles par l'admin dans "events").
+  // Séances supprimables en masse : celles AFFICHÉES (filtre en cours), jamais la séance perso d'un autre admin
+  const deletableEvent = (e) => isEventVisibleToFilter(e) && !(e.group === "moi" && e.createdBy !== currentUser?.uid);
+  const weekBounds = (dateStr) => {
+    const ref = new Date(dateStr + "T12:00:00");
+    const dow = ref.getDay();
+    const monday = new Date(ref);
+    monday.setDate(monday.getDate() + (dow === 0 ? -6 : 1 - dow));
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 6);
+    return { monday, sunday, from: getLocalDateStr(monday), to: getLocalDateStr(sunday) };
+  };
+  const dayDeletable = (dateStr) => events.filter((e) => e.date === dateStr && deletableEvent(e));
+  const weekDeletable = (dateStr) => {
+    const w = weekBounds(dateStr);
+    return events.filter((e) => e.date >= w.from && e.date <= w.to && deletableEvent(e));
+  };
+
   const deleteSessionsForDay = async (dateStr) => {
     // Uniquement ce qui est AFFICHÉ (filtre athlète / groupe / vue en cours), et
     // jamais la séance perso d'un autre admin.
@@ -9581,7 +9598,7 @@ export default function Workout() {
               </div>
             </div>
             <div style={{ display: "flex", gap: 8 }}>
-              {userRole === "admin" && (
+              {isAdminLike && (
                 <>
                   <button
                     onClick={() => editSession(selectedSession)}
@@ -9620,17 +9637,19 @@ export default function Workout() {
                   </button>
                   <button
                     onClick={() => deleteSession(selectedSession.id)}
+                    title="Supprimer cette séance (annulable 30 s)"
                     style={{
-                      padding: "8px 16px",
-                      background: "#d9695a",
-                      color: "white",
-                      border: "none",
+                      padding: "8px 14px",
+                      background: "rgba(217,105,90,0.1)",
+                      color: "#d9695a",
+                      border: "1px solid rgba(217,105,90,0.55)",
                       borderRadius: 8,
                       cursor: "pointer",
                       fontSize: 14,
+                      fontWeight: 700,
                     }}
                   >
-                    🗑️
+                    🗑 Supprimer
                   </button>
                 </>
               )}
@@ -11072,42 +11091,49 @@ export default function Workout() {
                     { weekday: "long", day: "numeric", month: "long" }
                   )}
                 </h3>
-                {isAdminLike && !viewMode && (
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    {events.filter((e) => e.date === selectedDate).length > 0 && (
-                      <button
-                        onClick={() => deleteSessionsForDay(selectedDate)}
-                        style={{
-                          padding: "8px 12px",
-                          background: "rgba(217,105,90,0.14)",
-                          color: "#d9695a",
-                          border: "1px solid #d9695a",
-                          borderRadius: 6,
-                          cursor: "pointer",
-                          fontSize: 12,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        🗑️ Supprimer la journée
+                {isAdminLike && (() => {
+                  // Suppression en masse (visible dans toutes les vues : Athlètes, Moi, Admins) —
+                  // ne touche que les séances affichées ; annulable 30 s avec ↩️.
+                  const nDay = dayDeletable(selectedDate).length;
+                  const nWeek = weekDeletable(selectedDate).length;
+                  const w = weekBounds(selectedDate);
+                  const btn = (n) => ({
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 14px",
+                    borderRadius: 10,
+                    border: `1px solid ${n ? "rgba(217,105,90,0.55)" : "#2a2620"}`,
+                    background: n ? "rgba(217,105,90,0.1)" : "transparent",
+                    color: n ? "#d9695a" : "#6f6a62",
+                    fontSize: 13.5,
+                    fontWeight: 700,
+                    cursor: n ? "pointer" : "not-allowed",
+                    whiteSpace: "nowrap",
+                  });
+                  const badge = (n) => (
+                    <span style={{ minWidth: 20, padding: "1px 7px", borderRadius: 999, background: n ? "#d9695a" : "#2a2620", color: n ? "#1a1306" : "#6f6a62", fontSize: 12, fontWeight: 900, textAlign: "center" }}>{n}</span>
+                  );
+                  return (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <button type="button" disabled={!nDay} onClick={() => deleteSessionsForDay(selectedDate)} style={btn(nDay)} title="Supprimer les séances affichées de ce jour">
+                        🗑 Journée {badge(nDay)}
                       </button>
-                    )}
-                    <button
-                      onClick={() => deleteSessionsForWeek(selectedDate)}
-                      style={{
-                        padding: "8px 12px",
-                        background: "rgba(217,105,90,0.14)",
-                        color: "#d9695a",
-                        border: "1px solid #d9695a",
-                        borderRadius: 6,
-                        cursor: "pointer",
-                        fontSize: 12,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      🗑️ Supprimer la semaine
-                    </button>
-                  </div>
-                )}
+                      <button
+                        type="button"
+                        disabled={!nWeek}
+                        onClick={() => deleteSessionsForWeek(selectedDate)}
+                        style={btn(nWeek)}
+                        title={`Supprimer les séances affichées du ${w.monday.toLocaleDateString("fr-FR")} au ${w.sunday.toLocaleDateString("fr-FR")}`}
+                      >
+                        🗑 Semaine {badge(nWeek)}
+                        <span style={{ fontWeight: 500, fontSize: 11.5, color: nWeek ? "#e8a597" : "#6f6a62" }}>
+                          {w.monday.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} → {w.sunday.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                        </span>
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
               {events.filter(
                 (e) => calendarDateOf(e) === selectedDate && isEventVisibleToFilter(e)
@@ -11169,7 +11195,34 @@ export default function Workout() {
                           >
                             {session.time || "—:—"}
                           </span>
-                          <span>{moiPrefix(session)}{session.title}</span>
+                          <span style={{ flex: 1, minWidth: 0 }}>{moiPrefix(session)}{session.title}</span>
+                          {isAdminLike && deletableEvent(session) && (
+                            <button
+                              type="button"
+                              title="Supprimer cette séance"
+                              aria-label={`Supprimer ${session.title}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteSession(session.id);
+                              }}
+                              style={{
+                                flexShrink: 0,
+                                width: 34,
+                                height: 34,
+                                borderRadius: 10,
+                                border: "1px solid rgba(217,105,90,0.5)",
+                                background: "rgba(217,105,90,0.1)",
+                                color: "#d9695a",
+                                fontSize: 15,
+                                cursor: "pointer",
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                              }}
+                            >
+                              🗑
+                            </button>
+                          )}
                         </h4>
                         {(() => {
                           const st = sessionStatus(session);
