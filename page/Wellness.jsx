@@ -1,4 +1,5 @@
 import WellbeingTabs from "../component/WellbeingTabs";
+import WellnessLinks from "../component/WellnessLinks";
 import React, { useEffect, useState } from "react";
 import {
   collection,
@@ -424,6 +425,9 @@ export default function Wellness() {
             {/* Les 7 indicateurs en petits graphiques (un par indicateur) */}
             <FoldCard id="indic" fold={fold} title="🔎 Détail des indicateurs" subtitle="Classés en négatifs (idéalement bas) et positifs (idéalement haut) · dernière valeur, évolution sur une semaine, moyenne de la période">
               <WellnessIndicators data={chartData} all={entries} />
+            </FoldCard>
+            <FoldCard id="links" fold={fold} title="🔗 Wellness × sommeil × nutrition" subtitle="Ton wellness relié à tes nuits (Sommeil) et à ton eau / tes repas de la veille (Nutrition) : explication du jour et corrélations sur ton historique.">
+              <WellnessLinks uid={currentUser?.uid} />
             </FoldCard>
             </>
             )}

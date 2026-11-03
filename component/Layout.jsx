@@ -31,6 +31,15 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Nouvelle page = on repart en haut (sinon la page s'ouvrait au défilement de la précédente :
+  // depuis le bas du dashboard, Nutrition s'ouvrait directement sur « Eau du jour »)
+  React.useEffect(() => {
+    try {
+      window.scrollTo(0, 0);
+    } catch (e) {
+      /* ignore */
+    }
+  }, [location.pathname]);
   // Choix de l'affichage (téléphone / ordinateur / auto) — voir component/viewMode.js
   const viewChoice = (big) => (
     <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, border: `1px solid ${BORDER}`, background: "#0d0c0a", width: big ? "100%" : "auto" }}>

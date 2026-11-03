@@ -367,6 +367,30 @@ export default function Nutrition() {
   const fold = useFold("nutrition");
   const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || "journal");
   const [date, setDate] = useState(todayISO());
+  // Journal toujours sur le BON jour : page restée ouverte la nuit / app reprise le lendemain →
+  // si on regardait « aujourd'hui », on passe au nouveau jour (journal vierge du jour).
+  const todayRef = React.useRef(todayISO());
+  useEffect(() => {
+    const roll = () => {
+      const t = todayISO();
+      if (t !== todayRef.current) {
+        const was = todayRef.current;
+        todayRef.current = t;
+        setDate((d) => (d === was ? t : d));
+      }
+    };
+    const id = setInterval(roll, 60000);
+    const onVis = () => document.visibilityState === "visible" && roll();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", roll);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", roll);
+    };
+  }, []);
+  // Arrivée depuis le dashboard : « Ajouter un repas » ouvre le repas de l'heure, « Eau » va à la gourde
+  const focusRef = React.useRef(new URLSearchParams(window.location.search).get("focus"));
   const [settings, setSettings] = useState(null);
   const [draft, setDraft] = useState(null); // réglages en cours d'édition (onglet Objectifs)
   const [day, setDay] = useState(null);
@@ -443,6 +467,18 @@ export default function Nutrition() {
     setDay(h ? { entries: [], water: 0, waterLog: [], supps: {}, dayType: "modere", ...h } : { entries: [], water: 0, waterLog: [], supps: {}, dayType: "modere", date });
   }, [date, loading, uid]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => setAdding(null), [date, uid]);
+  useEffect(() => {
+    const f = focusRef.current;
+    if (!f || loading || !day || tab !== "journal") return;
+    focusRef.current = null;
+    const h = new Date().getHours();
+    const meal = h < 11 ? "petitdej" : h < 15 ? "dejeuner" : h < 18 ? "collation" : "diner";
+    if (f === "repas") setAdding(meal);
+    setTimeout(() => {
+      const el = document.getElementById(f === "eau" ? "nutri-eau" : `nutri-meal-${meal}`);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 120);
+  }, [loading, day, tab]);
 
   const targets = useMemo(() => (settings ? computeTargets(settings, day?.dayType || "modere") : null), [settings, day?.dayType]);
 
@@ -619,7 +655,7 @@ export default function Nutrition() {
                 const items = (day.entries || []).filter((e) => (e.meal || "dejeuner") === m.id);
                 const t = sumN(items.map((e) => e.n));
                 return (
-                  <div key={m.id} style={CARD_STYLE}>
+                  <div key={m.id} id={`nutri-meal-${m.id}`} style={{ ...CARD_STYLE, scrollMarginTop: "calc(var(--pt-header-h, 60px) + 12px)" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                       <div style={{ fontWeight: 800, color: TEXT, fontSize: 15.5 }}>
                         {m.icon} {m.label}
@@ -780,6 +816,7 @@ export default function Nutrition() {
               </FoldCard>
 
               {/* Eau du jour */}
+              <div id="nutri-eau" style={{ scrollMarginTop: "calc(var(--pt-header-h, 60px) + 12px)" }}>
               <FoldCard id="water_day" fold={fold} title="💧 Eau du jour">
                 <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
                   <Bottle ml={day.water || 0} target={targets.water} />
@@ -824,6 +861,7 @@ export default function Nutrition() {
                   </div>
                 </div>
               </FoldCard>
+              </div>
 
               {/* Historique */}
               <FoldCard id="hist" fold={fold} title="📈 14 derniers jours">

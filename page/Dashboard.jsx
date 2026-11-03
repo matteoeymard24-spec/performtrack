@@ -5,6 +5,7 @@ import { stickyHead } from "../component/ui";
 import DashColumns, { colOfFn } from "../component/DashColumns";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
 import { NutritionDashCard, SleepDashCard } from "../component/DashWellbeingCards";
+import WellnessLinks from "../component/WellnessLinks";
 import { groupTargetMatches, formerTargetsOf, hasProgress } from "../component/groupHistory";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
@@ -191,6 +192,7 @@ export default function Dashboard() {
     vma: true,
     cmj: true,
     vmacmj: true,
+    links: true,
     };
     try {
       return { ...base, ...JSON.parse(localStorage.getItem("pt_dash_sections") || "{}") };
@@ -432,6 +434,9 @@ export default function Dashboard() {
   const [weightHistory, setWeightHistory] = useState([]);
   const [lastWeightDate, setLastWeightDate] = useState(null);
   const [canUpdateWeight, setCanUpdateWeight] = useState(true);
+  const [weightLoaded, setWeightLoaded] = useState(false); // évite d'afficher l'alerte pesée avant la lecture
+  const [bodyFatIn, setBodyFatIn] = useState(""); // masse grasse optionnelle saisie avec la pesée
+  const [bodyFatMethodIn, setBodyFatMethodIn] = useState("impedance");
 
   const [totalSessions, setTotalSessions] = useState(0);
   const [completedSessions, setCompletedSessions] = useState(0);
@@ -878,10 +883,11 @@ export default function Dashboard() {
           collection(db, "users", currentUser.uid, "weight_history")
         );
         const whtData = whtSnap.docs
-          .map((d) => ({ weight: d.data().weight, date: d.data().date }))
+          .map((d) => ({ weight: d.data().weight, date: d.data().date, bodyFat: d.data().bodyFat ?? null }))
           .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
         setWeightHistory(whtData);
+        setWeightLoaded(true);
 
         if (whtData.length > 0) {
           const lastDate = new Date(
@@ -983,14 +989,51 @@ export default function Dashboard() {
       setAthleteWeight(userProfile.weight || "");
   }, [viewRole, userProfile]);
 
+  // Masse grasse optionnelle (mêmes méthodes que Tests › Bilan : la valeur y est reprise)
+  const BF_METHOD_LABEL = { dxa: "DXA", plis: "plis cutanés", impedance: "impédancemètre" };
+  const renderBodyFatInputs = () => (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+      <input
+        type="number"
+        step="0.1"
+        inputMode="decimal"
+        value={bodyFatIn}
+        onChange={(e) => setBodyFatIn(e.target.value)}
+        placeholder="Masse grasse % (optionnel)"
+        style={{ flex: "1 1 170px", minWidth: 0, padding: 12, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15 }}
+      />
+      <select
+        value={bodyFatMethodIn}
+        onChange={(e) => setBodyFatMethodIn(e.target.value)}
+        style={{ padding: 12, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 14 }}
+      >
+        <option value="impedance">Impédancemètre</option>
+        <option value="plis">Plis cutanés</option>
+        <option value="dxa">DXA</option>
+      </select>
+    </div>
+  );
+
   const saveWeight = async () => {
     if (!currentUser || !athleteWeight || !canUpdateWeight) return;
     try {
       const today = getLocalDateStr(new Date());
-      const newWeight = Number(athleteWeight);
+      const newWeight = Number(String(athleteWeight).replace(",", "."));
+      if (!(newWeight > 25 && newWeight < 300)) {
+        alert("Poids invalide.");
+        return;
+      }
+      // masse grasse : optionnelle (vide = non mesurée cette semaine)
+      const bfRaw = String(bodyFatIn || "").replace(",", ".").trim();
+      const bf = bfRaw === "" ? null : Number(bfRaw);
+      if (bf != null && !(bf >= 3 && bf <= 60)) {
+        alert("Masse grasse invalide (entre 3 et 60 %).");
+        return;
+      }
 
       await setDoc(doc(db, "users", currentUser.uid), {
         weight: newWeight,
+        ...(bf != null ? { bodyFat: bf, bodyFatMethod: bodyFatMethodIn, bodyFatDate: today } : {}),
         updatedAt: new Date().toISOString(),
       }, { merge: true });
 
@@ -1000,13 +1043,17 @@ export default function Dashboard() {
       await setDoc(historyRef, {
         weight: newWeight,
         date: today,
+        ...(bf != null ? { bodyFat: bf, bodyFatMethod: bodyFatMethodIn } : {}),
         createdAt: new Date().toISOString(),
       });
 
       setCanUpdateWeight(false);
+      setLastWeightDate(new Date(today + "T12:00:00"));
       setEditingWeight(false);
-      setWeightHistory((prev) => [...prev, { weight: newWeight, date: today }]);
-      alert("Poids mis à jour !");
+      setBodyFatIn("");
+      setAthleteWeight(String(newWeight));
+      setWeightHistory((prev) => [...prev, { weight: newWeight, date: today, bodyFat: bf }]);
+      alert("Pesée enregistrée !");
     } catch (e) {
       console.error("Erreur poids:", e);
       alert("Erreur: " + e.message);
@@ -1931,6 +1978,61 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Pesée hebdomadaire : au moins une par semaine (la saisie est ouverte tous les 7 jours) */}
+        {weightLoaded && canUpdateWeight && (
+          <div
+            style={{
+              background: "rgba(91,155,213,0.12)",
+              padding: 18,
+              borderRadius: 12,
+              border: "1px solid rgba(91,155,213,0.5)",
+              marginBottom: 16,
+            }}
+          >
+            <h3 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#7fb3e6" }}>
+              ⚖️ Pesée de la semaine
+            </h3>
+            <p style={{ margin: "0 0 12px 0", fontSize: 13.5, color: "#c9d9ea" }}>
+              {lastWeightDate
+                ? `Dernière pesée il y a ${Math.floor((new Date() - lastWeightDate) / 86400000)} jours (${lastWeightDate.toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}).`
+                : "Aucune pesée enregistrée."}{" "}
+              Le matin à jeun, après être passé aux toilettes, toujours dans les mêmes conditions.
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 2 }}>
+              <input
+                type="number"
+                step="0.1"
+                inputMode="decimal"
+                value={athleteWeight}
+                onChange={(e) => setAthleteWeight(e.target.value)}
+                placeholder="Poids (kg)"
+                style={{ flex: "1 1 120px", minWidth: 0, padding: 12, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 16, fontWeight: 700 }}
+              />
+              <span style={{ color: "#a8a199", fontSize: 14 }}>kg</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#a8a199", margin: "8px 0 4px" }}>Masse grasse (optionnel, si tu as une mesure)</div>
+            {renderBodyFatInputs()}
+            <button
+              type="button"
+              onClick={saveWeight}
+              disabled={!athleteWeight}
+              style={{
+                width: "100%",
+                padding: "13px 16px",
+                background: athleteWeight ? "#5b9bd5" : "#2a2620",
+                color: athleteWeight ? "#0d0c0a" : "#a8a199",
+                border: "none",
+                borderRadius: 10,
+                fontSize: 16,
+                fontWeight: 800,
+                cursor: athleteWeight ? "pointer" : "not-allowed",
+              }}
+            >
+              ✅ Enregistrer ma pesée
+            </button>
+          </div>
+        )}
+
         {sessionReminderDue && (
           <div
             style={{
@@ -2257,7 +2359,7 @@ export default function Dashboard() {
             { key: "nutrition", label: "🥗 Nutrition du jour", node: (
               <div style={CARD_STYLE}>
                 {foldHead("nutrition", "🥗 Nutrition du jour")}
-                {vis("nutrition") && <NutritionDashCard uid={currentUser?.uid} onOpen={(t) => navigate(`/nutrition?tab=${t}&from=dashboard`)} />}
+                {vis("nutrition") && <NutritionDashCard uid={currentUser?.uid} onOpen={(t, focus) => navigate(`/nutrition?tab=${t}${focus ? `&focus=${focus}` : ""}&from=dashboard`)} />}
               </div>
             ) },
             { key: "sleep", label: "😴 Sommeil", node: (
@@ -2546,8 +2648,16 @@ export default function Dashboard() {
                 marginBottom: 15,
               }}
             >
-              <div style={{ fontSize: 32, fontWeight: "bold" }}>
-                {athleteWeight ? `${athleteWeight} kg` : "Non renseigné"}
+              <div>
+                <div style={{ fontSize: 32, fontWeight: "bold" }}>
+                  {athleteWeight ? `${athleteWeight} kg` : "Non renseigné"}
+                </div>
+                {userProfile?.bodyFat ? (
+                  <div style={{ fontSize: 12.5, color: "#a8a199" }}>
+                    Masse grasse {String(userProfile.bodyFat).replace(".", ",")} %
+                    {userProfile.bodyFatMethod ? ` · ${BF_METHOD_LABEL[userProfile.bodyFatMethod] || userProfile.bodyFatMethod}` : ""}
+                  </div>
+                ) : null}
               </div>
               <button
                 onClick={() => setEditingWeight(true)}
@@ -2583,6 +2693,7 @@ export default function Dashboard() {
                   marginBottom: 10,
                 }}
               />
+              {renderBodyFatInputs()}
               <div style={{ display: "flex", gap: 10 }}>
                 <button
                   onClick={saveWeight}
@@ -3572,6 +3683,20 @@ export default function Dashboard() {
             )}
 
             {showAthleteDetail.crossStatus && renderFormCard(showAthleteDetail)}
+
+            {/* Wellness relié aux journaux Sommeil / Nutrition de l'athlète */}
+            <div style={{ background: "#151310", padding: 18, borderRadius: 12, marginBottom: 16, border: "1px solid #2a2620" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: sectionVisibility.links ? 12 : 0 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>🔗 Wellness × sommeil × nutrition</h3>
+                <button
+                  onClick={() => toggleSection("links")}
+                  style={{ padding: "3px 10px", background: "transparent", color: "#a8a199", border: "1px solid #2a2620", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
+                >
+                  {sectionVisibility.links ? "▾" : "▸"}
+                </button>
+              </div>
+              {sectionVisibility.links && <WellnessLinks uid={showAthleteDetail.id} />}
+            </div>
 
             {showAthleteDetail.injuries && (
               <div

@@ -80,10 +80,10 @@ export function NutritionDashCard({ uid, onOpen }) {
         <Mini label="Eau" value={water / 1000} target={t.water / 1000} unit="L" color={BLUE} />
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button className="pt-btn pt-btn--primary" onClick={() => onOpen("journal")}>
+        <button className="pt-btn pt-btn--primary" onClick={() => onOpen("journal", "repas")}>
           ＋ Ajouter un repas
         </button>
-        <button className="pt-btn" onClick={() => onOpen("journal")}>
+        <button className="pt-btn" onClick={() => onOpen("journal", "eau")}>
           💧 Eau
         </button>
       </div>

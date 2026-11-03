@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import BodyScan from "../component/BodyScan";
 import WellnessSlider from "../component/WellnessSlider";
+import { loadLinkData, objectiveFor } from "../component/wellnessLinks";
 
 export default function WellnessForm() {
   const { currentUser } = useAuth();
@@ -39,9 +40,18 @@ export default function WellnessForm() {
 
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  // Données MESURÉES (journaux Sommeil / Nutrition) → note proposée pour sommeil, hydratation, nutrition
+  const [objective, setObjective] = useState(null);
 
   // Date LOCALE (toISOString donnait la date UTC : avant 1-2 h du matin en France, c'était encore « hier »).
   const today = (() => { const _d = new Date(); return `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, "0")}-${String(_d.getDate()).padStart(2, "0")}`; })();
+
+  useEffect(() => {
+    if (!currentUser) return;
+    loadLinkData(currentUser.uid)
+      .then((logs) => setObjective(objectiveFor(today, logs)))
+      .catch(() => setObjective(null));
+  }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!currentUser) return;
@@ -100,6 +110,18 @@ export default function WellnessForm() {
         sickType: sick ? sickType : "",
         painMap,
         painTypes,
+        // instantané des mesures du jour (sommeil de la nuit, eau / repas de la veille) : sert aux corrélations
+        objective: objective
+          ? {
+              sleepMin: objective.sleep?.min ?? null,
+              sleepScore: objective.sleep?.score ?? null,
+              waterPct: objective.water?.pct ?? null,
+              hydrationScore: objective.water?.score ?? null,
+              kcalPct: objective.food?.kcalPct ?? null,
+              protPct: objective.food?.protPct ?? null,
+              nutritionScore: objective.food?.score ?? null,
+            }
+          : null,
         updatedAt: Timestamp.now(),
       };
 
@@ -190,6 +212,53 @@ export default function WellnessForm() {
           leftLabel="Aucune"
           rightLabel="Intense"
         />
+        {(() => {
+          const o = objective;
+          const items = o
+            ? [
+                o.sleep && { k: "Sommeil", icon: "😴", txt: `${Math.floor(o.sleep.min / 60)} h ${String(o.sleep.min % 60).padStart(2, "0")} cette nuit${o.sleep.quality ? ` · qualité ${o.sleep.quality}/5` : ""}`, score: o.sleep.score, set: setSommeil, cur: sommeil },
+                o.water && { k: "Hydratation", icon: "💧", txt: `${o.water.pct} % de l'objectif d'eau hier`, score: o.water.score, set: setHydratation, cur: hydratation },
+                o.food && { k: "Nutrition", icon: "🥗", txt: `hier : ${o.food.kcalPct} % des calories, ${o.food.protPct} % des protéines`, score: o.food.score, set: setNutrition, cur: nutrition },
+              ].filter(Boolean)
+            : [];
+          if (!items.length)
+            return (
+              <div style={{ marginBottom: 25, padding: "12px 14px", borderRadius: 12, background: "#1a1815", border: "1px dashed rgba(255,255,255,0.16)", fontSize: 13, color: "#a8a199" }}>
+                📊 Note ta nuit (Sommeil) et ton eau / tes repas d'hier (Nutrition) : le questionnaire te proposera une note mesurée et ton wellness sera relié à ces données.
+              </div>
+            );
+          return (
+            <div style={{ marginBottom: 25, padding: "14px 16px", borderRadius: 12, background: "rgba(123,143,217,0.08)", border: "1px solid rgba(123,143,217,0.5)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <div style={{ fontWeight: 800, color: "#f3f0ea", fontSize: 15 }}>📊 D'après tes journaux</div>
+                <button
+                  type="button"
+                  onClick={() => items.forEach((it) => it.set(Math.round(it.score)))}
+                  style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #7b8fd9", background: "rgba(123,143,217,0.18)", color: "#f3f0ea", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
+                >
+                  Tout appliquer
+                </button>
+              </div>
+              {items.map((it) => (
+                <div key={it.k} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "6px 0", borderTop: "1px solid rgba(255,255,255,0.08)", fontSize: 13.5 }}>
+                  <span style={{ color: "#f3f0ea", minWidth: 0 }}>
+                    {it.icon} <b>{it.k}</b> <span style={{ color: "#a8a199" }}>· {it.txt}</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => it.set(Math.round(it.score))}
+                    title="Mettre cette note sur le curseur"
+                    style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 8, border: `1px solid ${Math.round(it.score) === it.cur ? "#4fae7d" : "#3a342a"}`, background: "transparent", color: Math.round(it.score) === it.cur ? "#4fae7d" : "#f3f0ea", fontWeight: 800, fontSize: 13, cursor: "pointer" }}
+                  >
+                    {Math.round(it.score) === it.cur ? "✓ " : ""}
+                    {Math.round(it.score)}/10
+                  </button>
+                </div>
+              ))}
+              <div style={{ fontSize: 11.5, color: "#a8a199", marginTop: 6 }}>Note proposée à partir des mesures : garde ou ajuste ton ressenti sur les curseurs.</div>
+            </div>
+          );
+        })()}
         <WellnessSlider
           label="Nutrition"
           value={nutrition}
