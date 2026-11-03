@@ -8,7 +8,7 @@ import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjust
 import { isDistanceMode, courseOf, targetTimeSec, distanceInTime, estimatedEffortSec, fmtTime as fmtDur, COD_SEC, timerBlockPlan, adjustPlan, planText } from "../component/enduranceTarget";
 import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
 import { isLoadedBodyweight, totalLoad, lestText } from "../component/bodyweightLoad";
-import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel } from "../component/blockType";
+import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel, setDefaultEnduRef, defaultEnduRef } from "../component/blockType";
 import { FOSTER_CR10, doneDateOf } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
@@ -25,7 +25,7 @@ import TacticalBoard from "../component/TacticalBoard";
 import { loadExerciseImage, saveExerciseImage, deleteExerciseImage } from "../component/mediaStore";
 import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
 import EnduranceProfile, { ZonesCard } from "../component/EnduranceProfile";
-import { zoneOf, pctCS, hrTarget, HR_MIN_EFFORT_SEC, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK } from "../component/drillBank";
+import { zoneOf, pctCS, hrTarget, HR_MIN_EFFORT_SEC, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK, refKindOf, refLabel, refLong, REF_KINDS, setVmiVmaRatio, vmiVmaRatio } from "../component/drillBank";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
 import { CONTRACTIONS, contractionOf, isSpecialContraction, contractionTip, contractionShort } from "../component/contraction";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
@@ -536,6 +536,8 @@ export default function Workout() {
   // Vitesse critique de référence (km/h), posée depuis l'onglet Tests (tests/_reference.cs)
   const [csRef, setCsRef] = useState(null);
   const [fcmaxRef, setFcmaxRef] = useState(null); // FC max de référence (tests) → FC cibles des zones
+  const [vmiRef, setVmiRef] = useState(null); // VMI (30-15 IFT) de référence
+  const [prefRef, setPrefRef] = useState(null); // référence choisie dans « Mes RM » : "vma" | "vmi" | "cs"
   // « Qui fait la séance ? » (coach) : l'athlète qui remplit la séance sur le compte du coach.
   // null = le compte connecté. Démarrage, feedbacks, fin de séance, charge et RM vont à cette personne.
   const [actingUid, setActingUid] = useState(null);
@@ -554,6 +556,8 @@ export default function Workout() {
           [actingUid]: {
             vma: (vSnap.exists() && Number(vSnap.data().kg)) || Number(r?.vma?.value) || null,
             cs: Number(r?.cs?.value) || null,
+            vmi: Number(r?.vmi?.value) || null,
+            preferred: r?.preferred || null,
             fcmax: Number(r?.fcmax?.value) || null,
           },
         }));
@@ -715,6 +719,8 @@ export default function Workout() {
           const ref = await getDoc(doc(db, "users", currentUser.uid, "tests", "_reference"));
           setCsRef(ref.exists() ? Number(ref.data()?.cs?.value) || null : null);
           setFcmaxRef(ref.exists() ? Number(ref.data()?.fcmax?.value) || null : null);
+          setVmiRef(ref.exists() ? Number(ref.data()?.vmi?.value) || null : null);
+          setPrefRef(ref.exists() ? ref.data()?.preferred || null : null);
         } catch (e) {
           setCsRef(null);
           setFcmaxRef(null);
@@ -1415,8 +1421,17 @@ export default function Workout() {
   const refVma = actingUid ? actorRefs[actingUid]?.vma ?? null : vma;
   const refCs = actingUid ? actorRefs[actingUid]?.cs ?? null : csRef;
   const refFcmax = actingUid ? actorRefs[actingUid]?.fcmax ?? null : fcmaxRef;
-  const refSpeedKmh = (exercise) =>
-    exercise?.intensityRef === "cs" ? refCs || (refVma ? refVma * DEFAULT_CS_VMA_RATIO : null) : refVma;
+  const refVmi = actingUid ? actorRefs[actingUid]?.vmi ?? null : vmiRef;
+  const refPreferred = actingUid ? actorRefs[actingUid]?.preferred ?? prefRef : prefRef;
+  // Rapport VMI / VMA réel de la personne (sinon ≈ 1,17) et référence par défaut des nouveaux exos d'endurance.
+  setVmiVmaRatio(refVmi, refVma);
+  setDefaultEnduRef(refPreferred);
+  const refSpeedKmh = (exercise) => {
+    const k = refKindOf(exercise);
+    if (k === "cs") return refCs || (refVma ? refVma * DEFAULT_CS_VMA_RATIO : null);
+    if (k === "vmi") return refVmi || (refVma ? refVma * vmiVmaRatio() : null);
+    return refVma;
+  };
 
   const calculateEnduranceMetrics = (exercise) => {
     const refKmh = refSpeedKmh(exercise);
@@ -2975,14 +2990,15 @@ export default function Workout() {
         distance: 30,
         recoveryMin: 1,
         recoverySec: 0,
-        reps: 6,
-        sets: 3,
+        reps: 1,
+        sets: 6,
         intensity: "Max",
       };
     } else {
       newExercise = {
         name: "",
         description: "",
+        intensityRef: defaultEnduRef(),
         vmaPercentage: 85,
         effortTime: 30,
         recoveryMin: 0,
@@ -7221,8 +7237,8 @@ export default function Workout() {
                               distance: 30,
                               recoveryMin: 1,
                               recoverySec: 0,
-                              reps: 6,
-                              sets: 3,
+                              reps: 1,
+                              sets: 6,
                               intensity: "Max",
                             },
                           ],
@@ -7235,6 +7251,7 @@ export default function Workout() {
                           exercises: [
                             {
                               name: "",
+                              intensityRef: defaultEnduRef(),
                               vmaPercentage: 85,
                               effortTime: 30,
                               recoveryMin: 0,
@@ -8685,10 +8702,25 @@ export default function Workout() {
                   {/* FORMULAIRE SPRINT */}
                   {workoutType === "sprint" && (
                     <>
+                      {Number(ex.reps) > 1 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12, color: "#d9a441", background: "rgba(217,164,65,0.1)", border: "1px solid #d9a44155", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
+                          Ancien format : {ex.reps} reps × {ex.sets || 1} séries.
+                          <button
+                            type="button"
+                            className="pt-btn"
+                            onClick={() => {
+                              updateExercise(bIdx, eIdx, "sets", (Number(ex.reps) || 1) * (Number(ex.sets) || 1));
+                              updateExercise(bIdx, eIdx, "reps", 1);
+                            }}
+                          >
+                            Convertir en {(Number(ex.reps) || 1) * (Number(ex.sets) || 1)} sprints
+                          </button>
+                        </div>
+                      )}
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
                           gap: 10,
                           marginBottom: 10,
                         }}
@@ -8720,32 +8752,7 @@ export default function Workout() {
                         </div>
                         <div>
                           <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Reps
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.reps}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "reps",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Séries
+                            Sprints (séries)
                           </label>
                           <input
                             type="number"
@@ -8860,7 +8867,7 @@ export default function Workout() {
                         </div>
                       </div>
                       {/* CALCUL DISTANCE TOTALE */}
-                      {ex.distance && ex.reps && ex.sets && (
+                      {ex.distance && ex.sets ? (
                         <div
                           style={{
                             padding: 12,
@@ -8875,14 +8882,14 @@ export default function Workout() {
                           </div>
                           <div>
                             • Total de sprints :{" "}
-                            <strong>{ex.reps * ex.sets}</strong>
+                            <strong>{(Number(ex.reps) || 1) * ex.sets}</strong>
                           </div>
                           <div>
                             • Distance totale :{" "}
-                            <strong>{ex.distance * ex.reps * ex.sets}m</strong>
+                            <strong>{ex.distance * (Number(ex.reps) || 1) * ex.sets} m</strong>
                           </div>
                         </div>
-                      )}
+                      ) : null}
                     </>
                   )}
 
@@ -8897,7 +8904,7 @@ export default function Workout() {
                     <>
                       {(() => {
                         const ratioE = csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO;
-                        const refName = ex.intensityRef === "cs" ? "VC" : "VMA";
+                        const refName = refLabel(ex);
                         const refKmh = refSpeedKmh(ex);
                         const zEff = zoneOf(pctCS(ex, ratioE));
                         const sec = (t) => ({ background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 10, padding: 10, marginBottom: 10 });
@@ -9012,12 +9019,13 @@ export default function Workout() {
                                   <label style={{ ...lab, display: "flex", alignItems: "center", gap: 4 }}>
                                     Intensité %
                                     <select
-                                      value={ex.intensityRef === "cs" ? "cs" : "vma"}
+                                      value={refKindOf(ex)}
                                       onChange={(e) => updateExercise(bIdx, eIdx, "intensityRef", e.target.value)}
                                       style={{ background: "#0d0c0a", color: "#e0a13d", border: "1px solid #2a2620", borderRadius: 4, fontSize: 12, padding: "1px 2px" }}
                                     >
-                                      <option value="vma">VMA</option>
-                                      <option value="cs">VC</option>
+                                      {REF_KINDS.map((r) => (
+                                        <option key={r.id} value={r.id}>{r.label}</option>
+                                      ))}
                                     </select>
                                   </label>
                                   <input type="number" value={ex.vmaPercentage} onChange={(e) => updateExercise(bIdx, eIdx, "vmaPercentage", Number(e.target.value))} style={{ ...fieldStyle, borderColor: zEff ? `${zEff.color}88` : "#2a2620" }} />
@@ -10129,7 +10137,7 @@ export default function Workout() {
                       return (
                         <div style={{ marginBottom: 8 }}>
                           <div style={{ display: "inline-block", padding: "3px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, color: z.color, border: `1px solid ${z.color}` }}>
-                            {z.short} · {ex.vmaPercentage} % {ex.intensityRef === "cs" ? "vitesse critique" : "VMA"} · {z.feel}
+                            {z.short} · {ex.vmaPercentage} % {refLong(ex)} · {z.feel}
                           </div>
                           <div style={{ fontSize: 12, color: "#a8a199", marginTop: 4 }}>
                             {hr && hr.lo
@@ -10344,8 +10352,8 @@ export default function Workout() {
                             marginBottom: 10,
                           }}
                         >
-                          {ex.distance}m × {ex.reps} reps × {ex.sets} séries ={" "}
-                          <strong>{ex.distance * ex.reps * ex.sets}m</strong> •
+                          {Number(ex.reps) > 1 ? `${ex.distance} m × ${ex.reps} reps × ${ex.sets} séries` : `${ex.sets} sprint${Number(ex.sets) > 1 ? "s" : ""} de ${ex.distance} m`} ={" "}
+                          <strong>{ex.distance * (Number(ex.reps) || 1) * (Number(ex.sets) || 1)} m</strong> •
                           Récup: {(() => {
                             const min = ex.recoveryMin || 0;
                             const sec = ex.recoverySec || 0;
@@ -10412,7 +10420,7 @@ export default function Workout() {
                                       marginBottom: 10,
                                     }}
                                   >
-                                    {ex.vmaPercentage}% VMA →{" "}
+                                    {ex.vmaPercentage}% {refLabel(ex)} →{" "}
                                     <strong>{metrics.paceKmh} km/h</strong> (
                                     {metrics.paceDisplay}) •{metrics.course ? <> {metrics.course.dist} m · {metrics.course.label} · en <strong style={{ color: "#e0a13d" }}>{metrics.targetTime ? fmtDur(metrics.targetTime) : "—"}</strong></> : `${ex.effortTime}s`}
                                     {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
@@ -11980,7 +11988,7 @@ export default function Workout() {
                       <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
                         Distance : <strong style={{ color: "#f3f0ea" }}>{c.distancePerRep} m par rep</strong>
                         {c.targetTime
-                          ? <> · chrono visé <strong style={{ color: "#e0a13d" }}>{fmtDur(c.targetTime)}</strong>{c.plannedPct ? ` (${c.plannedPct} % ${c.exercise?.intensityRef === "cs" ? "VC" : "VMA"})` : ""}{c.appliedFactor ? ` — ajusté d'après ${c.adjustedFrom || "le bloc précédent"}` : ""}.</>
+                          ? <> · chrono visé <strong style={{ color: "#e0a13d" }}>{fmtDur(c.targetTime)}</strong>{c.plannedPct ? ` (${c.plannedPct} % ${refLabel(c.exercise)})` : ""}{c.appliedFactor ? ` — ajusté d'après ${c.adjustedFrom || "le bloc précédent"}` : ""}.</>
                           : " · pas de chrono visé (VMA non renseignée) : la perte se calcule par rapport à la meilleure rep."}{" "}
                         Saisis en secondes (52) ou en min:s (4:52). Décoche une rep non faite.
                       </div>
@@ -12042,7 +12050,7 @@ export default function Workout() {
                       <div style={{ fontSize: 14, fontWeight: "bold", marginBottom: 4 }}>Distance de chaque répétition (m)</div>
                       <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
                         {c.targetPerRep
-                          ? <>Cible : <strong style={{ color: "#f3f0ea" }}>{c.targetPerRep} m par rep</strong>{c.plannedPct ? ` (${c.plannedPct} % ${c.exercise?.intensityRef === "cs" ? "VC" : "VMA"})` : ""}{c.appliedFactor ? ` — ajustée d'après ${c.adjustedFrom || "le bloc précédent"}` : ""}.</>
+                          ? <>Cible : <strong style={{ color: "#f3f0ea" }}>{c.targetPerRep} m par rep</strong>{c.plannedPct ? ` (${c.plannedPct} % ${refLabel(c.exercise)})` : ""}{c.appliedFactor ? ` — ajustée d'après ${c.adjustedFrom || "le bloc précédent"}` : ""}.</>
                           : "Pas de cible (VMA non renseignée) : la perte se calcule par rapport à la meilleure rep."}{" "}
                         Décoche une rep non faite.
                       </div>

@@ -15,7 +15,7 @@ import {
   addDoc,
   deleteDoc,
 } from "firebase/firestore";
-import { getTest, computeResult, toStoredResult } from "../component/testsCalc";
+import { getTest, computeResult, toStoredResult, sprintVmax } from "../component/testsCalc";
 import { Page, FoldCard, useFold, CARD_STYLE, CARD_ACCENT_BORDER, PAGE_TITLE, PageHeader, Kpi, KpiGrid } from "../component/ui";
 import {
   LineChart,
@@ -143,6 +143,9 @@ export default function MyRM() {
   const [sprintVals, setSprintVals] = useState({ t10: "", t20: "", t60: "" });
   const [sprintDate, setSprintDate] = useState(todayIso());
   const [sprintHist, setSprintHist] = useState([]);
+  const [allTests, setAllTests] = useState([]); // tous les tests de l'athlète (users/{uid}/tests)
+  const [refDoc, setRefDoc] = useState({}); // tests/_reference : VMA / VMI / VC de référence + choix « preferred »
+  const [kpiOpen, setKpiOpen] = useState(null); // tuile ouverte : "vmax" | "cmj" | "endu" | null
   const [savingSprint, setSavingSprint] = useState(false);
 
   // Pour amener le graphique juste sous l'exercice cliqué (plutôt que de
@@ -401,8 +404,10 @@ export default function MyRM() {
     if (!currentUser) return;
     try {
       const snap = await getDocs(collection(db, "users", uid, "tests"));
-      const all = snap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
+      const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setRefDoc(raw.find((t) => t.id === "_reference") || {});
+      setAllTests(raw.filter((t) => t.id !== "_reference"));
+      const all = raw
         .filter((t) => t.testId === "sprint")
         .sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || ""));
       setSprintHist(all);
@@ -820,32 +825,255 @@ export default function MyRM() {
         const list = Object.keys(rmHistory).filter((ex) => ex !== "vma");
         const lastOf = (ex) => (rmHistory[ex] || [])[rmHistory[ex].length - 1];
         const filled = list.filter((ex) => lastOf(ex) && lastOf(ex).kg != null);
-        // Vmax : saisie au GPS / radar dans un test (prioritaire), sinon estimée par la vitesse
-        // moyenne sur 20→60 m (ou 10→20 m) — un peu inférieure au vrai pic. Meilleure valeur de l'historique.
         const nb = (x) => { const v = Number(String(x ?? "").replace(",", ".")); return Number.isFinite(v) && v > 0 ? v : null; };
-        let vmaxBest = null;
-        sprintHist.forEach((t) => {
-          const v = t.values || {};
-          const t10 = nb(v.t10), t20 = nb(v.t20), t60 = nb(v.t60), gps = nb(v.vmax);
-          let c = null;
-          if (gps) c = { v: gps, how: "GPS / radar" };
-          else if (t20 && t60 && t60 > t20) c = { v: (40 / (t60 - t20)) * 3.6, how: "estimée 20→60 m" };
-          else if (t10 && t20 && t20 > t10) c = { v: (10 / (t20 - t10)) * 3.6, how: "estimée 10→20 m" };
-          if (c && c.v < 45 && (!vmaxBest || c.v > vmaxBest.v)) vmaxBest = { ...c, date: t.date };
-        });
+        const day = (d) => String(d || "").slice(0, 10);
+        const fr = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(2, 4)}` : "");
+        const r1 = (v) => (Math.round(v * 10) / 10).toString().replace(".", ",");
+
+        /* ---- Vmax : un point par séance de sprint (GPS / radar, sinon modèle mono-exponentiel, cf. sprintVmax) ---- */
+        const vmaxOf = (t) => sprintVmax(t.values || {});
+        const vmaxPts = sprintHist
+          .map((t) => ({ t, c: vmaxOf(t) }))
+          .filter((x) => x.c && x.c.v < 45)
+          .map((x) => ({ date: day(x.t.date), v: x.c.v, how: x.c.how, id: x.t.id }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+        const vmaxBest = vmaxPts.reduce((m, p) => (!m || p.v > m.v ? p : m), null);
+
+        /* ---- CMJ : tests + fiche CMJ + séances (meilleur saut du jour) ---- */
+        const cmjMap = {};
+        const addCmj = (d, v, src) => {
+          if (!d || !(v > 0)) return;
+          if (!cmjMap[d] || v > cmjMap[d].v) cmjMap[d] = { date: d, v, how: src };
+        };
+        allTests.filter((t) => nb(t.result?.cmj)).forEach((t) => addCmj(day(t.date), nb(t.result.cmj), "test"));
+        (cmjHistory || []).forEach((h) => addCmj(day(h.date), nb(h.kg), "saisie"));
+        (sessionCmjEntries || []).forEach((h) => addCmj(day(h.date), nb(h.heightCm), "séance"));
+        const cmjPts = Object.values(cmjMap).sort((a, b) => a.date.localeCompare(b.date));
+        const cmjLast = cmjPts.length ? cmjPts[cmjPts.length - 1] : cmj && nb(cmj.kg) ? { v: nb(cmj.kg) } : null;
+
+        /* ---- Endurance : VMA / VMI / VC (tests + historique VMA) ---- */
+        const ENDU = [
+          { k: "vma", label: "VMA", long: "Vitesse maximale aérobie" },
+          { k: "vmi", label: "VMI", long: "Vitesse intermittente (30-15 IFT)" },
+          { k: "cs", label: "VC", long: "Vitesse critique" },
+        ];
+        const enduPts = (k) => {
+          const m = {};
+          allTests
+            .filter((t) => nb(t.result?.[k]))
+            .forEach((t) => {
+              const d = day(t.date);
+              const name = getTest(t.testId)?.name || t.testId;
+              if (!m[d] || nb(t.result[k]) > m[d].v) m[d] = { date: d, v: nb(t.result[k]), how: name };
+            });
+          if (k === "vma")
+            (vmaHistory || []).forEach((h) => {
+              const d = day(h.date);
+              if (nb(h.kg) && !m[d]) m[d] = { date: d, v: nb(h.kg), how: "fiche VMA" };
+            });
+          return Object.values(m).sort((a, b) => a.date.localeCompare(b.date));
+        };
+        const enduAvail = ENDU.filter((e) => refDoc[e.k]?.value || enduPts(e.k).length || (e.k === "vma" && vma));
+        const preferred = ENDU.some((e) => e.k === refDoc.preferred) ? refDoc.preferred : enduAvail[0]?.k || "vma";
+        const prefDef = ENDU.find((e) => e.k === preferred);
+        const prefPts = enduPts(preferred);
+        const prefVal = nb(refDoc[preferred]?.value) || (prefPts.length ? prefPts[prefPts.length - 1].v : preferred === "vma" && vma ? nb(vma.kg) : null);
+        const setPreferred = async (k) => {
+          try {
+            await setDoc(doc(db, "users", uid, "tests", "_reference"), { preferred: k, updatedAt: new Date().toISOString() }, { merge: true });
+            setRefDoc((r) => ({ ...r, preferred: k }));
+          } catch (e) {
+            alert("Erreur : " + e.message);
+          }
+        };
+
+        /* ---- Panneau de détail commun : courbe + historique avec variation ---- */
+        const panel = (title, pts, unit, color, extra, decimals = 1) => (
+          <div style={{ ...CARD_STYLE, border: `1px solid ${color}66`, marginTop: -6 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{title}</h3>
+              <button className="pt-btn" onClick={() => setKpiOpen(null)}>✕ Fermer</button>
+            </div>
+            {extra}
+            {pts.length === 0 ? (
+              <div style={{ fontSize: 13, color: "#a8a199", textAlign: "center", padding: "16px 8px" }}>Pas encore de mesure.</div>
+            ) : (
+              <>
+                {pts.length > 1 && (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={pts.map((p) => ({ ...p, d: `${p.date.slice(8, 10)}/${p.date.slice(5, 7)}` }))} margin={{ top: 8, right: 10, left: -10, bottom: 0 }}>
+                      <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="d" stroke="#6f6a62" tick={{ fontSize: 11, fill: "#a8a199" }} tickLine={false} />
+                      <YAxis stroke="#6f6a62" tick={{ fontSize: 11, fill: "#a8a199" }} tickLine={false} axisLine={false} width={40} domain={["dataMin - 1", "dataMax + 1"]} tickFormatter={(v) => Math.round(v)} />
+                      <Tooltip
+                        contentStyle={{ background: "#151310", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
+                        labelStyle={{ color: "#f3f0ea" }}
+                        formatter={(v, n, it) => [`${r1(v)} ${unit}`, it?.payload?.how || ""]}
+                      />
+                      <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2.5} dot={{ r: 4, fill: color, stroke: "#151310", strokeWidth: 1.5 }} activeDot={{ r: 6 }} isAnimationActive={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+                <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+                  {pts
+                    .slice()
+                    .reverse()
+                    .map((p, i, arr) => {
+                      const prev = arr[i + 1];
+                      const d = prev ? p.v - prev.v : null;
+                      const pc = prev ? (d / prev.v) * 100 : null;
+                      return (
+                        <div key={p.date + i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 8, padding: "8px 12px" }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontSize: 13, color: "#f3f0ea", fontWeight: 600 }}>{fr(p.date)}</div>
+                            <div style={{ fontSize: 11.5, color: "#7d766c" }}>{p.how}</div>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {d !== null && Math.abs(d) >= 0.05 && (
+                              <span style={{ fontSize: 12, fontWeight: 700, color: d > 0 ? "#4fae7d" : "#d9695a" }}>
+                                {d > 0 ? "▲ +" : "▼ "}{r1(d)} ({d > 0 ? "+" : ""}{r1(pc)} %)
+                              </span>
+                            )}
+                            <span style={{ fontSize: 17, fontWeight: 800, color }}>{decimals ? r1(p.v) : Math.round(p.v)} <span style={{ fontSize: 12 }}>{unit}</span></span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </>
+            )}
+          </div>
+        );
+        const toggle = (k) => setKpiOpen((o) => (o === k ? null : k));
         return (
-          <KpiGrid>
-            <Kpi icon="💪" label="RM enregistrés" value={filled.length} color="#e0a13d" sub={`${list.length - filled.length} en attente d'une séance`} />
-            <Kpi
-              icon="⚡"
-              label="Vmax"
-              value={vmaxBest ? `${(Math.round(vmaxBest.v * 10) / 10).toString().replace(".", ",")} km/h` : "—"}
-              color={vmaxBest ? "#4a90d9" : "#6f6a62"}
-              sub={vmaxBest ? `${vmaxBest.how}${vmaxBest.date ? ` · ${vmaxBest.date.slice(8, 10)}/${vmaxBest.date.slice(5, 7)}` : ""}` : "Saisis 20 m + 60 m ou la Vmax GPS"}
-            />
-            <Kpi icon="🏃" label="VMA" value={vma ? `${vma.kg} km/h` : "—"} color={vma ? "#4fae7d" : "#6f6a62"} sub={vma?.sourceTest || "Mesurée lors des tests"} />
-            <Kpi icon="🦘" label="CMJ" value={cmj ? `${cmj.kg} cm` : "—"} color={cmj ? "#e0a13d" : "#6f6a62"} sub="Détente verticale" />
-          </KpiGrid>
+          <>
+            <KpiGrid>
+              <Kpi icon="💪" label="RM enregistrés" value={filled.length} color="#e0a13d" sub={`${list.length - filled.length} en attente d'une séance`} />
+              <Kpi
+                icon="⚡"
+                label="Vmax"
+                value={vmaxBest ? `${r1(vmaxBest.v)} km/h` : "—"}
+                color={vmaxBest ? "#4a90d9" : "#6f6a62"}
+                sub={vmaxBest ? `${vmaxBest.how} · ${fr(vmaxBest.date)} · détail ▾` : "GPS, ou 60 m + 10/20 m · saisir ▾"}
+                onClick={() => toggle("vmax")}
+                active={kpiOpen === "vmax"}
+              />
+              <Kpi
+                icon="🦘"
+                label="CMJ"
+                value={cmjLast ? `${r1(cmjLast.v)} cm` : "—"}
+                color={cmjLast ? "#e0a13d" : "#6f6a62"}
+                sub={cmjPts.length ? `${cmjPts.length} mesure${cmjPts.length > 1 ? "s" : ""} · détail ▾` : "Détente verticale"}
+                onClick={() => toggle("cmj")}
+                active={kpiOpen === "cmj"}
+              />
+              <Kpi
+                icon="🏃"
+                label={prefDef.label}
+                value={prefVal ? `${r1(prefVal)} km/h` : "—"}
+                color={prefVal ? "#4fae7d" : "#6f6a62"}
+                sub={`Référence de tes séances · changer ▾`}
+                onClick={() => toggle("endu")}
+                active={kpiOpen === "endu"}
+              />
+            </KpiGrid>
+
+            {kpiOpen === "vmax" &&
+              panel(
+                "⚡ Évolution de la Vmax",
+                vmaxPts,
+                "km/h",
+                "#4a90d9",
+                <>
+                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
+                    La vitesse max n'est atteinte qu'entre ≈ 30 et 40 m : un 10 ou un 20 m ne la mesure pas. Vmax retenue : celle du GPS / radar si elle est saisie,
+                    sinon estimée par le modèle mono-exponentiel (Samozino et al. 2016) à partir d'un temps ≥ 30 m (ex. 60 m) ET d'un temps court (10 ou 20 m).
+                  </div>
+                  <div style={{ background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 10, padding: 10, marginBottom: 10 }}>
+                    <div style={{ fontSize: 11.5, letterSpacing: 0.5, textTransform: "uppercase", color: "#a8a199", fontWeight: 800, marginBottom: 8 }}>➕ Ajouter des temps</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 110px), 1fr))", gap: 8, alignItems: "end" }}>
+                      <div style={{ gridColumn: "1 / -1", maxWidth: 220 }}>
+                        <label style={{ fontSize: 11, color: "#a8a199" }}>📅 Date</label>
+                        <input type="date" value={sprintDate} onChange={(e) => setSprintDate(e.target.value)} style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }} />
+                      </div>
+                      {[["t10", "10 m", "1.72"], ["t20", "20 m", "3.05"], ["t60", "60 m", "7.90"]].map(([k, l, ph]) => (
+                        <div key={k}>
+                          <label style={{ fontSize: 11, color: "#a8a199" }}>{l} (s)</label>
+                          <input type="text" inputMode="decimal" value={sprintVals[k]} placeholder={`ex : ${ph}`} onChange={(e) => setSprintVals((v) => ({ ...v, [k]: e.target.value }))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }} />
+                        </div>
+                      ))}
+                    </div>
+                    <button className="pt-btn pt-btn--primary" style={{ marginTop: 10 }} onClick={saveSprint} disabled={savingSprint}>
+                      {savingSprint ? "…" : "💾 Enregistrer"}
+                    </button>
+                  </div>
+                  {sprintHist.length > 0 && (
+                    <details style={{ marginBottom: 10 }}>
+                      <summary style={{ fontSize: 12.5, color: "#e0a13d", cursor: "pointer" }}>⏱️ Tous mes temps ({sprintHist.length})</summary>
+                      <div style={{ marginTop: 6 }}>
+                        {sprintHist.map((t) => {
+                          const c = vmaxOf(t);
+                          return (
+                            <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #1d1a16", fontSize: 12.5 }}>
+                              <span>
+                                <span style={{ color: "#a8a199" }}>{fr(day(t.date))}</span> ·{" "}
+                                {["t5", "t10", "t20", "t60"].filter((k) => t.values?.[k]).map((k) => `${k.slice(1)} m : ${t.values[k]} s`).join(" · ") || "—"}
+                                {c ? <span style={{ color: "#4a90d9" }}> → {r1(c.v)} km/h</span> : null}
+                              </span>
+                              <button onClick={() => deleteSprint(t.id)} style={{ background: "none", border: "none", color: "#d9695a", cursor: "pointer", fontSize: 12 }}>🗑️</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  )}
+                </>
+              )}
+
+            {kpiOpen === "cmj" &&
+              panel(
+                "🦘 Évolution du CMJ",
+                cmjPts,
+                "cm",
+                "#e0a13d",
+                <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10 }}>
+                  Meilleur saut de chaque jour : tests (onglet Tests), séances où un CMJ a été fait, et saisies manuelles.
+                </div>
+              )}
+
+            {kpiOpen === "endu" &&
+              panel(
+                `🏃 Évolution de la ${prefDef.label}`,
+                prefPts,
+                "km/h",
+                "#4fae7d",
+                <>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                    {ENDU.map((e) => {
+                      const on = preferred === e.k;
+                      const ok = enduAvail.some((x) => x.k === e.k);
+                      return (
+                        <button
+                          key={e.k}
+                          type="button"
+                          onClick={() => setPreferred(e.k)}
+                          title={e.long}
+                          style={{ padding: "6px 14px", borderRadius: 999, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? "#4fae7d" : "#2a2620"}`, background: on ? "rgba(79,174,125,0.16)" : "#0d0c0a", color: on ? "#4fae7d" : ok ? "#f3f0ea" : "#6f6a62" }}
+                        >
+                          {on ? "⭐ " : ""}{e.label}
+                          {nb(refDoc[e.k]?.value) ? <span style={{ fontWeight: 400, color: "#a8a199" }}> · {r1(nb(refDoc[e.k].value))}</span> : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10, lineHeight: 1.5 }}>
+                    ⭐ = référence utilisée par défaut dans tes séances d'endurance : un nouvel exercice sera réglé en « % {prefDef.label} ».
+                    {refDoc[preferred]?.testName ? ` Valeur de référence : ${refDoc[preferred].testName} (${fr(day(refDoc[preferred].date))}).` : ""}
+                    {!prefPts.length ? " Pas encore de test pour cette référence (onglet Tests)." : ""}
+                  </div>
+                </>
+              )}
+          </>
         );
       })()}
 
@@ -895,87 +1123,6 @@ export default function MyRM() {
           )}
         </FoldCard>
       </div>
-
-      {/* ==================== VMA & CMJ : désormais gérés dans l'onglet Tests ==================== */}
-      <FoldCard id="vmacmj" fold={fold} title="🏃 VMA & 🦘 CMJ">
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
-          <div style={{ background: "#0d0c0a", padding: "10px 16px", borderRadius: 8, minWidth: 130 }}>
-            <div style={{ fontSize: 12, color: "#a8a199" }}>🏃 VMA</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#4fae7d" }}>
-              {vma ? `${vma.kg} km/h` : "—"}
-            </div>
-            {vma && vma.sourceTest && (
-              <div style={{ fontSize: 11, color: "#a8a199" }}>{vma.sourceTest}</div>
-            )}
-          </div>
-          <div style={{ background: "#0d0c0a", padding: "10px 16px", borderRadius: 8, minWidth: 130 }}>
-            <div style={{ fontSize: 12, color: "#a8a199" }}>🦘 CMJ</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#e0a13d" }}>
-              {cmj ? `${cmj.kg} cm` : "—"}
-            </div>
-          </div>
-        </div>
-        <div style={{ fontSize: 13, color: "#a8a199" }}>
-          💡 La VMA, la VMI, la vitesse critique et le CMJ sont maintenant mesurés
-          par ton coach lors des tests. Retrouve tous tes résultats dans ton
-          <strong> Dashboard</strong> (bloc « Mes tests »).
-        </div>
-      </FoldCard>
-
-      {/* ==================== SPRINT : 10 / 20 / 60 m ==================== */}
-      <FoldCard id="sprint" fold={fold} title="⚡ Mes temps de sprint">
-        <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 12 }}>
-          Temps en secondes, au centième (ex : 1.72). Ils sont comparés aux normes de ton poste et de ton niveau dans l'onglet Tests.
-        </div>
-        <div style={{ marginBottom: 10, maxWidth: 220 }}>
-          <label style={{ fontSize: 11, color: "#a8a199" }}>📅 Date des temps</label>
-          <input
-            type="date"
-            value={sprintDate}
-            onChange={(e) => setSprintDate(e.target.value)}
-            style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #3a342a", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
-          />
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10 }}>
-          {[["t10", "10 m", "ex : 1.72"], ["t20", "20 m", "ex : 3.05"], ["t60", "60 m", "ex : 7.90"]].map(([k, l, ph]) => (
-            <div key={k}>
-              <label style={{ fontSize: 11, color: "#a8a199" }}>{l} (s)</label>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={sprintVals[k]}
-                placeholder={ph}
-                onChange={(e) => setSprintVals((v) => ({ ...v, [k]: e.target.value }))}
-                style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #3a342a", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
-              />
-            </div>
-          ))}
-        </div>
-        <button
-          onClick={saveSprint}
-          disabled={savingSprint}
-          style={{ marginTop: 12, padding: "10px 18px", background: "#4fae7d", color: "white", border: "none", borderRadius: 8, fontWeight: "bold", cursor: "pointer" }}
-        >
-          {savingSprint ? "…" : "💾 Enregistrer mes temps"}
-        </button>
-        {sprintHist.length > 0 && (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>Historique</div>
-            {sprintHist.slice(0, 8).map((t) => (
-              <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #1d1a16", fontSize: 13 }}>
-                <span>
-                  <span style={{ color: "#a8a199" }}>{t.date}</span> ·{" "}
-                  {["t10", "t20", "t60"]
-                    .filter((k) => t.values?.[k])
-                    .map((k) => `${k.slice(1)} m : ${t.values[k]} s`)
-                    .join(" · ") || "—"}
-                </span>
-                <button onClick={() => deleteSprint(t.id)} style={{ background: "none", border: "none", color: "#d9695a", cursor: "pointer", fontSize: 12 }}>🗑️</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </FoldCard>
 
       {/* ==================== BOUTON AJOUTER RM ==================== */}
       {/* Le bouton "Ajouter un exercice" a été retiré : la liste des

@@ -6,7 +6,7 @@ const fmtT = (s) => (s >= 60 ? `${Math.round(s / 60)}'` : `${s}"`);
 const summary = (type, t) =>
   type === "sprint"
     ? `${t.sets ?? "?"} × ${t.reps ?? "?"} × ${t.distance ?? "?"} m · récup ${t.recoveryMin ? t.recoveryMin + "'" : ""}${t.recoverySec ? t.recoverySec + '"' : ""}${t.intensity ? " · " + t.intensity : ""}`
-    : `${t.reps > 1 ? t.reps + " × " : ""}${t.effortTime ? fmtT(t.effortTime) : "?"} à ${t.vmaPercentage ?? "?"} % ${t.intensityRef === "cs" ? "VC" : "VMA"}`;
+    : `${t.reps > 1 ? t.reps + " × " : ""}${t.effortTime ? fmtT(t.effortTime) : "?"} à ${t.vmaPercentage ?? "?"} % ${t.intensityRef === "cs" ? "VC" : t.intensityRef === "vmi" ? "VMI" : "VMA"}`;
 
 export default function DrillBankModal({ type, onPick, onClose, ratio, entries }) {
   const [q, setQ] = useState("");

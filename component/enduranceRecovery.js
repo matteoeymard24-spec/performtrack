@@ -60,7 +60,7 @@ export function recText(ex, which = "rep", refKmh = null) {
   const t = recTypeOf(ex, which);
   if (t === "active") {
     const pct = recPctOf(ex, which);
-    const ref = ex?.intensityRef === "cs" ? "VC" : "VMA";
+    const ref = ex?.intensityRef === "cs" ? "VC" : ex?.intensityRef === "vmi" ? "VMI" : "VMA";
     const kmh = refKmh ? ` (≈ ${((refKmh * pct) / 100).toFixed(1).replace(".", ",")} km/h)` : "";
     return `${fmtRecDur(sec)} active à ${pct} % ${ref}${kmh}`;
   }

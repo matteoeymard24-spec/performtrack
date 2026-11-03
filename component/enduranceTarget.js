@@ -80,7 +80,7 @@ export function distanceInTime(timeSec, speedMs, shuttleM) {
 
 /* Durée d'effort estimée (s) pour la durée de séance / la frise des zones */
 export function estimatedEffortSec(ex, refKmh) {
-  const kmh = refKmh > 0 ? refKmh : ex?.intensityRef === "cs" ? FALLBACK_VMA_KMH * 0.88 : FALLBACK_VMA_KMH;
+  const kmh = refKmh > 0 ? refKmh : ex?.intensityRef === "cs" ? FALLBACK_VMA_KMH * 0.88 : ex?.intensityRef === "vmi" ? FALLBACK_VMA_KMH * 1.17 : FALLBACK_VMA_KMH;
   const speed = ((kmh * 1000) / 3600) * ((num(ex?.vmaPercentage) || 100) / 100);
   const t = targetTimeSec(ex, speed);
   return t ? Math.round(t) : null;

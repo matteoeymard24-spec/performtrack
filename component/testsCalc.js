@@ -180,6 +180,42 @@ export function evaluateMeasures(test, values) {
 }
 
 /* ---------------------------------------------------------------------
+   Vmax de sprint à partir des temps intermédiaires.
+   La vitesse max n'est atteinte qu'entre ≈ 30 et 40 m chez des rugbymen
+   (Barr, Sheppard & Newton 2013, J Aust Strength Cond 21:14) : une vitesse
+   moyenne sur 10→20 m est une vitesse d'ACCÉLÉRATION, jamais la Vmax.
+   Méthode : modèle mono-exponentiel v(t) = MSS·(1 − e^(−t/τ)), soit
+   x(t) = MSS·(t + τ·e^(−t/τ) − τ), ajusté sur les temps (Samozino et al. 2016,
+   Scand J Med Sci Sports 26:648). Valide seulement avec un temps ≥ 30 m
+   (proche du plateau) ET au moins un temps court (≤ 20 m) pour fixer τ.
+   Priorité au pic mesuré au GPS / radar quand il existe.
+   --------------------------------------------------------------------- */
+export function sprintVmax(values) {
+  const n = (x) => {
+    const v = Number(String(x ?? "").replace(",", "."));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+  const gps = n(values?.vmax);
+  if (gps) return { v: gps, how: "GPS / radar" };
+  const splits = [5, 10, 15, 20, 30, 40, 60]
+    .map((d) => [d, n(values?.[`t${d}`])])
+    .filter(([, t]) => t);
+  if (!splits.some(([d]) => d >= 30) || !splits.some(([d]) => d <= 20)) return null;
+  // temps croissants avec la distance, sinon saisie incohérente
+  for (let i = 1; i < splits.length; i++) if (splits[i][1] <= splits[i - 1][1]) return null;
+  let best = null;
+  for (let tau = 0.3; tau <= 3; tau += 0.005) {
+    const g = splits.map(([, t]) => t + tau * Math.exp(-t / tau) - tau);
+    const mss = splits.reduce((a, [d], i) => a + d * g[i], 0) / g.reduce((a, x) => a + x * x, 0);
+    const err = splits.reduce((a, [d], i) => a + (d - mss * g[i]) ** 2, 0);
+    if (!best || err < best.err) best = { err, mss, tau };
+  }
+  const kmh = best.mss * 3.6;
+  if (!(kmh > 12 && kmh < 45)) return null;
+  return { v: kmh, how: "modèle (temps de passage)", tau: best.tau };
+}
+
+/* ---------------------------------------------------------------------
    CATALOGUE
    fields : [{key,label,unit,placeholder,time?}]
    compute(values) → { main:{label,value,unit}, vma?, vmi?, cs?, vo2max?, lines:[string] } | null
@@ -618,7 +654,9 @@ export const TESTS = [
         : null;
       if (!main) return null;
       const lines = [];
-      if (t10 && t20 && t20 > t10) lines.push(`10→20 m : ${r2(t20 - t10)} s (${r1((10 / (t20 - t10)) * 3.6)} km/h moyens)`);
+      if (t10 && t20 && t20 > t10) lines.push(`10→20 m : ${r2(t20 - t10)} s (${r1((10 / (t20 - t10)) * 3.6)} km/h moyens, phase d'accélération)`);
+      const vx = sprintVmax(v);
+      if (vx && !vm) lines.push(`Vmax estimée : ${r1(vx.v)} km/h (modèle mono-exponentiel sur les temps de passage)`);
       return { main, lines };
     },
   },

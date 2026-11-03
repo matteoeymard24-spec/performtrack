@@ -102,11 +102,33 @@ export const ZONES = [
   },
 ];
 
+/* Référence d'intensité d'un exercice : "vma" (défaut), "vmi" (vitesse intermittente 30-15 IFT) ou "cs" (VC).
+   VMI → VC : la VIFT du 30-15 IFT est en général ≈ 115-120 % de la VMA (Buchheit 2008, J Strength Cond Res 22:365) ;
+   on prend 1,17 par défaut, remplacé par le vrai rapport VMI / VMA de l'athlète quand ses deux tests existent. */
+export const DEFAULT_VMI_VMA_RATIO = 1.17;
+let VMI_VMA = DEFAULT_VMI_VMA_RATIO;
+export const setVmiVmaRatio = (vmi, vma) => {
+  const r = Number(vmi) > 0 && Number(vma) > 0 ? Number(vmi) / Number(vma) : null;
+  VMI_VMA = r && r > 1 && r < 1.5 ? r : DEFAULT_VMI_VMA_RATIO;
+};
+export const vmiVmaRatio = () => VMI_VMA;
+export const REF_KINDS = [
+  { id: "vma", label: "VMA", long: "VMA" },
+  { id: "vmi", label: "VMI", long: "VMI (30-15)" },
+  { id: "cs", label: "VC", long: "vitesse critique" },
+];
+export const refKindOf = (ex) => (ex?.intensityRef === "cs" || ex?.intensityRef === "vmi" ? ex.intensityRef : "vma");
+export const refLabel = (ex) => REF_KINDS.find((r) => r.id === refKindOf(ex)).label;
+export const refLong = (ex) => REF_KINDS.find((r) => r.id === refKindOf(ex)).long;
+
 /** % de la vitesse critique d'un exercice (selon sa référence). */
 export const pctCS = (ex, ratio = DEFAULT_CS_VMA_RATIO) => {
   const p = Number(ex?.vmaPercentage) || 0;
   if (!p) return 0;
-  return ex?.intensityRef === "cs" ? p : p / (ratio || DEFAULT_CS_VMA_RATIO);
+  const k = refKindOf(ex);
+  if (k === "cs") return p;
+  if (k === "vmi") return (p * VMI_VMA) / (ratio || DEFAULT_CS_VMA_RATIO);
+  return p / (ratio || DEFAULT_CS_VMA_RATIO);
 };
 
 export const zoneOf = (pctOfCS) => {
@@ -122,6 +144,8 @@ export const zoneOf = (pctOfCS) => {
    blockRecovery = récup après l'exercice (entre séries). */
 const CS = { intensityRef: "cs" };
 export const ENDURANCE_BANK = [
+  { intensityRef: "vma", cat: "Répétition de sprints (RSA)", name: "RSA 6 × 30 m r20\" (× 2)", description: "Répétition de sprints à fond, récup courte passive (capacité à répéter les sprints). 2 séries : 4' de récup entre les séries.", targetMode: "distance", distanceM: 30, vmaPercentage: 160, effortTime: 5, reps: 6, recoveryMin: 0, recoverySec: 20, recoveryType: "passive", blockRecoveryMin: 4, blockRecoverySec: 0, blockRecoveryType: "walk" },
+  { intensityRef: "vma", cat: "Répétition de sprints (RSA)", name: "RSA navette 6 × (20 + 20 m) r20\"", description: "Sprint aller-retour avec demi-tour, récup courte passive (capacité à répéter des sprints avec changement de direction).", targetMode: "distance", legs: "20", rounds: 1, vmaPercentage: 150, effortTime: 7, reps: 6, recoveryMin: 0, recoverySec: 20, recoveryType: "passive", blockRecoveryMin: 4, blockRecoverySec: 0, blockRecoveryType: "walk" },
   { ...CS, cat: "Zones 1 & 2", name: "Récupération 30'", description: "Basse intensité, rythme lent confortable. Accélérer le rétablissement.", vmaPercentage: 65, effortTime: 1800, reps: 1, recoveryMin: 0, recoverySec: 0 },
   { ...CS, cat: "Zones 1 & 2", name: "Échauffement 10' Z2", description: "Mise en route en zone 2.", vmaPercentage: 75, effortTime: 600, reps: 1, recoveryMin: 0, recoverySec: 0 },
   { ...CS, cat: "Zones 1 & 2", name: "Course longue 1h", description: "Base aérobie / résistance. 1h à 2h à 70-80 % VC.", vmaPercentage: 75, effortTime: 3600, reps: 1, recoveryMin: 0, recoverySec: 0 },
@@ -146,18 +170,17 @@ export const ENDURANCE_BANK = [
 
 /* ---------- Banque SPRINT (champs = ceux du formulaire sprint) ---------- */
 export const SPRINT_BANK = [
-  { name: "Accélération 10 m (départ 3 appuis)", description: "Mise en action, pousser fort, buste incliné.", distance: 10, reps: 5, sets: 2, recoveryMin: 1, recoverySec: 0, intensity: "Max" },
-  { name: "Accélération 20 m", description: "Départ arrêté, montée progressive du buste.", distance: 20, reps: 4, sets: 2, recoveryMin: 2, recoverySec: 0, intensity: "Max" },
-  { name: "Sprint 30 m", description: "Départ arrêté, vitesse maximale.", distance: 30, reps: 4, sets: 2, recoveryMin: 2, recoverySec: 30, intensity: "Max" },
-  { name: "Sprint lancé 20 m (élan 20 m)", description: "Vitesse maximale sur la zone chronométrée après 20 m d'élan.", distance: 20, reps: 4, sets: 1, recoveryMin: 3, recoverySec: 0, intensity: "Max" },
-  { name: "Départ couché / réaction 10 m", description: "Départ au signal depuis le sol (ventre ou dos).", distance: 10, reps: 6, sets: 1, recoveryMin: 1, recoverySec: 0, intensity: "Max" },
-  { name: "Sprint résisté (traîneau / élastique) 15 m", description: "Charge légère : la vitesse ne doit pas chuter de plus de ~10 %.", distance: 15, reps: 5, sets: 1, recoveryMin: 2, recoverySec: 0, intensity: "Max" },
-  { name: "Sprint en côte 20 m", description: "Pente modérée, poussée et fréquence.", distance: 20, reps: 6, sets: 1, recoveryMin: 2, recoverySec: 0, intensity: "Max" },
-  { name: "Changement de direction 5-0-5", description: "Sprint, demi-tour à la ligne, retour 5 m.", distance: 10, reps: 4, sets: 1, recoveryMin: 1, recoverySec: 30, intensity: "Max" },
-  { name: "Navette 10-20-10 (pro agility)", description: "Déplacement latéral avec appuis au sol.", distance: 40, reps: 4, sets: 1, recoveryMin: 2, recoverySec: 0, intensity: "Max" },
-  { name: "RSA 6 × 30 m r20\"", description: "Répétition de sprints, récup courte (capacité à répéter).", distance: 30, reps: 6, sets: 2, recoveryMin: 0, recoverySec: 20, intensity: "Max" },
-  { name: "Gammes : montées de genoux / talons-fesses 20 m", description: "Éducatifs de course avant les sprints.", distance: 20, reps: 4, sets: 1, recoveryMin: 0, recoverySec: 30, intensity: "Sous-max" },
-  { name: "Lignes droites progressives 60 m", description: "Accélération progressive jusqu'à ~90 % de la vitesse max.", distance: 60, reps: 4, sets: 1, recoveryMin: 1, recoverySec: 30, intensity: "Sous-max" },
+  { name: "Accélération 10 m (départ 3 appuis)", description: "Mise en action, pousser fort, buste incliné.", distance: 10, reps: 1, sets: 10, recoveryMin: 1, recoverySec: 0, intensity: "Max" },
+  { name: "Accélération 20 m", description: "Départ arrêté, montée progressive du buste.", distance: 20, reps: 1, sets: 8, recoveryMin: 2, recoverySec: 0, intensity: "Max" },
+  { name: "Sprint 30 m", description: "Départ arrêté, vitesse maximale.", distance: 30, reps: 1, sets: 8, recoveryMin: 2, recoverySec: 30, intensity: "Max" },
+  { name: "Sprint lancé 20 m (élan 20 m)", description: "Vitesse maximale sur la zone chronométrée après 20 m d'élan.", distance: 20, reps: 1, sets: 4, recoveryMin: 3, recoverySec: 0, intensity: "Max" },
+  { name: "Départ couché / réaction 10 m", description: "Départ au signal depuis le sol (ventre ou dos).", distance: 10, reps: 1, sets: 6, recoveryMin: 1, recoverySec: 0, intensity: "Max" },
+  { name: "Sprint résisté (traîneau / élastique) 15 m", description: "Charge légère : la vitesse ne doit pas chuter de plus de ~10 %.", distance: 15, reps: 1, sets: 5, recoveryMin: 2, recoverySec: 0, intensity: "Max" },
+  { name: "Sprint en côte 20 m", description: "Pente modérée, poussée et fréquence.", distance: 20, reps: 1, sets: 6, recoveryMin: 2, recoverySec: 0, intensity: "Max" },
+  { name: "Changement de direction 5-0-5", description: "Sprint, demi-tour à la ligne, retour 5 m.", distance: 10, reps: 1, sets: 4, recoveryMin: 1, recoverySec: 30, intensity: "Max" },
+  { name: "Navette 10-20-10 (pro agility)", description: "Déplacement latéral avec appuis au sol.", distance: 40, reps: 1, sets: 4, recoveryMin: 2, recoverySec: 0, intensity: "Max" },
+  { name: "Gammes : montées de genoux / talons-fesses 20 m", description: "Éducatifs de course avant les sprints.", distance: 20, reps: 1, sets: 4, recoveryMin: 0, recoverySec: 30, intensity: "Sous-max" },
+  { name: "Lignes droites progressives 60 m", description: "Accélération progressive jusqu'à ~90 % de la vitesse max.", distance: 60, reps: 1, sets: 4, recoveryMin: 1, recoverySec: 30, intensity: "Sous-max" },
 ];
 
 /* Schéma par défaut d'un exo de sprint : plots de départ / arrivée sur la piste. */
@@ -187,7 +210,8 @@ const blockTimerSec = (b) =>
    (VMA / VC), sinon la durée estimée enregistrée ; défini en TEMPS → effortTime. */
 const effortSecFor = (ex, ratio, vma, cs) => {
   if (isDistanceMode(ex)) {
-    const ref = ex.intensityRef === "cs" ? cs || (vma ? vma * (ratio || DEFAULT_CS_VMA_RATIO) : null) : vma;
+    const k = refKindOf(ex);
+    const ref = k === "cs" ? cs || (vma ? vma * (ratio || DEFAULT_CS_VMA_RATIO) : null) : k === "vmi" ? (vma ? vma * VMI_VMA : null) : vma;
     const est = ref ? estimatedEffortSec(ex, ref) : null;
     if (est) return est;
   }

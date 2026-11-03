@@ -22,13 +22,23 @@ export const isMixedSession = (session) => sessionBlockTypes(session).length > 1
 export const hasBlockType = (session, t) => sessionBlockTypes(session).includes(t);
 
 /* Exercice vide par défaut selon le type de bloc (mêmes valeurs que le formulaire) */
+/* Référence d'intensité par défaut des nouveaux exos d'endurance (VMA / VMI / VC) :
+   celle choisie par l'athlète dans « Mes RM » (tests/_reference.preferred), posée par Workout. */
+let DEFAULT_ENDU_REF = "vma";
+export const setDefaultEnduRef = (k) => {
+  DEFAULT_ENDU_REF = ["vma", "vmi", "cs"].includes(k) ? k : "vma";
+};
+export const defaultEnduRef = () => DEFAULT_ENDU_REF;
+
 export const defaultExerciseFor = (type) => {
+  // Sprint : 1 sprint par série, c'est le nombre de séries qui varie
   if (type === "sprint")
-    return { name: "", description: "", distance: 30, recoveryMin: 1, recoverySec: 0, reps: 6, sets: 3, intensity: "Max" };
+    return { name: "", description: "", distance: 30, recoveryMin: 1, recoverySec: 0, reps: 1, sets: 6, intensity: "Max" };
   if (type === "endurance")
     return {
       name: "",
       description: "",
+      intensityRef: DEFAULT_ENDU_REF,
       vmaPercentage: 85,
       effortTime: 30,
       recoveryMin: 0,
