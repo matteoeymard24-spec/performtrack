@@ -327,9 +327,9 @@ const estimateTypeDurationSeconds = (type, blocks) => {
       t +
       exs.reduce((st, ex, i) => {
         const repSec = exRepSeconds(ex) || 3;
-        // ISO : 0 ou 1 = un seul maintien par série ; plusieurs maintiens + leur récup (ex.isoRepRest)
+        // ISO : comme le classique ; si plusieurs reps, + leur récup (ex.isoRepRest)
         const iso = isIsoEx(ex);
-        const reps = iso ? Math.max(1, Number(ex.reps) || 0) : ex.reps || 8;
+        const reps = Math.max(1, Number(ex.reps) || (iso ? 1 : 8));
         const isoRest = iso && reps > 1 ? (reps - 1) * (Number(ex.isoRepRest) || 0) : 0;
         const work = reps * repSec * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + methodExtraSec(ex, repSec) + isoRest;
         const rest = contrast ? (i === exs.length - 1 ? blockRest : between) : ex.restMin != null ? Number(ex.restMin) * 60 : blockRest;
@@ -8225,13 +8225,14 @@ export default function Workout() {
                                 </label>
                                 <input
                                   type="number"
-                                  value={ex.series}
+                                  min={1}
+                                  value={Math.max(1, Number(ex.series) || 1)}
                                   onChange={(e) =>
                                     updateExercise(
                                       bIdx,
                                       eIdx,
                                       "series",
-                                      Number(e.target.value)
+                                      Math.max(1, Math.round(Number(e.target.value) || 1))
                                     )
                                   }
                                   style={{
@@ -8247,17 +8248,18 @@ export default function Workout() {
                             )}
                             <div>
                               <label style={{ fontSize: 12, color: "#a8a199" }}>
-                                {isIsoEx(ex) ? "Maintiens / série" : methodOf(ex) === "cluster" ? "Reps par mini-série" : methodOf(ex) === "m12080" ? `Reps classiques (à ${mpOf(ex).conPct} %)` : "Reps"}
+                                {methodOf(ex) === "cluster" ? "Reps par mini-série" : methodOf(ex) === "m12080" ? `Reps classiques (à ${mpOf(ex).conPct} %)` : "Reps"}
                               </label>
                               <input
                                 type="number"
-                                value={ex.reps}
+                                min={1}
+                                value={Math.max(1, Number(ex.reps) || 1)}
                                 onChange={(e) =>
                                   updateExercise(
                                     bIdx,
                                     eIdx,
                                     "reps",
-                                    Number(e.target.value)
+                                    Math.max(1, Math.round(Number(e.target.value) || 1))
                                   )
                                 }
                                 style={{
@@ -8272,7 +8274,7 @@ export default function Workout() {
                             </div>
                             {isIsoEx(ex) && Number(ex.reps) > 1 && (
                               <div>
-                                <label style={{ fontSize: 12, color: "#a8a199" }}>Récup entre maintiens (s)</label>
+                                <label style={{ fontSize: 12, color: "#a8a199" }}>Récup entre les reps (s)</label>
                                 <input
                                   type="number"
                                   min={0}
@@ -8715,13 +8717,14 @@ export default function Workout() {
                           </label>
                           <input
                             type="number"
-                            value={ex.sets}
+                            min={1}
+                            value={Math.max(1, Number(ex.sets) || 1)}
                             onChange={(e) =>
                               updateExercise(
                                 bIdx,
                                 eIdx,
                                 "sets",
-                                Number(e.target.value)
+                                Math.max(1, Math.round(Number(e.target.value) || 1))
                               )
                             }
                             style={{
@@ -8971,7 +8974,7 @@ export default function Workout() {
                                 {!isTimerBlock && (
                                   <div>
                                     <label style={lab}>Répétitions</label>
-                                    <input type="number" min={1} value={ex.reps} onChange={(e) => updateExercise(bIdx, eIdx, "reps", Number(e.target.value))} style={fieldStyle} />
+                                    <input type="number" min={1} value={Math.max(1, Number(ex.reps) || 1)} onChange={(e) => updateExercise(bIdx, eIdx, "reps", Math.max(1, Math.round(Number(e.target.value) || 1)))} style={fieldStyle} />
                                   </div>
                                 )}
                                 <div>
@@ -10182,7 +10185,7 @@ export default function Workout() {
                             ? ex.reps
                             : isIsoEx(ex)
                             ? `${isoSchemeText(ex)}${isUniEx(ex) ? " /côté (D+G)" : ""}`
-                            : `${ex.series} × ${ex.reps}${isUniEx(ex) ? " /côté (D+G)" : ""}`}{" "}
+                            : `${Math.max(1, Number(ex.series) || 1)} × ${Math.max(1, Number(ex.reps) || 1)}${isUniEx(ex) ? " /côté (D+G)" : ""}`}{" "}
                           @{" "}
                           {ex.rmPercent === "PDC" ? (
                             <strong style={{ color: "#e0a13d" }}>PDC</strong>
