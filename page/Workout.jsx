@@ -14,6 +14,7 @@ import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WAR
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
 import { FoldBtn, useFold, PageHeader } from "../component/ui";
 import { GroupChips } from "../component/PersonPicker";
+import ExercisePhoto, { ExerciseThumb } from "../component/ExercisePhoto";
 import { withMembershipHistory, groupTargetMatches, hasProgress, formerTargetsOf } from "../component/groupHistory";
 import { REC_TYPES, REC_PRESETS, REC_DEFAULT_PCT, recKeys, recTypeOf, recPctOf, recSecOf, recText } from "../component/enduranceRecovery";
 import PlanningRefsModal from "../component/PlanningRefsModal";
@@ -5924,17 +5925,7 @@ export default function Workout() {
                       >
                         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                           {entry.mediaUrl ? (
-                            <img
-                              src={entry.mediaUrl}
-                              alt=""
-                              style={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: 6,
-                                objectFit: "cover",
-                                flexShrink: 0,
-                              }}
-                            />
+                            <ExerciseThumb src={entry.mediaUrl} size={36} />
                           ) : (
                             <div
                               style={{
@@ -7967,17 +7958,7 @@ export default function Workout() {
                                 }}
                               >
                                 {entry.mediaUrl ? (
-                                  <img
-                                    src={entry.mediaUrl}
-                                    alt=""
-                                    style={{
-                                      width: 32,
-                                      height: 32,
-                                      objectFit: "cover",
-                                      borderRadius: 6,
-                                      flexShrink: 0,
-                                    }}
-                                  />
+                                  <ExerciseThumb src={entry.mediaUrl} size={32} />
                                 ) : (
                                   <div
                                     style={{
@@ -8082,32 +8063,12 @@ export default function Workout() {
                     </label>
                     {getExerciseMedia(ex)?.mediaUrl ? (
                       <div style={{ position: "relative", marginBottom: 8 }}>
-                        <div
-                          style={{
-                            width: "100%",
-                            height: MEDIA_FRAME_HEIGHT,
-                            overflow: "hidden",
-                            borderRadius: 8,
-                            background: "#0d0c0a",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <img
-                            src={getExerciseMedia(ex)?.mediaUrl}
-                            alt="Démo exercice"
-                            style={{
-                              maxWidth: "100%",
-                              maxHeight: "100%",
-                              objectFit: "contain",
-                              transform: `scale(${
-                                (getExerciseMedia(ex)?.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
-                              })`,
-                              transition: "transform 0.1s ease-out",
-                            }}
-                          />
-                        </div>
+                        <ExercisePhoto
+                          src={getExerciseMedia(ex)?.mediaUrl}
+                          alt="Démo exercice"
+                          height={MEDIA_FRAME_HEIGHT}
+                          zoom={getExerciseMedia(ex)?.mediaZoom || DEFAULT_MEDIA_ZOOM} transition
+                        />
                         <button
                           onClick={() => removeMedia(bIdx, eIdx)}
                           style={{
@@ -10139,31 +10100,12 @@ export default function Workout() {
                         d'exercice depuis la bibliothèque partagée) */}
                     {getExerciseMedia(ex)?.mediaUrl && (
                       <div style={{ marginBottom: 10, position: "relative" }}>
-                        <div
-                          style={{
-                            width: "100%",
-                            height: MEDIA_FRAME_HEIGHT,
-                            overflow: "hidden",
-                            borderRadius: 8,
-                            background: "#0d0c0a",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                          }}
-                        >
-                          <img
-                            src={getExerciseMedia(ex)?.mediaUrl}
-                            alt={ex.name}
-                            style={{
-                              maxWidth: "100%",
-                              maxHeight: "100%",
-                              objectFit: "contain",
-                              transform: `scale(${
-                                (getExerciseMedia(ex)?.mediaZoom || DEFAULT_MEDIA_ZOOM) / 100
-                              })`,
-                            }}
-                          />
-                        </div>
+                        <ExercisePhoto
+                          src={getExerciseMedia(ex)?.mediaUrl}
+                          alt={ex.name}
+                          height={MEDIA_FRAME_HEIGHT}
+                          zoom={getExerciseMedia(ex)?.mediaZoom || DEFAULT_MEDIA_ZOOM}
+                        />
                         {getExerciseMedia(ex)?.mediaType === "gif" && (
                           <span
                             style={{
