@@ -957,13 +957,6 @@ export default function PlanningPanel({
           <span style={{ display: "inline-block", width: 10, height: 10, verticalAlign: "-1px", background: "repeating-linear-gradient(45deg, #5b8def 0 2px, transparent 2px 4px)", border: "1px solid #9dbcf5" }} />
           <span style={{ display: "inline-block", width: 10, height: 10, marginLeft: 2, verticalAlign: "-1px", background: "repeating-linear-gradient(45deg, #e0a13d 0 2px, transparent 2px 4px)", border: "1px solid #f0c98a" }} /> réellement fait (à droite de chaque semaine)
         </span>
-        <span>volume réel : 5 = semaine habituelle de l'athlète, 7 = +1 σ, 3 = −1 σ (z-score individuel)</span>
-        <span>trait en haut : semaine légère / moyenne / dure</span>
-        <span>👤 cycle individuel</span>
-      </div>
-
-      <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
-        Molette ou pincement : zoom · glisser : se déplacer · 🎯 pour revenir à aujourd'hui
       </div>
 
       {/* légende des phases */}

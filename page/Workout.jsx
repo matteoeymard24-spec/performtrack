@@ -9523,11 +9523,39 @@ export default function Workout() {
         <div
           style={{
             background: "#151310",
-            padding: 25,
+            padding: isMobileView() ? 14 : 25,
             borderRadius: 12,
             border: `2px solid ${getColor(selectedSession)}`,
+            // téléphone : hauteur de la barre « ← Retour » collée en haut (les en-têtes de blocs se placent dessous)
+            "--pt-subbar-h": isMobileView() ? "54px" : "0px",
           }}
         >
+          {isMobileView() && (
+            <div
+              style={{
+                position: "sticky",
+                top: "var(--pt-header-h, 60px)",
+                zIndex: 20,
+                height: 54,
+                boxSizing: "border-box",
+                margin: "-14px -14px 12px",
+                padding: "0 10px",
+                background: "rgba(21,19,16,0.97)",
+                borderBottom: "1px solid #2a2620",
+                borderRadius: "10px 10px 0 0",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <button type="button" onClick={closeSession} className="pt-btn" style={{ flexShrink: 0, fontWeight: 800 }}>
+                ← {returnToDashboard ? "Dashboard" : "Retour"}
+              </button>
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 800, color: "#f3f0ea", fontSize: 15 }}>
+                {selectedSession.title}
+              </span>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
             <button
             onClick={() => setShowAthleteRefs(true)}
@@ -9597,7 +9625,7 @@ export default function Workout() {
                 <span>· ⏱️ {selectedSession.estimatedDuration || "?"} min</span>
               </div>
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
               {isAdminLike && (
                 <>
                   <button
@@ -9656,6 +9684,7 @@ export default function Workout() {
               <button
                 onClick={closeSession}
                 style={{
+                  order: -1, // toujours en premier : jamais rogné sur un petit écran
                   padding: "8px 16px",
                   background: "#a8a199",
                   color: "white",
@@ -10033,7 +10062,7 @@ export default function Workout() {
                   gap: 10,
                   flexWrap: "wrap",
                   ...(blockFold.isOpen(`blk_${selectedSession.id}_${bIdx}`)
-                    ? { ...stickyHead("#14120f", 18), marginTop: -8, marginBottom: 12, borderBottom: `1px solid ${bMark(selectedSession.blocks, bIdx).color}33` }
+                    ? { ...stickyHead("#14120f", 18, "calc(var(--pt-header-h, 60px) + var(--pt-subbar-h, 0px))"), marginTop: -8, marginBottom: 12, borderBottom: `1px solid ${bMark(selectedSession.blocks, bIdx).color}33` }
                     : {}),
                 }}
               >
