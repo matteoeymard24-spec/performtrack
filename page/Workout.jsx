@@ -13,6 +13,7 @@ import { FOSTER_CR10, doneDateOf } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
 import { FoldBtn, useFold, PageHeader } from "../component/ui";
+import { REC_TYPES, REC_PRESETS, REC_DEFAULT_PCT, recKeys, recTypeOf, recPctOf, recSecOf, recText } from "../component/enduranceRecovery";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
 import { TempoView, TempoEditor } from "../component/TempoView";
@@ -8894,6 +8895,91 @@ export default function Workout() {
                     const modeBtn = (on) => ({ padding: "4px 12px", borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: "pointer", border: on ? "1px solid #e0a13d" : "1px solid #2a2620", background: on ? "rgba(224,161,61,0.18)" : "#0d0c0a", color: on ? "#e0a13d" : "#a8a199" });
                     return (
                     <>
+                      {(() => {
+                        const ratioE = csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO;
+                        const refName = ex.intensityRef === "cs" ? "VC" : "VMA";
+                        const refKmh = refSpeedKmh(ex);
+                        const zEff = zoneOf(pctCS(ex, ratioE));
+                        const sec = (t) => ({ background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 10, padding: 10, marginBottom: 10 });
+                        const head = (icon, title, hint) => (
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                            <span style={{ fontSize: 11.5, letterSpacing: 0.5, textTransform: "uppercase", color: "#a8a199", fontWeight: 800 }}>{icon} {title}</span>
+                            {hint && <span style={{ fontSize: 11.5, color: "#7d766c" }}>{hint}</span>}
+                          </div>
+                        );
+                        const lab = { fontSize: 12, color: "#a8a199", display: "block", marginBottom: 2 };
+                        const chip = (on, col = "#e0a13d") => ({ padding: "6px 12px", borderRadius: 999, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: `1px solid ${on ? col : "#2a2620"}`, background: on ? `${col}22` : "#151310", color: on ? col : "#a8a199" });
+                        /* Éditeur d'une récup (which = "rep" entre les reps, "set" après la série) */
+                        const recEditor = (which) => {
+                          const k = recKeys(which);
+                          const t = recTypeOf(ex, which);
+                          const pct = recPctOf(ex, which);
+                          const z = t === "active" ? zoneOf(pctCS({ ...ex, vmaPercentage: pct }, ratioE)) : null;
+                          const has = recSecOf(ex, which) > 0;
+                          return (
+                            <>
+                              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+                                <div style={{ width: 74 }}>
+                                  <label style={lab}>min</label>
+                                  <input type="number" min={0} value={ex[k.min] || 0} onChange={(e) => updateExercise(bIdx, eIdx, k.min, Math.max(0, Number(e.target.value) || 0))} style={fieldStyle} />
+                                </div>
+                                <div style={{ width: 74 }}>
+                                  <label style={lab}>sec</label>
+                                  <input type="number" min={0} max={59} value={ex[k.sec] || 0} onChange={(e) => updateExercise(bIdx, eIdx, k.sec, Math.max(0, Number(e.target.value) || 0))} style={fieldStyle} />
+                                </div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", paddingBottom: 2, opacity: has ? 1 : 0.45 }}>
+                                  {REC_TYPES.map((r) => (
+                                    <button
+                                      key={r.id}
+                                      type="button"
+                                      disabled={!has}
+                                      style={chip(t === r.id, r.id === "active" ? "#4fae7d" : "#e0a13d")}
+                                      onClick={() => {
+                                        updateExercise(bIdx, eIdx, k.type, r.id);
+                                        if (r.id === "active" && !(Number(ex[k.pct]) > 0)) updateExercise(bIdx, eIdx, k.pct, REC_DEFAULT_PCT);
+                                      }}
+                                    >
+                                      {r.icon} {r.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              {has && t === "active" && (
+                                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginTop: 8 }}>
+                                  <div style={{ width: 96 }}>
+                                    <label style={lab}>Intensité (% {refName})</label>
+                                    <input type="number" min={1} value={pct} onChange={(e) => updateExercise(bIdx, eIdx, k.pct, Math.max(0, Number(e.target.value) || 0))} style={fieldStyle} />
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6, paddingBottom: 2 }}>
+                                    {REC_PRESETS.map((v) => (
+                                      <button key={v} type="button" style={chip(pct === v, "#4fae7d")} onClick={() => updateExercise(bIdx, eIdx, k.pct, v)}>
+                                        {v} %
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
+                                {!has ? (
+                                  which === "set" ? "Pas de récup après la série (enchaîne directement)." : "Pas de récup : les reps s'enchaînent."
+                                ) : (
+                                  <>
+                                    ➜ <strong style={{ color: "#f3f0ea" }}>{recText(ex, which, refKmh)}</strong>
+                                    {z && <span style={{ color: z.color, fontWeight: 700 }}> · {z.short}</span>}
+                                    {t === "active" && refKmh ? (
+                                      <span> · ≈ {Math.round(((refKmh * pct) / 100 / 3.6) * recSecOf(ex, which))} m parcourus</span>
+                                    ) : null}
+                                  </>
+                                )}
+                              </div>
+                            </>
+                          );
+                        };
+                        return (
+                          <>
+                            {/* ① EFFORT */}
+                            <div style={sec()}>
+                              {head("🏃", "Effort", zEff ? <span style={{ color: zEff.color, fontWeight: 700 }}>{zEff.name}</span> : null)}
                       {(
                         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                           <span style={{ fontSize: 12, color: "#a8a199" }}>Défini par :</span>
@@ -8915,219 +9001,39 @@ export default function Workout() {
                           </button>
                         </div>
                       )}
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: isTimerBlock ? "repeat(2, minmax(0, 1fr))" : "repeat(3, minmax(0, 1fr))",
-                          gap: 10,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199", display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-                            %
-                            <select
-                              value={ex.intensityRef === "cs" ? "cs" : "vma"}
-                              onChange={(e) => updateExercise(bIdx, eIdx, "intensityRef", e.target.value)}
-                              style={{ background: "#0d0c0a", color: "#e0a13d", border: "1px solid #2a2620", borderRadius: 4, fontSize: 12, padding: "1px 2px" }}
-                            >
-                              <option value="vma">VMA</option>
-                              <option value="cs">VC</option>
-                            </select>
-                            {(() => {
-                              const z = zoneOf(pctCS(ex, csRef && vma ? csRef / vma : DEFAULT_CS_VMA_RATIO));
-                              return z ? <span style={{ color: z.color, fontWeight: 700 }}>{z.short}</span> : null;
-                            })()}
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.vmaPercentage}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "vmaPercentage",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            {distMode ? "Effort estimé (s)" : "Effort (s)"}
-                          </label>
-                          <input
-                            type="number"
-                            readOnly={distMode}
-                            title={distMode ? "Calculé à partir de la distance et du % (chrono visé)" : undefined}
-                            value={ex.effortTime}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "effortTime",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                        {!isTimerBlock && (
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Récup (min)
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.recoveryMin || 0}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "recoveryMin",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                        )}
-                        {!isTimerBlock && (
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Récup (sec)
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.recoverySec || 0}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "recoverySec",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                        )}
-                      </div>
-                      {!isTimerBlock && (
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto",
-                          gap: 10,
-                          marginBottom: 10,
-                        }}
-                      >
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Reps
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.reps}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "reps",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Récup blocs (min)
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.blockRecoveryMin || 0}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "blockRecoveryMin",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Récup blocs (sec)
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.blockRecoverySec || 0}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "blockRecoverySec",
-                                Number(e.target.value)
-                              )
-                            }
-                            style={{
-                              width: "100%",
-                              padding: 8,
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#0d0c0a",
-                              color: "#f3f0ea",
-                            }}
-                          />
-                        </div>
-                      </div>
-                      )}
+                              <div style={{ display: "grid", gridTemplateColumns: `repeat(${isTimerBlock ? 2 : 3}, minmax(0, 1fr))`, gap: 10, marginBottom: 10 }}>
+                                {!isTimerBlock && (
+                                  <div>
+                                    <label style={lab}>Répétitions</label>
+                                    <input type="number" min={1} value={ex.reps} onChange={(e) => updateExercise(bIdx, eIdx, "reps", Number(e.target.value))} style={fieldStyle} />
+                                  </div>
+                                )}
+                                <div>
+                                  <label style={{ ...lab, display: "flex", alignItems: "center", gap: 4 }}>
+                                    Intensité %
+                                    <select
+                                      value={ex.intensityRef === "cs" ? "cs" : "vma"}
+                                      onChange={(e) => updateExercise(bIdx, eIdx, "intensityRef", e.target.value)}
+                                      style={{ background: "#0d0c0a", color: "#e0a13d", border: "1px solid #2a2620", borderRadius: 4, fontSize: 12, padding: "1px 2px" }}
+                                    >
+                                      <option value="vma">VMA</option>
+                                      <option value="cs">VC</option>
+                                    </select>
+                                  </label>
+                                  <input type="number" value={ex.vmaPercentage} onChange={(e) => updateExercise(bIdx, eIdx, "vmaPercentage", Number(e.target.value))} style={{ ...fieldStyle, borderColor: zEff ? `${zEff.color}88` : "#2a2620" }} />
+                                </div>
+                                <div>
+                                  <label style={lab}>{distMode ? "Durée estimée (s)" : "Durée (s)"}</label>
+                                  <input
+                                    type="number"
+                                    readOnly={distMode}
+                                    title={distMode ? "Calculé à partir de la distance et du % (chrono visé)" : undefined}
+                                    value={ex.effortTime}
+                                    onChange={(e) => updateExercise(bIdx, eIdx, "effortTime", Number(e.target.value))}
+                                    style={{ ...fieldStyle, ...(distMode ? { color: "#a8a199" } : {}) }}
+                                  />
+                                </div>
+                              </div>
                       {distMode && (
                         <div style={{ marginBottom: 10, padding: 10, borderRadius: 8, border: "1px solid #2a2620", background: "#141210" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
@@ -9176,48 +9082,29 @@ export default function Workout() {
                           <input type="number" value={ex.shuttleM || ""} onChange={(e) => updateExercise(bIdx, eIdx, "shuttleM", Number(e.target.value) || "")} style={fieldStyle} />
                         </div>
                       )}
-                      <div style={{ marginBottom: 10 }}>
-                        <label
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 8,
-                            padding: "8px 12px",
-                            background: "#0d0c0a",
-                            borderRadius: 6,
-                            cursor: "pointer",
-                            fontSize: 14,
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={ex.groundWork}
-                            onChange={(e) =>
-                              updateExercise(
-                                bIdx,
-                                eIdx,
-                                "groundWork",
-                                e.target.checked
-                              )
-                            }
-                            style={{ cursor: "pointer" }}
-                          />
-                          Passage sol
-                        </label>
-                      </div>
-                      {!isTimerBlock && (ex.recoveryMin || ex.recoverySec) ? (
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ fontSize: 12, color: "#a8a199" }}>
-                            Intensité de la récup (% {ex.intensityRef === "cs" ? "VC" : "VMA"}, 0 = passive)
-                          </label>
-                          <input
-                            type="number"
-                            value={ex.recoveryVmaPct || 0}
-                            onChange={(e) => updateExercise(bIdx, eIdx, "recoveryVmaPct", Number(e.target.value))}
-                            style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", boxSizing: "border-box" }}
-                          />
-                        </div>
-                      ) : null}
+                              <button type="button" style={chip(!!ex.groundWork, "#d9a441")} onClick={() => updateExercise(bIdx, eIdx, "groundWork", !ex.groundWork)}>
+                                {ex.groundWork ? "✓ " : ""}🤸 Passage au sol
+                              </button>
+                            </div>
+
+                            {/* ② RÉCUP ENTRE LES REPS */}
+                            {!isTimerBlock && (
+                              <div style={sec()}>
+                                {head("😮‍💨", "Récup entre les reps", Number(ex.reps) > 1 ? `${Math.max(0, Number(ex.reps) - 1)} récup${Number(ex.reps) > 2 ? "s" : ""}` : "1 seule rep : pas de récup")}
+                                {recEditor("rep")}
+                              </div>
+                            )}
+
+                            {/* ③ RÉCUP APRÈS LA SÉRIE */}
+                            {!isTimerBlock && (
+                              <div style={sec()}>
+                                {head("⏸️", "Récup après la série", "avant l'exercice suivant")}
+                                {recEditor("set")}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                       {/* CALCUL DISTANCE / CHRONO (voir component/enduranceTarget.js) */}
                       {(() => {
                         const course = courseOf(ex);
@@ -10530,29 +10417,19 @@ export default function Workout() {
                                     {metrics.paceDisplay}) •{metrics.course ? <> {metrics.course.dist} m · {metrics.course.label} · en <strong style={{ color: "#e0a13d" }}>{metrics.targetTime ? fmtDur(metrics.targetTime) : "—"}</strong></> : `${ex.effortTime}s`}
                                     {block.timerMode !== "emom" && block.timerMode !== "amrap" && (
                                       <>
-                                        /
-                                        {(() => {
-                                          const min = ex.recoveryMin || 0;
-                                          const sec = ex.recoverySec || 0;
-                                          if (min > 0 && sec > 0) return `${min}min${sec}`;
-                                          if (min > 0) return `${min}min`;
-                                          if (sec > 0) return `${sec}sec`;
-                                          return "0sec";
-                                        })()} × {ex.reps} reps
-                                        {(ex.blockRecoveryMin > 0 || ex.blockRecoverySec > 0) && (
-                                          <span>
-                                            {" "}
-                                            • Récup blocs:{" "}
-                                            <strong>
-                                              {(() => {
-                                                const min = ex.blockRecoveryMin || 0;
-                                                const sec = ex.blockRecoverySec || 0;
-                                                if (min > 0 && sec > 0) return `${min}min${sec}`;
-                                                if (min > 0) return `${min}min`;
-                                                if (sec > 0) return `${sec}sec`;
-                                                return "0sec";
-                                              })()}
+                                        × {ex.reps} reps
+                                        {Number(ex.reps) > 1 && (
+                                          <>
+                                            {" "}• Récup :{" "}
+                                            <strong style={{ color: recTypeOf(ex, "rep") === "active" ? "#4fae7d" : "#f3f0ea" }}>
+                                              {recText(ex, "rep", refSpeedKmh(ex)) || "aucune (enchaîné)"}
                                             </strong>
+                                          </>
+                                        )}
+                                        {recSecOf(ex, "set") > 0 && (
+                                          <span>
+                                            {" "}• Après la série :{" "}
+                                            <strong style={{ color: recTypeOf(ex, "set") === "active" ? "#4fae7d" : "#f3f0ea" }}>{recText(ex, "set", refSpeedKmh(ex))}</strong>
                                           </span>
                                         )}{" "}
                                         {!metrics.course && (

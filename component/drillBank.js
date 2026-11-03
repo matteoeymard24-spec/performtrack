@@ -1,4 +1,5 @@
 import { isDistanceMode, estimatedEffortSec, courseOf } from "./enduranceTarget";
+import { recPctOf, recSecOf, recSegLabel } from "./enduranceRecovery";
 /* ============================================================================
    BANQUE D'EXERCICES SPRINT / ENDURANCE + ZONES D'ENTRAÎNEMENT (5 zones)
    ----------------------------------------------------------------------------
@@ -249,9 +250,10 @@ export function enduranceSegments(blocks, ratio = DEFAULT_CS_VMA_RATIO, vma = nu
         const rec = (Number(ex.recoveryMin) || 0) * 60 + (Number(ex.recoverySec) || 0);
         for (let r = 0; r < reps; r++) {
           push(eff, pctCS(ex, ratio), "effort", ex.name || "Effort", courseOf(ex)?.dist ?? null);
-          if (r < reps - 1) push(rec, pctCS({ ...ex, vmaPercentage: ex.recoveryVmaPct || 0 }, ratio), "recup", "Récup");
+          if (r < reps - 1) push(rec, pctCS({ ...ex, vmaPercentage: recPctOf(ex, "rep") }, ratio), "recup", recSegLabel(ex, "rep"));
         }
-        push((Number(ex.blockRecoveryMin) || 0) * 60 + (Number(ex.blockRecoverySec) || 0), 0, "recup", "Récup série");
+        // récup après la série : passive, marche ou active (même % de référence que l'effort)
+        push(recSecOf(ex, "set"), pctCS({ ...ex, vmaPercentage: recPctOf(ex, "set") }, ratio), "recup", recSegLabel(ex, "set"));
       });
     }
     if (bi < (blocks || []).length - 1) push((Number(b.restMin ?? 0) || 0) * 60 + (Number(b.restSec) || 0), 0, "recup", "Repos bloc");
