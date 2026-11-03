@@ -194,7 +194,7 @@ export const TESTS = [
     equipment: "Terrain plat 20 m, plots, bande son du test",
     howTo:
       "Aller-retours de 20 m au rythme des bips. Vitesse de départ 8,5 km/h, +0,5 km/h chaque minute. L'athlète s'arrête quand il ne peut plus suivre (2 bips ratés d'affilée). Noter la vitesse du dernier palier COMPLÉTÉ.",
-    ...ytSearch("test Luc Léger navette 20 m protocole"),
+    ...yt("486_-SRIu2k"),
     fields: [{ key: "speed", label: "Vitesse du dernier palier", unit: "km/h", placeholder: "ex : 15.5" }],
     compute: (v) => {
       const s = num(v.speed);
@@ -215,7 +215,7 @@ export const TESTS = [
     equipment: "Piste d'athlétisme avec plots tous les 20 m, bande son",
     howTo:
       "Départ à 8 km/h, +0,5 km/h chaque minute, plots tous les 20 m. L'athlète doit être au plot au bip. Arrêt quand il n'arrive plus à tenir le rythme. Noter la vitesse du dernier palier complété.",
-    ...ytSearch("test VAMEVAL protocole piste"),
+    ...yt("00qKsiPboGI"),
     fields: [{ key: "speed", label: "Vitesse du dernier palier", unit: "km/h", placeholder: "ex : 16" }],
     compute: (v) => {
       const s = num(v.speed);
@@ -236,7 +236,7 @@ export const TESTS = [
     equipment: "Piste de 400 m, chronomètre",
     howTo:
       "Courir la plus grande distance possible en 12 minutes à allure régulière. Noter la distance totale en mètres. La VMA estimée = vitesse moyenne (légèrement sous-estimée).",
-    ...ytSearch("test de Cooper 12 minutes comment le passer"),
+    ...yt("NkdWgD7kVGM"),
     fields: [{ key: "distance", label: "Distance en 12 min", unit: "m", placeholder: "ex : 2900" }],
     compute: (v) => {
       const d = num(v.distance);
@@ -258,7 +258,7 @@ export const TESTS = [
     equipment: "Piste de 400 m, chronomètre",
     howTo:
       "Courir la plus grande distance en 6 minutes (effort maximal régulier). Noter la distance en mètres. VMA estimée = vitesse moyenne sur 6 min.",
-    ...ytSearch("test 6 minutes course VMA piste"),
+    ...yt("CLTSMCYhuG0"),
     fields: [{ key: "distance", label: "Distance en 6 min", unit: "m", placeholder: "ex : 1650" }],
     compute: (v) => {
       const d = num(v.distance);
@@ -275,7 +275,7 @@ export const TESTS = [
     equipment: "Terrain 40 m, plots à 0 / 20 / 40 m, bande son 30-15",
     howTo:
       "Séquences de 30 s de course navette (20 m) + 15 s de récupération marchée. Départ 8 km/h, +0,5 km/h par palier. Noter la vitesse du dernier palier complété = VIFT (vitesse de référence intermittente).",
-    ...ytSearch("30-15 intermittent fitness test protocole Buchheit"),
+    ...yt("p5e6Xh1ivlo"),
     fields: [{ key: "speed", label: "VIFT (dernier palier)", unit: "km/h", placeholder: "ex : 19.5" }],
     compute: (v) => {
       const s = num(v.speed);
@@ -295,7 +295,7 @@ export const TESTS = [
     equipment: "Piste / ergomètre, chronomètre. 2 à 4 efforts maximaux de 2 à 15 min sur des jours différents",
     howTo:
       "Réaliser 2 à 4 efforts maximaux de durées différentes (ex : 3, 7 et 12 min) idéalement sur des jours différents. Noter pour chacun la distance parcourue et le temps. L'app calcule la vitesse critique (pente de la droite distance/temps) et D' (réserve anaérobie en mètres).",
-    ...ytSearch("critical speed test vitesse critique 3 minutes 12 minutes"),
+    ...yt("NAWu1MmNdq8"),
     fields: [1, 2, 3, 4].flatMap((i) => [
       { key: `d${i}`, label: `Effort ${i} — distance`, unit: "m", placeholder: i <= 2 ? "obligatoire" : "optionnel" },
       { key: `t${i}`, label: `Effort ${i} — temps`, unit: "mm:ss", time: true, placeholder: "ex : 12:00" },
@@ -323,7 +323,7 @@ export const TESTS = [
     equipment: "Terrain 20 m, plots, bande son Yo-Yo IR1",
     howTo:
       "Navettes 2×20 m à vitesse croissante avec 10 s de récupération active entre chaque. Arrêt quand l'athlète rate 2 fois le bip. Noter la distance totale parcourue (en mètres).",
-    ...ytSearch("Yo-Yo intermittent recovery test level 1 protocol"),
+    ...yt("O0LKPFT9loE"),
     fields: [{ key: "distance", label: "Distance totale", unit: "m", placeholder: "ex : 2040" }],
     compute: (v) => {
       const d = num(v.distance);
@@ -343,7 +343,7 @@ export const TESTS = [
     equipment: "Terrain 20 m, plots, bande son Yo-Yo IR2",
     howTo:
       "Même principe que l'IR1 mais démarrage plus rapide (13 km/h). Noter la distance totale en mètres.",
-    ...ytSearch("Yo-Yo intermittent recovery test level 2"),
+    ...yt("HVZ4sXHtMDM"),
     fields: [{ key: "distance", label: "Distance totale", unit: "m", placeholder: "ex : 880" }],
     compute: (v) => {
       const d = num(v.distance);
@@ -363,7 +363,7 @@ export const TESTS = [
     equipment: "Plots à 20 / 40 / 60 m, chronomètre",
     howTo:
       "5 allers-retours enchaînés 20 m → 40 m → 60 m (1 série = 240 m), soit 1 200 m au total, sans pause. Noter le temps total (mm:ss).",
-    ...ytSearch("Bronco test rugby 1200 m protocole"),
+    ...yt("p3z1hc9p7Wk"),
     fields: [{ key: "time", label: "Temps total", unit: "mm:ss", time: true, placeholder: "ex : 4:45" }],
     compute: (v) => {
       const t = parseTime(v.time);
@@ -382,7 +382,7 @@ export const TESTS = [
     equipment: "Plots 5-10-20 m (avants) ou +30 m (arrières), chronomètre",
     howTo:
       "Test de navettes de 7 minutes en séries (course, récupération). Noter le temps total des navettes et, si possible, le premier et le dernier temps de série pour l'indice de fatigue. Protocole exact à valider avec le staff.",
-    ...ytSearch("RFU anaerobic speed test rugby England protocole"),
+    ...yt("-TulcCDCpks"),
     fields: [
       { key: "total", label: "Temps total", unit: "s", placeholder: "ex : 183" },
       { key: "first", label: "Temps 1re série", unit: "s", placeholder: "optionnel" },
@@ -406,7 +406,7 @@ export const TESTS = [
     equipment: "Wattbike ou vélo avec capteur de puissance",
     howTo:
       "Après échauffement, rouler 20 minutes à puissance moyenne maximale régulière. Noter la puissance moyenne. FTP estimée = 95 % de cette puissance.",
-    ...ytSearch("test FTP 20 minutes Wattbike protocole"),
+    ...yt("FZnuvoeZDks"),
     fields: [
       { key: "p20", label: "Puissance moyenne 20 min", unit: "W", placeholder: "ex : 280" },
       { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "optionnel" },
@@ -430,7 +430,7 @@ export const TESTS = [
     equipment: "Wattbike ou ergomètre",
     howTo:
       "Test par paliers progressifs (ex : départ 100 W, +25 W/min, ou +20 W/min) jusqu'à l'épuisement. Noter la puissance du dernier palier complété (PMA).",
-    ...ytSearch("test PMA vélo paliers Wattbike protocole"),
+    ...yt("D2TEvRTb8DM"),
     fields: [
       { key: "pma", label: "Puissance dernier palier", unit: "W", placeholder: "ex : 350" },
       { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "optionnel" },
@@ -450,7 +450,7 @@ export const TESTS = [
     equipment: "Rameur Concept2, drag réglé à 120-130",
     howTo:
       "Ramer 2 000 m le plus vite possible. Noter le temps final (mm:ss). L'app calcule l'allure /500 m et la puissance moyenne.",
-    ...ytSearch("test rameur 2000 m Concept2 technique"),
+    ...yt("QbpmdJAAmO8"),
     fields: [{ key: "time", label: "Temps sur 2 000 m", unit: "mm:ss", time: true, placeholder: "ex : 7:10" }],
     compute: (v) => {
       const t = parseTime(v.time);
@@ -472,7 +472,7 @@ export const TESTS = [
     equipment: "Vélo avec capteur de puissance (ou Wattbike / home-trainer)",
     howTo:
       "Après échauffement, rouler 5 minutes à la puissance moyenne maximale, effort le plus régulier possible. Noter la puissance moyenne et le poids du corps. Sert de référence pour la capacité aérobie maximale (type VO2max) et pour estimer la VO2max.",
-    ...ytSearch("test 5 minutes puissance maximale vélo PMA"),
+    ...yt("OmJZSfmukGI"),
     fields: [
       { key: "p5", label: "Puissance moyenne 5 min", unit: "W", placeholder: "ex : 380" },
       { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "ex : 70" },
@@ -499,7 +499,7 @@ export const TESTS = [
     equipment: "Vélo avec capteur de puissance (ou Wattbike)",
     howTo:
       "Après échauffement, sprint maximal de 5 secondes départ lancé (ou arrêté sur Wattbike), pignon adapté. Noter la puissance moyenne maximale sur 5 s et le poids du corps. Répéter 2 à 3 fois avec récupération complète : garder le meilleur.",
-    ...ytSearch("test sprint 5 secondes puissance maximale vélo"),
+    ...yt("6im5H5cHqCE"),
     fields: [
       { key: "p", label: "Puissance moyenne max 5 s", unit: "W", placeholder: "ex : 1250" },
       { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "ex : 70" },
@@ -524,7 +524,7 @@ export const TESTS = [
     equipment: "Vélo avec capteur de puissance (ou Wattbike)",
     howTo:
       "Après échauffement, effort maximal de 1 minute (capacité anaérobie). Noter la puissance moyenne et le poids du corps.",
-    ...ytSearch("test 1 minute puissance maximale vélo capacité anaérobie"),
+    ...yt("D-SA62qen4o"),
     fields: [
       { key: "p", label: "Puissance moyenne 1 min", unit: "W", placeholder: "ex : 650" },
       { key: "weight", label: "Poids du corps", unit: "kg", placeholder: "ex : 70" },
@@ -551,7 +551,7 @@ export const TESTS = [
     equipment: "Tapis de saut, Optojump, plateforme de force ou application (My Jump)",
     howTo:
       "Mains sur les hanches, flexion rapide puis saut vertical maximal, réception pieds au même endroit. Faire 3 essais, noter le meilleur (hauteur en cm). Cette valeur met aussi à jour la fiche « CMJ » utilisée dans le Dashboard.",
-    ...ytSearch("test CMJ counter movement jump comment le passer"),
+    ...yt("EUl3rryoXIU"),
     fields: [{ key: "height", label: "Meilleure hauteur", unit: "cm", placeholder: "ex : 42" }],
     compute: (v) => {
       const h = num(v.height);
@@ -569,7 +569,7 @@ export const TESTS = [
     equipment: "Mètre ruban (ou décamètre), ligne de départ au sol",
     howTo:
       "Pieds écartés largeur de hanches, orteils sur la ligne. Armer les bras, fléchir, puis sauter le plus loin possible vers l'avant en arrivant sur les deux pieds sans tomber (essai nul sinon). Mesurer de la ligne de départ jusqu'au talon le plus proche de la ligne à la réception, au cm. Faire 3 essais, noter chacun : le meilleur compte. Mesure la puissance horizontale (accélération, impulsion vers l'avant).",
-    ...ytSearch("broad jump standing long jump test technique mesure"),
+    ...yt("cg_NASdYh-8"),
     fields: [
       { key: "d1", label: "Essai 1", unit: "cm", placeholder: "ex : 255" },
       { key: "d2", label: "Essai 2", unit: "cm", placeholder: "ex : 262" },
@@ -594,7 +594,7 @@ export const TESTS = [
     equipment: "Cellules photoélectriques (ou radar), plots, GPS pour la Vmax",
     howTo:
       "Départ debout, pied avant 30-50 cm derrière la 1re cellule, sprint maximal. Noter les temps intermédiaires à 5, 10, 15, 20 et 60 m (secondes, au centième). Vmax : pic de vitesse (km/h) relevé au GPS ou au radar. Tous les champs sont optionnels.",
-    ...ytSearch("test sprint 20 m cellules photoélectriques départ debout rugby"),
+    ...yt("yf8fRf5QBBQ"),
     fields: [
       { key: "t5", label: "Temps 5 m", unit: "s", placeholder: "ex : 1.02" },
       { key: "t10", label: "Temps 10 m", unit: "s", placeholder: "ex : 1.75" },
@@ -633,7 +633,7 @@ export const TESTS = [
     equipment: "Mur, mètre ruban",
     howTo:
       "Pied à plat face au mur, genou qui avance vers le mur sans décoller le talon. Mesurer la distance maximale pied-mur (cm) avec le genou touchant le mur. Tester chaque côté.",
-    ...ytSearch("knee to wall test dorsiflexion"),
+    ...yt("kbzYML05Vac"),
     measures: [{ key: "ktw", label: "Distance pied-mur", unit: "cm", sided: true, dir: "high", ok: 12, watch: 10, zone: "Cheville" }],
   },
   {
@@ -644,7 +644,7 @@ export const TESTS = [
     equipment: "Table / sol, inclinomètre ou smartphone",
     howTo:
       "Allongé sur le dos, lever une jambe tendue sans fléchir le genou ni décoller le bassin. Mesurer l'angle jambe/sol. Tester chaque côté.",
-    ...ytSearch("straight leg raise test hamstring flexibility"),
+    ...yt("mLihBR_9MN8"),
     measures: [{ key: "slr", label: "Angle SLR", unit: "°", sided: true, dir: "high", ok: 80, watch: 70, zone: "Chaîne postérieure" }],
   },
   {
@@ -655,7 +655,7 @@ export const TESTS = [
     equipment: "Table, goniomètre ou inclinomètre",
     howTo:
       "Assis ou allongé sur le ventre, genou à 90°. Rotation interne (RI) puis externe (RE) de hanche en gardant le bassin stable. Mesurer l'angle de la jambe par rapport à la verticale. Tester chaque côté.",
-    ...ytSearch("hip internal external rotation range of motion test"),
+    ...yt("HKYVJHnrReU"),
     measures: [
       { key: "ri", label: "Rotation interne", unit: "°", sided: true, dir: "high", ok: 35, watch: 25, zone: "Hanche" },
       { key: "re", label: "Rotation externe", unit: "°", sided: true, dir: "high", ok: 40, watch: 30, zone: "Hanche" },
@@ -669,7 +669,7 @@ export const TESTS = [
     equipment: "Table, goniomètre",
     howTo:
       "Assis au bord de la table, ramener un genou à la poitrine en s'allongeant. La cuisse de l'autre jambe doit rester à plat. Mesurer l'écart de la cuisse par rapport à l'horizontale (psoas) et l'angle du genou (quadriceps). Tester chaque côté.",
-    ...ytSearch("Thomas test hip flexor length"),
+    ...yt("KJ4BBj9E4-Q"),
     measures: [
       { key: "psoas", label: "Écart cuisse / horizontale (psoas)", unit: "°", sided: true, dir: "low", ok: 5, watch: 15, zone: "Hanche" },
       { key: "quad", label: "Angle genou (quadriceps)", unit: "°", sided: true, dir: "high", ok: 80, watch: 65, zone: "Genou / Quadriceps" },
@@ -683,7 +683,7 @@ export const TESTS = [
     equipment: "Chaise, bâton, goniomètre",
     howTo:
       "Assis, bassin stable (genoux serrés), bâton sur les épaules. Rotation maximale du tronc de chaque côté. Mesurer l'angle de rotation.",
-    ...ytSearch("thoracic rotation mobility test seated"),
+    ...yt("fXd4ozI-Ojk"),
     measures: [{ key: "rot", label: "Rotation thoracique", unit: "°", sided: true, dir: "high", ok: 45, watch: 35, zone: "Colonne thoracique" }],
   },
   {
@@ -694,7 +694,7 @@ export const TESTS = [
     equipment: "Goniomètre ou inclinomètre, table",
     howTo:
       "Allongé sur le dos, bras à 90° d'abduction, coude à 90°. Mesurer la rotation externe puis interne passives. Tester chaque côté.",
-    ...ytSearch("shoulder internal external rotation range of motion measurement"),
+    ...yt("VI8RlB35HAs"),
     measures: [
       { key: "er", label: "Rotation externe", unit: "°", sided: true, dir: "high", ok: 90, watch: 75, zone: "Épaule" },
       { key: "ir", label: "Rotation interne", unit: "°", sided: true, dir: "high", ok: 60, watch: 45, zone: "Épaule" },
@@ -708,7 +708,7 @@ export const TESTS = [
     equipment: "Goniomètre / application inclinomètre",
     howTo:
       "Assis, dos droit. Rotation maximale de la tête à gauche puis à droite, sans compenser avec les épaules. Mesurer l'angle de rotation.",
-    ...ytSearch("cervical rotation range of motion test"),
+    ...yt("8WFahVeJl5U"),
     measures: [{ key: "rot", label: "Rotation cervicale", unit: "°", sided: true, dir: "high", ok: 70, watch: 60, zone: "Cervicales" }],
   },
   {
@@ -719,7 +719,7 @@ export const TESTS = [
     equipment: "Bâton, planche FMS, élastique",
     howTo:
       "Sélectionne les mouvements que tu veux tester. Note chacun de 0 à 3 (3 = parfait, 2 = compensation, 1 = incapable, 0 = douleur). Les mouvements latéralisés se notent à gauche et à droite.",
-    ...ytSearch("Functional Movement Screen FMS scoring explained"),
+    ...yt("n_VX8yxKjSg"),
     selectable: true,
     asymWatch: 1,
     asymDeficit: 1,
@@ -808,7 +808,7 @@ export const TESTS = [
     equipment: "Dynamomètre manuel / plateforme de force",
     howTo:
       "Assis, cheville à 90°. Pousser en flexion plantaire puis dorsale au maximum 3-5 s. Noter le meilleur essai à gauche et à droite.",
-    ...ytSearch("ankle plantarflexion dorsiflexion isometric strength test dynamometer"),
+    ...yt("M41NsdbppaM"),
     asymWatch: 10,
     asymDeficit: 15,
     measures: [
@@ -828,7 +828,7 @@ export const TESTS = [
     equipment: "Banc ou chaise stable",
     howTo:
       "Planche latérale, jambe du dessus posée sur le banc (cheville), jambe du dessous suspendue, bassin aligné. Tenir le plus longtemps possible. Noter le temps (s) à gauche et à droite. La force des adducteurs est le facteur le plus lié à la douleur à l'aine (méta-analyse BJSM 2025, preuve faible).",
-    ...ytSearch("Copenhagen adduction plank exercise"),
+    ...yt("zJEcfz5I1Fk"),
     measures: [{ key: "t", label: "Tenue max", unit: "s", sided: true, zone: "Hanche" }],
   },
   {
@@ -839,7 +839,7 @@ export const TESTS = [
     equipment: "Banc ou chaise (≈ 50 cm)",
     howTo:
       "Allongé sur le dos, un talon sur le banc, genou légèrement fléchi, bras croisés sur la poitrine. Monter le bassin jusqu'à l'alignement épaules-hanches-genou puis redescendre en effleurant le sol. Répéter à 1 rép / 2 s jusqu'à l'échec. Noter les reps à gauche et à droite.",
-    ...ytSearch("single leg hamstring bridge test"),
+    ...yt("3UK03cj_SDc"),
     measures: [{ key: "reps", label: "Répétitions", unit: "reps", sided: true, zone: "Genou / Ischios" }],
   },
   {
@@ -850,7 +850,7 @@ export const TESTS = [
     equipment: "Chaise",
     howTo:
       "Debout sur une jambe devant une chaise, s'asseoir en contrôle puis se relever sans les mains. Nombre de répétitions propres en 30 s, à gauche et à droite.",
-    ...ytSearch("single leg sit to stand chair test"),
+    ...yt("NgYWJ2jT5Iw"),
     measures: [{ key: "reps", label: "Répétitions (30 s)", unit: "reps", sided: true, zone: "Genou / Quadriceps" }],
   },
   {
@@ -861,7 +861,7 @@ export const TESTS = [
     equipment: "Mur (appui d'un doigt)",
     howTo:
       "Debout sur un pied, un doigt contre le mur. Montée complète sur la pointe puis descente contrôlée, 1 rép / 2 s, jusqu'à l'échec ou perte d'amplitude. Noter les reps à gauche et à droite.",
-    ...ytSearch("single leg calf raise endurance test"),
+    ...yt("fSXnnvgKST4"),
     measures: [{ key: "reps", label: "Répétitions", unit: "reps", sided: true, zone: "Cheville" }],
   },
   {
@@ -872,7 +872,7 @@ export const TESTS = [
     equipment: "Sol, ruban adhésif, mètre ruban",
     howTo:
       "Tracer une ligne vers l'avant. Sur un pied, au départ de la ligne, pousser le pied libre le plus loin possible le long de la ligne sans prendre appui ni perdre l'équilibre, puis revenir. Meilleur de 3 essais (cm), chaque côté. Une différence G/D ≥ 4 cm est un signal à surveiller (associée à la blessure dans plusieurs études, résultats mitigés : Helme 2021).",
-    ...ytSearch("Y balance test anterior reach"),
+    ...yt("KJM_sXb_4CU"),
     asymAbs: { watch: 4 },
     measures: [{ key: "reach", label: "Portée antérieure", unit: "cm", sided: true, zone: "Cheville" }],
   },
@@ -884,7 +884,7 @@ export const TESTS = [
     equipment: "Sol ou lit",
     howTo:
       "Allongé sur le dos, genoux fléchis. Rentrer le menton (hochement « oui »), soulever la tête de 2 cm et tenir en gardant le menton rentré. Chrono jusqu'à perte de la position (s). Test de profil : les études ne montrent pas de lien net avec les commotions.",
-    ...ytSearch("deep neck flexor endurance test"),
+    ...yt("oPvPHzoxugs"),
     measures: [{ key: "t", label: "Tenue max", unit: "s", sided: false, zone: "Cervicales" }],
   },
 ];

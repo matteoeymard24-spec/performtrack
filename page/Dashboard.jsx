@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { isMobileView } from "../component/viewMode";
+import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
 import { rmSerie } from "../component/methods";
@@ -2082,42 +2083,7 @@ export default function Dashboard() {
                 </div>
               </div>
             </div>
-            {wellnessHistory.length > 1 && (
-              <ResponsiveContainer width="100%" height={150}>
-                <LineChart data={wellnessHistory}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                  <XAxis
-                    dataKey="date"
-                    stroke="#a8a199"
-                    fontSize={10}
-                    tickFormatter={(d) =>
-                      new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })
-                    }
-                  />
-                  <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={10} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#1a1815",
-                      border: "1px solid #3a342a",
-                      borderRadius: 8,
-                      fontSize: 12,
-                    }}
-                    labelStyle={{ color: "#f3f0ea" }}
-                    labelFormatter={(d) => new Date(d).toLocaleDateString("fr-FR")}
-                    formatter={(value) => [`${value.toFixed(1)}/10`, "Score wellness"]}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="normalizedScore"
-                    name="Score wellness"
-                    stroke="#e0a13d"
-                    strokeWidth={2.5}
-                    dot={{ fill: "#e0a13d", r: 3 }}
-                    activeDot={{ r: 6 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
+            {wellnessHistory.length > 1 && <WellnessScoreChart data={wellnessHistory} height={170} legend={false} />}
             </>
           )}
           </div>
@@ -4055,89 +4021,14 @@ export default function Dashboard() {
                 </div>
                 {sectionVisibility.wellness && (
                 <>
-                <div
-                  style={{
-                    background: "#151310",
-                    padding: 20,
-                    borderRadius: 12,
-                    marginBottom: 16,
-                    border: "1px solid #2a2620",
-                  }}
-                >
-                  <h3 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
-                    ⚠️ Indicateurs à surveiller
-                  </h3>
-                  <p style={{ margin: "0 0 15px 0", fontSize: 12, color: "#a8a199" }}>
-                    Fatigue, stress, douleur — plus haut = plus préoccupant
-                  </p>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart
-                      data={athleteDetails.wellness.map((e) => ({
-                        ...e,
-                        shortDate: new Date(e.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
-                      }))}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                      <XAxis dataKey="shortDate" stroke="#a8a199" fontSize={11} />
-                      <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={11} />
-                      <Tooltip
-                        contentStyle={{
-                          background: "#1a1815",
-                          border: "1px solid #3a342a",
-                          borderRadius: 8,
-                          fontSize: 12,
-                        }}
-                        labelStyle={{ color: "#f3f0ea" }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Line type="monotone" dataKey="fatigue" name="Fatigue" stroke="#d9695a" strokeWidth={2} strokeDasharray="0" dot={{ r: 2 }} />
-                      <Line type="monotone" dataKey="stress" name="Stress" stroke="#e0a13d" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 2 }} />
-                      <Line type="monotone" dataKey="douleur" name="Douleur" stroke="#b06fd9" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 2 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                <div style={{ background: "#151310", padding: 20, borderRadius: 12, marginBottom: 16, border: "1px solid #2a2620" }}>
+                  <h3 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>📈 Score wellness</h3>
+                  <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#a8a199" }}>Moyenne des 7 indicateurs · 10 = meilleur état</p>
+                  <WellnessScoreChart data={athleteDetails.wellness} height={230} />
                 </div>
-
-                <div
-                  style={{
-                    background: "#151310",
-                    padding: 20,
-                    borderRadius: 12,
-                    marginBottom: 16,
-                    border: "1px solid #2a2620",
-                  }}
-                >
-                  <h3 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
-                    ✅ Indicateurs positifs
-                  </h3>
-                  <p style={{ margin: "0 0 15px 0", fontSize: 12, color: "#a8a199" }}>
-                    Sommeil, nutrition, hydratation, motivation — plus haut = mieux
-                  </p>
-                  <ResponsiveContainer width="100%" height={220}>
-                    <LineChart
-                      data={athleteDetails.wellness.map((e) => ({
-                        ...e,
-                        shortDate: new Date(e.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
-                      }))}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                      <XAxis dataKey="shortDate" stroke="#a8a199" fontSize={11} />
-                      <YAxis domain={[0, 10]} stroke="#a8a199" fontSize={11} />
-                      <Tooltip
-                        contentStyle={{
-                          background: "#1a1815",
-                          border: "1px solid #3a342a",
-                          borderRadius: 8,
-                          fontSize: 12,
-                        }}
-                        labelStyle={{ color: "#f3f0ea" }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: 12 }} />
-                      <Line type="monotone" dataKey="sommeil" name="Sommeil" stroke="#2f9e78" strokeWidth={2} strokeDasharray="0" dot={{ r: 2 }} />
-                      <Line type="monotone" dataKey="nutrition" name="Nutrition" stroke="#3d7fd9" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 2 }} />
-                      <Line type="monotone" dataKey="hydratation" name="Hydratation" stroke="#29b6c9" strokeWidth={2} strokeDasharray="2 3" dot={{ r: 2 }} />
-                      <Line type="monotone" dataKey="motivation" name="Motivation" stroke="#a4c639" strokeWidth={2} strokeDasharray="8 3 2 3" dot={{ r: 2 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                <div style={{ background: "#151310", padding: 20, borderRadius: 12, marginBottom: 16, border: "1px solid #2a2620" }}>
+                  <h3 style={{ margin: "0 0 12px 0", fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>🔎 Détail des indicateurs</h3>
+                  <WellnessIndicators data={athleteDetails.wellness} />
                 </div>
                 </>
                 )}

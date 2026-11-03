@@ -820,12 +820,29 @@ export default function MyRM() {
         const list = Object.keys(rmHistory).filter((ex) => ex !== "vma");
         const lastOf = (ex) => (rmHistory[ex] || [])[rmHistory[ex].length - 1];
         const filled = list.filter((ex) => lastOf(ex) && lastOf(ex).kg != null);
-        const since = Date.now() - 30 * 86400000;
-        const recent = filled.filter((ex) => new Date(lastOf(ex).date).getTime() >= since);
+        // Vmax : saisie au GPS / radar dans un test (prioritaire), sinon estimée par la vitesse
+        // moyenne sur 20→60 m (ou 10→20 m) — un peu inférieure au vrai pic. Meilleure valeur de l'historique.
+        const nb = (x) => { const v = Number(String(x ?? "").replace(",", ".")); return Number.isFinite(v) && v > 0 ? v : null; };
+        let vmaxBest = null;
+        sprintHist.forEach((t) => {
+          const v = t.values || {};
+          const t10 = nb(v.t10), t20 = nb(v.t20), t60 = nb(v.t60), gps = nb(v.vmax);
+          let c = null;
+          if (gps) c = { v: gps, how: "GPS / radar" };
+          else if (t20 && t60 && t60 > t20) c = { v: (40 / (t60 - t20)) * 3.6, how: "estimée 20→60 m" };
+          else if (t10 && t20 && t20 > t10) c = { v: (10 / (t20 - t10)) * 3.6, how: "estimée 10→20 m" };
+          if (c && c.v < 45 && (!vmaxBest || c.v > vmaxBest.v)) vmaxBest = { ...c, date: t.date };
+        });
         return (
           <KpiGrid>
             <Kpi icon="💪" label="RM enregistrés" value={filled.length} color="#e0a13d" sub={`${list.length - filled.length} en attente d'une séance`} />
-            <Kpi icon="🔄" label="Mis à jour (30 j)" value={recent.length} color={recent.length ? "#4fae7d" : "#6f6a62"} sub="RM recalculés récemment" />
+            <Kpi
+              icon="⚡"
+              label="Vmax"
+              value={vmaxBest ? `${(Math.round(vmaxBest.v * 10) / 10).toString().replace(".", ",")} km/h` : "—"}
+              color={vmaxBest ? "#4a90d9" : "#6f6a62"}
+              sub={vmaxBest ? `${vmaxBest.how}${vmaxBest.date ? ` · ${vmaxBest.date.slice(8, 10)}/${vmaxBest.date.slice(5, 7)}` : ""}` : "Saisis 20 m + 60 m ou la Vmax GPS"}
+            />
             <Kpi icon="🏃" label="VMA" value={vma ? `${vma.kg} km/h` : "—"} color={vma ? "#4fae7d" : "#6f6a62"} sub={vma?.sourceTest || "Mesurée lors des tests"} />
             <Kpi icon="🦘" label="CMJ" value={cmj ? `${cmj.kg} cm` : "—"} color={cmj ? "#e0a13d" : "#6f6a62"} sub="Détente verticale" />
           </KpiGrid>

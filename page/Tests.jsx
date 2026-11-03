@@ -125,6 +125,8 @@ function TestInfo({ test, media, onSaveMedia }) {
   const [editing, setEditing] = useState(false);
   const [video, setVideo] = useState("");
   const [photo, setPhoto] = useState("");
+  const [imgBroken, setImgBroken] = useState(false);
+  useEffect(() => setImgBroken(false), [test.id, media?.photoUrl, media?.videoUrl]);
   const videoUrl = media?.videoUrl || test.video;
   const id = ytId(videoUrl);
   const photoUrl =
@@ -153,8 +155,16 @@ function TestInfo({ test, media, onSaveMedia }) {
             flexShrink: 0,
           }}
         >
-          {photoUrl ? (
-            <img src={photoUrl} alt={test.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          {photoUrl && !imgBroken ? (
+            <img
+              src={photoUrl}
+              alt={test.name}
+              loading="lazy"
+              // Vidéo supprimée : YouTube renvoie une petite image grise de 120 px → on affiche l'icône à la place.
+              onLoad={(e) => { if (e.currentTarget.naturalWidth <= 120) setImgBroken(true); }}
+              onError={() => setImgBroken(true)}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
           ) : (
             <span style={{ fontSize: 34 }}>🎥</span>
           )}

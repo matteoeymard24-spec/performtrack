@@ -12,6 +12,7 @@ import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
 import { useNavigate } from "react-router-dom";
 import BodyScan from "../component/BodyScan";
+import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB, PageHeader, Kpi, KpiGrid } from "../component/ui";
 
 import {
@@ -55,16 +56,6 @@ const tooltipStyle = {
   borderRadius: 8,
 };
 
-// Indicateurs du questionnaire : sens « bon » (low = idéalement bas) et couleur propre.
-const INDICATORS = [
-  { key: "fatigue", label: "Fatigue", icon: "😮‍💨", low: true, color: NEGATIVE_COLORS.fatigue },
-  { key: "stress", label: "Stress", icon: "😬", low: true, color: NEGATIVE_COLORS.stress },
-  { key: "douleur", label: "Douleur", icon: "🩹", low: true, color: NEGATIVE_COLORS.douleur },
-  { key: "sommeil", label: "Sommeil", icon: "😴", low: false, color: POSITIVE_COLORS.sommeil },
-  { key: "nutrition", label: "Nutrition", icon: "🥗", low: false, color: POSITIVE_COLORS.nutrition },
-  { key: "hydratation", label: "Hydratation", icon: "💧", low: false, color: POSITIVE_COLORS.hydratation },
-  { key: "motivation", label: "Motivation", icon: "🔥", low: false, color: POSITIVE_COLORS.motivation },
-];
 const PERIODS = [
   { id: "7", label: "7 j", days: 7 },
   { id: "30", label: "30 j", days: 30 },
@@ -72,41 +63,6 @@ const PERIODS = [
   { id: "all", label: "Tout", days: null },
 ];
 const zoneColor = (v) => (v >= 7 ? "#4fae7d" : v >= 5 ? "#d9a441" : "#d9695a");
-const longDate = (iso) =>
-  iso ? new Date(iso + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }) : "";
-
-/* Infobulle du score global */
-function ScoreTip({ active, payload }) {
-  if (!active || !payload || !payload.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div style={{ background: "#151310", border: "1px solid #3a342a", borderRadius: 10, padding: "8px 12px", fontSize: 12.5, boxShadow: "0 6px 18px rgba(0,0,0,0.4)" }}>
-      <div style={{ color: "#a8a199", textTransform: "capitalize", marginBottom: 4 }}>{longDate(d.date)}</div>
-      <div style={{ color: "#f3f0ea" }}>
-        Score : <b style={{ color: zoneColor(d.normalizedScore) }}>{Number(d.normalizedScore).toFixed(1)}/10</b>
-      </div>
-      {d.avg7 != null && <div style={{ color: "#a8a199" }}>Moyenne 7 j : {Number(d.avg7).toFixed(1)}</div>}
-      {d.sick && <div style={{ color: "#d9695a", marginTop: 2 }}>🤒 Malade</div>}
-    </div>
-  );
-}
-/* Infobulle des petits graphiques */
-function MiniTip({ active, payload, label }) {
-  if (!active || !payload || !payload.length) return null;
-  const d = payload[0].payload;
-  return (
-    <div style={{ background: "#151310", border: "1px solid #3a342a", borderRadius: 8, padding: "5px 9px", fontSize: 12 }}>
-      <span style={{ color: "#a8a199", textTransform: "capitalize" }}>{longDate(d.date)}</span>
-      <span style={{ color: "#f3f0ea", fontWeight: 700 }}> · {label} {payload[0].value}/10</span>
-    </div>
-  );
-}
-/* Point coloré selon la zone du score */
-function ZoneDot({ cx, cy, payload }) {
-  if (cx == null || cy == null) return null;
-  return <circle cx={cx} cy={cy} r={3.5} fill={zoneColor(payload.normalizedScore)} stroke="#151310" strokeWidth={1.5} />;
-}
-
 export default function Wellness() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
@@ -449,93 +405,12 @@ export default function Wellness() {
                 )
               }
             >
-              <ResponsiveContainer width="100%" height={250}>
-                <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="scoreGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={ACCENT} stopOpacity={0.32} />
-                      <stop offset="100%" stopColor={ACCENT} stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <ReferenceArea y1={7} y2={10} fill="#4fae7d" fillOpacity={0.06} ifOverflow="hidden" />
-                  <ReferenceArea y1={5} y2={7} fill="#d9a441" fillOpacity={0.05} ifOverflow="hidden" />
-                  <ReferenceArea y1={0} y2={5} fill="#d9695a" fillOpacity={0.06} ifOverflow="hidden" />
-                  <CartesianGrid vertical={false} stroke="#2a2620" />
-                  <XAxis dataKey="shortDate" stroke="#6f6a62" tick={{ fontSize: 11, fill: "#a8a199" }} tickLine={false} axisLine={{ stroke: "#2a2620" }} minTickGap={28} />
-                  <YAxis domain={[0, 10]} ticks={[0, 5, 7, 10]} stroke="#6f6a62" tick={{ fontSize: 11, fill: "#a8a199" }} tickLine={false} axisLine={false} width={34} />
-                  <Tooltip content={<ScoreTip />} cursor={{ stroke: "#3a342a", strokeWidth: 1 }} />
-                  <Area
-                    type="monotone"
-                    dataKey="normalizedScore"
-                    name="Score du jour"
-                    stroke={ACCENT}
-                    strokeWidth={2}
-                    fill="url(#scoreGradient)"
-                    dot={chartData.length <= 45 ? <ZoneDot /> : false}
-                    activeDot={{ r: 5, stroke: "#0d0c0a", strokeWidth: 2 }}
-                    isAnimationActive={false}
-                  />
-                  {chartData.length >= 4 && (
-                    <Line type="monotone" dataKey="avg7" name="Moyenne 7 jours" stroke="#f3f0ea" strokeOpacity={0.55} strokeWidth={1.5} strokeDasharray="4 4" dot={false} activeDot={false} isAnimationActive={false} />
-                  )}
-                </ComposedChart>
-              </ResponsiveContainer>
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: "#a8a199", marginTop: 6 }}>
-                <span><span style={{ display: "inline-block", width: 14, height: 3, background: ACCENT, verticalAlign: "middle", marginRight: 5, borderRadius: 2 }} />Score du jour</span>
-                {chartData.length >= 4 && (
-                  <span><span style={{ display: "inline-block", width: 14, borderTop: "2px dashed rgba(243,240,234,0.55)", verticalAlign: "middle", marginRight: 5 }} />Moyenne 7 jours</span>
-                )}
-                <span><span style={{ color: "#4fae7d" }}>■</span> ≥ 7 bon · <span style={{ color: "#d9a441" }}>■</span> 5-7 moyen · <span style={{ color: "#d9695a" }}>■</span> &lt; 5 bas</span>
-              </div>
+              <WellnessScoreChart data={chartData} />
             </FoldCard>
 
             {/* Les 7 indicateurs en petits graphiques (un par indicateur) */}
-            <FoldCard id="indic" fold={fold} title="🔎 Détail des indicateurs" subtitle="Dernière valeur, évolution sur une semaine et moyenne de la période">
-              {[
-                { title: "À surveiller · idéalement bas", list: INDICATORS.filter((x) => x.low) },
-                { title: "Positifs · idéalement haut", list: INDICATORS.filter((x) => !x.low) },
-              ].map((grp) => (
-                <div key={grp.title} style={{ marginBottom: 14 }}>
-                  <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, margin: "0 2px 8px" }}>{grp.title}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 200px), 1fr))", gap: 10 }}>
-                    {grp.list.map((ind) => {
-                      const st = indicatorStats(ind.key);
-                      const good = st.delta === null ? null : ind.low ? st.delta < 0 : st.delta > 0;
-                      const valCol = st.last === null ? "#6f6a62" : (ind.low ? 10 - st.last : st.last) >= 7 ? "#4fae7d" : (ind.low ? 10 - st.last : st.last) >= 5 ? "#d9a441" : "#d9695a";
-                      return (
-                        <div key={ind.key} style={{ background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 10, padding: "10px 12px 6px" }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#f3f0ea" }}>{ind.icon} {ind.label}</span>
-                            {st.delta !== null && Math.abs(st.delta) >= 0.1 && (
-                              <span style={{ fontSize: 12, fontWeight: 700, color: good ? "#4fae7d" : "#d9695a" }} title="Écart avec la moyenne de la semaine précédente">
-                                {st.delta > 0 ? "▲" : "▼"} {Math.abs(st.delta).toFixed(1)}
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 2 }}>
-                            <span style={{ fontSize: 22, fontWeight: 800, color: valCol }}>{st.last === null ? "—" : st.last}</span>
-                            <span style={{ fontSize: 11.5, color: "#a8a199" }}>/10 · moy. {st.avg === null ? "—" : st.avg.toFixed(1)}</span>
-                          </div>
-                          <ResponsiveContainer width="100%" height={56}>
-                            <AreaChart data={chartData} margin={{ top: 4, right: 2, left: 2, bottom: 0 }}>
-                              <defs>
-                                <linearGradient id={`g_${ind.key}`} x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="0%" stopColor={ind.color} stopOpacity={0.3} />
-                                  <stop offset="100%" stopColor={ind.color} stopOpacity={0} />
-                                </linearGradient>
-                              </defs>
-                              <YAxis hide domain={[0, 10]} />
-                              <XAxis hide dataKey="shortDate" />
-                              <Tooltip content={<MiniTip label={ind.label} />} cursor={{ stroke: "#3a342a" }} />
-                              <Area type="monotone" dataKey={ind.key} stroke={ind.color} strokeWidth={2} fill={`url(#g_${ind.key})`} dot={false} activeDot={{ r: 3.5, stroke: "#0d0c0a", strokeWidth: 1.5 }} isAnimationActive={false} />
-                            </AreaChart>
-                          </ResponsiveContainer>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+            <FoldCard id="indic" fold={fold} title="🔎 Détail des indicateurs" subtitle="Classés en négatifs (idéalement bas) et positifs (idéalement haut) · dernière valeur, évolution sur une semaine, moyenne de la période">
+              <WellnessIndicators data={chartData} all={entries} />
             </FoldCard>
             </>
             )}
