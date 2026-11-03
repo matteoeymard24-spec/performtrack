@@ -65,7 +65,7 @@ const CARD_STYLE = {
   background: "#151310",
   padding: 20,
   borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.08)",
+  border: "1px solid #2a2620",
   marginBottom: 16,
 };
 const CARD_ACCENT_BORDER = "1px solid rgba(224,161,61,0.55)";
@@ -153,6 +153,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [customGroups, setCustomGroups] = useState([]);
   const [wellnessFilter, setWellnessFilter] = useState("total");
+  // Tuiles « État de forme » repliables (mémorisé sur l'appareil)
+  const [formTilesOpen, setFormTilesOpenState] = useState(() => {
+    try { return localStorage.getItem("pt_dash_form_open") !== "0"; } catch (e) { return true; }
+  });
+  const setFormTilesOpen = (v) => {
+    setFormTilesOpenState(v);
+    try { localStorage.setItem("pt_dash_form_open", v ? "1" : "0"); } catch (e) { /* ignore */ }
+  };
   // Affichage de la liste : par groupe (défaut) ou liste simple ; groupes repliés
   const [listView, setListView] = useState(() => {
     try { return localStorage.getItem("dash_listView") || "groups"; } catch (e) { return "groups"; }
@@ -210,7 +218,7 @@ export default function Dashboard() {
     <button
       onClick={() => toggleDash(k)}
       title={vis(k) ? "Masquer" : "Afficher"}
-      style={{ padding: "4px 10px", background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, flexShrink: 0 }}
+      style={{ padding: "3px 10px", background: "transparent", color: "#a8a199", border: "1px solid #2a2620", borderRadius: 8, cursor: "pointer", fontSize: 13, flexShrink: 0 }}
     >
       {vis(k) ? "▾" : "▸"}
     </button>
@@ -1380,8 +1388,9 @@ export default function Dashboard() {
                     background: "#151310",
                     padding: 18,
                     borderRadius: 12,
-                    border: `2px solid ${cs.color}`,
-                    marginBottom: 25,
+                    border: `1px solid ${cs.color}`,
+                    borderLeft: `4px solid ${cs.color}`,
+                    marginBottom: 16,
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 14 }}>
@@ -1641,101 +1650,84 @@ export default function Dashboard() {
           background: "#0d0c0a",
           minHeight: "100vh",
           color: "#f3f0ea",
-          maxWidth: 600,
+          maxWidth: isMobileView() ? 600 : 1120,
           margin: "0 auto",
         }}
       >
-        <h2 style={{ fontSize: 24, marginBottom: 5 }}>
-          Bonjour {userProfile?.firstName || "Athlète"} ! 👋
-        </h2>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 12.5, color: "#e0a13d", fontWeight: 700, textTransform: "capitalize" }}>
+              {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+            </div>
+            <h2 style={{ fontSize: 24, margin: "2px 0 0" }}>👋 Bonjour {userProfile?.firstName || "Athlète"}</h2>
+            <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>Ta forme, tes séances et ta charge</p>
+          </div>
           {userRole === "admin" && meMode && (
-            <button
-              onClick={() => setMeMode(false)}
-              style={{ padding: "6px 12px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
-            >
-              ↩ Retour au dashboard admin
-            </button>
+            <button className="pt-btn" onClick={() => setMeMode(false)}>← Vue coach</button>
           )}
         </div>
-        <p style={{ color: "#a8a199", marginBottom: 20, fontSize: 14 }}>
-          {new Date().toLocaleDateString("fr-FR", {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-        </p>
 
-        {/* Mini-frise de la semaine : un coup d'œil sur les 7 jours (lundi
-            → dimanche) sans avoir à ouvrir le calendrier. Un jour sans
-            séance programmée reste un simple point neutre. */}
-        {weekOverview.length > 0 && (
-          <div
-            style={{
-              marginBottom: 16,
-              background: "#151310",
-              borderRadius: 12,
-              padding: "14px 10px 12px",
-              border: "1px solid rgba(255,255,255,0.08)",
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 4px 10px" }}>
-              Entraînements de la semaine
+        {(() => {
+          const done = todayWorkout && isWorkoutCompleted(todayWorkout);
+          const inProg = todayWorkout && !done && isWorkoutInProgress(todayWorkout);
+          const wCol = todayScore === null ? "#e0a13d" : todayScore >= 7 ? "#4fae7d" : todayScore >= 5 ? "#d9a441" : "#d9695a";
+          const acwr = selfForm?.acwr;
+          const hasAcwr = acwr !== null && acwr !== undefined && Number(acwr) > 0;
+          const pct = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : null;
+          const kpi = (key, icon, label, value, color, sub, onClick) => (
+            <button
+              key={key}
+              type="button"
+              onClick={onClick}
+              disabled={!onClick}
+              style={{ textAlign: "left", padding: "12px 14px", borderRadius: 12, cursor: onClick ? "pointer" : "default", background: "#151310", border: "1px solid #2a2620", color: "#f3f0ea", minWidth: 0 }}
+            >
+              <div style={{ fontSize: 12, color: "#a8a199", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {icon} {label}
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, color, lineHeight: 1.2, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+              {sub && <div style={{ fontSize: 11.5, color: "#a8a199", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{sub}</div>}
+            </button>
+          );
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 150px), 1fr))", gap: 10, marginBottom: 16 }}>
+              {kpi(
+                "today",
+                "🏋️",
+                "Séance du jour",
+                !todayWorkout ? "Repos" : done ? "✓ Faite" : inProg ? "En cours" : "À faire",
+                !todayWorkout ? "#6f6a62" : done ? "#4fae7d" : inProg ? "#e0a13d" : "#4a90d9",
+                todayWorkout ? todayWorkout.title : "Pas de séance prévue",
+                todayWorkout ? () => goToWorkout(todayWorkout.id, false) : null
+              )}
+              {kpi(
+                "well",
+                "🧘",
+                "Wellness",
+                todayScore === null ? "À remplir" : `${todayScore.toFixed(1)}/10`,
+                wCol,
+                weeklyAvg ? `Moyenne récente : ${weeklyAvg}/10` : "Questionnaire du jour",
+                () => navigate("/wellness")
+              )}
+              {kpi(
+                "redi",
+                "⚙️",
+                "Charge (REDI)",
+                hasAcwr ? Number(acwr).toFixed(2) : "—",
+                hasAcwr ? selfForm.acwrStatus.color : "#6f6a62",
+                hasAcwr ? selfForm.acwrStatus.label : "Pas assez de séances"
+              )}
+              {kpi(
+                "done",
+                "✅",
+                "Réalisation",
+                pct === null ? "—" : `${pct} %`,
+                pct === null ? "#6f6a62" : pct >= 80 ? "#4fae7d" : pct >= 60 ? "#d9a441" : "#d9695a",
+                totalSessions > 0 ? `${completedSessions}/${totalSessions} séances · 60 j` : "Aucune séance passée"
+              )}
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
-              {weekOverview.map((day) => {
-                const STATUS_STYLE = {
-                  done: { color: "#4fae7d", icon: "✓", label: "Faite" },
-                  inProgress: { color: "#e0a13d", icon: "◐", label: "En cours" },
-                  missed: { color: "#e5534b", icon: "❌", label: "Non faite" },
-                  today: { color: "#4a90d9", icon: "●", label: "Aujourd'hui" },
-                  upcoming: { color: "#4a90d9", icon: "○", label: "À venir" },
-                  none: { color: "#4a453d", icon: "·", label: "Repos" },
-                };
-                const s = STATUS_STYLE[day.status] || STATUS_STYLE.none;
-                const hasSession = day.status !== "none";
-                return (
-                  <div
-                    key={day.date}
-                    onClick={() => day.sessionId && goToWorkout(day.sessionId, false)}
-                    title={day.title ? `${day.title} — ${s.label}` : s.label}
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      gap: 3,
-                      flex: 1,
-                      minWidth: 0,
-                      padding: "8px 2px",
-                      borderRadius: 10,
-                      background: hasSession ? `${s.color}26` : "transparent",
-                      border: hasSession ? `1.5px solid ${s.color}` : "1.5px solid rgba(255,255,255,0.06)",
-                      boxShadow: day.isToday ? "0 0 0 2px rgba(224,161,61,0.55)" : "none",
-                      cursor: day.sessionId ? "pointer" : "default",
-                    }}
-                  >
-                    <div style={{ fontSize: 10, color: day.isToday ? "#e0a13d" : "#a8a199", fontWeight: day.isToday ? "bold" : "normal", textTransform: "uppercase" }}>
-                      {day.dayLabel}
-                    </div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: hasSession ? "#f3f0ea" : "#6f6a62", lineHeight: 1 }}>
-                      {day.dayNum}
-                    </div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.icon}</div>
-                  </div>
-                );
-              })}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 14, marginTop: 10, fontSize: 11, color: "#a8a199" }}>
-              <span><span style={{ color: "#4fae7d" }}>●</span> Fait</span>
-              <span><span style={{ color: "#e5534b" }}>●</span> Non fait</span>
-              <span><span style={{ color: "#4a90d9" }}>●</span> À venir</span>
-            </div>
-          </div>
-        )}
-
-        {/* État de forme : même analyse que la fiche athlète du coach, mais pour MOI
-            (athlète, ou coach via « Moi (mon dashboard) »). */}
-        {selfForm && selfForm.crossStatus && renderFormCard(selfForm, true)}
+          );
+        })()}
 
         {!todayWellness && (
           <div
@@ -1799,6 +1791,217 @@ export default function Dashboard() {
           </div>
         )}
 
+        {/* Mini-frise de la semaine : un coup d'œil sur les 7 jours (lundi
+            → dimanche) sans avoir à ouvrir le calendrier. Un jour sans
+            séance programmée reste un simple point neutre. */}
+        {weekOverview.length > 0 && (
+          <div
+            style={{
+              marginBottom: 16,
+              background: "#151310",
+              borderRadius: 12,
+              padding: "14px 10px 12px",
+              border: "1px solid #2a2620",
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.5, margin: "0 4px 10px" }}>
+              Entraînements de la semaine
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+              {weekOverview.map((day) => {
+                const STATUS_STYLE = {
+                  done: { color: "#4fae7d", icon: "✓", label: "Faite" },
+                  inProgress: { color: "#e0a13d", icon: "◐", label: "En cours" },
+                  missed: { color: "#e5534b", icon: "❌", label: "Non faite" },
+                  today: { color: "#4a90d9", icon: "●", label: "Aujourd'hui" },
+                  upcoming: { color: "#4a90d9", icon: "○", label: "À venir" },
+                  none: { color: "#4a453d", icon: "·", label: "Repos" },
+                };
+                const s = STATUS_STYLE[day.status] || STATUS_STYLE.none;
+                const hasSession = day.status !== "none";
+                return (
+                  <div
+                    key={day.date}
+                    onClick={() => day.sessionId && goToWorkout(day.sessionId, false)}
+                    title={day.title ? `${day.title} — ${s.label}` : s.label}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 3,
+                      flex: 1,
+                      minWidth: 0,
+                      padding: "8px 2px",
+                      borderRadius: 10,
+                      background: hasSession ? `${s.color}26` : "transparent",
+                      border: hasSession ? `1.5px solid ${s.color}` : "1.5px solid rgba(255,255,255,0.06)",
+                      boxShadow: day.isToday ? "0 0 0 2px rgba(224,161,61,0.55)" : "none",
+                      cursor: day.sessionId ? "pointer" : "default",
+                    }}
+                  >
+                    <div style={{ fontSize: 10, color: day.isToday ? "#e0a13d" : "#a8a199", fontWeight: day.isToday ? "bold" : "normal", textTransform: "uppercase" }}>
+                      {day.dayLabel}
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: hasSession ? "#f3f0ea" : "#6f6a62", lineHeight: 1 }}>
+                      {day.dayNum}
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: s.color, lineHeight: 1.1 }}>{s.icon}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 14, marginTop: 10, fontSize: 11, color: "#a8a199" }}>
+              <span><span style={{ color: "#4fae7d" }}>●</span> Fait</span>
+              <span><span style={{ color: "#e5534b" }}>●</span> Non fait</span>
+              <span><span style={{ color: "#4a90d9" }}>●</span> À venir</span>
+            </div>
+          </div>
+        )}
+
+        <div className="pt-ath-cols">
+        {(
+        <div
+          style={{
+            ...CARD_STYLE,
+            border: CARD_ACCENT_BORDER,
+          }}
+        >
+            {foldHead("today", "🏋️ Séance du jour")}
+            {vis("today") && (
+            <>
+          {todayWorkout ? (
+            <div>
+              <div
+                style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}
+              >
+                {todayWorkout.title}
+              </div>
+              <div style={{ fontSize: 14, color: "#a8a199", marginBottom: 10 }}>
+                Durée estimée : {todayWorkout.estimatedDuration || "N/A"} min
+              </div>
+              {isWorkoutCompleted(todayWorkout) ? (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "rgba(79,174,125,0.14)",
+                    borderRadius: 8,
+                    color: "#4fae7d",
+                    textAlign: "center",
+                    fontWeight: "bold",
+                    marginBottom: 10,
+                  }}
+                >
+                  ✅ Séance validée
+                </div>
+              ) : null}
+              {todaySummary && (todaySummary.avgRpe !== null || todaySummary.vsRM.length > 0) && (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "#0d0c0a",
+                    borderRadius: 8,
+                    marginBottom: 10,
+                    fontSize: 13,
+                  }}
+                >
+                  {todaySummary.avgRpe !== null && (
+                    <div style={{ color: "#a8a199", marginBottom: todaySummary.vsRM.length > 0 ? 8 : 0 }}>
+                      RPE moyen : <strong style={{ color: "#f3f0ea" }}>{todaySummary.avgRpe.toFixed(1)}</strong>
+                    </div>
+                  )}
+                  {todaySummary.vsRM.map((v, i) => (
+                    <div key={i} style={{ color: "#a8a199" }}>
+                      {v.name} : <strong style={{ color: "#f3f0ea" }}>{v.weight} kg</strong>{" "}
+                      ({v.pct}% du RM)
+                    </div>
+                  ))}
+                </div>
+              )}
+              {isWorkoutCompleted(todayWorkout) ? null : isWorkoutInProgress(todayWorkout) ? (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "rgba(217,164,65,0.14)",
+                    borderRadius: 8,
+                    color: "#d9a441",
+                    textAlign: "center",
+                    fontWeight: "bold",
+                    marginBottom: 10,
+                  }}
+                >
+                  ⏳ En cours
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "rgba(217,105,90,0.14)",
+                    borderRadius: 8,
+                    color: "#d9695a",
+                    textAlign: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  ❌ Non démarrée
+                </div>
+              )}
+              {/* Deux actions toujours disponibles : voir la séance en entier
+                  sans rien démarrer, ou la démarrer/reprendre directement —
+                  sans avoir à aller la chercher dans le calendrier de la
+                  page Séances. */}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  onClick={() => goToWorkout(todayWorkout.id, false)}
+                  style={{
+                    flex: 1,
+                    padding: 12,
+                    background: "#2a2620",
+                    color: "#f3f0ea",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    fontSize: 14,
+                  }}
+                >
+                  👁️ Voir la séance
+                </button>
+                {!isWorkoutCompleted(todayWorkout) && (
+                  <button
+                    onClick={() => goToWorkout(todayWorkout.id, true)}
+                    style={{
+                      flex: 1,
+                      padding: 12,
+                      background: "#e0a13d",
+                      color: "#1a1306",
+                      border: "none",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                      fontSize: 14,
+                    }}
+                  >
+                    {isWorkoutInProgress(todayWorkout)
+                      ? "▶️ Reprendre"
+                      : "▶️ Démarrer"}
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: 20, color: "#a8a199" }}>
+              Pas de séance programmée aujourd'hui
+            </div>
+          )}
+            </>
+          )}
+        </div>
+        )}
+
+        {/* État de forme : même analyse que la fiche athlète du coach, mais pour MOI
+            (athlète, ou coach via « Moi (mon dashboard) »). */}
+        {selfForm && selfForm.crossStatus && renderFormCard(selfForm, true)}
+
         {/* Encadré « RM en attente » retiré : les RM se remplissent tout seuls à la fin des séances. */}
 
         {todayScore !== null && (
@@ -1807,7 +2010,7 @@ export default function Dashboard() {
               background: "#151310",
               padding: 20,
               borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.08)",
+              border: "1px solid #2a2620",
               marginBottom: 16,
             }}
           >
@@ -1922,7 +2125,7 @@ export default function Dashboard() {
               background: "#151310",
               padding: 20,
               borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.08)",
+              border: "1px solid #2a2620",
               marginBottom: 16,
             }}
           >
@@ -1947,7 +2150,7 @@ export default function Dashboard() {
                 background: "#151310",
                 padding: 20,
                 borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.08)",
+                border: "1px solid #2a2620",
                 marginBottom: 16,
               }}
             >
@@ -1982,7 +2185,7 @@ export default function Dashboard() {
             background: "#151310",
             padding: 20,
             borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.08)",
+            border: "1px solid #2a2620",
             marginBottom: 16,
           }}
         >
@@ -2161,144 +2364,6 @@ export default function Dashboard() {
           </div>
         )}
 
-        {(
-        <div
-          style={{
-            ...CARD_STYLE,
-            border: CARD_ACCENT_BORDER,
-          }}
-        >
-            {foldHead("today", "🏋️ Séance du jour")}
-            {vis("today") && (
-            <>
-          {todayWorkout ? (
-            <div>
-              <div
-                style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}
-              >
-                {todayWorkout.title}
-              </div>
-              <div style={{ fontSize: 14, color: "#a8a199", marginBottom: 10 }}>
-                Durée estimée : {todayWorkout.estimatedDuration || "N/A"} min
-              </div>
-              {isWorkoutCompleted(todayWorkout) ? (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "rgba(79,174,125,0.14)",
-                    borderRadius: 8,
-                    color: "#4fae7d",
-                    textAlign: "center",
-                    fontWeight: "bold",
-                    marginBottom: 10,
-                  }}
-                >
-                  ✅ Séance validée
-                </div>
-              ) : null}
-              {todaySummary && (todaySummary.avgRpe !== null || todaySummary.vsRM.length > 0) && (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "#0d0c0a",
-                    borderRadius: 8,
-                    marginBottom: 10,
-                    fontSize: 13,
-                  }}
-                >
-                  {todaySummary.avgRpe !== null && (
-                    <div style={{ color: "#a8a199", marginBottom: todaySummary.vsRM.length > 0 ? 8 : 0 }}>
-                      RPE moyen : <strong style={{ color: "#f3f0ea" }}>{todaySummary.avgRpe.toFixed(1)}</strong>
-                    </div>
-                  )}
-                  {todaySummary.vsRM.map((v, i) => (
-                    <div key={i} style={{ color: "#a8a199" }}>
-                      {v.name} : <strong style={{ color: "#f3f0ea" }}>{v.weight} kg</strong>{" "}
-                      ({v.pct}% du RM)
-                    </div>
-                  ))}
-                </div>
-              )}
-              {isWorkoutCompleted(todayWorkout) ? null : isWorkoutInProgress(todayWorkout) ? (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "rgba(217,164,65,0.14)",
-                    borderRadius: 8,
-                    color: "#d9a441",
-                    textAlign: "center",
-                    fontWeight: "bold",
-                    marginBottom: 10,
-                  }}
-                >
-                  ⏳ En cours
-                </div>
-              ) : (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "rgba(217,105,90,0.14)",
-                    borderRadius: 8,
-                    color: "#d9695a",
-                    textAlign: "center",
-                    marginBottom: 10,
-                  }}
-                >
-                  ❌ Non démarrée
-                </div>
-              )}
-              {/* Deux actions toujours disponibles : voir la séance en entier
-                  sans rien démarrer, ou la démarrer/reprendre directement —
-                  sans avoir à aller la chercher dans le calendrier de la
-                  page Séances. */}
-              <div style={{ display: "flex", gap: 10 }}>
-                <button
-                  onClick={() => goToWorkout(todayWorkout.id, false)}
-                  style={{
-                    flex: 1,
-                    padding: 12,
-                    background: "#2a2620",
-                    color: "#f3f0ea",
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                    fontSize: 14,
-                  }}
-                >
-                  👁️ Voir la séance
-                </button>
-                {!isWorkoutCompleted(todayWorkout) && (
-                  <button
-                    onClick={() => goToWorkout(todayWorkout.id, true)}
-                    style={{
-                      flex: 1,
-                      padding: 12,
-                      background: "#e0a13d",
-                      color: "#1a1306",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                      fontSize: 14,
-                    }}
-                  >
-                    {isWorkoutInProgress(todayWorkout)
-                      ? "▶️ Reprendre"
-                      : "▶️ Démarrer"}
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: 20, color: "#a8a199" }}>
-              Pas de séance programmée aujourd'hui
-            </div>
-          )}
-            </>
-          )}
-        </div>
-        )}
 
         {(
         <div
@@ -2306,7 +2371,7 @@ export default function Dashboard() {
             background: "#151310",
             padding: 20,
             borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.08)",
+            border: "1px solid #2a2620",
             marginBottom: 16,
           }}
         >
@@ -2456,7 +2521,7 @@ export default function Dashboard() {
               background: "#151310",
               padding: 20,
               borderRadius: 12,
-              border: "1px solid rgba(255,255,255,0.08)",
+              border: "1px solid #2a2620",
               marginBottom: 16,
             }}
           >
@@ -2656,6 +2721,7 @@ export default function Dashboard() {
             </div>
           );
         })()}
+        </div>
       </div>
     );
   }
@@ -2719,15 +2785,31 @@ export default function Dashboard() {
               <button className="pt-btn" onClick={() => setMeMode(true)}>🌟 Mon dashboard</button>
             </div>
 
-            <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, margin: "0 0 6px 2px" }}>État de forme</div>
+            <button
+              type="button"
+              onClick={() => setFormTilesOpen(!formTilesOpen)}
+              style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", width: "100%", background: "none", border: "none", padding: "0 2px", margin: "0 0 6px", cursor: "pointer", textAlign: "left" }}
+            >
+              <span style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700 }}>
+                {formTilesOpen ? "▼" : "▶"} État de forme
+              </span>
+              {!formTilesOpen &&
+                ["risk", "fatigue", "watch", "fit"].map((k) => (
+                  <span key={k} style={{ fontSize: 12, fontWeight: 700, color: F(k).color, border: `1px solid ${F(k).color}55`, borderRadius: 999, padding: "1px 8px" }}>
+                    {F(k).emoji} {lv(k)}
+                  </span>
+                ))}
+            </button>
+            {formTilesOpen && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 12 }}>
               {tile("total", "👥", "Athlètes", athletes.length, "#e0a13d")}
               {tile("risque", F("risk").emoji, "Risque", lv("risk"), F("risk").color)}
               {tile("fatigue", F("fatigue").emoji, "Fatigués", lv("fatigue"), F("fatigue").color)}
               {tile("surveiller", F("watch").emoji, "À surveiller", lv("watch"), F("watch").color)}
               {tile("forme", F("fit").emoji, "En forme", lv("fit"), F("fit").color)}
-              {tile("nodata", F("nodata").emoji, "Sans données", lv("nodata"), F("nodata").color)}
             </div>
+            )}
+            {!formTilesOpen && <div style={{ height: 6 }} />}
             <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, margin: "0 0 6px 2px" }}>Aujourd'hui</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginBottom: 16 }}>
               {tile("nowell", "📝", "Wellness remplis", `${wellToday}/${athletes.length}`, wellToday === athletes.length ? "#4fae7d" : "#e0a13d", wellToday < athletes.length ? `Voir les ${athletes.length - wellToday} manquants` : "Tout le monde a répondu")}

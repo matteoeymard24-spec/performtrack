@@ -140,14 +140,17 @@ export default function Layout() {
           <nav
             style={{
               display: "flex",
-              gap: 4,
               flex: 1,
-              justifyContent: "center",
-              maxWidth: 720,
-              overflow: "hidden",
+              minWidth: 0,
+              maxWidth: 760,
+              overflowX: "auto",
+              scrollbarWidth: "none",
+              padding: "4px 0",
             }}
             className="desktop-nav"
           >
+            {/* margin auto : centré quand ça tient, sinon aligné à gauche (rien n'est rogné) */}
+            <div style={{ display: "flex", gap: 2, margin: "0 auto" }}>
             {visibleMenuItems.map((item) => {
               const active = location.pathname === item.path;
               return (
@@ -155,7 +158,7 @@ export default function Layout() {
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   style={{
-                    padding: "9px 16px",
+                    padding: "8px 13px",
                     background: active ? "rgba(224,161,61,0.12)" : "transparent",
                     color: active ? ACCENT : TEXT_MUTED,
                     borderRadius: 8,
@@ -175,6 +178,7 @@ export default function Layout() {
                 </button>
               );
             })}
+            </div>
           </nav>
 
           {/* Actions desktop */}
@@ -526,11 +530,6 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      {/* Ordinateur : choix de l'affichage en bas à gauche (sur téléphone il est dans le menu ☰) */}
-      <div className="view-choice-desktop" style={{ position: "fixed", left: 14, bottom: 14, zIndex: 150, display: "none", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 12, background: "rgba(21,19,16,0.92)", border: `1px solid ${BORDER}`, boxShadow: "0 6px 20px rgba(0,0,0,0.4)" }}>
-        <span style={{ fontSize: 11.5, color: TEXT_MUTED, fontWeight: 700, paddingLeft: 4 }}>Affichage</span>
-        {viewChoice(false)}
-      </div>
       <style>{`
         @keyframes pt-fade {
           from { opacity: 0; }
@@ -542,19 +541,16 @@ export default function Layout() {
         }
 
         @media (min-width: 768px) {
-          .view-choice-desktop { display: flex !important; }
           .desktop-nav { display: flex !important; }
           .desktop-actions { display: flex !important; }
-          .mobile-menu-toggle { display: none !important; }
+          .mobile-menu-toggle { display: flex !important; } /* ☰ aussi sur ordinateur : menu complet + choix de l'affichage */
           .mobile-nav { display: none !important; }
-          .mobile-drawer-overlay { display: none !important; }
           .main-content { padding: 24px !important; }
         }
 
         /* Affichage « téléphone » forcé sur un grand écran : colonne de 440 px centrée + mise en page mobile */
         html[data-view="mobile"] body { background: #060505; }
         html[data-view="mobile"] #root { max-width: 440px; margin: 0 auto; box-shadow: 0 0 0 1px #1d1a16, 0 0 40px rgba(0,0,0,0.6); min-height: 100vh; }
-        html[data-view="mobile"] .view-choice-desktop,
         html[data-view="mobile"] .desktop-nav,
         html[data-view="mobile"] .desktop-actions { display: none !important; }
         html[data-view="mobile"] .mobile-menu-toggle { display: flex !important; }

@@ -300,3 +300,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 .pt-menu button:hover { background: #23201b; }
 .pt-menu small { display: block; color: #a8a199; font-size: 12px; font-weight: 400; margin-top: 2px; }
+
+/* Dashboard athlète : cartes sur 2 colonnes à l'ordinateur (empilées au téléphone) */
+.pt-ath-cols > * { break-inside: avoid; }
+@media (min-width: 900px) {
+  html:not([data-view="mobile"]) .pt-ath-cols { columns: 2; column-gap: 16px; }
+}
