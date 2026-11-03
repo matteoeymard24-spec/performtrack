@@ -6,6 +6,8 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import { db } from "../firebase";
 import { Page, PageHeader, Kpi, KpiGrid, FoldCard, useFold, CARD_STYLE, FIELD_STYLE, SectionLabel, TEXT, MUTED, ACCENT } from "../component/ui";
 import PersonPicker from "../component/PersonPicker";
+import FoodPicker from "../component/FoodPicker";
+import MealPlanner from "../component/MealPlanner";
 import usePersonScope from "../component/usePersonScope";
 import { normSex } from "../component/cycling";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
@@ -122,201 +124,6 @@ const chip = (on, color = ACCENT) => ({
 const smallBtn = (c = MUTED) => ({ padding: "5px 10px", borderRadius: 8, border: `1px solid ${c}55`, background: "transparent", color: c, fontSize: 12, fontWeight: 600, cursor: "pointer" });
 const lbl = { display: "block", fontSize: 11.5, color: MUTED, fontWeight: 700, marginBottom: 4 };
 
-/* ---------- Sélecteur d'aliment ---------- */
-function FoodPicker({ customFoods, diet, meal, onAdd, onClose, onSaveCustom }) {
-  const [q, setQ] = useState("");
-  const [cat, setCat] = useState("");
-  const [sel, setSel] = useState(null);
-  const [grams, setGrams] = useState("");
-  const [count, setCount] = useState("");
-  const [creating, setCreating] = useState(false);
-  const [cf, setCf] = useState({ name: "", kcal: "", p: "", c: "", f: "", fib: "", portionLabel: "", portionG: "" });
-  const all = [...(customFoods || []).map((f) => ({ ...f, cat: "perso" })), ...FOODS];
-  const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
-  const list = all
-    .filter((f) => (!cat || f.cat === cat) && (!q || norm(f.name).includes(norm(q))))
-    .sort((a, b) => (a.cat === "perso" ? -1 : 0) - (b.cat === "perso" ? -1 : 0) || (allowedByDiet(b, diet) ? 1 : 0) - (allowedByDiet(a, diet) ? 1 : 0));
-  const g = sel ? (count && sel.portion ? Number(String(count).replace(",", ".")) * sel.portion[1] : Number(String(grams).replace(",", "."))) : 0;
-  const n = sel && g > 0 ? scaleN(sel.n, g) : null;
-  const add = () => {
-    if (!sel || !(g > 0)) return;
-    onAdd({ id: uidN(), meal, foodId: sel.id, name: sel.name, grams: Math.round(g), n });
-    setSel(null);
-    setGrams("");
-    setCount("");
-  };
-  const num = (v) => Number(String(v).replace(",", ".")) || 0;
-  return (
-    <div style={{ marginTop: 10, padding: 12, borderRadius: 12, background: "#0d0c0a", border: `1px solid ${ACCENT}55` }}>
-      {!creating ? (
-        <>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="🔎 Chercher un aliment (riz, poulet, banane…)" style={{ ...FIELD_STYLE, flex: 1 }} />
-            <button type="button" className="pt-btn" onClick={onClose}>
-              Fermer
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6, marginBottom: 6 }}>
-            <button type="button" style={{ ...chip(!cat), padding: "5px 10px", fontSize: 12 }} onClick={() => setCat("")}>
-              Tout
-            </button>
-            {(customFoods || []).length > 0 && (
-              <button type="button" style={{ ...chip(cat === "perso"), padding: "5px 10px", fontSize: 12 }} onClick={() => setCat("perso")}>
-                ⭐ Mes aliments
-              </button>
-            )}
-            {Object.entries(FOOD_CATS).map(([k, l]) => (
-              <button key={k} type="button" style={{ ...chip(cat === k), padding: "5px 10px", fontSize: 12 }} onClick={() => setCat(k)}>
-                {l}
-              </button>
-            ))}
-          </div>
-          {sel ? (
-            <div style={{ padding: 10, borderRadius: 10, background: "#151310", border: `1px solid ${BORDER}` }}>
-              <div style={{ fontWeight: 800, color: TEXT, marginBottom: 6 }}>{sel.name}</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
-                <div>
-                  <label style={lbl}>Quantité (g ou ml)</label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    value={grams}
-                    onChange={(e) => {
-                      setGrams(e.target.value);
-                      setCount("");
-                    }}
-                    placeholder="ex : 150"
-                    style={{ ...FIELD_STYLE, width: 120 }}
-                  />
-                </div>
-                {sel.portion && (
-                  <div>
-                    <label style={lbl}>ou en {sel.portion[0]} ({sel.portion[1]} g)</label>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.5"
-                      value={count}
-                      onChange={(e) => {
-                        setCount(e.target.value);
-                        setGrams("");
-                      }}
-                      placeholder="ex : 2"
-                      style={{ ...FIELD_STYLE, width: 110 }}
-                    />
-                  </div>
-                )}
-                <button type="button" className="pt-btn pt-btn--primary" disabled={!(g > 0)} onClick={add}>
-                  ＋ Ajouter
-                </button>
-                <button type="button" className="pt-btn" onClick={() => setSel(null)}>
-                  ← Autre aliment
-                </button>
-              </div>
-              {n && (
-                <div style={{ fontSize: 12.5, color: MUTED, marginTop: 8 }}>
-                  {Math.round(g)} g → <b style={{ color: TEXT }}>{fmtN("kcal", n.kcal)} kcal</b> · P {fmtN("p", n.p)} g · G {fmtN("c", n.c)} g · L {fmtN("f", n.f)} g
-                </div>
-              )}
-            </div>
-          ) : (
-            <div style={{ maxHeight: 280, overflowY: "auto" }}>
-              {list.slice(0, 60).map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => setSel(f)}
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    width: "100%",
-                    gap: 8,
-                    padding: "8px 6px",
-                    background: "transparent",
-                    border: "none",
-                    borderBottom: `1px solid ${BORDER}`,
-                    color: allowedByDiet(f, diet) ? TEXT : "#6f6a62",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    fontSize: 13.5,
-                  }}
-                >
-                  <span>
-                    {f.cat === "perso" ? "⭐ " : ""}
-                    {f.name}
-                  </span>
-                  <span style={{ color: MUTED, fontSize: 12, whiteSpace: "nowrap" }}>
-                    {Math.round(f.n.kcal)} kcal · P {fmtN("p", f.n.p)} /100 g
-                  </span>
-                </button>
-              ))}
-              {!list.length && <div style={{ color: MUTED, fontSize: 13, padding: 8 }}>Aucun aliment trouvé.</div>}
-              <button type="button" className="pt-btn" style={{ marginTop: 8 }} onClick={() => setCreating(true)}>
-                ＋ Créer mon aliment (étiquette)
-              </button>
-            </div>
-          )}
-        </>
-      ) : (
-        <div>
-          <div style={{ fontWeight: 800, color: TEXT, marginBottom: 4 }}>Nouvel aliment (valeurs pour 100 g, sur l'étiquette)</div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
-            <div style={{ gridColumn: "1 / -1" }}>
-              <label style={lbl}>Nom</label>
-              <input value={cf.name} onChange={(e) => setCf({ ...cf, name: e.target.value })} style={FIELD_STYLE} placeholder="ex : Granola maison" />
-            </div>
-            {[
-              ["kcal", "kcal"],
-              ["p", "Protéines g"],
-              ["c", "Glucides g"],
-              ["f", "Lipides g"],
-              ["fib", "Fibres g"],
-            ].map(([k, l]) => (
-              <div key={k}>
-                <label style={lbl}>{l}</label>
-                <input type="number" inputMode="decimal" value={cf[k]} onChange={(e) => setCf({ ...cf, [k]: e.target.value })} style={FIELD_STYLE} />
-              </div>
-            ))}
-            <div>
-              <label style={lbl}>Portion (libellé)</label>
-              <input value={cf.portionLabel} onChange={(e) => setCf({ ...cf, portionLabel: e.target.value })} style={FIELD_STYLE} placeholder="ex : bol" />
-            </div>
-            <div>
-              <label style={lbl}>Portion (g)</label>
-              <input type="number" value={cf.portionG} onChange={(e) => setCf({ ...cf, portionG: e.target.value })} style={FIELD_STYLE} />
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <button
-              type="button"
-              className="pt-btn pt-btn--primary"
-              disabled={!cf.name.trim() || !(num(cf.kcal) > 0)}
-              onClick={() => {
-                const food = {
-                  id: "perso_" + uidN(),
-                  name: cf.name.trim(),
-                  n: { kcal: num(cf.kcal), p: num(cf.p), c: num(cf.c), f: num(cf.f), fib: num(cf.fib) },
-                  ...(cf.portionLabel && num(cf.portionG) > 0 ? { portion: [cf.portionLabel, num(cf.portionG)] } : {}),
-                };
-                onSaveCustom(food);
-                setCreating(false);
-                setSel({ ...food, cat: "perso" });
-              }}
-            >
-              Enregistrer l'aliment
-            </button>
-            <button type="button" className="pt-btn" onClick={() => setCreating(false)}>
-              Annuler
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ---------- Gourde (hydratation) ---------- */
 function Bottle({ ml, target, size = 120 }) {
   const pct = target > 0 ? Math.min(1, ml / target) : 0;
@@ -365,7 +172,10 @@ export default function Nutrition() {
   const ps = usePersonScope();
   const uid = ps.uid;
   const fold = useFold("nutrition");
-  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || "journal");
+  const [tab, setTab] = useState(() => {
+    const t = new URLSearchParams(window.location.search).get("tab") || "journal";
+    return t === "menus" ? "planning" : t; // ancien onglet « Menus types » → Planning
+  });
   const [date, setDate] = useState(todayISO());
   // Journal toujours sur le BON jour : page restée ouverte la nuit / app reprise le lendemain →
   // si on regardait « aujourd'hui », on passe au nouveau jour (journal vierge du jour).
@@ -397,8 +207,6 @@ export default function Nutrition() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(null); // id du repas où l'on ajoute
-  const [variant, setVariant] = useState(0);
-  const [menuDay, setMenuDay] = useState("modere");
   const [sweat, setSweat] = useState({ before: "", after: "", drunk: "", min: "" });
   const [saved, setSaved] = useState("");
 
@@ -506,6 +314,31 @@ export default function Nutrition() {
     }
   };
 
+  /* Ajout d'aliments au journal d'un jour quelconque (depuis le Planning) */
+  const addToJournal = async (dateStr, entries, dayType) => {
+    const prev = history.find((d) => d.date === dateStr) || { entries: [], water: 0, waterLog: [], supps: {} };
+    const dt = (prev.entries || []).length ? prev.dayType || "modere" : dayType || prev.dayType || "modere";
+    const t = settings ? computeTargets(settings, dt) : null;
+    const data = {
+      ...prev,
+      dayType: dt,
+      entries: [...(prev.entries || []), ...entries],
+      date: dateStr,
+      targetKcal: t?.kcal || null,
+      targetP: t?.p || null,
+      targetWater: t?.water || null,
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      await setDoc(doc(db, "users", uid, "nutrition", `day_${dateStr}`), data);
+      setHistory((h) => [...h.filter((d) => d.date !== dateStr), data]);
+      if (dateStr === date) setDay(data);
+      alert(`✅ ${entries.length} aliment(s) ajouté(s) au journal du ${frDate(dateStr)}.`);
+    } catch (e) {
+      alert("Erreur d'enregistrement : " + e.message);
+    }
+  };
+
   /* ---- totaux du jour ---- */
   const mySupps = settings?.mySupps || [];
   const suppN = useMemo(() => {
@@ -535,13 +368,12 @@ export default function Nutrition() {
     return out;
   }, [history, targets]);
 
-  const menu = useMemo(() => (settings && profileOk ? generateMenu(computeTargets(settings, menuDay), { diet: settings.diet, variant }) : null), [settings, profileOk, menuDay, variant]);
 
   /* =============================== RENDU =============================== */
   const tabs = [
     ["journal", "📅 Journal"],
     ["objectifs", "🎯 Objectifs"],
-    ["menus", "🍽️ Menus types"],
+    ["planning", "🗓️ Planning"],
     ["supps", "💊 Compléments"],
     ["eau", "💧 Hydratation"],
   ];
@@ -717,8 +549,8 @@ export default function Nutrition() {
                 >
                   📋 Copier la veille
                 </button>
-                <button className="pt-btn" onClick={() => setTab("menus")}>
-                  🍽️ Partir d'un menu type
+                <button className="pt-btn" onClick={() => setTab("planning")}>
+                  🗓️ Menu prévu / planning
                 </button>
                 {(day.entries || []).length > 0 && (
                   <button
@@ -1082,91 +914,14 @@ export default function Nutrition() {
             </>
           )}
 
-          {/* ======================= MENUS TYPES ======================= */}
-          {tab === "menus" && menu && (
-            <>
-              <div style={{ ...CARD_STYLE, display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flex: "1 1 300px" }}>
-                  {DAY_TYPES.map((d) => (
-                    <button key={d.id} type="button" style={chip(menuDay === d.id)} onClick={() => setMenuDay(d.id)}>
-                      {d.icon} {d.label}
-                    </button>
-                  ))}
-                </div>
-                <button className="pt-btn" onClick={() => setVariant((v) => v + 1)}>
-                  🔄 Autre menu
-                </button>
-              </div>
-              {(() => {
-                const t = computeTargets(settings, menuDay);
-                const T = menu.total;
-                const gap = t.kcal - T.kcal;
-                return (
-                  <>
-                    <KpiGrid min={140}>
-                      <Kpi icon="🔥" label="Énergie" value={`${Math.round(T.kcal)} kcal`} sub={`objectif ${t.kcal}`} color={Math.abs(gap) / t.kcal <= 0.1 ? GREEN : ACCENT} />
-                      <Kpi icon="🥩" label="Protéines" value={`${Math.round(T.p)} g`} sub={`objectif ${t.p} g`} color={MACRO_COLOR.p} />
-                      <Kpi icon="🍚" label="Glucides" value={`${Math.round(T.c)} g`} sub={`objectif ${t.c} g`} color={MACRO_COLOR.c} />
-                      <Kpi icon="🥑" label="Lipides" value={`${Math.round(T.f)} g`} sub={`objectif ${t.f} g`} color={MACRO_COLOR.f} />
-                    </KpiGrid>
-                    {gap > 0.08 * t.kcal && (
-                      <div style={{ ...CARD_STYLE, borderLeft: `4px solid ${ACCENT}`, fontSize: 13.5, color: TEXT }}>
-                        Il manque environ <b>{Math.round(gap)} kcal</b> (gros besoins) : ajoute par exemple {Math.round(gap / 3)} kcal de glucides pendant ou après la
-                        séance (boisson de l'effort, fruits secs, pain + miel).
-                      </div>
-                    )}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 300px), 1fr))", gap: 12, marginBottom: 16 }}>
-                      {menu.meals.map((m) => (
-                        <div key={m.id} style={{ ...CARD_STYLE, marginBottom: 0 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-                            <div style={{ fontWeight: 800, color: TEXT, fontSize: 15.5 }}>
-                              {m.icon} {m.label}
-                            </div>
-                            <div style={{ fontSize: 12.5, color: ACCENT, fontWeight: 800 }}>{Math.round(m.total.kcal)} kcal</div>
-                          </div>
-                          {m.items.map((it, i) => (
-                            <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "6px 0", borderTop: `1px solid ${BORDER}`, fontSize: 13.5 }}>
-                              <span style={{ color: TEXT }}>
-                                {it.food.name}
-                                {it.food.portion && it.g >= it.food.portion[1] * 0.75 && (
-                                  <span style={{ color: MUTED, fontSize: 12 }}> (≈ {String(Math.round((it.g / it.food.portion[1]) * 2) / 2).replace(".", ",")} × {it.food.portion[0]})</span>
-                                )}
-                              </span>
-                              <b style={{ color: TEXT, whiteSpace: "nowrap" }}>{it.g} g</b>
-                            </div>
-                          ))}
-                          <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
-                            P {Math.round(m.total.p)} g · G {Math.round(m.total.c)} g · L {Math.round(m.total.f)} g
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div style={CARD_STYLE}>
-                      <SectionLabel>Vitamines & minéraux de ce menu</SectionLabel>
-                      {MICROS.map((mi) => (
-                        <ProgressRow key={mi.k} label={mi.label} value={T[mi.k]} target={t.micro[mi.k]} unit={mi.unit} limit={mi.limit} dec={mi.dec} />
-                      ))}
-                      <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
-                        Quantités cuites (féculents, viandes, poissons), arrondies à 5 g. La vitamine D est rarement couverte par l'alimentation seule (poissons gras, œufs) :
-                        exposition au soleil ou complément en hiver.
-                      </div>
-                      <button
-                        className="pt-btn pt-btn--primary"
-                        style={{ marginTop: 12 }}
-                        onClick={async () => {
-                          if (!(await appConfirm(`Ajouter ce menu au journal d'${date === todayISO() ? "aujourd'hui" : "ce jour"} ?`))) return;
-                          const entries = menu.meals.flatMap((m) => m.items.map((it) => ({ id: uidN(), meal: m.id, foodId: it.food.id, name: it.food.name, grams: it.g, n: it.n })));
-                          await saveDay({ ...day, dayType: menuDay, entries: [...(day.entries || []), ...entries] });
-                          setTab("journal");
-                        }}
-                      >
-                        📥 Mettre ce menu dans mon journal
-                      </button>
-                    </div>
-                  </>
-                );
-              })()}
-            </>
+          {/* ======================= PLANNING ======================= */}
+          {tab === "planning" && (
+            <MealPlanner
+              uid={uid}
+              settings={settings}
+              onSaveCustom={(food) => saveSettings({ ...settings, customFoods: [...(settings.customFoods || []), food] }, "✅ Aliment enregistré")}
+              onJournalAdd={addToJournal}
+            />
           )}
 
           {/* ======================= COMPLÉMENTS ======================= */}

@@ -186,7 +186,7 @@ export const MEALS = [
   { id: "diner", label: "Dîner", icon: "🌙", share: 0.3 },
 ];
 /* Répartition du menu type : au-delà de ~3 200 kcal, une 5e prise autour de la séance */
-const menuShares = (kcal) =>
+export const menuShares = (kcal) =>
   kcal > 3200
     ? { petitdej: 0.22, dejeuner: 0.28, collation: 0.12, seance: 0.13, diner: 0.25 }
     : { petitdej: 0.25, dejeuner: 0.35, collation: 0.1, seance: 0, diner: 0.3 };
@@ -292,16 +292,18 @@ export const EVIDENCE = {
    Chaque repas : aliments fixes (g) + 3 « leviers » (P = source de protéines, C = glucides, F = lipides)
    dont on calcule les grammes pour coller à la part du repas (MEALS.share) de l'objectif. */
 const T = (fixed, P, C, Fat) => ({ fixed, P, C, F: Fat });
-const MENU_TEMPLATES = {
+export const MENU_TEMPLATES = {
   petitdej: [
     T([["lait", 250], ["banane", 120]], ["skyr"], ["avoine"], ["amandes"]),
     T([["orange", 150], ["yaourt", 125]], ["oeuf"], ["pain_complet"], ["beurre"]),
     T([["kiwi", 150], ["lait", 200]], ["fromage_blanc"], ["muesli"], ["noix"]),
+    T([["orange", 150], ["epinards", 60]], ["oeuf"], ["pain_complet"], ["avocat"]),
   ],
   dejeuner: [
     T([["brocoli", 200], ["salade", 50]], ["poulet", "tofu"], ["riz_blanc"], ["huile_olive"]),
     T([["tomate", 150], ["courgette", 150]], ["boeuf5", "tempeh"], ["pates_comp"], ["huile_olive"]),
     T([["epinards", 150], ["poivron", 100]], ["saumon", "lentilles"], ["quinoa"], ["avocat"]),
+    T([["carotte", 120], ["salade", 50]], ["poulet", "pois_chiches"], ["semoule"], ["huile_olive"]),
   ],
   collation: [
     T([["fruits_rouges", 100]], ["fromage_blanc"], ["galette_riz"], ["noix"]),
@@ -315,11 +317,12 @@ const MENU_TEMPLATES = {
     T([["haricots_verts", 200]], ["cabillaud", "oeuf"], ["patate_douce"], ["huile_colza"]),
     T([["champignons", 150], ["salade", 50]], ["dinde", "tofu"], ["pdt"], ["huile_colza"]),
     T([["carotte", 100], ["epinards", 100]], ["sardines", "pois_chiches"], ["semoule"], ["huile_olive"]),
+    T([["brocoli", 200]], ["maquereau", "tofu"], ["riz_complet"], ["huile_colza"]),
   ],
 };
 
 /* Portions réalistes (g) d'un levier selon le type d'aliment */
-function capsOf(food, role) {
+export function capsOf(food, role) {
   const id = food.id;
   if (role === "P") {
     if (food.cat === "laitier") return [100, 500];
@@ -341,7 +344,7 @@ function capsOf(food, role) {
 }
 
 /* Grammes des 3 leviers (P, C, F) : chaque levier corrige SON macro (Gauss-Seidel), dans des portions réalistes */
-function solveMeal(tpl, target, diet) {
+export function solveMeal(tpl, target, diet) {
   const pick = (ids) => ids.map((id) => FOOD_BY_ID[id]).find((f) => f && allowedByDiet(f, diet)) || FOOD_BY_ID[ids[ids.length - 1]];
   const levers = [
     { food: pick(tpl.P), k: "p", role: "P" },
