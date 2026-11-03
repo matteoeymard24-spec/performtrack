@@ -1,3 +1,4 @@
+import WellbeingTabs from "../component/WellbeingTabs";
 import React, { useEffect, useState } from "react";
 import {
   collection,
@@ -203,6 +204,7 @@ export default function Wellness() {
 
   return (
     <Page>
+      <WellbeingTabs />
       <PageHeader
         title="🧘 Wellness"
         subtitle={

@@ -1,3 +1,4 @@
+import WellbeingTabs from "../component/WellbeingTabs";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, deleteDoc, doc, getDocs, setDoc } from "firebase/firestore";
@@ -191,6 +192,7 @@ export default function Sleep() {
 
   return (
     <Page>
+      <WellbeingTabs />
       <PageHeader
         title="😴 Sommeil"
         subtitle={ps.isSelf ? "Cycles, horaires idéaux, suivi des nuits et habitudes" : `Sommeil de ${ps.person?.firstName || ""} ${ps.person?.lastName || ""}`.trim()}

@@ -1682,26 +1682,44 @@ export default function Workout() {
   /* ===================== GESTION SÉANCE ===================== */
   const startSession = async (session) => {
     try {
-      const startTime = new Date().toISOString();
-      
-      // Modifier UNIQUEMENT userProgress[currentUser.uid] avec notation pointée
-      // Cela respecte les règles Firestore pour les athlètes
-      await updateDoc(doc(db, "workout", session.id), {
-        [`userProgress.${actorUid}`]: {
-          startedAt: startTime,
-          inProgress: true,
+      // Séance DÉJÀ démarrée (ou terminée) pour cette personne : on REPREND, sans rien réécrire.
+      // Avant, « ▶️ Reprendre » (dashboard, autostart) relançait le chrono à zéro ET effaçait les
+      // feedbacks déjà validés (tout userProgress[uid] était remplacé).
+      const ref = doc(db, "workout", session.id);
+      let fresh = session;
+      try {
+        const snap = await getDoc(ref);
+        if (snap.exists()) fresh = { ...session, ...snap.data(), id: session.id };
+      } catch (err) {
+        console.warn("[startSession] relecture impossible, données locales utilisées", err);
+      }
+      const existing = fresh.userProgress?.[actorUid];
+      if (existing?.startedAt || existing?.completedAt) {
+        if (!existing.completedAt) {
+          setSessionInProgress(fresh);
+          setSessionStartTime(existing.startedAt);
         }
+        setSelectedSession(fresh);
+        setSessionFeedback({});
+        return;
+      }
+
+      const startTime = new Date().toISOString();
+      // Champs écrits un par un : un brouillon éventuel (feedback) n'est jamais écrasé
+      await updateDoc(ref, {
+        [`userProgress.${actorUid}.startedAt`]: startTime,
+        [`userProgress.${actorUid}.inProgress`]: true,
       });
       
       // Mettre à jour l'état local
       // copie (on ne modifie pas l'objet de la liste des séances en place)
       const userProgress = {
-        ...(session.userProgress || {}),
-        [actorUid]: { startedAt: startTime, inProgress: true },
+        ...(fresh.userProgress || {}),
+        [actorUid]: { ...(existing || {}), startedAt: startTime, inProgress: true },
       };
       
       const updatedSession = {
-        ...session,
+        ...fresh,
         userProgress,
       };
       
@@ -2631,6 +2649,9 @@ export default function Workout() {
     setSelectedSession((prev) => (prev && prev.id === sessionId ? { ...prev, date: newDate } : prev));
     try {
       await updateDoc(doc(db, "workout", sessionId), { date: newDate });
+      // cache des séances vidé : un rechargement (changement de mois, retour sur la page…) ne doit
+      // pas remettre la séance à son ancienne date
+      invalidateQueryCache("workout|");
       setSelectedDate(newDate);
     } catch (e) {
       console.error("[moveSession]", e);
@@ -4965,15 +4986,15 @@ export default function Workout() {
           style={{
             position: "relative",
             outline: dragOverDate === dateStr ? "2px dashed #e0a13d" : "none",
-            background: fxMain ? `${fxMain.color}2e` : dSt ? `${dSt.color}24` : isToday ? "rgba(224,161,61,0.10)" : "#1a1815",
+            // Aujourd'hui n'est plus teinté en orange (ça ressemblait à un jour avec séance) :
+            // seul son numéro est dans une pastille orange (voir plus bas).
+            background: fxMain ? `${fxMain.color}2e` : dSt ? `${dSt.color}24` : "#1a1815",
             border: isSelected
               ? "2px solid #f3f0ea"
               : fxMain
               ? `2px solid ${fxMain.color}`
               : dSt
               ? `2px solid ${dSt.color}`
-              : isToday
-              ? "2px solid #e0a13d"
               : "1px solid #3a342a",
             borderRadius: isMobile ? 3 : 6,
             padding: isMobile ? 2 : 6,
@@ -5014,14 +5035,35 @@ export default function Workout() {
             style={{
               fontSize: isMobile ? 10 : 13,
               fontWeight: isToday ? "bold" : 500,
-              color: isToday ? "#e0a13d" : dSt ? dSt.color : "#a8a199",
+              color: dSt ? dSt.color : "#a8a199",
               marginBottom: isMobile ? 1 : 4,
               flexShrink: 0,  // Le numéro ne rétrécit pas
               whiteSpace: "nowrap",
               overflow: "hidden",
             }}
           >
-            {day}
+            {isToday ? (
+              <span
+                title="Aujourd'hui"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  minWidth: isMobile ? 16 : 22,
+                  height: isMobile ? 16 : 22,
+                  padding: "0 4px",
+                  borderRadius: 999,
+                  background: "#e0a13d",
+                  color: "#1a1306",
+                  fontWeight: 900,
+                  boxSizing: "border-box",
+                }}
+              >
+                {day}
+              </span>
+            ) : (
+              day
+            )}
             {!isMobile &&
               dayCycles
                 .filter((c) => c.startDate === dateStr)
@@ -9845,6 +9887,59 @@ export default function Workout() {
               {doneDateOf(selectedSession, actorUid) !== selectedSession.date && (
                 <span style={{ color: "#a8a199" }}>(prévue le {frDay(selectedSession.date)})</span>
               )}
+              {(() => {
+                // Durée et RPE de séance (charge sRPE = RPE × durée) : corrigeables après coup
+                // (chrono relancé par erreur, séance oubliée ouverte…).
+                const prog = selectedSession.userProgress?.[actorUid] || {};
+                const id = selectedSession.id;
+                const saveField = async (field, raw, min, max) => {
+                  const v = raw === "" ? null : Number(raw);
+                  if (v != null && (!Number.isFinite(v) || v < min || v > max)) return;
+                  try {
+                    await updateDoc(doc(db, "workout", id), { [`userProgress.${actorUid}.${field}`]: v });
+                    invalidateQueryCache("workout|");
+                    const patch = (x) =>
+                      x && x.id === id
+                        ? { ...x, userProgress: { ...(x.userProgress || {}), [actorUid]: { ...(x.userProgress?.[actorUid] || {}), [field]: v } } }
+                        : x;
+                    setSelectedSession((x) => patch(x));
+                    setEvents((list) => (Array.isArray(list) ? list.map(patch) : list));
+                  } catch (err) {
+                    alert("Non enregistré : " + err.message);
+                  }
+                };
+                const inp = { width: 64, background: "#1a1815", color: "#f3f0ea", border: "1px solid #2a2620", borderRadius: 6, padding: "4px 6px", fontSize: 14 };
+                return (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginLeft: "auto" }}>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#a8a199" }}>
+                      ⏱️ Durée
+                      <input
+                        key={`d_${id}_${actorUid}_${prog.sessionDuration ?? ""}`}
+                        type="number"
+                        min="1"
+                        max="300"
+                        defaultValue={prog.sessionDuration ?? prog.actualDuration ?? ""}
+                        onBlur={(e) => e.target.value !== String(prog.sessionDuration ?? "") && saveField("sessionDuration", e.target.value, 1, 300)}
+                        style={inp}
+                      />
+                      min
+                    </label>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#a8a199" }}>
+                      RPE
+                      <input
+                        key={`r_${id}_${actorUid}_${prog.sessionRpe ?? ""}`}
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        defaultValue={prog.sessionRpe ?? ""}
+                        onBlur={(e) => e.target.value !== String(prog.sessionRpe ?? "") && saveField("sessionRpe", e.target.value, 0, 10)}
+                        style={{ ...inp, width: 54 }}
+                      />
+                    </label>
+                  </span>
+                );
+              })()}
             </div>
           )}
           {/* Blocs exercices */}

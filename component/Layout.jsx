@@ -1,3 +1,4 @@
+import { WELLBEING_PATHS } from "./WellbeingTabs";
 import React, { useState } from "react";
 import { getViewMode, setViewMode } from "./viewMode";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
@@ -72,8 +73,6 @@ export default function Layout() {
     { path: "/dashboard", label: "Dashboard", icon: "📊", roles: ["superadmin", "admin", "athlete"] },
     { path: "/workout", label: "Workout", icon: "🏋️", roles: ["superadmin", "admin", "athlete"] },
     { path: "/wellness", label: "Wellness", icon: "🧘", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/nutrition", label: "Nutrition", icon: "🥗", roles: ["superadmin", "admin", "athlete"] },
-    { path: "/sommeil", label: "Sommeil", icon: "😴", roles: ["superadmin", "admin", "athlete"] },
     { path: "/myrm", label: "My RM", icon: "🏋️‍♂️", roles: ["superadmin", "admin", "athlete"] },
     { path: "/tests", label: "Tests", icon: "🧪", roles: ["superadmin", "admin", "athlete"] },
     { path: "/acwr", label: "REDI", icon: "📈", roles: ["superadmin", "admin"] },
@@ -160,7 +159,7 @@ export default function Layout() {
               display: "flex",
               flex: 1,
               minWidth: 0,
-              maxWidth: 940,
+              maxWidth: 760,
               overflowX: "auto",
               scrollbarWidth: "none",
               padding: "4px 0",
@@ -170,13 +169,13 @@ export default function Layout() {
             {/* margin auto : centré quand ça tient, sinon aligné à gauche (rien n'est rogné) */}
             <div style={{ display: "flex", gap: 2, margin: "0 auto" }}>
             {visibleMenuItems.map((item) => {
-              const active = location.pathname === item.path;
+              const active = location.pathname === item.path || (item.path === "/wellness" && WELLBEING_PATHS.includes(location.pathname));
               return (
                 <button
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   style={{
-                    padding: "8px 11px",
+                    padding: "8px 13px",
                     background: active ? "rgba(224,161,61,0.12)" : "transparent",
                     color: active ? ACCENT : TEXT_MUTED,
                     borderRadius: 8,
@@ -353,7 +352,7 @@ export default function Layout() {
           }}
         >
           {visibleMenuItems.slice(0, 5).map((item) => {
-            const active = location.pathname === item.path;
+            const active = location.pathname === item.path || (item.path === "/wellness" && WELLBEING_PATHS.includes(location.pathname));
             return (
               <button
                 key={item.path}
@@ -425,7 +424,7 @@ export default function Layout() {
               </p>
             </div>
             {visibleMenuItems.map((item) => {
-              const active = location.pathname === item.path;
+              const active = location.pathname === item.path || (item.path === "/wellness" && WELLBEING_PATHS.includes(location.pathname));
               return (
                 <button
                   key={item.path}

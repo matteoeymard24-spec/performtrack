@@ -1,3 +1,4 @@
+import WellbeingTabs from "../component/WellbeingTabs";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
@@ -511,6 +512,7 @@ export default function Nutrition() {
 
   return (
     <Page>
+      <WellbeingTabs />
       <PageHeader
         title="🥗 Nutrition"
         subtitle={ps.isSelf ? "Calories, macros, vitamines, compléments et hydratation" : `Nutrition de ${person.firstName || ""} ${person.lastName || ""}`.trim()}
