@@ -15,6 +15,29 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  // Choix de l'affichage (téléphone / ordinateur / auto) — voir component/viewMode.js
+  const viewChoice = (big) => (
+    <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, border: `1px solid ${BORDER}`, background: "#0d0c0a", width: big ? "100%" : "auto" }}>
+      {[
+        ["mobile", "Téléphone"],
+        ["desktop", "Ordinateur"],
+        ["auto", "Auto"],
+      ].map(([m, label]) => {
+        const on = getViewMode() === m;
+        return (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={on}
+            onClick={() => !on && setViewMode(m)}
+            style={{ flex: big ? 1 : "none", padding: big ? "10px 6px" : "5px 10px", borderRadius: 8, border: "none", cursor: on ? "default" : "pointer", background: on ? ACCENT : "transparent", color: on ? "#1a1306" : "#a8a199", fontSize: big ? 14 : 12, fontWeight: 700 }}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
 
   const togglePreview = () => {
     const next = !previewAthlete;
@@ -111,32 +134,6 @@ export default function Layout() {
             >
               {roleLabel}
             </span>
-            {/* Mode d'affichage : téléphone / ordinateur / auto (voir component/viewMode.js) */}
-            <div
-              title="Affichage : téléphone, ordinateur ou automatique"
-              style={{ display: "inline-flex", gap: 2, padding: 2, borderRadius: 8, border: `1px solid ${BORDER}`, background: "#0d0c0a" }}
-            >
-              {[
-                ["mobile", "📱", "Affichage téléphone"],
-                ["desktop", "🖥", "Affichage ordinateur"],
-                ["auto", "A", "Automatique (selon l'écran)"],
-              ].map(([m, icon, label]) => {
-                const on = getViewMode() === m;
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    title={label}
-                    aria-label={label}
-                    aria-pressed={on}
-                    onClick={() => !on && setViewMode(m)}
-                    style={{ width: 28, height: 26, borderRadius: 6, border: "none", cursor: on ? "default" : "pointer", background: on ? ACCENT : "transparent", color: on ? "#1a1306" : "#a8a199", fontSize: m === "auto" ? 12 : 13, fontWeight: 800, lineHeight: 1 }}
-                  >
-                    {icon}
-                  </button>
-                );
-              })}
-            </div>
           </div>
 
           {/* Navigation desktop */}
@@ -434,6 +431,10 @@ export default function Layout() {
                 </button>
               );
             })}
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 12, color: TEXT_MUTED, fontWeight: 700, marginBottom: 6 }}>Affichage</div>
+              {viewChoice(true)}
+            </div>
             <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
               {isSuperAdmin && coachScope && (
                 <button
@@ -525,6 +526,11 @@ export default function Layout() {
         <Outlet />
       </main>
 
+      {/* Ordinateur : choix de l'affichage en bas à gauche (sur téléphone il est dans le menu ☰) */}
+      <div className="view-choice-desktop" style={{ position: "fixed", left: 14, bottom: 14, zIndex: 150, display: "none", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 12, background: "rgba(21,19,16,0.92)", border: `1px solid ${BORDER}`, boxShadow: "0 6px 20px rgba(0,0,0,0.4)" }}>
+        <span style={{ fontSize: 11.5, color: TEXT_MUTED, fontWeight: 700, paddingLeft: 4 }}>Affichage</span>
+        {viewChoice(false)}
+      </div>
       <style>{`
         @keyframes pt-fade {
           from { opacity: 0; }
@@ -536,6 +542,7 @@ export default function Layout() {
         }
 
         @media (min-width: 768px) {
+          .view-choice-desktop { display: flex !important; }
           .desktop-nav { display: flex !important; }
           .desktop-actions { display: flex !important; }
           .mobile-menu-toggle { display: none !important; }
@@ -547,6 +554,7 @@ export default function Layout() {
         /* Affichage « téléphone » forcé sur un grand écran : colonne de 440 px centrée + mise en page mobile */
         html[data-view="mobile"] body { background: #060505; }
         html[data-view="mobile"] #root { max-width: 440px; margin: 0 auto; box-shadow: 0 0 0 1px #1d1a16, 0 0 40px rgba(0,0,0,0.6); min-height: 100vh; }
+        html[data-view="mobile"] .view-choice-desktop,
         html[data-view="mobile"] .desktop-nav,
         html[data-view="mobile"] .desktop-actions { display: none !important; }
         html[data-view="mobile"] .mobile-menu-toggle { display: flex !important; }
