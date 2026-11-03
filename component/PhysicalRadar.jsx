@@ -19,23 +19,22 @@ const AXES = [
   { id: "mobilite", label: "Mobilité" },
   { id: "force_haut", label: "Force haut" },
   { id: "force_bas", label: "Force bas" },
-  { id: "tirage", label: "Tirage" },
   { id: "vitesse", label: "Vitesse" },
   { id: "puissance", label: "Puissance" },
   { id: "endurance", label: "Endurance" },
   { id: "masse", label: "Masse" },
 ];
 const PRIORITY = {
-  //            mob fHaut fBas tir  vit  puis end  masse
-  PILIER: [2, 3, 3, 3, 0, 1, 1, 3],
-  TALON: [2, 3, 3, 3, 1, 2, 2, 3],
-  "2L": [2, 3, 3, 3, 1, 2, 2, 3],
-  "3L": [2, 2, 2, 2, 2, 3, 3, 2],
-  "9": [2, 1, 1, 1, 3, 2, 3, 1],
-  "10": [2, 1, 1, 1, 2, 2, 3, 1],
-  Centre: [2, 2, 2, 2, 3, 3, 2, 2],
-  Ailier: [2, 1, 2, 1, 3, 3, 2, 1],
-  Arriere: [2, 1, 2, 1, 3, 3, 2, 1],
+  //            mob fHaut fBas vit  puis end  masse   (force haut = poussées + tirages du haut du corps)
+  PILIER: [2, 3, 3, 0, 1, 1, 3],
+  TALON: [2, 3, 3, 1, 2, 2, 3],
+  "2L": [2, 3, 3, 1, 2, 2, 3],
+  "3L": [2, 2, 2, 2, 3, 3, 2],
+  "9": [2, 1, 1, 3, 2, 3, 1],
+  "10": [2, 1, 1, 2, 2, 3, 1],
+  Centre: [2, 2, 2, 3, 3, 2, 2],
+  Ailier: [2, 1, 2, 3, 3, 2, 1],
+  Arriere: [2, 1, 2, 3, 3, 2, 1],
 };
 const avg = (arr) => {
   const n = arr.filter((x) => x != null);
@@ -126,9 +125,9 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
     const up = fUp === fLow ? lo : patsAt(fUp);
     const pats = { ...up, push_v_lower: lo.push_v_lower, push_h_lower: lo.push_h_lower };
     return {
-      force_haut: avg([pats.push_v_upper, pats.push_h_upper]),
+      // haut du corps = poussées ET tirages (vertical + horizontal)
+      force_haut: avg([pats.push_v_upper, pats.pull_v, pats.push_h_upper, pats.pull_h]),
       force_bas: avg([pats.push_v_lower, pats.push_h_lower]),
-      tirage: avg([pats.pull_v, pats.pull_h]),
     };
   };
   const forceAbs = useMemo(() => forceOf(1), [rmDocs, sport, poste, level]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -161,8 +160,8 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
   const bfHigh = bf != null && (mIn === "dxa" ? bf > bfRef[0] + bfRef[1] : bf > (fw ? BF_SKINFOLD.forwards : BF_SKINFOLD.backs) + 3);
   const massIdx = AXES.findIndex((a) => a.id === "masse");
   const massLow = morph && morph.note < targets[massIdx] - 1;
-  const fAbsAvg = avg(["force_haut", "force_bas", "tirage"].map((k) => forceAbs[k]));
-  const fRelAvg = forceRel ? avg(["force_haut", "force_bas", "tirage"].map((k) => forceRel[k])) : null;
+  const fAbsAvg = avg(["force_haut", "force_bas"].map((k) => forceAbs[k]));
+  const fRelAvg = forceRel ? avg(["force_haut", "force_bas"].map((k) => forceRel[k])) : null;
   const forceOkForWeight = fAbsAvg != null && fRelAvg != null && fRelAvg - fAbsAvg >= 1.5;
 
   /* Tableau force relative */

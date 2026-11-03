@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { isMobileView } from "../component/viewMode";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { stickyHead } from "../component/ui";
-import ReorderList from "../component/ReorderList";
+import DashColumns from "../component/DashColumns";
 import { groupTargetMatches, formerTargetsOf, hasProgress } from "../component/groupHistory";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
@@ -225,10 +225,29 @@ export default function Dashboard() {
       return null;
     }
   });
-  const [reorderOpen, setReorderOpen] = useState(false);
+  // colonne de chaque carte en mode ordi (0 = gauche, 1 = droite)
+  const colsStoreKey = `pt_dash_cols_${currentUser?.uid || "anon"}`;
+  const [dashCols, setDashCols] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`pt_dash_cols_${currentUser?.uid || "anon"}`) || "null");
+    } catch (e) {
+      return null;
+    }
+  });
+  // 2 colonnes sur ordi (écran large, vue non « mobile »)
+  const wideQuery = typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(min-width: 900px)") : null;
+  const [isWide, setIsWide] = useState(() => !!wideQuery?.matches);
+  useEffect(() => {
+    if (!wideQuery) return undefined;
+    const on = () => setIsWide(wideQuery.matches);
+    wideQuery.addEventListener ? wideQuery.addEventListener("change", on) : wideQuery.addListener(on);
+    return () => (wideQuery.removeEventListener ? wideQuery.removeEventListener("change", on) : wideQuery.removeListener(on));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const twoCols = isWide && !isMobileView();
   useEffect(() => {
     // pas d'ordre sur cet appareil : on reprend celui du profil (choisi sur un autre appareil)
     if (!dashOrder && Array.isArray(userProfile?.dashOrder) && userProfile.dashOrder.length) setDashOrder(userProfile.dashOrder);
+    if (!dashCols && userProfile?.dashCols && typeof userProfile.dashCols === "object") setDashCols(userProfile.dashCols);
   }, [userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
   const orderedKeys = (keys) => {
     const base = Array.isArray(dashOrder) ? dashOrder.filter((k) => keys.includes(k)) : [];
@@ -243,6 +262,19 @@ export default function Dashboard() {
       /* stockage indisponible */
     }
     if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashOrder: order || [] }).catch(() => null);
+  };
+  const saveDashLayout = (order, cols) => {
+    setDashOrder(order);
+    setDashCols(cols);
+    try {
+      if (order) localStorage.setItem(orderStoreKey, JSON.stringify(order));
+      else localStorage.removeItem(orderStoreKey);
+      if (cols) localStorage.setItem(colsStoreKey, JSON.stringify(cols));
+      else localStorage.removeItem(colsStoreKey);
+    } catch (e) {
+      /* stockage indisponible */
+    }
+    if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashOrder: order || [], dashCols: cols || {} }).catch(() => null);
   };
 
   const hiddenStoreKey = `pt_dash_hidden_${currentUser?.uid || "anon"}`;
@@ -1704,32 +1736,19 @@ export default function Dashboard() {
               {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
             </div>
             <h2 style={{ fontSize: 24, margin: "2px 0 0" }}>👋 Bonjour {userProfile?.firstName || "Athlète"}</h2>
-            <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>Ta forme, tes séances et ta charge</p>
+            <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>Ta forme, tes séances et ta charge · attrape la barre en haut d'une carte pour la déplacer</p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className={reorderOpen ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setReorderOpen((v) => !v)}>
-              {reorderOpen ? "✓ Terminé" : "🔀 Organiser"}
-            </button>
+            {(dashOrder || dashCols) && (
+              <button className="pt-btn" onClick={() => saveDashLayout(null, null)} title="Remettre les cartes dans l'ordre par défaut">
+                ↺ Ordre par défaut
+              </button>
+            )}
             {userRole === "admin" && meMode && (
               <button className="pt-btn" onClick={() => setMeMode(false)}>← Vue coach</button>
             )}
           </div>
         </div>
-        {reorderOpen && (
-          <div style={{ ...CARD_STYLE, border: "1px solid #e0a13d88" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>🔀 Ordre des cartes</div>
-                <div style={{ fontSize: 12, color: "#a8a199" }}>Attrape ⠿ et fais glisser (doigt ou souris), ou utilise ↑ ↓. Enregistré pour ton compte.</div>
-              </div>
-              <button className="pt-btn" onClick={() => saveDashOrder(null)}>↺ Ordre par défaut</button>
-            </div>
-            <ReorderList
-              items={orderedKeys(DASH_CARDS.map(([k]) => k)).map((k) => ({ key: k, label: DASH_CARDS.find(([x]) => x === k)[1] }))}
-              onChange={saveDashOrder}
-            />
-          </div>
-        )}
 
         {(() => {
           const done = todayWorkout && isWorkoutCompleted(todayWorkout);
@@ -1922,9 +1941,8 @@ export default function Dashboard() {
           </div>
         )}
 
-        <div className="pt-ath-cols">
         {(() => {
-          // Cartes du dashboard athlète, dans l'ordre choisi (🔀 Organiser) — voir dashOrder
+          // Cartes du dashboard athlète : ordre (dashOrder) + colonne (dashCols), déplaçables par glisser-déposer
           const cards = [
             { key: "today", label: "🏋️ Séance du jour", node: (
               <>
@@ -2789,12 +2807,9 @@ export default function Dashboard() {
               </>
             ) },
           ];
-          return orderedKeys(cards.map((c) => c.key)).map((k) => {
-            const c = cards.find((x) => x.key === k);
-            return c ? <React.Fragment key={k}>{c.node}</React.Fragment> : null;
-          });
+          const items = orderedKeys(cards.map((c) => c.key)).map((k) => cards.find((x) => x.key === k));
+          return <DashColumns items={items} cols={dashCols} twoCols={twoCols} onCommit={saveDashLayout} />;
         })()}
-        </div>
       </div>
     );
   }

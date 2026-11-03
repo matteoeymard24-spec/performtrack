@@ -35,6 +35,8 @@ import {
   evaluateLadderRows,
   evaluateStrength,
   groupByPattern,
+  groupByRegion,
+  sortByPattern,
   LEVELS,
   levelLabel,
   noteColor,
@@ -266,6 +268,34 @@ function ResultPreview({ res }) {
       )}
     </div>
   );
+}
+
+/* Domaine « Force » du Bilan : haut du corps puis bas du corps, et dans chacun les patterns
+   (haut : poussée verticale, tirage vertical, poussée horizontale, tirage horizontal ; bas : poussée verticale, horizontale).
+   Note du domaine = moyenne haut / bas (comme les deux axes force du radar). */
+function forceDomain(strengthRows) {
+  const regions = groupByRegion(strengthRows);
+  const rows = [];
+  regions.forEach((rg) => {
+    rows.push({ head: true, id: `region_${rg.id}`, label: rg.label, note: rg.avg });
+    rg.patterns.forEach((g) =>
+      rows.push({
+        id: g.id,
+        label: g.short,
+        note: g.avg,
+        extra: g.avg == null ? "pas de 1RM trouvé" : "",
+        sub: g.rows
+          .filter((x) => x.note != null)
+          .map((x) => ({ label: x.label, kg: x.display, note: x.note, matched: x.matched, estNote: !!x.estNote })),
+      })
+    );
+  });
+  const notes = regions.map((r) => r.avg).filter((x) => x != null);
+  return {
+    title: "💪 Force — haut et bas du corps",
+    avg: notes.length ? Math.round((notes.reduce((x, y) => x + y, 0) / notes.length) * 10) / 10 : null,
+    rows,
+  };
 }
 
 export default function Tests() {
@@ -806,18 +836,7 @@ export default function Tests() {
     out.mobilite = { title: "🤸 Mobilité + force isométrique", avg: avg(miRows.map((r) => r.note)), rows: miRows };
     if (sport === "cyclisme") {
       const cb = cycBilan;
-      const pats = groupByPattern(cb.strength).filter((g) => g.id !== "autre");
-      out.force = {
-        title: "💪 Force — par pattern de mouvement",
-        avg: avg(pats.map((g) => g.avg)),
-        rows: pats.map((g) => ({
-          id: g.id,
-          label: g.label,
-          note: g.avg,
-          extra: g.avg == null ? "pas de 1RM trouvé" : "",
-          sub: g.rows.filter((x) => x.note != null).map((x) => ({ label: x.label, kg: x.display, note: x.note, matched: x.matched, estNote: !!x.estNote })),
-        })),
-      };
+      out.force = forceDomain(cb.strength);
       const toRows = (rs) => rs.filter((r) => r.note != null).map((r) => ({ label: r.label, note: r.note, extra: `${r.display} ${r.unit || ""}${r.extra ? " · " + r.extra : ""}`.trim() }));
       const sp = toRows(cb.sprint);
       out.vitesse = { title: "⚡ Vitesse — sprint 5 s", avg: avg(sp.map((r) => r.note)), rows: sp };
@@ -826,19 +845,7 @@ export default function Tests() {
       const en = toRows(cb.endu);
       out.endurance = { title: "🏃 Endurance", avg: avg(en.map((r) => r.note)), rows: en };
     } else if (normsOn) {
-      const pats = groupByPattern(strengthNorms).filter((g) => g.id !== "autre");
-      out.force = {
-        title: "💪 Force — par pattern de mouvement",
-        avg: avg(pats.map((g) => g.avg)),
-        rows: pats.map((g) => ({
-          label: g.label,
-          note: g.avg,
-          extra: g.avg == null ? "pas de 1RM trouvé" : "",
-          sub: g.rows
-            .filter((x) => x.note != null)
-            .map((x) => ({ label: x.label, kg: x.display, note: x.note, matched: x.matched, estNote: x.estNote })),
-        })),
-      };
+      out.force = forceDomain(strengthNorms);
       const sRows = normRows("sprint", mergedSprint, "");
       out.vitesse = { title: "⚡ Vitesse", avg: avg(sRows.map((r) => r.note)), rows: sRows };
       const c = tests.find((t) => t.testId === "cmj");
@@ -1427,10 +1434,15 @@ export default function Tests() {
                       <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>
                         Tes 1RM de « Mes RM » face à chaque niveau du cyclisme sur route (kg pour {selectedAthlete?.weight ? `${selectedAthlete.weight} kg` : "ton poids"}).
                       </div>
-                      {groupByPattern(cycBilan?.strength || []).filter((g) => g.id !== "autre").map((g) => (
-                        <div key={g.id} style={{ marginBottom: 14 }}>
-                          <div style={{ fontSize: 13, color: TEXT, fontWeight: 700, marginBottom: 4 }}>{g.label}</div>
+                      {groupByRegion(cycBilan?.strength || []).map((rg) => (
+                        <div key={rg.id} style={{ marginBottom: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: TEXT, padding: "6px 10px", borderRadius: 8, background: "#0d0c0a", borderLeft: `3px solid ${ACCENT}`, marginBottom: 8 }}>{rg.label}</div>
+                          {rg.patterns.map((g) => (
+                        <div key={g.id} style={{ marginBottom: 14, paddingLeft: 10 }}>
+                          <div style={{ fontSize: 13, color: TEXT, fontWeight: 700, marginBottom: 4 }}>{g.short}</div>
                           <LevelTable rows={g.rows} targetId={level} legend="* valeur d'une étude · ~ estimé à partir d'une étude · ⚠ provisoire : aucune norme cycliste publiée trouvée · vert = niveau atteint · bronze = standard du niveau, argent = +1 écart-type, or = +2" />
+                        </div>
+                          ))}
                         </div>
                       ))}
                     </>)}
@@ -1533,7 +1545,7 @@ export default function Tests() {
                       Tes 1RM de « Mes RM » face à chaque niveau du rugby français
                       {level ? ` (objectif : ${levelLabel(level)})` : " (choisis un niveau visé en haut pour le surligner)"}.
                     </div>
-                    <LevelTable rows={strengthNorms} targetId={level} />
+                    <LevelTable rows={sortByPattern(strengthNorms)} targetId={level} />
                     </>)}
                   </div>
 
@@ -1704,10 +1716,22 @@ export default function Tests() {
                           <span style={{ fontSize: 12, color: MUTED }}>pas encore de donnée</span>
                         )}
                       </div>
-                      {d.rows.map((r, i) => (
+                      {d.rows.map((r, i) => r.head ? (
                         <div
                           key={i}
-                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 13, color: MUTED, padding: "9px 0", borderTop: `1px solid ${BORDER}` }}
+                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: i ? 12 : 0, padding: "7px 10px", borderRadius: 8, background: "#0d0c0a", borderLeft: `3px solid ${ACCENT}` }}
+                        >
+                          <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: TEXT }}>{r.label}</span>
+                          {r.note != null ? (
+                            <span style={{ color: noteColor(r.note), fontWeight: 800, fontSize: 14, whiteSpace: "nowrap" }}>{r.note} / 20</span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: MUTED }}>pas de 1RM</span>
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          key={i}
+                          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, fontSize: 13, color: MUTED, padding: "9px 0", paddingLeft: r.id && /^(push|pull)_/.test(r.id) ? 12 : 0, borderTop: d.rows[i - 1]?.head ? "none" : `1px solid ${BORDER}` }}
                         >
                           <span style={{ lineHeight: 1.35 }}>
                             {r.label}

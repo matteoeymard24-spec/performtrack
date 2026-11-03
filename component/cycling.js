@@ -51,7 +51,6 @@ export const CYCLING_AXES = [
   { id: "mobilite", label: "Mobilité" },
   { id: "force_haut", label: "Force haut" },
   { id: "force_bas", label: "Force bas" },
-  { id: "tirage", label: "Tirage" },
   { id: "vitesse", label: "Vitesse" },
   { id: "puissance", label: "Puissance" },
   { id: "endurance", label: "Endurance" },
@@ -60,12 +59,12 @@ export const CYCLING_AXES = [
 /* Priorité 0-3 de chaque qualité selon le type de coureur : INDICATIF (avis). Cible = 10 + 2 × priorité.
    L'endurance prime partout (demande de l'athlète) ; le sprinteur garde la vitesse / puissance en tête. */
 export const CYCLING_PRIORITY = {
-  //            mob hautF basF tir vit puis end
-  polyvalent: [1, 1, 2, 1, 1, 1, 3],
-  sprinteur: [1, 1, 3, 1, 3, 3, 2],
-  grimpeur: [1, 0, 1, 0, 0, 0, 3],
-  rouleur: [2, 1, 2, 1, 0, 1, 3],
-  leader: [1, 0, 2, 0, 0, 1, 3],
+  //            mob hautF basF vit puis end   (force haut = poussées + tirages)
+  polyvalent: [1, 1, 2, 1, 1, 3],
+  sprinteur: [1, 1, 3, 3, 3, 2],
+  grimpeur: [1, 0, 1, 0, 0, 3],
+  rouleur: [2, 1, 2, 0, 1, 3],
+  leader: [1, 0, 2, 0, 1, 3],
 };
 
 export const CYCLING_SEXES = [

@@ -613,25 +613,47 @@ export const STRENGTH_NORMS = [
 ];
 
 /* Schémas de mouvement : les notes de force sont regroupées par pattern */
-export const STRENGTH_PATTERNS = [
-  { id: "push_v_upper", label: "Poussée verticale — haut du corps" },
-  { id: "push_v_lower", label: "Poussée verticale — bas du corps" },
-  { id: "push_h_upper", label: "Poussée horizontale — haut du corps" },
-  { id: "push_h_lower", label: "Poussée horizontale — bas du corps" },
-  { id: "pull_v", label: "Tirage vertical" },
-  { id: "pull_h", label: "Tirage horizontal" },
+/* Ordre d'affichage : haut du corps (poussée / tirage verticaux, puis horizontaux), puis bas du corps.
+   label = libellé complet (radar, listes à plat) ; short = libellé sous l'en-tête de région. */
+export const STRENGTH_REGIONS = [
+  { id: "haut", label: "Haut du corps" },
+  { id: "bas", label: "Bas du corps" },
 ];
+export const STRENGTH_PATTERNS = [
+  { id: "push_v_upper", region: "haut", short: "Poussée verticale", label: "Poussée verticale — haut du corps" },
+  { id: "pull_v", region: "haut", short: "Tirage vertical", label: "Tirage vertical" },
+  { id: "push_h_upper", region: "haut", short: "Poussée horizontale", label: "Poussée horizontale — haut du corps" },
+  { id: "pull_h", region: "haut", short: "Tirage horizontal", label: "Tirage horizontal" },
+  { id: "push_v_lower", region: "bas", short: "Poussée verticale", label: "Poussée verticale — bas du corps" },
+  { id: "push_h_lower", region: "bas", short: "Poussée horizontale", label: "Poussée horizontale — bas du corps" },
+];
+const avgNotes = (notes) => (notes.length ? Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 10) / 10 : null);
+const patternRank = (id) => {
+  const i = STRENGTH_PATTERNS.findIndex((p) => p.id === id);
+  return i < 0 ? 99 : i;
+};
+/* Trie des lignes de force dans l'ordre haut (PV, TV, PH, TH) puis bas (PV, PH) */
+export const sortByPattern = (rows) => (rows || []).slice().sort((a, b) => patternRank(a.pattern) - patternRank(b.pattern));
 
-/* [{id,label,rows,avg}] — avg = moyenne des notes /20 du pattern (null si aucune) */
+/* [{id,label,short,region,rows,avg}] — avg = moyenne des notes /20 du pattern (null si aucune) */
 export function groupByPattern(rows) {
   const out = STRENGTH_PATTERNS.map((p) => {
     const rs = (rows || []).filter((r) => r.pattern === p.id);
-    const notes = rs.filter((r) => r.note != null).map((r) => r.note);
-    return { ...p, rows: rs, avg: notes.length ? Math.round((notes.reduce((a, b) => a + b, 0) / notes.length) * 10) / 10 : null };
+    return { ...p, rows: rs, avg: avgNotes(rs.filter((r) => r.note != null).map((r) => r.note)) };
   }).filter((g) => g.rows.length > 0);
   const rest = (rows || []).filter((r) => !STRENGTH_PATTERNS.some((p) => p.id === r.pattern));
-  if (rest.length) out.push({ id: "autre", label: "Autres", rows: rest, avg: null });
+  if (rest.length) out.push({ id: "autre", label: "Autres", short: "Autres", region: null, rows: rest, avg: null });
   return out;
+}
+
+/* Haut / bas du corps, chacun avec ses patterns : [{id,label,avg,patterns:[groupe de groupByPattern]}].
+   avg de la région = moyenne des notes de ses patterns (même calcul que le radar). */
+export function groupByRegion(rows) {
+  const pats = groupByPattern(rows).filter((g) => g.id !== "autre");
+  return STRENGTH_REGIONS.map((r) => {
+    const ps = pats.filter((g) => g.region === r.id);
+    return { ...r, patterns: ps, avg: avgNotes(ps.map((g) => g.avg).filter((x) => x != null)) };
+  }).filter((r) => r.patterns.length > 0);
 }
 
 const strip = (s) =>

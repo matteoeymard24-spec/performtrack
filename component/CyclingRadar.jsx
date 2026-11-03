@@ -70,9 +70,8 @@ function Radar({ axes, values, targets }) {
 
 const ADVICE = {
   mobilite: "Mobilité : voir le profil par région (hanche, thoracique, cervicales) : sur le vélo la position fixe du tronc sollicite surtout ces zones.",
-  force_haut: "Force du haut : développé couché / militaire, 2 à 3 séries lourdes ; utile pour la stabilité du tronc en sprint et en danseuse.",
+  force_haut: "Force du haut : poussées (développé couché / militaire) et tirages (tractions, tirage planche), 2 à 3 séries lourdes ; stabilité du tronc et maintien du guidon en sprint et en danseuse.",
   force_bas: "Force des jambes : squat, hip thrust, RDL en charges lourdes (travaux sur cyclistes bien entraînés et élites : Sunde 2010 PMID 19855311 ; Rønnestad et al. 2015 PMID 24862305).",
-  tirage: "Tirage : tractions et tirage planche ; maintien du guidon en sprint et en danseuse.",
   vitesse: "Vitesse : sprints de 5 à 10 s (départ arrêté et lancé), récupération complète ; la valeur suivie est la puissance max sur 5 s.",
   puissance: "Puissance : sauts (CMJ, squat jump) et force-vitesse ; le CMJ sert ici de repère de puissance des jambes.",
   endurance: "Endurance : volume de base, blocs au seuil (2 x 20 min, 3 x 12 min) et intervalles de 3 à 5 min ; l'axe est la moyenne du seuil 20 min, de la PMA 5 min et de la VO2max estimée.",
@@ -84,18 +83,18 @@ const avgN = (arr) => {
 };
 const tagColor = (t) => (t === "doc" ? "#4fae7d" : t === "provisoire" ? "#d9604a" : ACCENT);
 
-/* Radar du cycliste : uniquement le profil visuel (7 qualités, notes /20 issues de « Notes /20 par domaine »).
+/* Radar du cycliste : uniquement le profil visuel (6 qualités, notes /20 issues de « Notes /20 par domaine »).
    Le détail des mesures est dans la carte des notes du Bilan, les normes dans l'onglet Normes. */
 export default function CyclingRadar({ level, rider, sex, domainNotes }) {
   const lvl = isCyclingLevel(level) ? level : null;
   const sx = normSex(sex);
   const forceRows = domainNotes?.force?.rows || [];
-  const byPat = (re) => avgN(forceRows.filter((r) => re.test(r.id || "")).map((r) => r.note));
+  const byPat = (ids) => avgN(forceRows.filter((r) => ids.includes(r.id)).map((r) => r.note));
   const notesById = {
     mobilite: domainNotes?.mobilite?.avg ?? null,
-    force_haut: byPat(/_upper$/),
-    force_bas: byPat(/_lower$/),
-    tirage: byPat(/^pull_/),
+    // haut du corps = poussées ET tirages
+    force_haut: byPat(["push_v_upper", "pull_v", "push_h_upper", "pull_h"]),
+    force_bas: byPat(["push_v_lower", "push_h_lower"]),
     vitesse: domainNotes?.vitesse?.avg ?? null,
     puissance: domainNotes?.cmj?.avg ?? null,
     endurance: domainNotes?.endurance?.avg ?? null,

@@ -1,5 +1,5 @@
 import React from "react";
-import { noteColor, noteLabel, groupByPattern, MEDALS } from "./norms";
+import { noteColor, noteLabel, groupByPattern, groupByRegion, MEDALS } from "./norms";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -235,27 +235,39 @@ export function NormList({ rows, compact }) {
   );
 }
 
-/* Notes de force regroupées par schéma de mouvement (poussée / tirage, vertical / horizontal) */
+/* Notes de force : haut du corps puis bas du corps, et dans chacun les schémas de mouvement
+   (haut : poussée verticale, tirage vertical, poussée horizontale, tirage horizontal ; bas : poussée verticale, horizontale) */
 export function PatternList({ rows, compact }) {
-  const groups = groupByPattern(rows);
-  if (groups.length === 0) return null;
+  const regions = groupByRegion(rows);
+  const others = groupByPattern(rows).filter((g) => g.id === "autre");
+  if (regions.length === 0 && others.length === 0) return null;
+  const patternBlock = (g, label) => (
+    <div key={g.id} style={{ marginBottom: 10 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", padding: "4px 2px" }}>
+        <span style={{ color: TEXT, fontWeight: 700, fontSize: 13 }}>{label}</span>
+        {g.avg != null && (
+          <span style={{ color: noteColor(g.avg), fontWeight: 800, fontSize: 13 }}>
+            {g.avg}/20 <span style={{ fontWeight: 500, fontSize: 11, color: MUTED }}>{g.rows.length > 1 ? "· moyenne" : ""}</span>
+          </span>
+        )}
+      </div>
+      {g.rows.map((r, i) => (
+        <NormRow key={i} r={r} compact={compact} />
+      ))}
+    </div>
+  );
   return (
     <div>
-      {groups.map((g) => (
-        <div key={g.id} style={{ marginBottom: 12 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", background: "#0d0c0a", padding: "6px 10px", borderRadius: 8 }}>
-            <span style={{ color: TEXT, fontWeight: 700, fontSize: 13 }}>{g.label}</span>
-            {g.avg != null && (
-              <span style={{ color: noteColor(g.avg), fontWeight: 800, fontSize: 13 }}>
-                {g.avg}/20 <span style={{ fontWeight: 500, fontSize: 11, color: MUTED }}>{g.rows.length > 1 ? "· moyenne" : ""}</span>
-              </span>
-            )}
+      {regions.map((rg) => (
+        <div key={rg.id} style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, background: "#0d0c0a", padding: "6px 10px", borderRadius: 8, borderLeft: "3px solid #e0a13d", marginBottom: 6 }}>
+            <span style={{ color: TEXT, fontWeight: 800, fontSize: 12, letterSpacing: 0.6, textTransform: "uppercase" }}>{rg.label}</span>
+            {rg.avg != null && <span style={{ color: noteColor(rg.avg), fontWeight: 800, fontSize: 13 }}>{rg.avg}/20</span>}
           </div>
-          {g.rows.map((r, i) => (
-            <NormRow key={i} r={r} compact={compact} />
-          ))}
+          <div style={{ paddingLeft: 10 }}>{rg.patterns.map((g) => patternBlock(g, g.short))}</div>
         </div>
       ))}
+      {others.map((g) => patternBlock(g, g.label))}
     </div>
   );
 }
