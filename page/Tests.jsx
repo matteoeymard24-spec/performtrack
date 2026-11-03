@@ -47,7 +47,7 @@ import { LEVELS as RUGBY_LEVELS } from "../component/rugbyLevels";
 import CyclingRadar, { CyclingNorms } from "../component/CyclingRadar";
 import { CYCLING_LEVELS, CYCLING_SEXES, normSex } from "../component/cycling";
 import { cyclingBilan } from "../component/cyclingRows";
-import { FoldBtn, useFold, PageHeader } from "../component/ui";
+import { FoldBtn, useFold, PageHeader, stickyHead } from "../component/ui";
 import FmsGuide from "../component/FmsGuide";
 import PersonPicker from "../component/PersonPicker";
 import { withMembershipHistory } from "../component/groupHistory";
@@ -85,7 +85,7 @@ const inputStyle = {
 };
 function FoldHead({ title, color, open, onToggle, right, gap = 6 }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: open ? gap : 0 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: open ? gap : 0, ...(open ? stickyHead(SURFACE, 16) : {}) }}>
       <div style={{ fontWeight: 700, ...(color ? { color } : {}) }}>{title}</div>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         {right}

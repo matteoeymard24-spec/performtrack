@@ -10,7 +10,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import BodyScan from "../component/BodyScan";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { Page, FoldCard, useFold, CARD_STYLE, PAGE_TITLE, PAGE_SUB, PageHeader, Kpi, KpiGrid } from "../component/ui";
@@ -66,6 +66,10 @@ const zoneColor = (v) => (v >= 7 ? "#4fae7d" : v >= 5 ? "#d9a441" : "#d9695a");
 export default function Wellness() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  // Ouvert depuis le dashboard : bouton retour + le questionnaire y ramène aussi
+  const [searchParams] = useSearchParams();
+  const fromDash = searchParams.get("from") === "dashboard";
+  const formUrl = fromDash ? "/wellness-form?from=dashboard" : "/wellness-form";
   const [entries, setEntries] = useState([]);
   // 6 derniers mois par défaut (quota gratuit Firestore), tout sur demande.
   const [allHistory, setAllHistory] = useState(false);
@@ -219,9 +223,16 @@ export default function Wellness() {
           </>
         }
         actions={
-          <button className="pt-btn pt-btn--primary" onClick={() => navigate("/wellness-form")}>
+          <>
+          {fromDash && (
+            <button className="pt-btn" onClick={() => navigate("/dashboard")}>
+              ← Retour au dashboard
+            </button>
+          )}
+          <button className="pt-btn pt-btn--primary" onClick={() => navigate(formUrl)}>
             📝 {todayEntry ? "Modifier le questionnaire" : "Remplir le questionnaire"}
           </button>
+          </>
         }
       />
 
@@ -236,7 +247,7 @@ export default function Wellness() {
               value={dailyScore !== null ? `${dailyScore}/10` : "À remplir"}
               color={dailyScore !== null ? sc(dailyScore) : "#e0a13d"}
               sub={dailyScore !== null ? "Questionnaire rempli" : "Touche pour le remplir"}
-              onClick={() => navigate("/wellness-form")}
+              onClick={() => navigate(formUrl)}
             />
             <Kpi
               icon="📊"
@@ -272,7 +283,7 @@ export default function Wellness() {
           right={
             <button
               type="button"
-              onClick={() => navigate("/wellness-form")}
+              onClick={() => navigate(formUrl)}
               style={{ padding: "6px 12px", background: "transparent", color: "#e0a13d", border: "1px solid #e0a13d66", borderRadius: 8, cursor: "pointer", fontSize: 12 }}
             >
               Modifier

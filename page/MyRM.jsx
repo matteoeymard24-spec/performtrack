@@ -4,6 +4,7 @@ import { e1rmFromSet } from "../component/loadMetrics";
 import { isLoadedBodyweight } from "../component/bodyweightLoad";
 import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
 import { useAuth } from "../auth/AuthProvider";
+import { useNavigate } from "react-router-dom";
 import { db } from "../firebase";
 import { getWorkoutDocs, getScopedUserDocs, daysAgoStr, WINDOW } from "../component/workoutQueries";
 import {
@@ -62,6 +63,7 @@ const normKey = (name) =>
 
 export default function MyRM() {
   const { currentUser, userRole, isSuperAdmin, coachScope } = useAuth();
+  const navigate = useNavigate();
   const isAdminLike = userRole === "admin" || isSuperAdmin;
   // Coach : peut consulter / modifier les RM d'un athlète ("" = les siens)
   const [viewUid, setViewUid] = useState("");
@@ -796,6 +798,13 @@ export default function MyRM() {
       <PageHeader
         title={`💪 ${viewUid ? "RM de l'athlète" : "Mes RM"}`}
         subtitle="Charges maximales estimées, mises à jour à chaque séance"
+        actions={
+          new URLSearchParams(window.location.search).get("from") === "dashboard" ? (
+            <button className="pt-btn" onClick={() => navigate("/dashboard")}>
+              ← Retour au dashboard
+            </button>
+          ) : null
+        }
       />
 
       {isAdminLike && (() => {

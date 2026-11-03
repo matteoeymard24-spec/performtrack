@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { isMobileView } from "../component/viewMode";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
+import { stickyHead } from "../component/ui";
+import ReorderList from "../component/ReorderList";
 import { groupTargetMatches, formerTargetsOf, hasProgress } from "../component/groupHistory";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
@@ -148,6 +150,7 @@ export default function Dashboard() {
   const goToWorkout = (sessionId, autostart) => {
     const params = new URLSearchParams({ sessionId });
     if (autostart) params.set("autostart", "1");
+    params.set("from", "dashboard"); // fermer / annuler la séance ramène au dashboard
     navigate(`/workout?${params.toString()}`);
   };
 
@@ -208,6 +211,40 @@ export default function Dashboard() {
 
   // Blocs du dashboard athlète que chacun peut masquer (réglage mémorisé sur
   // l'appareil, par utilisateur).
+  // Ordre des cartes du dashboard athlète (glisser-déposer) : appareil + profil (suit le compte partout)
+  const DASH_CARDS = [
+    ["today", "🏋️ Séance du jour"], ["form", "🩺 État de forme"], ["wellness", "🧘 Wellness"], ["injuries", "🚑 Blessures récentes"],
+    ["pain", "🩹 Douleur du jour"], ["tests", "🧪 Mes tests"], ["progress", "📊 Progression des séances"], ["load", "📈 Charge des 3 semaines"],
+    ["weight", "⚖️ Mon poids"], ["vmacmj", "🏃 VMA & 🦘 CMJ"], ["fbex", "🕘 Mes derniers exercices"], ["rm", "💪 Mes RM"],
+  ];
+  const orderStoreKey = `pt_dash_order_${currentUser?.uid || "anon"}`;
+  const [dashOrder, setDashOrder] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`pt_dash_order_${currentUser?.uid || "anon"}`) || "null");
+    } catch (e) {
+      return null;
+    }
+  });
+  const [reorderOpen, setReorderOpen] = useState(false);
+  useEffect(() => {
+    // pas d'ordre sur cet appareil : on reprend celui du profil (choisi sur un autre appareil)
+    if (!dashOrder && Array.isArray(userProfile?.dashOrder) && userProfile.dashOrder.length) setDashOrder(userProfile.dashOrder);
+  }, [userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  const orderedKeys = (keys) => {
+    const base = Array.isArray(dashOrder) ? dashOrder.filter((k) => keys.includes(k)) : [];
+    return [...base, ...keys.filter((k) => !base.includes(k))];
+  };
+  const saveDashOrder = (order) => {
+    setDashOrder(order);
+    try {
+      if (order) localStorage.setItem(orderStoreKey, JSON.stringify(order));
+      else localStorage.removeItem(orderStoreKey);
+    } catch (e) {
+      /* stockage indisponible */
+    }
+    if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashOrder: order || [] }).catch(() => null);
+  };
+
   const hiddenStoreKey = `pt_dash_hidden_${currentUser?.uid || "anon"}`;
   const [hiddenDash, setHiddenDash] = useState(() => {
     try {
@@ -239,7 +276,7 @@ export default function Dashboard() {
     </button>
   );
   const foldHead = (k, text) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: vis(k) ? 14 : 0 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: vis(k) ? 14 : 0, ...(vis(k) ? stickyHead("#151310", 20) : {}) }}>
       <h3 style={{ ...CARD_TITLE, margin: 0 }}>{text}</h3>
       {foldBtn(k)}
     </div>
@@ -1669,10 +1706,30 @@ export default function Dashboard() {
             <h2 style={{ fontSize: 24, margin: "2px 0 0" }}>👋 Bonjour {userProfile?.firstName || "Athlète"}</h2>
             <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>Ta forme, tes séances et ta charge</p>
           </div>
-          {userRole === "admin" && meMode && (
-            <button className="pt-btn" onClick={() => setMeMode(false)}>← Vue coach</button>
-          )}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className={reorderOpen ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setReorderOpen((v) => !v)}>
+              {reorderOpen ? "✓ Terminé" : "🔀 Organiser"}
+            </button>
+            {userRole === "admin" && meMode && (
+              <button className="pt-btn" onClick={() => setMeMode(false)}>← Vue coach</button>
+            )}
+          </div>
         </div>
+        {reorderOpen && (
+          <div style={{ ...CARD_STYLE, border: "1px solid #e0a13d88" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>🔀 Ordre des cartes</div>
+                <div style={{ fontSize: 12, color: "#a8a199" }}>Attrape ⠿ et fais glisser (doigt ou souris), ou utilise ↑ ↓. Enregistré pour ton compte.</div>
+              </div>
+              <button className="pt-btn" onClick={() => saveDashOrder(null)}>↺ Ordre par défaut</button>
+            </div>
+            <ReorderList
+              items={orderedKeys(DASH_CARDS.map(([k]) => k)).map((k) => ({ key: k, label: DASH_CARDS.find(([x]) => x === k)[1] }))}
+              onChange={saveDashOrder}
+            />
+          </div>
+        )}
 
         {(() => {
           const done = todayWorkout && isWorkoutCompleted(todayWorkout);
@@ -1714,7 +1771,7 @@ export default function Dashboard() {
                 todayScore === null ? "À remplir" : `${todayScore.toFixed(1)}/10`,
                 wCol,
                 weeklyAvg ? `Moyenne récente : ${weeklyAvg}/10` : "Questionnaire du jour",
-                () => navigate("/wellness")
+                () => navigate("/wellness?from=dashboard")
               )}
               {kpi(
                 "redi",
@@ -1740,9 +1797,9 @@ export default function Dashboard() {
           <div
             role="button"
             tabIndex={0}
-            onClick={() => navigate("/wellness")}
+            onClick={() => navigate("/wellness-form?from=dashboard")}
             onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") navigate("/wellness");
+              if (e.key === "Enter" || e.key === " ") navigate("/wellness-form?from=dashboard");
             }}
             style={{
               background: "rgba(217,164,65,0.14)",
@@ -1866,6 +1923,11 @@ export default function Dashboard() {
         )}
 
         <div className="pt-ath-cols">
+        {(() => {
+          // Cartes du dashboard athlète, dans l'ordre choisi (🔀 Organiser) — voir dashOrder
+          const cards = [
+            { key: "today", label: "🏋️ Séance du jour", node: (
+              <>
         {(
         <div
           style={{
@@ -2004,13 +2066,19 @@ export default function Dashboard() {
           )}
         </div>
         )}
-
+              </>
+            ) },
+            { key: "form", label: "🩺 État de forme", node: (
+              <>
         {/* État de forme : même analyse que la fiche athlète du coach, mais pour MOI
             (athlète, ou coach via « Moi (mon dashboard) »). */}
         {selfForm && selfForm.crossStatus && renderFormCard(selfForm, true)}
 
         {/* Encadré « RM en attente » retiré : les RM se remplissent tout seuls à la fin des séances. */}
-
+              </>
+            ) },
+            { key: "wellness", label: "🧘 Wellness", node: (
+              <>
         {todayScore !== null && (
           <div
             style={{
@@ -2026,7 +2094,7 @@ export default function Dashboard() {
             <>
               <button
                 type="button"
-                onClick={() => navigate("/wellness")}
+                onClick={() => navigate("/wellness?from=dashboard")}
                 style={{
                   width: "100%",
                   padding: "10px 14px",
@@ -2090,7 +2158,10 @@ export default function Dashboard() {
           )}
           </div>
         )}
-
+              </>
+            ) },
+            { key: "injuries", label: "🚑 Blessures récentes", node: (
+              <>
         {selfInjuries.length > 0 && (
           <div
             style={{
@@ -2115,7 +2186,10 @@ export default function Dashboard() {
           )}
           </div>
         )}
-
+              </>
+            ) },
+            { key: "pain", label: "🩹 Douleur du jour", node: (
+              <>
         {todayWellness && (
             <div
               style={{
@@ -2144,13 +2218,19 @@ export default function Dashboard() {
           )}
             </div>
           )}
-
+              </>
+            ) },
+            { key: "tests", label: "🧪 Mes tests", node: (
+              <>
         {currentUser?.uid && (
           <div>
             <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" simple collapsed={!vis("tests")} onToggle={() => toggleDash("tests")} />
           </div>
         )}
-
+              </>
+            ) },
+            { key: "progress", label: "📊 Progression des séances", node: (
+              <>
         {(
         <div
           style={{
@@ -2230,8 +2310,10 @@ export default function Dashboard() {
           )}
         </div>
         )}
-
-
+              </>
+            ) },
+            { key: "load", label: "📈 Charge des 3 semaines", node: (
+              <>
         {(
           <div style={CARD_STYLE}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: vis("load") ? 14 : 0, flexWrap: "wrap" }}>
@@ -2335,8 +2417,10 @@ export default function Dashboard() {
             )}
           </div>
         )}
-
-
+              </>
+            ) },
+            { key: "weight", label: "⚖️ Mon poids", node: (
+              <>
         {(
         <div
           style={{
@@ -2486,7 +2570,10 @@ export default function Dashboard() {
           )}
         </div>
         )}
-
+              </>
+            ) },
+            { key: "vmacmj", label: "🏃 VMA & 🦘 CMJ", node: (
+              <>
         {(athleteVma || athleteCmj) && (
           <div
             style={{
@@ -2568,7 +2655,10 @@ export default function Dashboard() {
           )}
           </div>
         )}
-
+              </>
+            ) },
+            { key: "fbex", label: "🕘 Mes derniers exercices", node: (
+              <>
         {(() => {
           const fbEntries = extractFeedbackExercises(athleteWorkouts, currentUser?.uid);
           if (fbEntries.length === 0) return null;
@@ -2583,7 +2673,7 @@ export default function Dashboard() {
                   <FeedbackList entries={fbEntries} mode="last" limit={6} />
                   <button
                     type="button"
-                    onClick={() => navigate("/myrm#feedbacks")}
+                    onClick={() => navigate("/myrm?from=dashboard#feedbacks")}
                     style={{ width: "100%", marginTop: 12, padding: "10px 14px", background: "rgba(224,161,61,0.12)", color: "#e0a13d", border: "1px solid rgba(224,161,61,0.4)", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
                   >
                     Voir tout ({fbEntries.length}) →
@@ -2593,7 +2683,10 @@ export default function Dashboard() {
             </div>
           );
         })()}
-
+              </>
+            ) },
+            { key: "rm", label: "💪 Mes RM", node: (
+              <>
         {Object.keys(athleteRMFullHistory).length > 0 && (() => {
           const q = rmSearchSelf.trim().toLowerCase();
           const fmtD = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
@@ -2693,6 +2786,14 @@ export default function Dashboard() {
             </div>
           );
         })()}
+              </>
+            ) },
+          ];
+          return orderedKeys(cards.map((c) => c.key)).map((k) => {
+            const c = cards.find((x) => x.key === k);
+            return c ? <React.Fragment key={k}>{c.node}</React.Fragment> : null;
+          });
+        })()}
         </div>
       </div>
     );
@@ -2708,7 +2809,7 @@ export default function Dashboard() {
         maxWidth: isMobileView() ? "100%" : "1200px",
         margin: "0 auto",
         width: "100%",
-        overflowX: "hidden",
+        overflowX: "clip", // « clip » et pas « hidden » : laisse fonctionner les en-têtes collants
       }}
     >
       {/* EN-TÊTE */}

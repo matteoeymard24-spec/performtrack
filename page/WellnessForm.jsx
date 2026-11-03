@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   collection,
   doc,
@@ -18,6 +18,10 @@ import WellnessSlider from "../component/WellnessSlider";
 export default function WellnessForm() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
+  // Ouvert depuis le dashboard : annuler / valider y ramène (sinon : onglet Wellness)
+  const [searchParams] = useSearchParams();
+  const fromDash = searchParams.get("from") === "dashboard";
+  const backTo = fromDash ? "/dashboard" : "/wellness";
 
   const [fatigue, setFatigue] = useState(5);
   const [stress, setStress] = useState(5);
@@ -111,7 +115,7 @@ export default function WellnessForm() {
 
       setMessage("✅ Wellness enregistré avec succès !");
       setTimeout(() => {
-        navigate("/wellness");
+        navigate(backTo);
       }, 1500);
     } catch (error) {
       setMessage("❌ Erreur : " + error.message);
@@ -134,7 +138,7 @@ export default function WellnessForm() {
       {/* Header */}
       <div style={{ marginBottom: 30 }}>
         <button
-          onClick={() => navigate("/wellness")}
+          onClick={() => navigate(backTo)}
           style={{
             background: "transparent",
             border: "none",
@@ -145,7 +149,7 @@ export default function WellnessForm() {
             marginBottom: 10,
           }}
         >
-          ← Retour au Wellness
+          {fromDash ? "← Retour au dashboard" : "← Retour au Wellness"}
         </button>
         <h2 style={{ margin: "0 0 5px 0", color: "#f3f0ea" }}>
           Questionnaire Wellness

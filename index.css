@@ -169,6 +169,14 @@ a:focus-visible {
   }
 }
 
+/* « clip » coupe le débordement horizontal SANS créer de zone de défilement : indispensable pour que
+   les en-têtes collants (barre de navigation, titres des cartes / blocs) restent bien en haut. */
+@supports (overflow-x: clip) {
+  body, #root {
+    overflow-x: clip;
+  }
+}
+
 @supports (padding: max(0px)) {
   body {
     padding-left: env(safe-area-inset-left);

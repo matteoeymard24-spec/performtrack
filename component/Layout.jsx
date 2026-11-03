@@ -11,6 +11,21 @@ const BORDER_STRONG = "rgba(255,255,255,0.16)";
 const TEXT_MUTED = "#a8a199";
 
 export default function Layout() {
+  // Hauteur réelle de la barre du haut → variable CSS --pt-header-h (en-têtes collants des cartes, voir ui.jsx)
+  const headerRef = React.useRef(null);
+  React.useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return undefined;
+    const set = () => document.documentElement.style.setProperty("--pt-header-h", `${Math.round(el.getBoundingClientRect().height)}px`);
+    set();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(set) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener("resize", set);
+    return () => {
+      if (ro) ro.disconnect();
+      window.removeEventListener("resize", set);
+    };
+  }, []);
   const { currentUser, userRole, isSuperAdmin, logout, canPreview, previewAthlete, setPreviewAthlete, coachScope } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -86,6 +101,7 @@ export default function Layout() {
     >
       {/* Header */}
       <header
+        ref={headerRef}
         style={{
           background: SURFACE,
           padding: "14px 20px",

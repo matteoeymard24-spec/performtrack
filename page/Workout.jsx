@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { isMobileView } from "../component/viewMode";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
@@ -12,7 +12,7 @@ import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockTy
 import { FOSTER_CR10, doneDateOf } from "../component/sessionLoad";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
-import { FoldBtn, useFold, PageHeader } from "../component/ui";
+import { FoldBtn, useFold, PageHeader, stickyHead } from "../component/ui";
 import { GroupChips } from "../component/PersonPicker";
 import ExercisePhoto, { ExerciseThumb } from "../component/ExercisePhoto";
 import { withMembershipHistory, groupTargetMatches, hasProgress, formerTargetsOf } from "../component/groupHistory";
@@ -277,6 +277,41 @@ const blockTimerDurationSeconds = (b) =>
    • entre les tours : après avoir enchaîné tous les exercices du bloc une fois (restMin / restSec) ;
    • avant le bloc suivant (A → B) : nextRestMin / nextRestSec — par défaut = récup entre les tours
      (anciennes séances inchangées). */
+/* Identité visuelle des blocs : une couleur et une lettre par bloc (A, B, C…) */
+const BLOCK_COLORS = ["#e0a13d", "#4a90d9", "#4fae7d", "#b06fd9", "#d9695a", "#29b6c9"];
+const blockColor = (i) => BLOCK_COLORS[i % BLOCK_COLORS.length];
+const blockLetter = (i) => String.fromCharCode(65 + (i % 26));
+const BlockBadge = ({ i, size = 30 }) => (
+  <span
+    style={{
+      width: size,
+      height: size,
+      borderRadius: 8,
+      background: blockColor(i),
+      color: "#1a1306",
+      fontWeight: 900,
+      fontSize: size * 0.5,
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+      boxShadow: `0 0 0 3px ${blockColor(i)}33`,
+    }}
+  >
+    {blockLetter(i)}
+  </span>
+);
+/* Liaison entre deux blocs : trait + récup avant le bloc suivant */
+const BlockLink = ({ from, nextName, sec }) => (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", margin: "2px 0" }}>
+    <span style={{ width: 2, height: 10, background: `linear-gradient(${blockColor(from)}, ${blockColor(from + 1)})` }} />
+    <span style={{ fontSize: 12, fontWeight: 700, color: "#a8a199", padding: "3px 12px", borderRadius: 999, border: "1px solid #2a2620", background: "#151310" }}>
+      ➡️ {sec > 0 ? `${fmtRest(sec)} de récup` : "enchaîné"} avant {nextName}
+    </span>
+    <span style={{ width: 2, height: 10, background: blockColor(from + 1) }} />
+  </div>
+);
+
 const restOf = (min, sec, defMin = 2) => Math.max(0, Math.round((Number(min ?? defMin) || 0) * 60 + (Number(sec) || 0)));
 const roundRestSec = (b) => restOf(b?.restMin ?? b?.exercises?.[0]?.restMin, b?.restSec);
 const nextRestSec = (b) => (b?.nextRestMin == null && b?.nextRestSec == null ? roundRestSec(b) : restOf(b.nextRestMin, b.nextRestSec, 0));
@@ -393,7 +428,7 @@ const MAX_MEDIA_ZOOM = 250;
 /* Cadre d'une étape du formulaire de séance (numéro + titre + résumé + action à droite) */
 const FormSection = ({ n, title, summary, right, children }) => (
   <div style={{ background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 12, padding: isMobileView() ? 12 : 16, marginBottom: 14 }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: children ? 12 : 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: children ? 12 : 0, ...(children ? stickyHead("#0d0c0a", isMobileView() ? 12 : 16) : {}) }}>
       <span style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(224,161,61,0.18)", color: "#e0a13d", fontWeight: 800, fontSize: 13, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{n}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 15, fontWeight: 800, color: "#f3f0ea" }}>{title}</div>
@@ -877,6 +912,16 @@ export default function Workout() {
      &autostart=1) pour ouvrir directement la séance du jour en vue complète,
      sans que l'athlète ait à la rechercher dans le calendrier. */
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  // Séance ouverte depuis le dashboard : la fermer ramène au dashboard (et non au calendrier)
+  const [returnToDashboard, setReturnToDashboard] = useState(() => searchParams.get("from") === "dashboard");
+  const closeSession = () => {
+    setSelectedSession(null);
+    if (returnToDashboard) {
+      setReturnToDashboard(false);
+      navigate("/dashboard");
+    }
+  };
   const [showAdminRefs, setShowAdminRefs] = useState(false);
   const [showPlanRefs, setShowPlanRefs] = useState(false);
   const [showAthleteRefs, setShowAthleteRefs] = useState(false);
@@ -5075,7 +5120,7 @@ export default function Workout() {
         maxWidth: isMobileView() ? "100%" : "1200px",
         margin: "0 auto",
         width: "100%",
-        overflowX: "hidden",
+        overflowX: "clip", // « clip » et pas « hidden » : laisse fonctionner les en-têtes collants
       }}
     >
       <PageHeader title="🏋️ Workout" subtitle="Planifie et suis tes séances" />
@@ -7450,18 +7495,21 @@ export default function Workout() {
             // Type de CE bloc (séance mixte) : tout le formulaire du bloc suit ce type
             const workoutType = blockTypeOf(block, formSessionType); // eslint-disable-line no-shadow
             return (
+            <React.Fragment key={bIdx}>
+            {bIdx > 0 && <BlockLink from={bIdx - 1} nextName={block.name || `Bloc ${blockLetter(bIdx)}`} sec={nextRestSec(blocks[bIdx - 1])} />}
             <div
-              key={bIdx}
               ref={(el) => (blockRefs.current[bIdx] = el)}
               style={{
-                background: "#0d0c0a",
+                background: `linear-gradient(180deg, ${blockColor(bIdx)}12, #0d0c0a 120px)`,
                 padding: 18,
-                borderRadius: 10,
-                marginBottom: 16,
+                borderRadius: 12,
+                marginBottom: bIdx === blocks.length - 1 ? 16 : 0,
                 border:
                   dragOverBlockIndex === bIdx && dragBlockIndex !== null
                     ? "2px solid #e0a13d"
-                    : "1px solid rgba(255, 255, 255, 0.05)",
+                    : `1px solid ${blockColor(bIdx)}55`,
+                borderLeft: `5px solid ${blockColor(bIdx)}`,
+                boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
                 opacity: dragBlockIndex === bIdx ? 0.5 : 1,
                 transition: "opacity 0.15s ease, border-color 0.15s ease",
               }}
@@ -7471,8 +7519,10 @@ export default function Workout() {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  marginBottom: 12,
+                  marginBottom: collapsedBlocks[bIdx] ? 0 : 12,
                   gap: 8,
+                  // barre du bloc collante : on replie le bloc sans remonter (voir ui.jsx stickyHead)
+                  ...(collapsedBlocks[bIdx] ? {} : { ...stickyHead("#14120f", 18), borderBottom: `1px solid ${blockColor(bIdx)}33` }),
                 }}
               >
                 <span
@@ -7490,6 +7540,7 @@ export default function Workout() {
                 >
                   ⠿
                 </span>
+                <BlockBadge i={bIdx} />
                 <input
                   type="text"
                   value={block.name}
@@ -9221,6 +9272,7 @@ export default function Workout() {
               </>
               )}
             </div>
+            </React.Fragment>
             );
           })}
           {blocks.some((b) => blockTypeOf(b, workoutType) === "endurance") && (
@@ -9493,7 +9545,7 @@ export default function Workout() {
                 </>
               )}
               <button
-                onClick={() => setSelectedSession(null)}
+                onClick={closeSession}
                 style={{
                   padding: "8px 16px",
                   background: "#a8a199",
@@ -9504,7 +9556,7 @@ export default function Workout() {
                   fontSize: 14,
                 }}
               >
-                ← Retour
+                {returnToDashboard ? "← Retour au dashboard" : "← Retour"}
               </button>
             </div>
           </div>
@@ -9790,13 +9842,19 @@ export default function Workout() {
             // Type de CE bloc (séance mixte) : affichage et feedback suivent ce type
             const sessionType = blockTypeOf(block, selectedSession.type); // eslint-disable-line no-shadow
             return (
+            <React.Fragment key={bIdx}>
+            {bIdx > 0 && (
+              <BlockLink from={bIdx - 1} nextName={block.name || `Bloc ${blockLetter(bIdx)}`} sec={blockNextRestSec(selectedSession.blocks[bIdx - 1])} />
+            )}
             <div
-              key={bIdx}
               style={{
-                background: "#0d0c0a",
+                background: `linear-gradient(180deg, ${blockColor(bIdx)}12, #0d0c0a 120px)`,
                 padding: 18,
-                borderRadius: 10,
-                marginBottom: 16,
+                borderRadius: 12,
+                marginBottom: bIdx === (selectedSession.blocks || []).length - 1 ? 16 : 0,
+                border: `1px solid ${blockColor(bIdx)}55`,
+                borderLeft: `5px solid ${blockColor(bIdx)}`,
+                boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
               }}
             >
               <h4
@@ -9807,9 +9865,15 @@ export default function Workout() {
                   alignItems: "baseline",
                   gap: 10,
                   flexWrap: "wrap",
+                  ...(blockFold.isOpen(`blk_${selectedSession.id}_${bIdx}`)
+                    ? { ...stickyHead("#14120f", 18), marginTop: -8, marginBottom: 12, borderBottom: `1px solid ${blockColor(bIdx)}33` }
+                    : {}),
                 }}
               >
-                {block.name}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 10, alignSelf: "center" }}>
+                  <BlockBadge i={bIdx} size={28} />
+                  <span style={{ color: blockColor(bIdx) }}>{block.name}</span>
+                </span>
                 <span style={{ marginLeft: "auto", order: 99 }}>
                   <FoldBtn
                     open={blockFold.isOpen(`blk_${selectedSession.id}_${bIdx}`)}
@@ -10621,6 +10685,7 @@ export default function Workout() {
               </>
               )}
             </div>
+            </React.Fragment>
             );
           })}
         </div>

@@ -38,6 +38,18 @@ export const FIELD_STYLE = {
   outline: "none",
 };
 
+/* En-tête « collant » des cartes repliables : quand on fait défiler une carte ouverte, sa barre de titre
+   (avec le bouton ▾) reste en haut de l'écran, juste sous la barre de navigation (--pt-header-h, posé par
+   Layout) → on peut replier la carte sans remonter. padX = marge intérieure horizontale de la carte. */
+export const stickyHead = (bg = "#151310", padX = 20, top = "var(--pt-header-h, 60px)") => ({
+  position: "sticky",
+  top,
+  zIndex: 6,
+  background: bg,
+  margin: `-8px -${padX}px 0`,
+  padding: `8px ${padX}px`,
+});
+
 /* Conteneur de page : même largeur / fond partout */
 export function Page({ children, wide = false }) {
   return (
@@ -117,6 +129,7 @@ export function FoldCard({ id, fold, title, subtitle, right, accent = false, sty
           alignItems: "center",
           gap: 8,
           marginBottom: open ? (subtitle ? 4 : 14) : 0,
+          ...(open ? stickyHead((style && style.background) || CARD_STYLE.background, 20) : {}),
         }}
       >
         <h3 style={CARD_TITLE}>{title}</h3>
