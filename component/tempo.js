@@ -77,6 +77,18 @@ export const isoInfoOf = (ex) => ({
   sec: Number(ex?.isoSec) > 0 ? Number(ex.isoSec) : null,
   angle: Number(ex?.isoAngle) > 0 ? Number(ex.isoAngle) : null,
 });
+/* Exercice en isométrie (tempo « ISO » ou ancien régime iso) : on compte des SÉRIES de maintiens.
+   reps 0 ou 1 = un seul maintien par série ; reps > 1 = plusieurs maintiens séparés par ex.isoRepRest secondes
+   (récup indiquée, sans chrono). */
+export const isIsoEx = (ex) => parseTempo(ex?.tempo)?.special === "ISO" || String(ex?.contraction || "").startsWith("iso");
+export const isoSchemeText = (ex) => {
+  const s = Number(ex?.series) || 1;
+  const r = Number(ex?.reps) || 0;
+  const base = r > 1 ? `${s} × ${r} maintiens` : `${s} série${s > 1 ? "s" : ""}`;
+  const rest = r > 1 && Number(ex?.isoRepRest) > 0 ? ` · ${ex.isoRepRest} s de récup entre les maintiens` : "";
+  return base + rest;
+};
+
 /* Durée d'une rep pour un exercice (tempo en secondes, ou durée du maintien ISO) */
 export const exRepSeconds = (ex) => {
   const t = parseTempo(ex?.tempo);

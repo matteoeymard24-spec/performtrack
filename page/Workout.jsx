@@ -21,7 +21,7 @@ import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
 import { TempoView, TempoEditor } from "../component/TempoView";
 import { EX_METHODS, BLOCK_METHODS, EX_DEFAULTS, BLOCK_DEFAULTS, CONTRAST_ROLES, methodOf, methodInfo, mpOf, blockMethodOf, blockMpOf, isContrastBlock, roleLabel, methodScheme, dropLoads, methodSerieDefaults, rmSerie, serieText, methodExtraSec } from "../component/methods";
-import { exRepSeconds, tempoDirOf, guessTempoDir } from "../component/tempo";
+import { exRepSeconds, tempoDirOf, guessTempoDir, isIsoEx, isoSchemeText } from "../component/tempo";
 import { vbtTargetOf, summarizeVbt, vbtColor, fmtV, VBT_LOSS_WARN, VBT_LOSS_STOP } from "../component/vbt";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import TacticalBoard from "../component/TacticalBoard";
@@ -327,7 +327,11 @@ const estimateTypeDurationSeconds = (type, blocks) => {
       t +
       exs.reduce((st, ex, i) => {
         const repSec = exRepSeconds(ex) || 3;
-        const work = (ex.reps || 8) * repSec * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + methodExtraSec(ex, repSec);
+        // ISO : 0 ou 1 = un seul maintien par série ; plusieurs maintiens + leur récup (ex.isoRepRest)
+        const iso = isIsoEx(ex);
+        const reps = iso ? Math.max(1, Number(ex.reps) || 0) : ex.reps || 8;
+        const isoRest = iso && reps > 1 ? (reps - 1) * (Number(ex.isoRepRest) || 0) : 0;
+        const work = reps * repSec * (ex.unilateral ? 2 : 1) + (ex.unilateral ? 10 : 0) + methodExtraSec(ex, repSec) + isoRest;
         const rest = contrast ? (i === exs.length - 1 ? blockRest : between) : ex.restMin != null ? Number(ex.restMin) * 60 : blockRest;
         return st + (ex.series || 3) * (work + rest);
       }, 0)
@@ -8243,7 +8247,7 @@ export default function Workout() {
                             )}
                             <div>
                               <label style={{ fontSize: 12, color: "#a8a199" }}>
-                                {methodOf(ex) === "cluster" ? "Reps par mini-série" : methodOf(ex) === "m12080" ? `Reps classiques (à ${mpOf(ex).conPct} %)` : "Reps"}
+                                {isIsoEx(ex) ? "Maintiens / série" : methodOf(ex) === "cluster" ? "Reps par mini-série" : methodOf(ex) === "m12080" ? `Reps classiques (à ${mpOf(ex).conPct} %)` : "Reps"}
                               </label>
                               <input
                                 type="number"
@@ -8266,6 +8270,19 @@ export default function Workout() {
                                 }}
                               />
                             </div>
+                            {isIsoEx(ex) && Number(ex.reps) > 1 && (
+                              <div>
+                                <label style={{ fontSize: 12, color: "#a8a199" }}>Récup entre maintiens (s)</label>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={ex.isoRepRest ?? ""}
+                                  placeholder="ex. 10"
+                                  onChange={(e) => updateExercise(bIdx, eIdx, "isoRepRest", e.target.value === "" ? "" : Math.max(0, Number(e.target.value) || 0))}
+                                  style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", boxSizing: "border-box" }}
+                                />
+                              </div>
+                            )}
                             <div>
                             <label style={{ fontSize: 12, color: "#a8a199" }}>
                               Intensité
@@ -10163,6 +10180,8 @@ export default function Workout() {
                         >
                           {block.timerMode === "emom" || block.timerMode === "amrap"
                             ? ex.reps
+                            : isIsoEx(ex)
+                            ? `${isoSchemeText(ex)}${isUniEx(ex) ? " /côté (D+G)" : ""}`
                             : `${ex.series} × ${ex.reps}${isUniEx(ex) ? " /côté (D+G)" : ""}`}{" "}
                           @{" "}
                           {ex.rmPercent === "PDC" ? (
@@ -10195,9 +10214,9 @@ export default function Workout() {
                           {(() => {
                             // RIR visé = reps max possibles à ce %RM − reps prévues (voir component/loadAdjust.js)
                             const t = isSpecialContraction(ex) ? null : targetRir(ex.rmPercent, ex.reps, isUniEx(ex));
-                            if (!t) return isSpecialContraction(ex) ? (
+                            if (!t) return isSpecialContraction(ex) && contractionShort(ex) ? (
                               <div style={{ fontSize: 12, marginTop: 4, color: "#e0a13d", fontWeight: 700 }}>
-                                {contractionShort(ex) === "EXC" ? "⬇️ Excentrique supramax" : contractionShort(ex) === "ISO-O" ? "🧱 Iso overcoming" : "⏸️ Iso yielding"} — pareurs / butées ; ne compte pas pour le RM
+                                {contractionShort(ex) === "EXC" ? "⬇️ Excentrique supramax" : contractionShort(ex) === "ISO-O" ? "🧱 Iso overcoming" : "⏸️ Iso yielding"}
                               </div>
                             ) : null;
                             return t.impossible ? (
