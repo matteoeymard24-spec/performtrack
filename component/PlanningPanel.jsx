@@ -1202,9 +1202,6 @@ export default function PlanningPanel({
         <button onClick={() => setAllSess(false)} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
           Masquer toutes les séances
         </button>
-        <button onClick={() => setSessShow({})} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }}>
-          Par défaut (semaines seulement)
-        </button>
       </div>
       {isAdmin && hiddenCount > 0 && (
         <div style={{ marginTop: 14 }}>
