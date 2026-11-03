@@ -15,6 +15,8 @@ import MyRM from "./page/MyRM";
 import ACWRMonitoring from "./page/ACWRMonitoring";
 import Tests from "./page/Tests";
 import Reference from "./page/Reference";
+import Nutrition from "./page/Nutrition";
+import Sleep from "./page/Sleep";
 import { DialogHost } from "./component/appDialog";
 
 export default function App() {
@@ -39,6 +41,8 @@ export default function App() {
           <Route path="/myrm" element={<MyRM />} />
           <Route path="/tests" element={<Tests />} />
           <Route path="/reference" element={<Reference />} />
+          <Route path="/nutrition" element={<Nutrition />} />
+          <Route path="/sommeil" element={<Sleep />} />
         </Route>
       </Route>
     </Routes>

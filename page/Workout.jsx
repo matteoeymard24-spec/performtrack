@@ -281,36 +281,61 @@ const blockTimerDurationSeconds = (b) =>
 const BLOCK_COLORS = ["#e0a13d", "#4a90d9", "#4fae7d", "#b06fd9", "#d9695a", "#29b6c9"];
 const blockColor = (i) => BLOCK_COLORS[i % BLOCK_COLORS.length];
 const blockLetter = (i) => String.fromCharCode(65 + (i % 26));
-const BlockBadge = ({ i, size = 30 }) => (
+/* Bloc d'échauffement (repéré par son nom, comme pour le RM) : pas de lettre, badge 🔥 gris-sable ;
+   les lettres A, B, C… ne comptent que les vrais blocs de travail. */
+const WARM_BLOCK_RE = /échauffement|echauffement|warm.?up|activation/i;
+const isWarmBlock = (b) => WARM_BLOCK_RE.test(b?.name || "");
+const WARM_COLOR = "#9b9183";
+const bMark = (blocks, i) => {
+  const list = blocks || [];
+  if (isWarmBlock(list[i])) return { warm: true, letter: "🔥", color: WARM_COLOR, label: "Warm-up" };
+  const n = list.slice(0, i).filter((x) => !isWarmBlock(x)).length;
+  return { warm: false, letter: blockLetter(n), color: blockColor(n), label: `Bloc ${blockLetter(n)}` };
+};
+const BlockBadge = ({ mark, size = 30 }) => (
   <span
     style={{
       width: size,
       height: size,
       borderRadius: 8,
-      background: blockColor(i),
+      background: mark.color,
       color: "#1a1306",
       fontWeight: 900,
-      fontSize: size * 0.5,
+      fontSize: mark.warm ? size * 0.46 : size * 0.5,
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
       flexShrink: 0,
-      boxShadow: `0 0 0 3px ${blockColor(i)}33`,
+      boxShadow: `0 0 0 3px ${mark.color}33`,
     }}
+    title={mark.label}
   >
-    {blockLetter(i)}
+    {mark.letter}
   </span>
 );
 /* Liaison entre deux blocs : trait + récup avant le bloc suivant */
-const BlockLink = ({ from, nextName, sec }) => (
+const BlockLink = ({ fromColor, toColor, nextName, sec }) => (
   <div style={{ display: "flex", flexDirection: "column", alignItems: "center", margin: "2px 0" }}>
-    <span style={{ width: 2, height: 10, background: `linear-gradient(${blockColor(from)}, ${blockColor(from + 1)})` }} />
+    <span style={{ width: 2, height: 10, background: `linear-gradient(${fromColor}, ${toColor})` }} />
     <span style={{ fontSize: 12, fontWeight: 700, color: "#a8a199", padding: "3px 12px", borderRadius: 999, border: "1px solid #2a2620", background: "#151310" }}>
       ➡️ {sec > 0 ? `${fmtRest(sec)} de récup` : "enchaîné"} avant {nextName}
     </span>
-    <span style={{ width: 2, height: 10, background: blockColor(from + 1) }} />
+    <span style={{ width: 2, height: 10, background: toColor }} />
   </div>
 );
+/* Nom affiché : un nom automatique « Bloc X » suit la vraie lettre (corrige « Bloc B » noté A après un warm-up) */
+const AUTO_BLOCK_NAME = /^bloc [a-z]$/i;
+const blockDisplayName = (blocks, i) => {
+  const b = (blocks || [])[i];
+  const m = bMark(blocks, i);
+  return !b?.name || AUTO_BLOCK_NAME.test(b.name.trim()) ? m.label : b.name;
+};
+/* Renumérote les noms automatiques « Bloc X » d'après les lettres (après ajout / retrait d'un warm-up) */
+const renumberAutoNames = (blocks) =>
+  (blocks || []).map((b, i) => (AUTO_BLOCK_NAME.test((b?.name || "").trim()) && !isWarmBlock(b) ? { ...b, name: bMark(blocks, i).label } : b));
+/* Nombre de tours d'un bloc muscu (= séries ; les exercices du bloc s'enchaînent) */
+const blockRounds = (b) => Math.max(1, ...((b?.exercises || []).map((x) => Math.max(1, Number(x.series) || 1))));
+const sameSeries = (b) => new Set((b?.exercises || []).map((x) => Math.max(1, Number(x.series) || 1))).size <= 1;
 
 const restOf = (min, sec, defMin = 2) => Math.max(0, Math.round((Number(min ?? defMin) || 0) * 60 + (Number(sec) || 0)));
 const roundRestSec = (b) => restOf(b?.restMin ?? b?.exercises?.[0]?.restMin, b?.restSec);
@@ -3078,7 +3103,8 @@ export default function Workout() {
     setBlocks([
       ...blocks,
       {
-        name: `Bloc ${String.fromCharCode(65 + blocks.length)}`,
+        // lettre suivante sans compter le warm-up (Échauffement → le 1er vrai bloc est « Bloc A »)
+        name: `Bloc ${blockLetter(blocks.filter((x) => !isWarmBlock(x)).length)}`,
         restMin: 2,
         exercises: [newExercise],
       },
@@ -3092,7 +3118,7 @@ export default function Workout() {
         [...prev, { kind: "block", index: i, block }].slice(-20)
       );
     }
-    setBlocks(blocks.filter((_, idx) => idx !== i));
+    setBlocks(renumberAutoNames(blocks.filter((_, idx) => idx !== i)));
   };
 
   // Remet le dernier bloc / exercice supprimé à sa place d'origine, sans
@@ -7496,19 +7522,19 @@ export default function Workout() {
             const workoutType = blockTypeOf(block, formSessionType); // eslint-disable-line no-shadow
             return (
             <React.Fragment key={bIdx}>
-            {bIdx > 0 && <BlockLink from={bIdx - 1} nextName={block.name || `Bloc ${blockLetter(bIdx)}`} sec={nextRestSec(blocks[bIdx - 1])} />}
+            {bIdx > 0 && <BlockLink fromColor={bMark(blocks, bIdx - 1).color} toColor={bMark(blocks, bIdx).color} nextName={blockDisplayName(blocks, bIdx)} sec={nextRestSec(blocks[bIdx - 1])} />}
             <div
               ref={(el) => (blockRefs.current[bIdx] = el)}
               style={{
-                background: `linear-gradient(180deg, ${blockColor(bIdx)}12, #0d0c0a 120px)`,
+                background: `linear-gradient(180deg, ${bMark(blocks, bIdx).color}12, #0d0c0a 120px)`,
                 padding: 18,
                 borderRadius: 12,
                 marginBottom: bIdx === blocks.length - 1 ? 16 : 0,
                 border:
                   dragOverBlockIndex === bIdx && dragBlockIndex !== null
                     ? "2px solid #e0a13d"
-                    : `1px solid ${blockColor(bIdx)}55`,
-                borderLeft: `5px solid ${blockColor(bIdx)}`,
+                    : `1px solid ${bMark(blocks, bIdx).color}55`,
+                borderLeft: `5px solid ${bMark(blocks, bIdx).color}`,
                 boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
                 opacity: dragBlockIndex === bIdx ? 0.5 : 1,
                 transition: "opacity 0.15s ease, border-color 0.15s ease",
@@ -7522,7 +7548,7 @@ export default function Workout() {
                   marginBottom: collapsedBlocks[bIdx] ? 0 : 12,
                   gap: 8,
                   // barre du bloc collante : on replie le bloc sans remonter (voir ui.jsx stickyHead)
-                  ...(collapsedBlocks[bIdx] ? {} : { ...stickyHead("#14120f", 18), borderBottom: `1px solid ${blockColor(bIdx)}33` }),
+                  ...(collapsedBlocks[bIdx] ? {} : { ...stickyHead("#14120f", 18), borderBottom: `1px solid ${bMark(blocks, bIdx).color}33` }),
                 }}
               >
                 <span
@@ -7540,7 +7566,7 @@ export default function Workout() {
                 >
                   ⠿
                 </span>
-                <BlockBadge i={bIdx} />
+                <BlockBadge mark={bMark(blocks, bIdx)} />
                 <input
                   type="text"
                   value={block.name}
@@ -7557,6 +7583,28 @@ export default function Workout() {
                     fontWeight: "bold",
                   }}
                 />
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Marque / démarque le bloc comme warm-up, puis renumérote les blocs « Bloc X »
+                    const warm = isWarmBlock(block);
+                    const next = blocks.map((b, i) => (i === bIdx ? { ...b, name: warm ? "Bloc A" : "Échauffement" } : b));
+                    setBlocks(renumberAutoNames(next));
+                  }}
+                  title={isWarmBlock(block) ? "Ce bloc est un échauffement (pas de lettre, pas de RM) — cliquer pour en faire un bloc de travail" : "Marquer ce bloc comme échauffement (pas de lettre, ne compte pas pour le RM)"}
+                  style={{
+                    padding: "6px 10px",
+                    background: isWarmBlock(block) ? "rgba(155,145,131,0.3)" : "transparent",
+                    color: isWarmBlock(block) ? "#f3f0ea" : "#a8a199",
+                    border: `1px solid ${isWarmBlock(block) ? WARM_COLOR : "#2a2620"}`,
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    fontSize: 13,
+                  }}
+                >
+                  🔥{isWarmBlock(block) ? " Warm-up" : ""}
+                </button>
                 <button
                   onClick={() => toggleBlockCollapsed(bIdx)}
                   title={collapsedBlocks[bIdx] ? "Déplier ce bloc" : "Replier ce bloc"}
@@ -9844,16 +9892,21 @@ export default function Workout() {
             return (
             <React.Fragment key={bIdx}>
             {bIdx > 0 && (
-              <BlockLink from={bIdx - 1} nextName={block.name || `Bloc ${blockLetter(bIdx)}`} sec={blockNextRestSec(selectedSession.blocks[bIdx - 1])} />
+              <BlockLink
+                fromColor={bMark(selectedSession.blocks, bIdx - 1).color}
+                toColor={bMark(selectedSession.blocks, bIdx).color}
+                nextName={blockDisplayName(selectedSession.blocks, bIdx)}
+                sec={blockNextRestSec(selectedSession.blocks[bIdx - 1])}
+              />
             )}
             <div
               style={{
-                background: `linear-gradient(180deg, ${blockColor(bIdx)}12, #0d0c0a 120px)`,
+                background: `linear-gradient(180deg, ${bMark(selectedSession.blocks, bIdx).color}12, #0d0c0a 120px)`,
                 padding: 18,
                 borderRadius: 12,
                 marginBottom: bIdx === (selectedSession.blocks || []).length - 1 ? 16 : 0,
-                border: `1px solid ${blockColor(bIdx)}55`,
-                borderLeft: `5px solid ${blockColor(bIdx)}`,
+                border: `1px solid ${bMark(selectedSession.blocks, bIdx).color}55`,
+                borderLeft: `5px solid ${bMark(selectedSession.blocks, bIdx).color}`,
                 boxShadow: "0 4px 14px rgba(0,0,0,0.35)",
               }}
             >
@@ -9866,13 +9919,39 @@ export default function Workout() {
                   gap: 10,
                   flexWrap: "wrap",
                   ...(blockFold.isOpen(`blk_${selectedSession.id}_${bIdx}`)
-                    ? { ...stickyHead("#14120f", 18), marginTop: -8, marginBottom: 12, borderBottom: `1px solid ${blockColor(bIdx)}33` }
+                    ? { ...stickyHead("#14120f", 18), marginTop: -8, marginBottom: 12, borderBottom: `1px solid ${bMark(selectedSession.blocks, bIdx).color}33` }
                     : {}),
                 }}
               >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 10, alignSelf: "center" }}>
-                  <BlockBadge i={bIdx} size={28} />
-                  <span style={{ color: blockColor(bIdx) }}>{block.name}</span>
+                  <BlockBadge mark={bMark(selectedSession.blocks, bIdx)} size={28} />
+                  <span style={{ color: bMark(selectedSession.blocks, bIdx).color }}>{blockDisplayName(selectedSession.blocks, bIdx)}</span>
+                  {sessionType === "muscu" && !block.timerMode && (block.exercises || []).length > 0 && (() => {
+                    // Tours du bloc mis en avant : 3 tours = 3 séries de chaque exercice (enchaînés)
+                    const n = blockRounds(block);
+                    const multi = (block.exercises || []).length > 1;
+                    const col = bMark(selectedSession.blocks, bIdx).color;
+                    return (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "baseline",
+                          gap: 5,
+                          padding: "3px 12px",
+                          borderRadius: 999,
+                          background: `${col}22`,
+                          border: `1px solid ${col}88`,
+                          color: "#f3f0ea",
+                          fontWeight: 800,
+                          fontSize: 13,
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        <span style={{ fontSize: 18, fontWeight: 900, color: col }}>{multi ? "↻ " : ""}{n}</span>
+                        {multi ? (n > 1 ? "tours" : "tour") : n > 1 ? "séries" : "série"}
+                      </span>
+                    );
+                  })()}
                 </span>
                 <span style={{ marginLeft: "auto", order: 99 }}>
                   <FoldBtn
@@ -10290,11 +10369,9 @@ export default function Workout() {
                             marginBottom: 10,
                           }}
                         >
-                          {block.timerMode === "emom" || block.timerMode === "amrap"
-                            ? ex.reps
-                            : isIsoEx(ex)
-                            ? `${isoSchemeText(ex)}${isUniEx(ex) ? " /côté (D+G)" : ""}`
-                            : `${Math.max(1, Number(ex.series) || 1)} × ${Math.max(1, Number(ex.reps) || 1)}${isUniEx(ex) ? " /côté (D+G)" : ""}`}{" "}
+                          {block.timerMode === "emom" || block.timerMode === "amrap" ? (
+                            <>
+                          {ex.reps}{" "}
                           @{" "}
                           {isOvercoming(ex) ? (
                             <strong style={{ color: "#e0a13d" }}>effort maximal (résistance immobile)</strong>
@@ -10312,6 +10389,77 @@ export default function Workout() {
                                 : "(choisis un athlète)"}
                             </>
                           )}
+                            </>
+                          ) : (() => {
+                            // Prescription mise en avant : (séries si elles diffèrent des tours du bloc) · reps · charge
+                            const pct = ex.rmPercent;
+                            let big;
+                            let sub = "";
+                            if (isOvercoming(ex)) {
+                              big = "Effort max";
+                              sub = "résistance immobile";
+                            } else if (pct === "PDC") {
+                              big = "PDC";
+                              sub = "poids du corps";
+                            } else if (pct === "ELASTIQUE") {
+                              big = "Élastique";
+                            } else if (!activeRM) {
+                              big = `${pct} %`;
+                              sub = "choisis un athlète pour voir la charge";
+                            } else {
+                              const lest = isLoadedBodyweight(ex.name) && activeLestText(ex.name, pct);
+                              if (lest) {
+                                big = lest;
+                                sub = `${pct} % RM`;
+                              } else {
+                                const w = calculateWeight(rmNameOf(ex), pct);
+                                big = w === "-" ? "—" : `${w} kg`;
+                                sub = `${pct} % RM${rmNameOf(ex) !== ex.name ? ` ${rmNameOf(ex)}` : ""}${w === "-" ? " · pas encore de RM" : ""}${dbSplit(ex, w)}`;
+                              }
+                            }
+                            const reps = Math.max(1, Number(ex.reps) || 1);
+                            const series = Math.max(1, Number(ex.series) || 1);
+                            const showSeries = !sameSeries(block);
+                            const col = bMark(selectedSession.blocks, bIdx).color;
+                            const box = (accent) => ({
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "center",
+                              padding: "8px 14px",
+                              borderRadius: 10,
+                              background: accent ? `${accent}18` : "#0d0c0a",
+                              border: `1px solid ${accent ? `${accent}77` : "#2a2620"}`,
+                              minWidth: 78,
+                            });
+                            const lab = { fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199" };
+                            return (
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", marginBottom: 2 }}>
+                                {showSeries && (
+                                  <div style={box(col)}>
+                                    <span style={lab}>Séries</span>
+                                    <span style={{ fontSize: 24, fontWeight: 900, color: "#f3f0ea", lineHeight: 1.1 }}>{series}</span>
+                                    <span style={{ fontSize: 11, color: "#a8a199" }}>sur {blockRounds(block)} tours</span>
+                                  </div>
+                                )}
+                                <div style={box()}>
+                                  <span style={lab}>{isIsoEx(ex) ? "Reps (maintiens)" : "Reps"}</span>
+                                  <span style={{ fontSize: 24, fontWeight: 900, color: "#f3f0ea", lineHeight: 1.1 }}>
+                                    {reps}
+                                    {isUniEx(ex) && <span style={{ fontSize: 13, fontWeight: 700, color: "#a8a199" }}> /côté</span>}
+                                  </span>
+                                  {isUniEx(ex) && <span style={{ fontSize: 11, color: "#a8a199" }}>droite + gauche</span>}
+                                  {isIsoEx(ex) && reps > 1 && Number(ex.isoRepRest) > 0 && (
+                                    <span style={{ fontSize: 11, color: "#a8a199" }}>{ex.isoRepRest} s de récup entre les reps</span>
+                                  )}
+                                </div>
+                                <div style={{ ...box("#e0a13d"), flex: "1 1 140px" }}>
+                                  <span style={lab}>Charge</span>
+                                  <span style={{ fontSize: 24, fontWeight: 900, color: "#e0a13d", lineHeight: 1.1 }}>{big}</span>
+                                  {sub && <span style={{ fontSize: 11.5, color: "#c9c1b5" }}>{sub}</span>}
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {block.timerMode !== "emom" && block.timerMode !== "amrap" && ex.tempo && (
                             <div>
                               <TempoView tempo={ex.tempo} dir={tempoDirOf(ex)} isoSec={ex.isoSec} isoAngle={ex.isoAngle} isoType={isoTypeOf(ex)} compact />
@@ -10663,8 +10811,8 @@ export default function Workout() {
                 const nextBlock = selectedSession.blocks?.[bIdx + 1];
                 const nextSec = nextBlock ? blockNextRestSec(block) : 0;
                 const fmt = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
-                const bname = block.name || `Bloc ${bIdx + 1}`;
-                const nname = nextBlock ? nextBlock.name || `Bloc ${bIdx + 2}` : "";
+                const bname = blockDisplayName(selectedSession.blocks, bIdx);
+                const nname = nextBlock ? blockDisplayName(selectedSession.blocks, bIdx + 1) : "";
                 const btn = (color) => ({ flex: "1 1 220px", padding: 12, borderRadius: 10, border: `1px solid ${color}`, background: `${color}1f`, color, fontSize: 15, fontWeight: 700, cursor: "pointer" });
                 if (!(roundSec && rounds > 1) && !nextSec) return null;
                 return (

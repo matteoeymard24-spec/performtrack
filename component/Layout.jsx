@@ -72,6 +72,8 @@ export default function Layout() {
     { path: "/dashboard", label: "Dashboard", icon: "📊", roles: ["superadmin", "admin", "athlete"] },
     { path: "/workout", label: "Workout", icon: "🏋️", roles: ["superadmin", "admin", "athlete"] },
     { path: "/wellness", label: "Wellness", icon: "🧘", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/nutrition", label: "Nutrition", icon: "🥗", roles: ["superadmin", "admin", "athlete"] },
+    { path: "/sommeil", label: "Sommeil", icon: "😴", roles: ["superadmin", "admin", "athlete"] },
     { path: "/myrm", label: "My RM", icon: "🏋️‍♂️", roles: ["superadmin", "admin", "athlete"] },
     { path: "/tests", label: "Tests", icon: "🧪", roles: ["superadmin", "admin", "athlete"] },
     { path: "/acwr", label: "REDI", icon: "📈", roles: ["superadmin", "admin"] },
@@ -158,7 +160,7 @@ export default function Layout() {
               display: "flex",
               flex: 1,
               minWidth: 0,
-              maxWidth: 760,
+              maxWidth: 940,
               overflowX: "auto",
               scrollbarWidth: "none",
               padding: "4px 0",
@@ -174,7 +176,7 @@ export default function Layout() {
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   style={{
-                    padding: "8px 13px",
+                    padding: "8px 11px",
                     background: active ? "rgba(224,161,61,0.12)" : "transparent",
                     color: active ? ACCENT : TEXT_MUTED,
                     borderRadius: 8,

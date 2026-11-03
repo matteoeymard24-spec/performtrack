@@ -79,7 +79,44 @@ const BACK_FOOT_SHAPES = [{ poly: [[128, 606], [142, 606], [146, 622], [143, 634
 const SIL_SEG = "C128 608 126 614 123 622 C119 630 114 642 117 650 L153 652 C158 645 155 628 151 618 C150 612 150 606 150 600";
 const makeSil = (shapes, ang) => [SIL_BASE[0].replace(SIL_SEG, footSil(shapes, ang)), SIL_BASE[1]];
 const SIL_FRONT = makeSil(FRONT_FOOT_SHAPES);
-const SIL_BACK = makeSil(BACK_FOOT_SHAPES, BACK_ANGLE);
+/* Vue de dos : la main est vue par son dos, pouce tourné vers le corps (bras le long du corps,
+   paumes vers les cuisses). On reflète la main autour de son axe (x = 61,5) et on reparcourt
+   le contour dans le même sens pour garder une silhouette continue. */
+const HAND_AXIS2 = 123; // x' = 123 − x
+const mirrorHand = (d) => d.replace(NUM_PAIR, (m, x, y) => `${R1(HAND_AXIS2 - +x)} ${y}`);
+const backHandSil = (armSil) => {
+  // contour de la main : du poignet externe (51,324) au poignet interne (72,324)
+  const A = "L51 324";
+  const END = "72 324";
+  const i = armSil.indexOf(A);
+  const j = i < 0 ? -1 : armSil.indexOf(END + " L79 318", i);
+  if (i < 0 || j < 0) return armSil;
+  const body = armSil.slice(i + A.length, j + END.length);
+  const segs = [];
+  const re = /([LC])([^LCMZ]+)/g;
+  let m;
+  let prev = [51, 324];
+  while ((m = re.exec(body))) {
+    const nums = m[2].trim().split(/\s+/).map(Number);
+    const pts = [];
+    for (let k = 0; k < nums.length; k += 2) pts.push([nums[k], nums[k + 1]]);
+    segs.push({ cmd: m[1], from: prev, pts });
+    prev = pts[pts.length - 1];
+  }
+  const mir = ([x, y]) => `${R1(HAND_AXIS2 - x)} ${y}`;
+  // reflet : le contour part maintenant de (51,324) en suivant les segments à l'envers
+  let out = A;
+  for (let k = segs.length - 1; k >= 0; k--) {
+    const sg = segs[k];
+    if (sg.cmd === "C") out += ` C${mir(sg.pts[1])} ${mir(sg.pts[0])} ${mir(sg.from)}`;
+    else out += ` L${mir(sg.from)}`;
+  }
+  return armSil.slice(0, i) + out + armSil.slice(j + END.length);
+};
+const SIL_BACK = (() => {
+  const sil = makeSil(BACK_FOOT_SHAPES, BACK_ANGLE);
+  return [sil[0], backHandSil(sil[1])];
+})();
 
 const HEAD = "M160 14 C180 14 189 28 189 46 C189 58 187 66 184 72 C181 80 174 86 166 88 L160 89 L154 88 C146 86 139 80 136 72 C133 66 131 58 131 46 C131 28 140 14 160 14 Z";
 const EARS = "M131 42 C126 42 125 52 128 59 C129 62 132 62 133 60 Z M189 42 C194 42 195 52 192 59 C191 62 188 62 187 60 Z";
@@ -90,6 +127,19 @@ const FOREARM = "M72 228 C68 246 64 270 58 298 L56 318 L66 320 C70 296 74 270 80
 /* Main (centrée x≈61, longueur ≈ 0,8 × hauteur de tête) : paume + 4 doigts + pouce côté extérieur */
 const HAND = "M50 324 L72 324 C74 334 74 344 73 350 L50 350 C49 344 49 334 50 324 Z M50.5 349 L55.5 349 L55.5 376 C55.5 379 50.5 379 50.5 376 Z M56 349 L61 349 L61 382 C61 385 56 385 56 382 Z M61.5 349 L66.5 349 L66.5 378 C66.5 381 61.5 381 61.5 378 Z M67 349 L72 349 L72 369 C72 372 67 372 67 369 Z M50 328 C46 334 42 344 41 354 C41 358 46 359 48 355 C50 348 53 342 55 336 Z";
 const HAND_F = ["M56 350 L56 372", "M61.5 350 L61.5 376", "M67 350 L67 366", "M52 338 C58 342 66 342 71 338"];
+const HAND_BACK_F = [
+  ...HAND_F.slice(0, 3).map(mirrorHand),
+  // tendons extenseurs : du poignet vers l'auriculaire, l'annulaire, le majeur, l'index
+  "M55 329 C54.5 336 54 342 53.5 348",
+  "M59.5 328 C59.3 336 59.1 342 59 348",
+  "M64 328 C64.2 336 64.4 342 64.5 348",
+  "M68.5 329 C69 336 69.5 342 70 348",
+  // jointures
+  "M51.5 351 C52.5 349.5 54.5 349.5 55.5 351", "M57 351 C58 349.5 60 349.5 61 351",
+  "M62.5 351 C63.5 349.5 65.5 349.5 66.5 351", "M68 351 C69 349.5 71 349.5 72 351",
+];
+/* Dos de la main (vue de dos) : main reflétée, séparations des doigts + tendons extenseurs vers chaque doigt
+   (plus de pli de paume) — défini après mirrorHand, voir HAND_BACK plus bas. */
 /* Pied vu de face : cheville → dos du pied → orteils, légèrement ouvert vers l'extérieur */
 /* Pied vu de face : dos du pied + 5 orteils arrondis, tourné vers l'extérieur */
 const FOOT = footPath(FOOT_LOCAL);
@@ -275,7 +325,7 @@ const M_BACK = {
     { id: "lombaire", side: "lr", label: "Lombaires (érecteurs du rachis)", t: 1, legacy: ["dos"], d: "M160 226 L146 222 C142 238 142 256 146 276 L160 282 Z", f: ["M153 230 C151 246 151 262 153 278"] },
     { id: "bras", side: "lr", label: "Bras (triceps)", t: 0, d: ARM_BRAS, f: ["M101 156 C97 176 94 198 92 220", "M84 174 C82 194 82 212 82 228"] },
     { id: "avantbras", side: "lr", label: "Avant-bras (extenseurs)", t: 1, d: FOREARM, f: ["M84 242 C90 264 86 292 74 316", "M78 240 C78 264 72 290 64 314"] },
-    { id: "main", side: "lr", label: "Main (dos)", t: 3, d: HAND, f: HAND_F },
+    { id: "main", side: "lr", label: "Main (dos)", t: 3, d: mirrorHand(HAND), f: HAND_BACK_F },
     { id: "fessier", noBack: true, side: "lr", label: "Fessier (grand et moyen fessier)", t: 2, d: "M160 280 L160 334 C146 346 124 344 108 328 C100 308 102 288 114 276 C128 266 148 268 160 280 Z M102 266 C110 256 126 254 140 258 C130 266 120 272 110 284 C102 280 100 272 102 266 Z", f: ["M156 290 C140 288 124 294 112 306", "M110 300 C120 316 138 328 156 328"] },
     { id: "ischio", noBack: true, side: "lr", label: "Ischio-jambiers", t: 0, d: "M106 336 C102 376 106 420 114 458 L128 462 C128 420 128 380 128 342 Z M130 342 C130 380 132 420 136 462 L150 462 C156 426 158 382 158 340 Z", f: ["M118 346 C116 384 118 424 122 456", "M143 348 C143 386 143 424 143 456"] },
     { id: "poplite", side: "lr", label: "Creux poplité", t: 3, d: "M114 458 L150 462 L148 482 L116 482 Z" },
@@ -295,6 +345,7 @@ const PERONE = shaft(125, 496, 5.5, 126, 596, 6.5) + " " + ellD(125, 493, 4.6, 4
 const HUMERUS = shaft(88, 136, 12, 85, 226, 10.5) + " " + ellD(85, 232, 10, 7);
 const AVANT_BRAS = shaft(91, 244, 9.5, 66, 322, 5.5) + " " + ellD(91, 242, 6, 6) + " " + shaft(80, 250, 5, 57, 322, 8.5) + " " + ellD(80, 248, 4.6, 4.2);
 
+const HAND_BONES_BACK = mirrorHand(HAND_BONES); // pouce côté corps, comme la main vue de dos
 const S_COMMON_ARM = [
   { id: "humerus", side: "lr", label: "Humérus", kind: "bone", d: HUMERUS },
   { id: "avantbras", side: "lr", label: "Avant-bras (radius, cubitus)", kind: "bone", d: AVANT_BRAS },
@@ -348,7 +399,7 @@ const S_BACK = {
     { id: "cotes", side: "lr", label: "Côtes & cage thoracique", kind: "bone", d: "M152 118 C134 112 116 124 110 146 C104 172 106 198 118 214 L152 228 Z", fillOnly: true, f: RIBS_BACK },
     { id: "omoplate", side: "lr", label: "Omoplate", kind: "bone", d: "M102 124 C112 121 126 123 140 130 C141 148 136 166 128 178 C121 181 113 172 109 158 C105 146 103 134 102 124 Z", f: ["M103 128 C118 133 130 138 141 143"] },
     { id: "clavicule", side: "lr", label: "Clavicule / acromion", kind: "bone", d: "M146 112 C134 110 118 110 104 112 C96 113 92 116 90 120 L94 124 C98 120 106 118 116 117 C130 115 140 116 148 118 Z" },
-    ...S_COMMON_ARM,
+    ...S_COMMON_ARM.map((pt) => (pt.id === "main" ? { ...pt, d: HAND_BONES_BACK } : pt)),
     { id: "bassin", side: "lr", label: "Bassin (ilium, ischion)", kind: "bone",
       d: "M158 266 C148 258 132 255 119 258 C111 262 108 274 111 288 C113 298 118 306 124 312 C124 318 127 326 132 330 C136 332 140 330 141 326 C145 316 152 308 158 304 Z",
       f: ["M146 268 C136 266 124 270 116 280"] },

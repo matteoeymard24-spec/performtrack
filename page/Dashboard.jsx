@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import { isMobileView } from "../component/viewMode";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { stickyHead } from "../component/ui";
-import DashColumns from "../component/DashColumns";
+import DashColumns, { colOfFn } from "../component/DashColumns";
+import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
+import { NutritionDashCard, SleepDashCard } from "../component/DashWellbeingCards";
 import { groupTargetMatches, formerTargetsOf, hasProgress } from "../component/groupHistory";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
@@ -216,6 +218,7 @@ export default function Dashboard() {
     ["today", "🏋️ Séance du jour"], ["form", "🩺 État de forme"], ["wellness", "🧘 Wellness"], ["injuries", "🚑 Blessures récentes"],
     ["pain", "🩹 Douleur du jour"], ["tests", "🧪 Mes tests"], ["progress", "📊 Progression des séances"], ["load", "📈 Charge des 3 semaines"],
     ["weight", "⚖️ Mon poids"], ["vmacmj", "🏃 VMA & 🦘 CMJ"], ["fbex", "🕘 Mes derniers exercices"], ["rm", "💪 Mes RM"],
+    ["nutrition", "🥗 Nutrition du jour"], ["sleep", "😴 Sommeil"],
   ];
   const orderStoreKey = `pt_dash_order_${currentUser?.uid || "anon"}`;
   const [dashOrder, setDashOrder] = useState(() => {
@@ -275,6 +278,31 @@ export default function Dashboard() {
       /* stockage indisponible */
     }
     if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashOrder: order || [], dashCols: cols || {} }).catch(() => null);
+  };
+
+  // Cartes désactivées (ne s'affichent plus du tout) : appareil + profil
+  const offStoreKey = `pt_dash_off_${currentUser?.uid || "anon"}`;
+  const [dashOff, setDashOff] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`pt_dash_off_${currentUser?.uid || "anon"}`) || "null");
+    } catch (e) {
+      return null;
+    }
+  });
+  const [cardsPanel, setCardsPanel] = useState(false);
+  useEffect(() => {
+    if (!dashOff && Array.isArray(userProfile?.dashOff)) setDashOff(userProfile.dashOff);
+  }, [userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  const offList = Array.isArray(dashOff) ? dashOff : [];
+  const toggleCardOff = (k) => {
+    const next = offList.includes(k) ? offList.filter((x) => x !== k) : [...offList, k];
+    setDashOff(next);
+    try {
+      localStorage.setItem(offStoreKey, JSON.stringify(next));
+    } catch (e) {
+      /* stockage indisponible */
+    }
+    if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashOff: next }).catch(() => null);
   };
 
   const hiddenStoreKey = `pt_dash_hidden_${currentUser?.uid || "anon"}`;
@@ -1739,6 +1767,9 @@ export default function Dashboard() {
             <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>Ta forme, tes séances et ta charge · attrape la barre en haut d'une carte pour la déplacer</p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className={cardsPanel ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setCardsPanel((v) => !v)} title="Choisir les cartes affichées">
+              👁 Cartes{offList.length ? ` (${DASH_CARDS.length - offList.filter((k) => DASH_CARDS.some(([x]) => x === k)).length}/${DASH_CARDS.length})` : ""}
+            </button>
             {(dashOrder || dashCols) && (
               <button className="pt-btn" onClick={() => saveDashLayout(null, null)} title="Remettre les cartes dans l'ordre par défaut">
                 ↺ Ordre par défaut
@@ -1749,6 +1780,51 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+        {cardsPanel && (
+          <div style={{ ...CARD_STYLE, border: "1px solid #e0a13d88" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>👁 Cartes affichées</div>
+                <div style={{ fontSize: 12, color: "#a8a199" }}>Touche une carte pour l'afficher ou la masquer. Rien n'est supprimé : tu peux la remettre quand tu veux.</div>
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button className="pt-btn" onClick={() => setCardsPanel(false)}>✓ Terminé</button>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              {DASH_CARDS.map(([k, label]) => {
+                const on = !offList.includes(k);
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => toggleCardOff(k)}
+                    aria-pressed={on}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 14px",
+                      borderRadius: 999,
+                      fontSize: 13.5,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      border: `1px solid ${on ? "#e0a13d" : "#2a2620"}`,
+                      background: on ? "rgba(224,161,61,0.16)" : "#0d0c0a",
+                      color: on ? "#f3f0ea" : "#6f6a62",
+                      textDecoration: on ? "none" : "line-through",
+                    }}
+                  >
+                    <span style={{ width: 16, height: 16, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, background: on ? "#e0a13d" : "transparent", border: `1px solid ${on ? "#e0a13d" : "#3a342a"}`, color: "#1a1306" }}>
+                      {on ? "✓" : ""}
+                    </span>
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {(() => {
           const done = todayWorkout && isWorkoutCompleted(todayWorkout);
@@ -2178,6 +2254,18 @@ export default function Dashboard() {
         )}
               </>
             ) },
+            { key: "nutrition", label: "🥗 Nutrition du jour", node: (
+              <div style={CARD_STYLE}>
+                {foldHead("nutrition", "🥗 Nutrition du jour")}
+                {vis("nutrition") && <NutritionDashCard uid={currentUser?.uid} onOpen={(t) => navigate(`/nutrition?tab=${t}&from=dashboard`)} />}
+              </div>
+            ) },
+            { key: "sleep", label: "😴 Sommeil", node: (
+              <div style={CARD_STYLE}>
+                {foldHead("sleep", "😴 Sommeil")}
+                {vis("sleep") && <SleepDashCard uid={currentUser?.uid} onOpen={(t) => navigate(`/sommeil?tab=${t}&from=dashboard`)} />}
+              </div>
+            ) },
             { key: "injuries", label: "🚑 Blessures récentes", node: (
               <>
         {selfInjuries.length > 0 && (
@@ -2193,13 +2281,10 @@ export default function Dashboard() {
             {foldHead("injuries", "🚑 Blessures récentes")}
             {vis("injuries") && (
             <>
-            {selfInjuries.map((inj) => (
-              <div key={inj.id} style={{ fontSize: 13, color: "#a8a199", marginBottom: 6 }}>
-                <strong style={{ color: "#f3f0ea" }}>{inj.date}</strong>
-                {inj.zone ? ` — ${inj.zone}` : ""}
-                {inj.daysLost !== null && inj.daysLost !== undefined ? ` (${inj.daysLost}j d'arrêt)` : ""}
-              </div>
-            ))}
+            <InjuryTimeline injuries={selfInjuries} compact />
+            <button className="pt-btn" style={{ marginTop: 4, width: "100%" }} onClick={() => navigate("/tests?tab=bilan&from=dashboard")}>
+              Voir / modifier mon historique →
+            </button>
             </>
           )}
           </div>
@@ -2807,8 +2892,18 @@ export default function Dashboard() {
               </>
             ) },
           ];
-          const items = orderedKeys(cards.map((c) => c.key)).map((k) => cards.find((x) => x.key === k));
-          return <DashColumns items={items} cols={dashCols} twoCols={twoCols} onCommit={saveDashLayout} />;
+          const items = orderedKeys(cards.map((c) => c.key))
+            .filter((k) => !offList.includes(k))
+            .map((k) => cards.find((x) => x.key === k));
+          // les cartes masquées gardent leur place : on ne remplace que la suite des cartes visibles
+          const fullOrder = orderedKeys(cards.map((c) => c.key));
+          const onCommit = (visOrder, cols) => {
+            let vi = 0;
+            const merged = fullOrder.map((k) => (offList.includes(k) ? k : visOrder[vi++]));
+            saveDashLayout(merged, { ...(dashCols || {}), ...cols });
+          };
+          // colonnes par défaut calculées sur TOUTES les cartes : masquer une carte ne fait pas changer les autres de côté
+          return <DashColumns items={items} cols={colOfFn(fullOrder, dashCols)} twoCols={twoCols} onCommit={onCommit} />;
         })()}
       </div>
     );
@@ -3485,7 +3580,6 @@ export default function Dashboard() {
                   padding: 18,
                   borderRadius: 12,
                   marginBottom: 16,
-                  border: "1px solid #2a2620",
                   border: "1px solid rgba(217,105,90,0.4)",
                 }}
               >
@@ -3513,180 +3607,39 @@ export default function Dashboard() {
 
                 {showInjuryHistory && (
                   <div style={{ marginTop: 14 }}>
-                    {showAthleteDetail.injuries.length === 0 && (
-                      <div style={{ fontSize: 13, color: "#a8a199" }}>
-                        Aucune blessure enregistrée. Ajoute-en depuis Tests › Bilan.
-                      </div>
-                    )}
-                    {showAthleteDetail.injuries.map((inj) =>
-                      editingInjury === inj.id ? (
-                        <div
-                          key={inj.id}
-                          style={{
-                            background: "#1a1815",
-                            padding: 14,
-                            borderRadius: 8,
-                            marginBottom: 10,
-                            border: "1px solid rgba(217,105,90,0.4)",
+                    <InjuryTimeline
+                      injuries={showAthleteDetail.injuries}
+                      emptyText="Aucune blessure enregistrée. Ajoute-en depuis Tests › Bilan."
+                      editingId={editingInjury}
+                      onEdit={(inj) => setEditingInjury(inj.id)}
+                      onDelete={async (inj) => {
+                        if (!await appConfirm("Supprimer cette blessure de l'historique ?")) return;
+                        try {
+                          await deleteDoc(doc(db, "injuries", inj.id));
+                          setShowAthleteDetail((prev) => ({ ...prev, injuries: prev.injuries.filter((i) => i.id !== inj.id) }));
+                        } catch (e) {
+                          alert("Erreur suppression : " + e.message);
+                        }
+                      }}
+                      renderEdit={(inj) => (
+                        <InjuryForm
+                          initial={inj}
+                          onCancel={() => setEditingInjury(null)}
+                          onSave={async (payload) => {
+                            try {
+                              await updateDoc(doc(db, "injuries", inj.id), payload);
+                              setShowAthleteDetail((prev) => ({
+                                ...prev,
+                                injuries: prev.injuries.map((i) => (i.id === inj.id ? { ...i, ...payload } : i)),
+                              }));
+                              setEditingInjury(null);
+                            } catch (e) {
+                              alert("Erreur : " + e.message);
+                            }
                           }}
-                        >
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                            <div>
-                              <label style={{ fontSize: 11, color: "#a8a199" }}>Date</label>
-                              <input
-                                type="date"
-                                value={injuryEditDraft?.date || ""}
-                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, date: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
-                              />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: 11, color: "#a8a199" }}>Zone</label>
-                              <input
-                                type="text"
-                                value={injuryEditDraft?.zone || ""}
-                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, zone: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
-                              />
-                            </div>
-                            <div>
-                              <label style={{ fontSize: 11, color: "#a8a199" }}>Tissu</label>
-                              <select
-                                value={injuryEditDraft?.tissueType || "muscle"}
-                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, tissueType: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
-                              >
-                                {Object.entries(TISSUE_LABELS).map(([k, label]) => (
-                                  <option key={k} value={k}>{label}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label style={{ fontSize: 11, color: "#a8a199" }}>Mécanisme</label>
-                              <select
-                                value={injuryEditDraft?.mechanism || "surcharge"}
-                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, mechanism: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
-                              >
-                                {Object.entries(MECHANISM_LABELS).map(([k, label]) => (
-                                  <option key={k} value={k}>{label}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label style={{ fontSize: 11, color: "#a8a199" }}>Jours d'arrêt</label>
-                              <input
-                                type="number"
-                                min="0"
-                                value={injuryEditDraft?.daysLost ?? ""}
-                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, daysLost: e.target.value }))}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea" }}
-                              />
-                            </div>
-                            <div style={{ gridColumn: "1 / -1" }}>
-                              <label style={{ fontSize: 11, color: "#a8a199" }}>Notes</label>
-                              <textarea
-                                value={injuryEditDraft?.notes || ""}
-                                onChange={(e) => setInjuryEditDraft((d) => ({ ...d, notes: e.target.value }))}
-                                rows={2}
-                                style={{ width: "100%", padding: 8, borderRadius: 6, border: "1px solid #3a342a", background: "#151310", color: "#f3f0ea", resize: "vertical" }}
-                              />
-                            </div>
-                          </div>
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              onClick={async () => {
-                                try {
-                                  const payload = {
-                                    date: injuryEditDraft.date,
-                                    zone: injuryEditDraft.zone || "",
-                                    tissueType: injuryEditDraft.tissueType,
-                                    mechanism: injuryEditDraft.mechanism,
-                                    daysLost: injuryEditDraft.daysLost !== "" ? Number(injuryEditDraft.daysLost) : null,
-                                    notes: injuryEditDraft.notes || "",
-                                  };
-                                  await updateDoc(doc(db, "injuries", inj.id), payload);
-                                  setShowAthleteDetail((prev) => ({
-                                    ...prev,
-                                    injuries: prev.injuries.map((i) => (i.id === inj.id ? { ...i, ...payload } : i)),
-                                  }));
-                                  setEditingInjury(null);
-                                  setInjuryEditDraft(null);
-                                } catch (e) {
-                                  alert("Erreur : " + e.message);
-                                }
-                              }}
-                              style={{ padding: "8px 14px", background: "#4fae7d", color: "white", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
-                            >
-                              ✅ Enregistrer
-                            </button>
-                            <button
-                              onClick={() => { setEditingInjury(null); setInjuryEditDraft(null); }}
-                              style={{ padding: "8px 14px", background: "transparent", color: "#a8a199", border: "1px solid #3a342a", borderRadius: 6, cursor: "pointer", fontSize: 13 }}
-                            >
-                              Annuler
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div
-                          key={inj.id}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            fontSize: 13,
-                            color: "#a8a199",
-                            marginBottom: 8,
-                            paddingBottom: 8,
-                            borderBottom: "1px solid #2a2620",
-                          }}
-                        >
-                          <div>
-                            <strong style={{ color: "#f3f0ea" }}>{inj.date}</strong>
-                            {inj.zone ? ` — ${inj.zone}` : ""}{" "}
-                            {inj.tissueType && `(${TISSUE_LABELS[inj.tissueType] || inj.tissueType}${inj.mechanism ? `, ${MECHANISM_LABELS[inj.mechanism] || inj.mechanism}` : ""})`}
-                            {inj.daysLost !== null && inj.daysLost !== undefined ? ` — ${inj.daysLost}j d'arrêt` : ""}
-                            {inj.notes ? <div style={{ fontSize: 12, marginTop: 2 }}>{inj.notes}</div> : null}
-                          </div>
-                          <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 10 }}>
-                            <button
-                              onClick={() => {
-                                setEditingInjury(inj.id);
-                                setInjuryEditDraft({
-                                  date: inj.date || "",
-                                  zone: inj.zone || "",
-                                  tissueType: inj.tissueType || "muscle",
-                                  mechanism: inj.mechanism || "surcharge",
-                                  daysLost: inj.daysLost !== null && inj.daysLost !== undefined ? String(inj.daysLost) : "",
-                                  notes: inj.notes || "",
-                                });
-                              }}
-                              style={{ padding: "5px 10px", background: "transparent", color: "#e0a13d", border: "1px solid rgba(224,161,61,0.4)", borderRadius: 6, cursor: "pointer", fontSize: 12 }}
-                            >
-                              Modifier
-                            </button>
-                            <button
-                              onClick={async () => {
-                                if (!await appConfirm("Supprimer cette blessure de l'historique ?")) return;
-                                try {
-                                  await deleteDoc(doc(db, "injuries", inj.id));
-                                  setShowAthleteDetail((prev) => ({
-                                    ...prev,
-                                    injuries: prev.injuries.filter((i) => i.id !== inj.id),
-                                  }));
-                                } catch (e) {
-                                  alert("Erreur suppression : " + e.message);
-                                }
-                              }}
-                              style={{ padding: "5px 10px", background: "transparent", color: "#d9695a", border: "1px solid rgba(217,105,90,0.4)", borderRadius: 6, cursor: "pointer", fontSize: 12 }}
-                            >
-                              Supprimer
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    )}
+                        />
+                      )}
+                    />
                   </div>
                 )}
               </div>

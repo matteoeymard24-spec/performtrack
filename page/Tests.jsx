@@ -1,4 +1,7 @@
+import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
+import TestProgress from "../component/TestProgress";
 import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
 import { getScopedUserDocs } from "../component/workoutQueries";
@@ -307,7 +310,8 @@ export default function Tests() {
   const [groups, setGroups] = useState([]);
   const [uid, setUid] = useState("");
   const [pickMode, setPickMode] = useState(""); // "" | "athletes" | "moi" | "admins" (sélecteur commun PersonPicker)
-  const [tab, setTab] = useState("saisie");
+  const navigate = useNavigate();
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") || "saisie");
   const [group, setGroup] = useState("endurance");
   const [testId, setTestId] = useState("leger");
   const [values, setValues] = useState({});
@@ -325,12 +329,6 @@ export default function Tests() {
   const [injuries, setInjuries] = useState([]);
   const [showInjuryForm, setShowInjuryForm] = useState(false);
   const [editingInjuryId, setEditingInjuryId] = useState(null);
-  const [injuryZone, setInjuryZone] = useState("");
-  const [injuryTissue, setInjuryTissue] = useState("muscle");
-  const [injuryMechanism, setInjuryMechanism] = useState("surcharge");
-  const [injuryDaysLost, setInjuryDaysLost] = useState("");
-  const [injuryNotes, setInjuryNotes] = useState("");
-  const [injuryDate, setInjuryDate] = useState("");
   const [injurySaving, setInjurySaving] = useState(false);
   const [injuryMessage, setInjuryMessage] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
@@ -619,8 +617,6 @@ export default function Tests() {
   const selectedAthlete = athletes.find((a) => a.id === uid);
 
   /* ---- Journal de blessures de l'athlète choisi ---- */
-  const TISSUE_LABELS = { muscle: "Muscle", tendon: "Tendon", ligament: "Ligament", os: "Os / articulation", autre: "Autre" };
-  const MECHANISM_LABELS = { contact: "Contact / traumatique", surcharge: "Surcharge / usure", autre: "Autre" };
   // Date LOCALE (toISOString donnait la date UTC : avant 1-2 h du matin en France, c'était encore « hier »).
   const injToday = (() => { const _d = new Date(); return `${_d.getFullYear()}-${String(_d.getMonth() + 1).padStart(2, "0")}-${String(_d.getDate()).padStart(2, "0")}`; })();
 
@@ -643,12 +639,6 @@ export default function Tests() {
 
   const resetInjuryForm = () => {
     setEditingInjuryId(null);
-    setInjuryZone("");
-    setInjuryTissue("muscle");
-    setInjuryMechanism("surcharge");
-    setInjuryDaysLost("");
-    setInjuryNotes("");
-    setInjuryDate(injToday);
     setInjuryMessage("");
   };
 
@@ -659,41 +649,26 @@ export default function Tests() {
   }, [uid]);
 
   const startEditInjury = (inj) => {
+    setShowInjuryForm(false);
+    setInjuryMessage("");
     setEditingInjuryId(inj.id);
-    setInjuryZone(inj.zone || "");
-    setInjuryTissue(inj.tissueType || "muscle");
-    setInjuryMechanism(inj.mechanism || "surcharge");
-    setInjuryDaysLost(inj.daysLost !== null && inj.daysLost !== undefined ? String(inj.daysLost) : "");
-    setInjuryNotes(inj.notes || "");
-    setInjuryDate(inj.date || injToday);
-    setShowInjuryForm(true);
   };
 
-  const saveInjury = async () => {
+  /* payload : champs du formulaire (InjuryForm) ; id : blessure modifiée, sinon création */
+  const saveInjury = async (payload, id = null) => {
     if (!uid) return;
     setInjurySaving(true);
     setInjuryMessage("");
     try {
-      const payload = {
-        userId: uid,
-        date: injuryDate || injToday,
-        zone: injuryZone || "",
-        tissueType: injuryTissue,
-        mechanism: injuryMechanism,
-        daysLost: injuryDaysLost ? Number(injuryDaysLost) : null,
-        notes: injuryNotes || "",
-      };
-      if (editingInjuryId) {
-        await updateDoc(doc(db, "injuries", editingInjuryId), payload);
+      const data = { ...payload, userId: uid };
+      if (id) {
+        await updateDoc(doc(db, "injuries", id), data);
       } else {
-        await setDoc(doc(db, "injuries", `${uid}_${Date.now()}`), { ...payload, createdAt: Timestamp.now() });
+        await setDoc(doc(db, "injuries", `${uid}_${Date.now()}`), { ...data, createdAt: Timestamp.now() });
       }
-      setInjuryMessage("✅ Enregistré.");
       await loadInjuries(uid);
-      setTimeout(() => {
-        setShowInjuryForm(false);
-        resetInjuryForm();
-      }, 900);
+      setShowInjuryForm(false);
+      resetInjuryForm();
     } catch (e) {
       setInjuryMessage("❌ Erreur : " + e.message);
     } finally {
@@ -889,6 +864,13 @@ export default function Tests() {
         subtitle={isCoach
           ? "Saisis les tests d'endurance, de mobilité, de force isométrique et de puissance. Les séances énergétiques s'appuient sur le test de référence choisi pour chaque athlète."
           : "Consulte tes résultats, tes normes et ton bilan. La saisie des tests est faite par ton coach."}
+        actions={
+          new URLSearchParams(window.location.search).get("from") === "dashboard" ? (
+            <button className="pt-btn" onClick={() => navigate("/dashboard")}>
+              ← Retour au dashboard
+            </button>
+          ) : null
+        }
       />
 
       {/* Choix de l'athlète + paramètres (repliables, l'onglet reste visible) */}
@@ -1292,6 +1274,13 @@ export default function Tests() {
                 )}
                 </>)}
               </div>
+
+              {tests.length > 0 && (
+                <div style={cardStyle}>
+                  <FoldHead title="📈 Progression" open={bf.isOpen("progress")} onToggle={() => bf.toggle("progress")} />
+                  {bf.isOpen("progress") && <TestProgress tests={tests} />}
+                </div>
+              )}
 
               {tests.length === 0 && <div style={{ color: MUTED, textAlign: "center", padding: 20 }}>{isCoach ? "Aucun test enregistré pour cet athlète." : "Aucun test enregistré pour le moment."}</div>}
               {tests.map((t) => {
@@ -1793,7 +1782,7 @@ export default function Tests() {
                   <button
                     disabled={!uid}
                     onClick={() => {
-                      if (showInjuryForm && !editingInjuryId) {
+                      if (showInjuryForm) {
                         setShowInjuryForm(false);
                       } else {
                         resetInjuryForm();
@@ -1815,65 +1804,29 @@ export default function Tests() {
                     : "Renseigne ici tes blessures passées et en cours : ton coach les voit et s'en sert pour adapter tes séances."}
                 </div>
 
-                {showInjuryForm && (
-                  <div style={{ marginBottom: 14, padding: 12, background: "#151310", borderRadius: 10 }}>
-                    <label style={{ fontSize: 12, color: MUTED }}>Date</label>
-                    <input type="date" value={injuryDate} onChange={(e) => setInjuryDate(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }} />
-                    <label style={{ fontSize: 12, color: MUTED }}>Zone touchée</label>
-                    <input type="text" value={injuryZone} onChange={(e) => setInjuryZone(e.target.value)} placeholder="ex : cheville gauche" style={{ ...inputStyle, marginBottom: 10 }} />
-                    <label style={{ fontSize: 12, color: MUTED }}>Type de tissu</label>
-                    <select value={injuryTissue} onChange={(e) => setInjuryTissue(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
-                      {Object.entries(TISSUE_LABELS).map(([k, l]) => (
-                        <option key={k} value={k}>{l}</option>
-                      ))}
-                    </select>
-                    <label style={{ fontSize: 12, color: MUTED }}>Mécanisme</label>
-                    <select value={injuryMechanism} onChange={(e) => setInjuryMechanism(e.target.value)} style={{ ...inputStyle, marginBottom: 10 }}>
-                      {Object.entries(MECHANISM_LABELS).map(([k, l]) => (
-                        <option key={k} value={k}>{l}</option>
-                      ))}
-                    </select>
-                    <label style={{ fontSize: 12, color: MUTED }}>Jours d'arrêt estimés</label>
-                    <input type="number" min="0" value={injuryDaysLost} onChange={(e) => setInjuryDaysLost(e.target.value)} placeholder="ex : 7" style={{ ...inputStyle, marginBottom: 10 }} />
-                    <label style={{ fontSize: 12, color: MUTED }}>Notes</label>
-                    <textarea value={injuryNotes} onChange={(e) => setInjuryNotes(e.target.value)} rows={3} style={{ ...inputStyle, marginBottom: 10, resize: "vertical" }} />
-                    <button
-                      onClick={saveInjury}
-                      disabled={injurySaving}
-                      style={{ width: "100%", padding: 12, background: injurySaving ? "#a8a199" : "#d9695a", color: "white", border: "none", borderRadius: 8, fontSize: 15, fontWeight: "bold", cursor: injurySaving ? "not-allowed" : "pointer" }}
-                    >
-                      {injurySaving ? "Enregistrement..." : editingInjuryId ? "Mettre à jour" : "Enregistrer la blessure"}
-                    </button>
-                    {injuryMessage && (
-                      <div style={{ marginTop: 8, fontSize: 13, color: injuryMessage.includes("✅") ? "#4fae7d" : "#d9695a" }}>{injuryMessage}</div>
-                    )}
-                  </div>
+                {showInjuryForm && !editingInjuryId && (
+                  <InjuryForm saving={injurySaving} message={injuryMessage} onSave={(p) => saveInjury(p)} onCancel={() => setShowInjuryForm(false)} />
                 )}
 
                 {!uid ? (
                   <div style={{ fontSize: 13, color: MUTED }}>Choisis un athlète en haut de la page.</div>
-                ) : injuries.length > 0 ? (
-                  injuries.map((inj) => (
-                    <div key={inj.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "10px 0", borderTop: `1px solid ${BORDER}`, flexWrap: "wrap" }}>
-                      <div style={{ fontSize: 13 }}>
-                        <strong style={{ color: "#d9695a" }}>{inj.date}</strong>
-                        {inj.zone ? ` — ${inj.zone}` : ""}{" "}
-                        <span style={{ color: MUTED }}>
-                          ({TISSUE_LABELS[inj.tissueType] || inj.tissueType}, {MECHANISM_LABELS[inj.mechanism] || inj.mechanism})
-                          {inj.daysLost !== null && inj.daysLost !== undefined ? `, ${inj.daysLost}j d'arrêt` : ""}
-                        </span>
-                        {inj.notes && <div style={{ color: "#706a61", fontSize: 12, marginTop: 2 }}>{inj.notes}</div>}
-                      </div>
-                      {uid && (
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <button onClick={() => startEditInjury(inj)} style={{ ...pill(false), color: ACCENT, padding: "6px 10px", fontSize: 12 }}>Modifier</button>
-                        <button onClick={() => removeInjury(inj.id)} style={{ ...pill(false), color: "#d9534f", padding: "6px 10px", fontSize: 12 }}>Supprimer</button>
-                      </div>
-                      )}
-                    </div>
-                  ))
                 ) : (
-                  <div style={{ fontSize: 13, color: MUTED }}>{isCoach ? "Aucune blessure enregistrée pour cet athlète." : "Aucune blessure enregistrée pour le moment."}</div>
+                  <InjuryTimeline
+                    injuries={injuries}
+                    onEdit={startEditInjury}
+                    onDelete={(inj) => removeInjury(inj.id)}
+                    editingId={editingInjuryId}
+                    renderEdit={(inj) => (
+                      <InjuryForm
+                        initial={inj}
+                        saving={injurySaving}
+                        message={injuryMessage}
+                        onSave={(p) => saveInjury(p, inj.id)}
+                        onCancel={() => resetInjuryForm()}
+                      />
+                    )}
+                    emptyText={isCoach ? "Aucune blessure enregistrée pour cet athlète." : "Aucune blessure enregistrée pour le moment."}
+                  />
                 )}
               </>)}
               </div>
