@@ -1067,41 +1067,108 @@ export default function Tests() {
 
           {msg && <div style={{ ...cardStyle, padding: 10, color: TEXT, fontSize: 13 }}>{msg}</div>}
 
-          {/* ------------ SAISIE ------------ */}
-          {effTab === "saisie" && (
-            <>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-                {TEST_GROUPS.map((g) => (
-                  <button
-                    key={g.id}
-                    onClick={() => {
-                      setGroup(g.id);
-                      const first = TESTS.find((t) => t.group === g.id);
-                      if (first) setTestId(first.id);
-                    }}
-                    style={pill(group === g.id)}
-                  >
-                    {g.label}
-                  </button>
-                ))}
+          {/* ------------ SAISIE (4 étapes) ------------ */}
+          {effTab === "saisie" && (() => {
+            const Step = ({ n, title, right }) => (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span style={{ width: 22, height: 22, borderRadius: 11, background: "rgba(224,161,61,0.18)", border: `1px solid ${ACCENT}`, color: ACCENT, fontSize: 12, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{n}</span>
+                  <span style={{ fontSize: 11.5, letterSpacing: 0.6, textTransform: "uppercase", color: MUTED, fontWeight: 700 }}>{title}</span>
+                </div>
+                {right}
               </div>
-              <select style={{ ...inputStyle, marginBottom: 12 }} value={testId} onChange={(e) => setTestId(e.target.value)}>
-                {testsOfGroup.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.noGear ? "🧰 " : ""}
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+            );
+            const num = (v) => { const x = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(x) && String(v ?? "").trim() !== "" ? x : null; };
+            const asym = (k) => {
+              const l = num(values[`${k}_L`]);
+              const r = num(values[`${k}_R`]);
+              if (l === null || r === null || Math.max(l, r) === 0) return null;
+              return Math.round((Math.abs(l - r) / Math.max(l, r)) * 100);
+            };
+            const sideInput = (key, side) => (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, color: MUTED, marginBottom: 2 }}>{side}</div>
+                <input
+                  style={inputStyle}
+                  inputMode="decimal"
+                  value={values[key] ?? ""}
+                  onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
+                />
+              </div>
+            );
+            const plain = [...(test?.fields || []).map((f) => ({ ...f, isField: true })), ...(test?.measures ? activeMeasures.filter((m) => !m.sided) : [])];
+            const sided = test?.measures ? activeMeasures.filter((m) => m.sided) : [];
+            return (
+            <>
+              {/* ① Choix du test */}
+              <div style={cardStyle}>
+                <Step n="1" title="Le test" />
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+                  {TEST_GROUPS.map((g) => (
+                    <button
+                      key={g.id}
+                      onClick={() => {
+                        setGroup(g.id);
+                        const first = TESTS.find((t) => t.group === g.id);
+                        if (first) setTestId(first.id);
+                      }}
+                      style={pill(group === g.id)}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 170px), 1fr))", gap: 8 }}>
+                  {testsOfGroup.map((t) => {
+                    const on = t.id === testId;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setTestId(t.id)}
+                        style={{
+                          textAlign: "left",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          cursor: "pointer",
+                          background: on ? "rgba(224,161,61,0.14)" : INPUT_BG,
+                          border: `1px solid ${on ? ACCENT : BORDER}`,
+                          boxShadow: on ? `0 0 0 1px ${ACCENT}` : "none",
+                          color: TEXT,
+                          fontSize: 13.5,
+                          fontWeight: on ? 700 : 500,
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {t.name}
+                        {t.noGear && <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontWeight: 400 }}>🧰 sans matériel</div>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               {test && (
                 <>
-                  <TestInfo test={test} media={media[test.id]} onSaveMedia={(d) => saveMedia(test.id, d)} />
-
+                  {/* ② Protocole (repliable) */}
                   <div style={cardStyle}>
-                    <div style={{ marginBottom: 10 }}>
-                      <label style={{ fontSize: 12, color: MUTED }}>Date du test</label>
-                      <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+                    <Step n="2" title={`Protocole · ${test.name}`} right={<FoldBtn open={bf.isOpen("protocol")} onClick={() => bf.toggle("protocol")} />} />
+                    {bf.isOpen("protocol") && <TestInfo test={test} media={media[test.id]} onSaveMedia={(d) => saveMedia(test.id, d)} />}
+                  </div>
+
+                  {/* ③ Saisie */}
+                  <div style={cardStyle}>
+                    <Step n="3" title="Saisie" />
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end", marginBottom: 12 }}>
+                      <div style={{ width: 190, maxWidth: "100%" }}>
+                        <label style={{ fontSize: 12, color: MUTED }}>📅 Date du test</label>
+                        <input type="date" style={inputStyle} value={date} onChange={(e) => setDate(e.target.value)} />
+                      </div>
+                      {selectedAthlete && (
+                        <div style={{ fontSize: 12.5, color: MUTED, paddingBottom: 9 }}>
+                          👤 <b style={{ color: TEXT }}>{athleteName(selectedAthlete)}</b>
+                        </div>
+                      )}
                     </div>
 
                     {test.selectable && (
@@ -1136,28 +1203,49 @@ export default function Tests() {
                       />
                     )}
 
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-                      {test.fields &&
-                        test.fields.map((f) => field(f.key, f.label, f.unit, f.placeholder))}
-                      {test.measures &&
-                        activeMeasures.map((m) =>
-                          m.sided ? (
-                            <React.Fragment key={m.key}>
-                              {field(`${m.key}_L`, `${m.label} — Gauche`, m.unit)}
-                              {field(`${m.key}_R`, `${m.label} — Droite`, m.unit)}
-                            </React.Fragment>
-                          ) : (
-                            field(m.key, m.label, m.unit)
-                          )
-                        )}
-                    </div>
+                    {plain.length > 0 && (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 170px), 1fr))", gap: 10, marginBottom: sided.length ? 12 : 0 }}>
+                        {plain.map((f) => field(f.key, f.label, f.unit, f.isField ? f.placeholder : undefined))}
+                      </div>
+                    )}
 
-                    <div style={{ marginTop: 10 }}>
+                    {sided.length > 0 && (
+                      <div style={{ display: "grid", gap: 8 }}>
+                        {sided.map((m) => {
+                          const as = asym(m.key);
+                          const asCol = as === null ? MUTED : as >= 15 ? "#d9695a" : as >= 10 ? "#d9a441" : "#4fae7d";
+                          return (
+                            <div key={m.key} style={{ background: INPUT_BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "8px 10px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 4 }}>
+                                <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>
+                                  {m.label} {m.unit && <span style={{ color: MUTED, fontWeight: 400 }}>({m.unit})</span>}
+                                </span>
+                                {as !== null && (
+                                  <span style={{ fontSize: 11.5, fontWeight: 700, color: asCol }} title="Écart gauche / droite rapporté au meilleur côté">
+                                    Asymétrie {as} %
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "flex", gap: 8 }}>
+                                {sideInput(`${m.key}_L`, "Gauche")}
+                                {sideInput(`${m.key}_R`, "Droite")}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 12 }}>
                       <label style={{ fontSize: 12, color: MUTED }}>Remarques (optionnel)</label>
                       <input style={inputStyle} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Conditions, douleur, météo…" />
                     </div>
+                  </div>
 
-                    <div style={{ marginTop: 14, padding: 12, background: INPUT_BG, borderRadius: 8 }}>
+                  {/* ④ Résultat + enregistrement */}
+                  <div style={{ ...cardStyle, border: result ? `1px solid ${ACCENT}88` : cardStyle.border }}>
+                    <Step n="4" title="Résultat" />
+                    <div style={{ padding: 12, background: INPUT_BG, borderRadius: 8, border: `1px solid ${BORDER}` }}>
                       <ResultPreview res={result} />
                       {liveNorms.length > 0 && (
                         <div style={{ marginTop: 12 }}>
@@ -1196,7 +1284,8 @@ export default function Tests() {
                 </>
               )}
             </>
-          )}
+            );
+          })()}
 
           {/* ------------ RÉSULTATS ------------ */}
           {effTab === "resultats" && (

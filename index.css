@@ -306,3 +306,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 @media (min-width: 900px) {
   html:not([data-view="mobile"]) .pt-ath-cols { columns: 2; column-gap: 16px; }
 }
+
+/* Icône calendrier : taille fixe, jamais écrasée par le texte de la date */
+input[type="date"]::-webkit-calendar-picker-indicator { width: 16px; height: 16px; flex-shrink: 0; }

@@ -749,17 +749,8 @@ export default function PlanningPanel({
     <div style={{ background: CARD, borderRadius: 12, padding: 16, marginBottom: 20 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <h3 style={{ margin: 0, fontSize: 18, color: TEXT }}>🗂️ Planification</h3>
+        {/* Boutons d'ajout : à côté du titre, indépendants du zoom (ils ne bougent plus) */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <button onClick={() => panBy(-view.span * 0.25)} style={btn("#2a2620")} title="Reculer dans le temps">◀</button>
-          <span style={{ color: TEXT, fontSize: 12, fontWeight: 700, minWidth: 110, textAlign: "center" }}>
-            {monthYear(view.start)} → {monthYear(view.start + view.span)}
-          </span>
-          <button onClick={() => panBy(view.span * 0.25)} style={btn("#2a2620")} title="Avancer dans le temps">▶</button>
-          <button onClick={() => zoomAt(0.5, 1.5)} style={btn("#2a2620")} title="Dézoomer (voir plus large)">−</button>
-          <button onClick={() => zoomAt(0.5, 1 / 1.5)} style={btn("#2a2620")} title="Zoomer (voir plus de détails)">+</button>
-          <button onClick={recenter} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }} title="Revenir à la vue centrée sur aujourd'hui">
-            🎯 Recentrer
-          </button>
           {!isAdmin && currentUser && (
             <button onClick={() => { setForm(null); setFForm(blankFixture()); }} style={btn("#d9534f")}>
               🏉 Mon match / compétition
@@ -767,15 +758,29 @@ export default function PlanningPanel({
           )}
           {isAdmin && (
             <>
-              <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
-                ➕ Nouveau cycle
-              </button>
               <button onClick={() => { setForm(null); setFForm(blankFixture()); }} style={btn("#d9534f")}>
                 🏉 Match / compétition
+              </button>
+              <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
+                ➕ Nouveau cycle
               </button>
             </>
           )}
         </div>
+      </div>
+
+      {/* Navigation dans le temps : période à largeur fixe pour que rien ne bouge au zoom */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
+        <button onClick={() => panBy(-view.span * 0.25)} style={btn("#2a2620")} title="Reculer dans le temps">◀</button>
+        <span style={{ color: TEXT, fontSize: 12, fontWeight: 700, width: 170, flexShrink: 0, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontVariantNumeric: "tabular-nums" }}>
+          {monthYear(view.start)} → {monthYear(view.start + view.span)}
+        </span>
+        <button onClick={() => panBy(view.span * 0.25)} style={btn("#2a2620")} title="Avancer dans le temps">▶</button>
+        <button onClick={() => zoomAt(0.5, 1.5)} style={btn("#2a2620")} title="Dézoomer (voir plus large)">−</button>
+        <button onClick={() => zoomAt(0.5, 1 / 1.5)} style={btn("#2a2620")} title="Zoomer (voir plus de détails)">+</button>
+        <button onClick={recenter} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }} title="Revenir à la vue centrée sur aujourd'hui">
+          🎯 Recentrer
+        </button>
       </div>
 
       {/* Frise */}

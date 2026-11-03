@@ -910,6 +910,15 @@ export default function MyRM() {
         <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 12 }}>
           Temps en secondes, au centième (ex : 1.72). Ils sont comparés aux normes de ton poste et de ton niveau dans l'onglet Tests.
         </div>
+        <div style={{ marginBottom: 10, maxWidth: 220 }}>
+          <label style={{ fontSize: 11, color: "#a8a199" }}>📅 Date des temps</label>
+          <input
+            type="date"
+            value={sprintDate}
+            onChange={(e) => setSprintDate(e.target.value)}
+            style={{ width: "100%", padding: "9px 10px", borderRadius: 8, border: "1px solid #3a342a", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
+          />
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10 }}>
           {[["t10", "10 m", "ex : 1.72"], ["t20", "20 m", "ex : 3.05"], ["t60", "60 m", "ex : 7.90"]].map(([k, l, ph]) => (
             <div key={k}>
@@ -924,15 +933,6 @@ export default function MyRM() {
               />
             </div>
           ))}
-          <div>
-            <label style={{ fontSize: 11, color: "#a8a199" }}>Date</label>
-            <input
-              type="date"
-              value={sprintDate}
-              onChange={(e) => setSprintDate(e.target.value)}
-              style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #3a342a", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, boxSizing: "border-box" }}
-            />
-          </div>
         </div>
         <button
           onClick={saveSprint}

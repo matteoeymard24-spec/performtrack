@@ -352,53 +352,6 @@ export default function MyProfile() {
           </div>
         )}
 
-        {/* Groupe (non éditable, juste affiché) */}
-        {profile.group && (
-          <div style={{ marginBottom: 20 }}>
-            <label
-              style={{
-                display: "block",
-                fontSize: 13,
-                fontWeight: "600",
-                color: "#a8a199",
-                marginBottom: 8,
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-              }}
-            >
-              👥 Groupe
-            </label>
-            <div
-              style={{
-                padding: 14,
-                background: "#0d0c0a",
-                borderRadius: 10,
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                color: "#a8a199",
-                fontSize: 15,
-              }}
-            >
-              {profile.group === "total"
-                ? "Groupe Total"
-                : profile.group === "1"
-                ? "Groupe 1"
-                : profile.group === "2"
-                ? "Groupe 2"
-                : profile.group}
-            </div>
-            <div
-              style={{
-                marginTop: 6,
-                fontSize: 12,
-                color: "#a8a199",
-                fontStyle: "italic",
-              }}
-            >
-              ℹ️ Votre groupe est géré par les administrateurs
-            </div>
-          </div>
-        )}
-
         {/* Boutons */}
         <div style={{ display: "flex", gap: 12, marginTop: 30 }}>
           {!editing ? (
