@@ -1817,11 +1817,6 @@ export default function Dashboard() {
             <button className={cardsPanel ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setCardsPanel((v) => !v)} title="Choisir les cartes affichées">
               👁 Cartes{offList.length ? ` (${DASH_CARDS.length - offList.filter((k) => DASH_CARDS.some(([x]) => x === k)).length}/${DASH_CARDS.length})` : ""}
             </button>
-            {(dashOrder || dashCols) && (
-              <button className="pt-btn" onClick={() => saveDashLayout(null, null)} title="Remettre les cartes dans l'ordre par défaut">
-                ↺ Ordre par défaut
-              </button>
-            )}
             {userRole === "admin" && meMode && (
               <button className="pt-btn" onClick={() => setMeMode(false)}>← Vue coach</button>
             )}

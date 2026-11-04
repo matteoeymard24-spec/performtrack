@@ -9526,37 +9526,37 @@ export default function Workout() {
             padding: isMobileView() ? 14 : 25,
             borderRadius: 12,
             border: `2px solid ${getColor(selectedSession)}`,
-            // téléphone : hauteur de la barre « ← Retour » collée en haut (les en-têtes de blocs se placent dessous)
-            "--pt-subbar-h": isMobileView() ? "54px" : "0px",
+            // hauteur de la barre « ← Retour » collée en haut, moins 1 px : les en-têtes de blocs
+            // viennent se coller dessous, sans aucun jour entre les deux
+            "--pt-subbar-h": "53px",
           }}
         >
-          {isMobileView() && (
-            <div
-              style={{
-                position: "sticky",
-                top: "var(--pt-header-h, 60px)",
-                zIndex: 20,
-                height: 54,
-                boxSizing: "border-box",
-                margin: "-14px -14px 12px",
-                padding: "0 10px",
-                background: "rgba(21,19,16,0.97)",
-                borderBottom: "1px solid #2a2620",
-                borderRadius: "10px 10px 0 0",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-              }}
-            >
-              <button type="button" onClick={closeSession} className="pt-btn" style={{ flexShrink: 0, fontWeight: 800 }}>
-                ← {returnToDashboard ? "Dashboard" : "Retour"}
-              </button>
-              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 800, color: "#f3f0ea", fontSize: 15 }}>
-                {selectedSession.title}
-              </span>
-            </div>
-          )}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          {/* Barre « ← Retour » toujours visible en haut (téléphone et ordinateur) */}
+          <div
+            style={{
+              position: "sticky",
+              top: "var(--pt-header-h, 60px)",
+              zIndex: 20,
+              height: 54,
+              boxSizing: "border-box",
+              margin: isMobileView() ? "-14px -14px 12px" : "-25px -25px 16px",
+              padding: isMobileView() ? "0 10px" : "0 18px",
+              background: "#151310",
+              borderBottom: "1px solid #2a2620",
+              borderRadius: "10px 10px 0 0",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <button type="button" onClick={closeSession} className="pt-btn" style={{ flexShrink: 0, fontWeight: 800 }}>
+              ← {returnToDashboard ? (isMobileView() ? "Dashboard" : "Retour au dashboard") : "Retour"}
+            </button>
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 800, color: "#f3f0ea", fontSize: 15 }}>
+              {selectedSession.title}
+            </span>
+          </div>
+          <div style={{ display: "flex", justifyContent: isMobileView() ? "flex-start" : "flex-end", marginBottom: 10 }}>
             <button
             onClick={() => setShowAthleteRefs(true)}
             style={{ padding: "8px 14px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
@@ -9681,21 +9681,6 @@ export default function Workout() {
                   </button>
                 </>
               )}
-              <button
-                onClick={closeSession}
-                style={{
-                  order: -1, // toujours en premier : jamais rogné sur un petit écran
-                  padding: "8px 16px",
-                  background: "#a8a199",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
-              >
-                {returnToDashboard ? "← Retour au dashboard" : "← Retour"}
-              </button>
             </div>
           </div>
 
@@ -10110,22 +10095,25 @@ export default function Workout() {
                       {bIdx < (selectedSession.blocks || []).length - 1 && <> · ➡️ avant le bloc suivant : {fmtRest(blockNextRestSec(block))}</>}
                     </span>
                   )}
-                {(block.timerMode === "emom" || block.timerMode === "amrap") && (
-                  <span
-                    style={{
-                      fontSize: 13,
-                      color: "#4fae7d",
-                      fontWeight: "normal",
-                      background: "rgba(79,174,125,0.12)",
-                      padding: "2px 10px",
-                      borderRadius: 6,
-                    }}
-                  >
-                    {block.timerMode === "emom"
-                      ? `⏱️ EMOM — départ toutes les ${block.timerIntervalSec || 60}s × ${block.timerRounds || 10} tours`
-                      : `⏱️ AMRAP — ${Math.round((block.timerIntervalSec || 600) / 60)} min, le plus de tours possible`}
-                  </span>
-                )}
+                {(block.timerMode === "emom" || block.timerMode === "amrap") && (() => {
+                  // même pastille que les tours d'un bloc classique
+                  const col = bMark(selectedSession.blocks, bIdx).color;
+                  const iv = block.timerIntervalSec || 60;
+                  const big = (v) => <span style={{ fontSize: 18, fontWeight: 900, color: col }}>{v}</span>;
+                  return (
+                    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5, padding: "3px 12px", borderRadius: 999, background: `${col}22`, border: `1px solid ${col}88`, color: "#f3f0ea", fontWeight: 800, fontSize: 13, lineHeight: 1.3, alignSelf: "center" }}>
+                      {block.timerMode === "emom" ? (
+                        <>
+                          ⏱ EMOM {big(block.timerRounds || 10)} tours · toutes les {Math.floor(iv / 60)}:{String(iv % 60).padStart(2, "0")}
+                        </>
+                      ) : (
+                        <>
+                          ⏱ AMRAP {big(Math.round((block.timerIntervalSec || 600) / 60))} min · max de tours
+                        </>
+                      )}
+                    </span>
+                  );
+                })()}
                 {(block.timerMode === "emom" || block.timerMode === "amrap") && sessionType === "endurance" && (() => {
                   const plan = enduranceBlockPlan(block, bIdx, { ...getUserFeedback(selectedSession), ...sessionFeedback });
                   if (!plan) return null;
@@ -10321,15 +10309,16 @@ export default function Workout() {
                 const rounds = Number(block.exercises?.[0]?.series) || 1;
                 const rest = blockRestSec(block);
                 return (
-                  <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 10, background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.45)" }}>
-                    <div style={{ fontWeight: 800, color: "#e0a13d", fontSize: 14 }}>
-                      {bm.icon} {bm.label}
-                      {isContrastBlock(block) && (
-                        <span style={{ fontWeight: 600, color: "#f3f0ea" }}>
-                          {" "}· ↻ {rounds} tour{rounds > 1 ? "s" : ""} · enchaînés sans pause · {Math.floor(rest / 60)} min{rest % 60 ? ` ${String(rest % 60).padStart(2, "0")}` : ""} entre les tours
+                  <div style={{ marginBottom: 12 }}>
+                    {(() => {
+                      const col = bMark(selectedSession.blocks, bIdx).color;
+                      return (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 12px", borderRadius: 999, background: `${col}22`, border: `1px solid ${col}88`, color: "#f3f0ea", fontSize: 12.5, fontWeight: 800 }}>
+                          {bm.icon} {bm.label}
+                          {isContrastBlock(block) && <span style={{ fontWeight: 600, color: "#c9c1b5" }}>· enchaînés sans pause · {Math.floor(rest / 60)} min{rest % 60 ? ` ${String(rest % 60).padStart(2, "0")}` : ""} entre les {rounds} tours</span>}
                         </span>
-                      )}
-                    </div>
+                      );
+                    })()}
                     {isContrastBlock(block) && (
                       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginTop: 6, fontSize: 12.5 }}>
                         {block.exercises.map((x, k) => (
@@ -10371,33 +10360,22 @@ export default function Workout() {
                       {ex.name}
                     </h5>
                     {sessionType === "muscu" && methodOf(ex) !== "classique" && block.timerMode !== "emom" && block.timerMode !== "amrap" && (() => {
+                      // Méthode : pastille à la couleur du bloc + explication courte (les valeurs sont dans les cases)
                       const mi = methodInfo(ex);
-                      const p = mpOf(ex);
-                      const base = activeRM ? Number(calculateWeight(ex.name, ex.rmPercent)) : null;
-                      let loads = null;
-                      if (methodOf(ex) === "dropset" && base > 0) loads = `${base} kg → ${dropLoads(base, ex).map((w) => `${w} kg`).join(" → ")}`;
-                      if (methodOf(ex) === "m12080") {
-                        const ecc = activeRM ? Number(calculateWeight(ex.name, p.eccPct)) : null;
-                        const con = activeRM ? Number(calculateWeight(ex.name, p.conPct)) : null;
-                        return (
-                          <div style={{ marginBottom: 8, padding: "8px 10px", borderRadius: 8, background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.4)", fontSize: 13, lineHeight: 1.6 }}>
-                            <b style={{ color: "#e0a13d" }}>{mi.icon} Méthode 120-80</b> · à chaque série ({ex.series} séries) :
-                            <div>① <b>{p.eccReps} reps en excentrique seul</b> à {p.eccPct} %{ecc > 0 ? <b> ({ecc} kg)</b> : ""} : descente lente (3-5 s), les partenaires remontent la barre.</div>
-                            <div>② <b>Décharger la barre</b> à {p.conPct} %{con > 0 ? <b> ({con} kg)</b> : ""}.</div>
-                            <div>③ <b>{p.conReps} reps classiques</b> (descente + montée) à {p.conPct} %, sans repos.</div>
-                            <div style={{ fontSize: 11.5, color: "#a8a199" }}>2 partenaires ou crochets de sécurité obligatoires. Charge supramaximale : ne met pas à jour le RM.</div>
-                          </div>
-                        );
-                      }
+                      const col = bMark(selectedSession.blocks, bIdx).color;
                       return (
-                        <div style={{ marginBottom: 8, padding: "6px 10px", borderRadius: 8, background: "rgba(224,161,61,0.08)", border: "1px solid rgba(224,161,61,0.4)", fontSize: 13 }}>
-                          <b style={{ color: "#e0a13d" }}>{mi.icon} {mi.label}</b> · {methodScheme(ex)}
-                          {loads && <div style={{ fontWeight: 700, marginTop: 2 }}>🏋️ {loads}</div>}
-                          <div style={{ fontSize: 11.5, color: "#a8a199", marginTop: 2 }}>{mi.tip}</div>
+                        <div style={{ marginBottom: 8 }}>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 12px", borderRadius: 999, background: `${col}22`, border: `1px solid ${col}88`, color: "#f3f0ea", fontSize: 12.5, fontWeight: 800 }}>
+                            {mi.icon} {mi.label}
+                          </span>
+                          <div style={{ fontSize: 11.5, color: "#a8a199", marginTop: 4 }}>
+                            {mi.tip}
+                            {methodOf(ex) === "m12080" ? " 2 partenaires ou crochets de sécurité obligatoires ; charge supramaximale : ne met pas à jour le RM." : ""}
+                          </div>
                         </div>
                       );
                     })()}
-                    
+
                     {/* Description si présente */}
                     {ex.description && (
                       <div
@@ -10512,30 +10490,18 @@ export default function Workout() {
                             marginBottom: 10,
                           }}
                         >
-                          {block.timerMode === "emom" || block.timerMode === "amrap" ? (
-                            <>
-                          {ex.reps}{" "}
-                          @{" "}
-                          {isOvercoming(ex) ? (
-                            <strong style={{ color: "#e0a13d" }}>effort maximal (résistance immobile)</strong>
-                          ) : ex.rmPercent === "PDC" ? (
-                            <strong style={{ color: "#e0a13d" }}>PDC</strong>
-                          ) : ex.rmPercent === "ELASTIQUE" ? (
-                            <strong style={{ color: "#e0a13d" }}>Élastique</strong>
-                          ) : (
-                            <>
-                              {ex.rmPercent}%{" "}
-                              {activeRM
-                                ? isLoadedBodyweight(ex.name) && activeLestText(ex.name, ex.rmPercent)
-                                  ? `(${activeLestText(ex.name, ex.rmPercent)})`
-                                  : `(${calculateWeight(rmNameOf(ex), ex.rmPercent)} kg${dbSplit(ex, calculateWeight(rmNameOf(ex), ex.rmPercent))}${rmNameOf(ex) !== ex.name ? ` · ${ex.rmPercent} % du RM ${rmNameOf(ex)}` : ""})`
-                                : "(choisis un athlète)"}
-                            </>
-                          )}
-                            </>
-                          ) : (() => {
-                            // Prescription mise en avant : (séries si elles diffèrent des tours du bloc) · reps · charge
+                          {(() => {
+                            // Prescription en cases (même DA pour classique, EMOM / AMRAP et méthodes) :
+                            // (séries si elles diffèrent des tours) · reps adaptées au mode · charge(s)
+                            const timer = block.timerMode === "emom" || block.timerMode === "amrap";
+                            const meth = timer ? "classique" : methodOf(ex);
+                            const mp = mpOf(ex);
                             const pct = ex.rmPercent;
+                            const kgAt = (q) => {
+                              if (!activeRM || isNoRmIntensity(q)) return null;
+                              const w = calculateWeight(rmNameOf(ex), q);
+                              return typeof w === "number" && w > 0 ? w : null;
+                            };
                             let big;
                             let sub = "";
                             if (isOvercoming(ex)) {
@@ -10560,46 +10526,62 @@ export default function Workout() {
                                 sub = `${pct} % RM${rmNameOf(ex) !== ex.name ? ` ${rmNameOf(ex)}` : ""}${w === "-" ? " · pas encore de RM" : ""}${dbSplit(ex, w)}`;
                               }
                             }
-                            const reps = Math.max(1, Number(ex.reps) || 1);
+                            const reps = timer ? ex.reps || "—" : Math.max(1, Number(ex.reps) || 1);
                             const series = Math.max(1, Number(ex.series) || 1);
-                            const showSeries = !sameSeries(block);
                             const col = bMark(selectedSession.blocks, bIdx).color;
-                            const box = (accent) => ({
+                            const boxes = [];
+                            if (!timer && !sameSeries(block)) boxes.push({ lab: "Séries", val: series, sub: `sur ${blockRounds(block)} tours`, accent: col });
+                            if (meth === "cluster")
+                              boxes.push({ lab: "Reps · cluster", val: Array.from({ length: mp.clusters }, () => mp.clusterReps).join("+"), sub: `${mp.intraRest} s entre les mini-séries` });
+                            else if (meth === "restpause")
+                              boxes.push({ lab: "Reps · rest-pause", val: `${reps} + ${mp.miniSets}`, sub: `mini-série${mp.miniSets > 1 ? "s" : ""} après ${mp.pauseSec} s de pause` });
+                            else if (meth !== "m12080")
+                              boxes.push({
+                                lab: timer ? (block.timerMode === "emom" ? "Reps / minute" : "Reps / tour") : isIsoEx(ex) ? "Reps (maintiens)" : "Reps",
+                                val: reps,
+                                unit: isUniEx(ex) ? " /côté" : "",
+                                sub: isUniEx(ex) ? "droite + gauche" : isIsoEx(ex) && reps > 1 && Number(ex.isoRepRest) > 0 ? `${ex.isoRepRest} s de récup entre les reps` : "",
+                              });
+                            if (meth === "m12080") {
+                              const ecc = kgAt(mp.eccPct);
+                              const con = kgAt(mp.conPct);
+                              boxes.push({ lab: `Excentrique · ${mp.eccReps} reps`, val: ecc ? `${ecc} kg` : `${mp.eccPct} %`, sub: `${mp.eccPct} % RM · descente 3-5 s`, charge: true });
+                              boxes.push({ lab: `Puis classique · ${mp.conReps} reps`, val: con ? `${con} kg` : `${mp.conPct} %`, sub: `${mp.conPct} % RM, sans repos`, charge: true });
+                            } else if (meth === "dropset") {
+                              const w0 = kgAt(pct);
+                              boxes.push({
+                                lab: `Charge · drop set`,
+                                val: big,
+                                sub: w0 ? `puis ${dropLoads(w0, ex).map((w) => `${w} kg`).join(" → ")} (−${mp.dropPct} % à chaque palier)` : `${mp.drops} paliers de −${mp.dropPct} %`,
+                                charge: true,
+                              });
+                            } else {
+                              boxes.push({ lab: "Charge", val: big, sub, charge: true });
+                            }
+                            const box = (b) => ({
                               display: "flex",
                               flexDirection: "column",
                               justifyContent: "center",
                               padding: "8px 14px",
                               borderRadius: 10,
-                              background: accent ? `${accent}18` : "#0d0c0a",
-                              border: `1px solid ${accent ? `${accent}77` : "#2a2620"}`,
+                              background: b.charge ? "rgba(224,161,61,0.09)" : b.accent ? `${b.accent}18` : "#0d0c0a",
+                              border: `1px solid ${b.charge ? "rgba(224,161,61,0.47)" : b.accent ? `${b.accent}77` : "#2a2620"}`,
                               minWidth: 78,
+                              flex: b.charge ? "1 1 140px" : "0 0 auto",
                             });
                             const lab = { fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199" };
                             return (
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", marginBottom: 2 }}>
-                                {showSeries && (
-                                  <div style={box(col)}>
-                                    <span style={lab}>Séries</span>
-                                    <span style={{ fontSize: 24, fontWeight: 900, color: "#f3f0ea", lineHeight: 1.1 }}>{series}</span>
-                                    <span style={{ fontSize: 11, color: "#a8a199" }}>sur {blockRounds(block)} tours</span>
+                                {boxes.map((b, k) => (
+                                  <div key={k} style={box(b)}>
+                                    <span style={lab}>{b.lab}</span>
+                                    <span style={{ fontSize: 24, fontWeight: 900, color: b.charge ? "#e0a13d" : "#f3f0ea", lineHeight: 1.1 }}>
+                                      {b.val}
+                                      {b.unit && <span style={{ fontSize: 13, fontWeight: 700, color: "#a8a199" }}>{b.unit}</span>}
+                                    </span>
+                                    {b.sub && <span style={{ fontSize: 11.5, color: b.charge ? "#c9c1b5" : "#a8a199" }}>{b.sub}</span>}
                                   </div>
-                                )}
-                                <div style={box()}>
-                                  <span style={lab}>{isIsoEx(ex) ? "Reps (maintiens)" : "Reps"}</span>
-                                  <span style={{ fontSize: 24, fontWeight: 900, color: "#f3f0ea", lineHeight: 1.1 }}>
-                                    {reps}
-                                    {isUniEx(ex) && <span style={{ fontSize: 13, fontWeight: 700, color: "#a8a199" }}> /côté</span>}
-                                  </span>
-                                  {isUniEx(ex) && <span style={{ fontSize: 11, color: "#a8a199" }}>droite + gauche</span>}
-                                  {isIsoEx(ex) && reps > 1 && Number(ex.isoRepRest) > 0 && (
-                                    <span style={{ fontSize: 11, color: "#a8a199" }}>{ex.isoRepRest} s de récup entre les reps</span>
-                                  )}
-                                </div>
-                                <div style={{ ...box("#e0a13d"), flex: "1 1 140px" }}>
-                                  <span style={lab}>Charge</span>
-                                  <span style={{ fontSize: 24, fontWeight: 900, color: "#e0a13d", lineHeight: 1.1 }}>{big}</span>
-                                  {sub && <span style={{ fontSize: 11.5, color: "#c9c1b5" }}>{sub}</span>}
-                                </div>
+                                ))}
                               </div>
                             );
                           })()}
