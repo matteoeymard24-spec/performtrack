@@ -91,7 +91,7 @@ function Gauge({ label, v, t, unit, color, tol = 0.1 }) {
   );
 }
 
-export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd }) {
+export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd, onFoodValues }) {
   const diet = settings?.diet || "omni";
   const customFoods = settings?.customFoods || [];
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()));
@@ -471,10 +471,13 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd 
                           meal={mid}
                           onClose={() => setAdding(null)}
                           onAdd={(entry) => {
-                            const food = foodOf(entry.foodId, customFoods);
+                            // aliment aux valeurs modifiées : on garde les valeurs saisies (entry.n)
+                            const food = settings?.foodOverrides?.[entry.foodId] ? null : foodOf(entry.foodId, customFoods);
                             updateMeal(mid, (m) => ({ ...m, items: [...(m.items || []), food ? makeItem(food, entry.grams, "fixe") : { foodId: entry.foodId, name: entry.name, g: entry.grams, role: "fixe", n: entry.n }] }));
                           }}
                           onSaveCustom={onSaveCustom}
+                          foodOverrides={settings?.foodOverrides}
+                          onFoodValues={onFoodValues}
                         />
                       )}
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, marginTop: 6 }}>

@@ -6,7 +6,7 @@ import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGri
 import { db } from "../firebase";
 import { Page, PageHeader, Kpi, KpiGrid, FoldCard, useFold, CARD_STYLE, FIELD_STYLE, SectionLabel, TEXT, MUTED, ACCENT } from "../component/ui";
 import PersonPicker from "../component/PersonPicker";
-import FoodPicker from "../component/FoodPicker";
+import FoodPicker, { EntryEditor } from "../component/FoodPicker";
 import MealPlanner from "../component/MealPlanner";
 import usePersonScope from "../component/usePersonScope";
 import { normSex } from "../component/cycling";
@@ -207,6 +207,7 @@ export default function Nutrition() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(null); // id du repas où l'on ajoute
+  const [editEntry, setEditEntry] = useState(null); // id de l'aliment du journal en cours de modification
   const [sweat, setSweat] = useState({ before: "", after: "", drunk: "", min: "" });
   const [saved, setSaved] = useState("");
 
@@ -274,7 +275,10 @@ export default function Nutrition() {
     const h = history.find((d) => d.date === date);
     setDay(h ? { entries: [], water: 0, waterLog: [], supps: {}, dayType: "modere", ...h } : { entries: [], water: 0, waterLog: [], supps: {}, dayType: "modere", date });
   }, [date, loading, uid]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => setAdding(null), [date, uid]);
+  useEffect(() => {
+    setAdding(null);
+    setEditEntry(null);
+  }, [date, uid]);
   useEffect(() => {
     const f = focusRef.current;
     if (!f || loading || !day || tab !== "journal") return;
@@ -312,6 +316,23 @@ export default function Nutrition() {
     } catch (e) {
       alert("Erreur d'enregistrement : " + e.message);
     }
+  };
+
+  /* Valeurs pour 100 g d'un aliment : aliment perso → modifié en place ; aliment de base → surcharge
+     (settings.foodOverrides), per100 = null → retour aux valeurs d'origine */
+  const saveFoodValues = (food, per100) => {
+    if (!food) return;
+    const isCustom = (settings.customFoods || []).some((f) => f.id === food.id);
+    if (isCustom) {
+      return saveSettings(
+        { ...settings, customFoods: (settings.customFoods || []).map((f) => (f.id === food.id ? { ...f, n: { ...f.n, ...(per100 || {}) } } : f)) },
+        "✅ Valeurs de l'aliment enregistrées"
+      );
+    }
+    const ov = { ...(settings.foodOverrides || {}) };
+    if (per100) ov[food.id] = per100;
+    else delete ov[food.id];
+    return saveSettings({ ...settings, foodOverrides: ov }, per100 ? "✅ Valeurs de l'aliment enregistrées" : "↺ Valeurs d'origine rétablies");
   };
 
   /* Ajout d'aliments au journal d'un jour quelconque (depuis le Planning) */
@@ -503,15 +524,37 @@ export default function Nutrition() {
                         </button>
                       </div>
                     </div>
-                    {items.map((e) => (
+                    {items.map((e) =>
+                      editEntry === e.id ? (
+                        <EntryEditor
+                          key={e.id}
+                          entry={e}
+                          customFoods={settings.customFoods}
+                          foodOverrides={settings.foodOverrides}
+                          onCancel={() => setEditEntry(null)}
+                          onSave={async (next, upd) => {
+                            setEditEntry(null);
+                            await saveDay({ ...day, entries: day.entries.map((x) => (x.id === e.id ? next : x)) });
+                            if (upd) await saveFoodValues(upd.food, upd.per100);
+                          }}
+                        />
+                      ) : (
                       <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${BORDER}`, fontSize: 13.5 }}>
-                        <span style={{ color: TEXT, minWidth: 0 }}>
+                        <button
+                          type="button"
+                          onClick={() => setEditEntry(e.id)}
+                          title="Modifier la quantité ou les valeurs"
+                          style={{ color: TEXT, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", font: "inherit" }}
+                        >
                           {e.name} <span style={{ color: MUTED }}>· {e.grams} g</span>
-                        </span>
-                        <span style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                        </button>
+                        <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                           <span style={{ color: MUTED, fontSize: 12.5 }}>
                             {Math.round(e.n.kcal)} kcal · P {Math.round(e.n.p)}
                           </span>
+                          <button type="button" aria-label="Modifier" onClick={() => setEditEntry(e.id)} style={{ ...smallBtn(ACCENT), padding: "2px 8px" }}>
+                            ✏️
+                          </button>
                           <button
                             type="button"
                             aria-label="Retirer"
@@ -522,7 +565,8 @@ export default function Nutrition() {
                           </button>
                         </span>
                       </div>
-                    ))}
+                      )
+                    )}
                     {adding === m.id && (
                       <FoodPicker
                         customFoods={settings.customFoods}
@@ -531,6 +575,8 @@ export default function Nutrition() {
                         onClose={() => setAdding(null)}
                         onAdd={(entry) => saveDay({ ...day, entries: [...(day.entries || []), entry] })}
                         onSaveCustom={(food) => saveSettings({ ...settings, customFoods: [...(settings.customFoods || []), food] }, "✅ Aliment enregistré")}
+                        foodOverrides={settings.foodOverrides}
+                        onFoodValues={saveFoodValues}
                       />
                     )}
                   </div>
@@ -921,6 +967,7 @@ export default function Nutrition() {
               settings={settings}
               onSaveCustom={(food) => saveSettings({ ...settings, customFoods: [...(settings.customFoods || []), food] }, "✅ Aliment enregistré")}
               onJournalAdd={addToJournal}
+              onFoodValues={saveFoodValues}
             />
           )}
 

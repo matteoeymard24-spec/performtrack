@@ -58,7 +58,10 @@ const getLocalDateStr = (date) => {
 // Intensités "sans charge" : Poids du corps (PDC) et Élastique. Elles ne
 // reposent sur aucun RM : jamais de poids cible calculé, jamais de mise à jour
 // ni de création de fiche RM, et pas de retour obligatoire en fin de séance.
-const isNoRmIntensity = (v) => v === "PDC" || v === "ELASTIQUE";
+// Modalité de charge : % RM (nombre) · "KG" (charge fixe : ex.fixedKg) · "PDC" · "ELASTIQUE" (ex.bandKg = 5/10/15/20)
+const isBodyIntensity = (v) => v === "PDC" || v === "ELASTIQUE"; // pas de charge externe → pas de RM ni de feedback de charge
+const isNoRmIntensity = (v) => isBodyIntensity(v) || v === "KG"; // pas de % RM → pas de charge calculée
+const BAND_LEVELS = [5, 10, 15, 20];
 
 const normalizeExerciseName = (name) => {
   if (!name) return "";
@@ -354,6 +357,13 @@ const estimateSessionDurationSeconds = (type, blocks) => {
     (t, b, i) => t + estimateTypeDurationSeconds(blockTypeOf(b, type), [b]) + (i < blocks.length - 1 ? nextRestSec(b) : 0),
     0
   );
+};
+
+/* Durée prévue (min) toujours recalculée depuis les blocs : les anciennes séances gardaient la durée
+   enregistrée avec une ancienne formule → deux séances identiques pouvaient afficher ~30 min d'écart. */
+const plannedMinutes = (w) => {
+  const sec = Array.isArray(w?.blocks) && w.blocks.length ? estimateSessionDurationSeconds(w.type || "muscu", w.blocks) : 0;
+  return sec > 0 ? Math.round(sec / 60) : Number(w?.estimatedDuration) || null;
 };
 
 const estimateTypeDurationSeconds = (type, blocks) => {
@@ -831,7 +841,11 @@ export default function Workout() {
       // séances pour que Dashboard, ACWR et Mes RM relisent la base à la prochaine visite.
       invalidateQueryCache("workout|");
       const snap = await getWorkoutDocs({ since: historySince, groups: athleteGroups, fresh: true });
-      const allWorkouts = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      const allWorkouts = snap.docs.map((d) => {
+        const w = { id: d.id, ...d.data() };
+        const m = plannedMinutes(w);
+        return m ? { ...w, estimatedDuration: m } : w;
+      });
       
       let filtered;
       
@@ -1326,26 +1340,35 @@ export default function Workout() {
   useEffect(() => {
     if (!isAdminLike) return;
     const ids = rmCandKey ? rmCandKey.split(",") : [];
-    setRmViewId((cur) => (ids.includes(cur) ? cur : ids.length === 1 ? ids[0] : ""));
+    // plusieurs athlètes → « 👥 Tous » par défaut : le coach voit d'emblée la charge de chacun
+    setRmViewId((cur) => (ids.includes(cur) || (cur === "*" && ids.length > 1) ? cur : ids.length === 1 ? ids[0] : ids.length > 1 ? "*" : ""));
   }, [rmCandKey, isAdminLike]);
   useEffect(() => {
-    if (!isAdminLike || !rmViewId || rmCache[rmViewId]) return;
+    if (!isAdminLike || !rmViewId) return;
+    const ids = (rmViewId === "*" ? (rmCandKey ? rmCandKey.split(",") : []) : [rmViewId]).filter((id) => !rmCache[id]);
+    if (!ids.length) return;
     (async () => {
-      try {
-        const snap = await getDocs(collection(db, "users", rmViewId, "rm"));
-        const m = {};
-        snap.docs.forEach((d) => {
-          const data = d.data();
-          if (d.id === "VMA" || data.exerciseName === "VMA") return;
-          m[normalizeExerciseName(d.id)] = data.kg;
-        });
-        setRmCache((c) => ({ ...c, [rmViewId]: m }));
-      } catch (e) {
-        console.warn("RM athlète:", e);
-        setRmCache((c) => ({ ...c, [rmViewId]: {} }));
-      }
+      const add = {};
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            const snap = await getDocs(collection(db, "users", id, "rm"));
+            const m = {};
+            snap.docs.forEach((d) => {
+              const data = d.data();
+              if (d.id === "VMA" || data.exerciseName === "VMA") return;
+              m[normalizeExerciseName(d.id)] = data.kg;
+            });
+            add[id] = m;
+          } catch (e) {
+            console.warn("RM athlète:", e);
+            add[id] = {};
+          }
+        })
+      );
+      setRmCache((c) => ({ ...c, ...add }));
     })();
-  }, [rmViewId, isAdminLike]);
+  }, [rmViewId, isAdminLike, rmCandKey]);
   // RM effectivement utilisé pour afficher les poids (null = aucun athlète choisi)
   const activeRM = actingUid
     ? rmCache[actingUid] || null // l'athlète qui fait la séance sur le compte du coach
@@ -1360,11 +1383,23 @@ export default function Workout() {
   }, [selectedSession?.id]);
   const rmPicker =
     isAdminLike && !adminOwnSession && rmCandidates.length > 0 ? (
-      <div style={{ position: "sticky", top: 0, zIndex: 5, background: "#0d0c0a", padding: "8px 0", marginBottom: 10 }}>
+      <div style={{ padding: "8px 0", marginBottom: 10 }}>
         <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 6 }}>
-          ⚖️ Poids cible calculés avec le RM de :{!rmViewId ? " (choisis un athlète)" : ""}
+          ⚖️ Poids cible calculés avec le RM de :{!rmViewId ? " (choisis un athlète)" : rmViewId === "*" ? " tous les athlètes (détail sous chaque exercice)" : ""}
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {rmCandidates.length > 1 && (() => {
+            const on = rmViewId === "*";
+            return (
+              <button
+                type="button"
+                onClick={() => setRmViewId(on ? "" : "*")}
+                style={{ padding: "8px 12px", minHeight: 36, borderRadius: 999, fontSize: 13, cursor: "pointer", border: on ? "1px solid #e0a13d" : "1px solid #2a2620", background: on ? "rgba(224,161,61,0.18)" : "#151310", color: on ? "#e0a13d" : "#f3f0ea", fontWeight: on ? 700 : 400 }}
+              >
+                👥 Tous ({rmCandidates.length})
+              </button>
+            );
+          })()}
           {rmCandidates.map((a) => {
             const on = a.id === rmViewId;
             return (
@@ -1470,6 +1505,18 @@ export default function Workout() {
   const isOvercoming = (ex) => isIsoEx(ex) && isoTypeOf(ex) === "overcoming";
   // Personne dont les RM sont affichés (athlète choisi / qui fait la séance / moi)
   const activeRmUid = actingUid || (isAdminLike && !adminOwnSession && rmCandidates.length > 0 ? rmViewId : currentUser?.uid);
+  // Mode « 👥 Tous » (coach) : charge de chaque athlète pour un exercice
+  const allAthleteLoads = (ex, pct) => {
+    if (!(isAdminLike && rmViewId === "*" && !actingUid && !adminOwnSession)) return null;
+    if (isNoRmIntensity(pct) || isOvercoming(ex) || !(Number(pct) > 0)) return null;
+    const key = normalizeExerciseName(rmNameOf(ex));
+    return rmCandidates.map((a) => {
+      const rm = rmCache[a.id]?.[key];
+      const t = rm ? Math.round((rm * Number(pct)) / 100) : null;
+      const name = a.firstName ? `${a.firstName}${a.lastName ? ` ${a.lastName[0]}.` : ""}` : a.displayName || a.email || "Athlète";
+      return { id: a.id, name, txt: t == null ? "pas de RM" : isLoadedBodyweight(ex.name) ? lestText(t, bwOf(a.id)) || `${t} kg` : `${t} kg`, ok: t != null, loading: !rmCache[a.id] };
+    });
+  };
   const activeLestText = (rmName, percent) => {
     const t = calculateWeight(rmName, percent);
     return typeof t === "number" ? lestText(t, bwOf(activeRmUid)) : null;
@@ -1755,7 +1802,7 @@ export default function Workout() {
         series = normalized.series;
       } else {
         // Créer de nouvelles séries
-        const defaultWeight = isOvercoming(exercise) ? 0 : Number(calcOwnWeight(rmNameOf(exercise), exercise.rmPercent)) || 0;
+        const defaultWeight = isOvercoming(exercise) ? 0 : exercise.rmPercent === "KG" ? Number(exercise.fixedKg) || 0 : Number(calcOwnWeight(rmNameOf(exercise), exercise.rmPercent)) || 0;
         for (let i = 0; i < numSeries; i++) {
           series.push({
             set: i + 1,
@@ -2035,7 +2082,7 @@ export default function Workout() {
 
         // Poids du corps (PDC) : pas de charge externe pertinente pour un RM —
         // sauf les tractions, dont le RM est poids du corps + lest.
-        if (isNoRmIntensity(exercise.rmPercent) && !isLoadedBodyweight(exercise.name)) continue;
+        if (isBodyIntensity(exercise.rmPercent) && !isLoadedBodyweight(exercise.name)) continue;
 
         // Excentrique supramax / isométrie : ne servent jamais au RM (voir component/contraction.js)
         if (isSpecialContraction(exercise)) continue;
@@ -2331,7 +2378,7 @@ export default function Workout() {
           return;
         }
         (block.exercises || []).forEach((exercise, eIdx) => {
-          if (isNoRmIntensity(exercise.rmPercent)) return;
+          if (isBodyIntensity(exercise.rmPercent)) return;
           const key = `${bIdx}-${eIdx}`;
           if (!sessionFeedback[key]) {
             missing.push(exercise.name || "Exercice sans nom");
@@ -2521,7 +2568,7 @@ export default function Workout() {
           targetUserId: s.targetUserId || null,
           blocks: s.blocks,
           type: s.type || "muscu",
-          estimatedDuration: s.estimatedDuration,
+          estimatedDuration: plannedMinutes(s),
           createdBy: currentUser.uid,
           createdAt: serverTimestamp(),
           duplicatedFrom: s.id,
@@ -2602,7 +2649,7 @@ export default function Workout() {
           targetUserId: s.targetUserId || null,
           blocks: s.blocks,
           type: s.type || "muscu",
-          estimatedDuration: s.estimatedDuration,
+          estimatedDuration: plannedMinutes(s),
           createdBy: currentUser.uid,
           createdAt: serverTimestamp(),
           duplicatedFrom: s.id,
@@ -2764,7 +2811,23 @@ export default function Workout() {
       // reste telle quelle, aucun groupe n'est ajouté automatiquement).
       let newRef = null;
       let newData = null;
+      // Anti-doublon : un groupe qui a DÉJÀ cette séance ce jour-là (ex. le groupe d'origine coché par
+      // erreur pour une copie le même jour, ou un double clic) est ignoré ; les autres sont créés.
+      const existingSnap = await getWorkoutDocs({ since: duplicateTargetDate, fresh: true });
+      const keyOf = (w) => `${w.title}|${w.group}|${w.group === "individuel" ? w.targetUserId || "" : ""}`;
+      const existingKeys = new Set(
+        existingSnap.docs.map((d) => d.data()).filter((w) => w.date === duplicateTargetDate).map(keyOf)
+      );
+      const skippedGroups = [];
+      let created = 0;
       for (const targetGroup of targets) {
+        const k = keyOf({ title: sessionToDuplicate.title, group: targetGroup, targetUserId: duplicateTargetUser });
+        if (existingKeys.has(k)) {
+          skippedGroups.push(targetGroup);
+          continue;
+        }
+        existingKeys.add(k);
+        created++;
         const data = {
           title: sessionToDuplicate.title,
           date: duplicateTargetDate,
@@ -2773,7 +2836,7 @@ export default function Workout() {
           targetUserId: targetGroup === "individuel" ? duplicateTargetUser : null,
           blocks: sessionToDuplicate.blocks,
           type: sessionToDuplicate.type || "muscu",
-          estimatedDuration: sessionToDuplicate.estimatedDuration,
+          estimatedDuration: plannedMinutes(sessionToDuplicate),
           createdBy: currentUser.uid,
           createdAt: serverTimestamp(),
           duplicatedFrom: sessionToDuplicate.id,
@@ -2787,9 +2850,15 @@ export default function Workout() {
       }
 
       const dupDay = new Date(duplicateTargetDate + "T12:00:00").toLocaleDateString("fr-FR");
+      const skipTxt = skippedGroups.length
+        ? `\n${skippedGroups.length > 1 ? `${skippedGroups.length} groupes avaient` : "1 groupe avait"} déjà cette séance ce jour-là : ignoré${skippedGroups.length > 1 ? "s" : ""}.`
+        : "";
       alert(
-        (targets.length > 1 ? `✅ Séance dupliquée pour ${targets.length} groupes` : "✅ Séance dupliquée") +
-          ` le ${dupDay}. Tu es toujours sur la séance d'origine.`
+        created === 0
+          ? `ℹ️ Rien à dupliquer : ${targets.length > 1 ? "ces groupes ont" : "ce groupe a"} déjà cette séance le ${dupDay}.`
+          : (created > 1 ? `✅ Séance dupliquée pour ${created} groupes` : "✅ Séance dupliquée") +
+              ` le ${dupDay}. Tu es toujours sur la séance d'origine.` +
+              skipTxt
       );
       setShowDuplicateSessionModal(false);
       setSessionToDuplicate(null);
@@ -3463,6 +3532,8 @@ export default function Workout() {
             exercises: b.exercises.map((ex, j) => {
               if (j !== eIdx) return ex;
               const updated = { ...ex, [field]: val };
+              // on retient le dernier % RM pour le retrouver en revenant sur « % RM »
+              if (field === "rmPercent" && typeof ex.rmPercent === "number" && typeof val !== "number") updated.lastPct = ex.rmPercent;
               // Changement de NOM : l'image/vidéo doivent suivre le nouveau
               // nom (fiche "exerciseMedia"). On retire l'ancienne copie
               // d'image stockée directement sur l'exercice (anciennes
@@ -8463,46 +8534,81 @@ export default function Workout() {
                                 />
                               </div>
                             )}
-                            <div>
+                            <div style={isMobileView() ? { gridColumn: "1 / -1" } : undefined}>
                             <label style={{ fontSize: 12, color: "#a8a199" }}>
-                              Intensité
+                              Charge
                             </label>
-                            <select
-                              value={isNoRmIntensity(ex.rmPercent) ? ex.rmPercent : ex.rmPercent || 70}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                updateExercise(
-                                  bIdx,
-                                  eIdx,
-                                  "rmPercent",
-                                  isNoRmIntensity(val) ? val : Number(val)
-                                );
-                              }}
-                              style={{
-                                width: "100%",
-                                padding: 8,
-                                borderRadius: 6,
-                                border: "1px solid #2a2620",
-                                background: "#0d0c0a",
-                                color: "#f3f0ea",
-                              }}
-                            >
-                              <option value="PDC">PDC (Poids du corps)</option>
-                              <option value="ELASTIQUE">Élastique</option>
-                              {[...Array(19)].map((_, i) => {
-                                const percent = (i + 1) * 5;
-                                return (
-                                  <option key={percent} value={percent}>
-                                    {percent}% RM
-                                  </option>
-                                );
-                              })}
-                              <option value={100}>100% RM</option>
-                              <option value={105}>105% RM</option>
-                              <option value={110}>110% RM</option>
-                              <option value={115}>115% RM</option>
-                              <option value={120}>120% RM</option>
-                            </select>
+                            {(() => {
+                              // Modalité : % RM · kg fixe · PDC · élastique (résistance 5 / 10 / 15 / 20 kg)
+                              const mode = ex.rmPercent === "KG" ? "kg" : ex.rmPercent === "PDC" ? "pdc" : ex.rmPercent === "ELASTIQUE" ? "band" : "pct";
+                              const set = (field, v) => updateExercise(bIdx, eIdx, field, v);
+                              const pill = (on) => ({
+                                padding: "6px 10px",
+                                minHeight: 32,
+                                borderRadius: 999,
+                                fontSize: 12.5,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                border: `1px solid ${on ? "#e0a13d" : "#2a2620"}`,
+                                background: on ? "rgba(224,161,61,0.18)" : "#0d0c0a",
+                                color: on ? "#e0a13d" : "#c9c1b5",
+                                whiteSpace: "nowrap",
+                              });
+                              const field = { width: "100%", padding: 8, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", boxSizing: "border-box" };
+                              return (
+                                <>
+                                  <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginBottom: 6 }}>
+                                    {[
+                                      ["pct", "% RM", () => set("rmPercent", Number(ex.lastPct) || 70)],
+                                      ["kg", "kg", () => set("rmPercent", "KG")],
+                                      ["pdc", "PDC", () => set("rmPercent", "PDC")],
+                                      ["band", "Élastique", () => set("rmPercent", "ELASTIQUE")],
+                                    ].map(([k, l, fn]) => (
+                                      <button key={k} type="button" style={pill(mode === k)} onClick={() => mode !== k && fn()}>
+                                        {l}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  {mode === "pct" && (
+                                    <select value={ex.rmPercent || 70} onChange={(e) => set("rmPercent", Number(e.target.value))} style={field}>
+                                      {[...Array(24)].map((_, i) => {
+                                        const percent = (i + 1) * 5;
+                                        return (
+                                          <option key={percent} value={percent}>
+                                            {percent}% RM
+                                          </option>
+                                        );
+                                      })}
+                                    </select>
+                                  )}
+                                  {mode === "kg" && (
+                                    <div style={{ position: "relative" }}>
+                                      <input
+                                        type="number"
+                                        inputMode="decimal"
+                                        min={0}
+                                        step={0.5}
+                                        value={ex.fixedKg ?? ""}
+                                        placeholder="ex. 60"
+                                        onChange={(e) => set("fixedKg", e.target.value === "" ? "" : Math.max(0, Number(String(e.target.value).replace(",", ".")) || 0))}
+                                        style={{ ...field, paddingRight: 34 }}
+                                      />
+                                      <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontSize: 12, color: "#a8a199", pointerEvents: "none" }}>kg</span>
+                                    </div>
+                                  )}
+                                  {mode === "band" && (
+                                    <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                                      {BAND_LEVELS.map((kg) => (
+                                        <button key={kg} type="button" style={pill(Number(ex.bandKg) === kg)} onClick={() => set("bandKg", Number(ex.bandKg) === kg ? null : kg)}>
+                                          {kg} kg
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {mode === "pdc" && <div style={{ fontSize: 12, color: "#a8a199", padding: "6px 0" }}>Poids du corps, sans charge.</div>}
+                                </>
+                              );
+                            })()}
                             </div>
                           </div>
                         );
@@ -8689,7 +8795,7 @@ export default function Workout() {
                             color: "#f0c98a",
                           }}
                         >
-                          🎗️ <strong>Élastique</strong> - Aucune charge calculée, les RM ne sont pas modifiés
+                          🎗️ <strong>Élastique{Number(ex.bandKg) > 0 ? ` ${ex.bandKg} kg` : ""}</strong> - {Number(ex.bandKg) > 0 ? "résistance de l'élastique ; " : "choisis la résistance ci-dessus ; "}les RM ne sont pas modifiés
                         </div>
                       )}
                       {/* RÉGLAGES AVANCÉS : tempo, méthode de série, régime, vitesse cible — repliables */}
@@ -9622,7 +9728,7 @@ export default function Workout() {
                 <span>
                   📅 {new Date(selectedSession.date + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
                 </span>
-                <span>· ⏱️ {selectedSession.estimatedDuration || "?"} min</span>
+                <span>· ⏱️ {plannedMinutes(selectedSession) || "?"} min</span>
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
@@ -10498,6 +10604,7 @@ export default function Workout() {
                             const mp = mpOf(ex);
                             const pct = ex.rmPercent;
                             const kgAt = (q) => {
+                              if (q === "KG") return Number(ex.fixedKg) > 0 ? Number(ex.fixedKg) : null;
                               if (!activeRM || isNoRmIntensity(q)) return null;
                               const w = calculateWeight(rmNameOf(ex), q);
                               return typeof w === "number" && w > 0 ? w : null;
@@ -10510,11 +10617,15 @@ export default function Workout() {
                             } else if (pct === "PDC") {
                               big = "PDC";
                               sub = "poids du corps";
+                            } else if (pct === "KG") {
+                              big = Number(ex.fixedKg) > 0 ? `${ex.fixedKg} kg` : "—";
+                              sub = Number(ex.fixedKg) > 0 ? `charge fixe${dbSplit(ex, Number(ex.fixedKg))}` : "charge à préciser";
                             } else if (pct === "ELASTIQUE") {
-                              big = "Élastique";
+                              big = Number(ex.bandKg) > 0 ? `${ex.bandKg} kg` : "Élastique";
+                              sub = Number(ex.bandKg) > 0 ? "🎗️ élastique" : "";
                             } else if (!activeRM) {
                               big = `${pct} %`;
-                              sub = "choisis un athlète pour voir la charge";
+                              sub = rmViewId === "*" ? "charge de chaque athlète ci-dessous" : "choisis un athlète pour voir la charge";
                             } else {
                               const lest = isLoadedBodyweight(ex.name) && activeLestText(ex.name, pct);
                               if (lest) {
@@ -10570,7 +10681,9 @@ export default function Workout() {
                               flex: b.charge ? "1 1 140px" : "0 0 auto",
                             });
                             const lab = { fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199" };
+                            const perAth = allAthleteLoads(ex, meth === "m12080" ? mp.conPct : pct);
                             return (
+                              <>
                               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "stretch", marginBottom: 2 }}>
                                 {boxes.map((b, k) => (
                                   <div key={k} style={box(b)}>
@@ -10583,6 +10696,22 @@ export default function Workout() {
                                   </div>
                                 ))}
                               </div>
+                              {perAth && perAth.length > 0 && (
+                                <div style={{ marginTop: 6, padding: "8px 10px", borderRadius: 10, background: "rgba(224,161,61,0.05)", border: "1px dashed rgba(224,161,61,0.35)" }}>
+                                  <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", marginBottom: 6 }}>
+                                    Charge par athlète · {meth === "m12080" ? `${mp.conPct} %` : `${pct} %`} RM
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 6 }}>
+                                    {perAth.map((a) => (
+                                      <div key={a.id} style={{ display: "flex", justifyContent: "space-between", gap: 6, padding: "5px 9px", borderRadius: 8, background: "#0d0c0a", border: "1px solid #2a2620", fontSize: 12.5 }}>
+                                        <span style={{ color: "#c9c1b5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                                        <b style={{ color: a.ok ? "#e0a13d" : "#6d675f", fontWeight: a.ok ? 800 : 500, whiteSpace: "nowrap" }}>{a.loading ? "…" : a.txt}</b>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                              </>
                             );
                           })()}
                           {block.timerMode !== "emom" && block.timerMode !== "amrap" && ex.tempo && (
@@ -11272,7 +11401,7 @@ export default function Workout() {
                               : typeLabel(blockTypeOf(null, session.type))}
                           </span>
                           {" • "}
-                          {session.estimatedDuration || "?"} min
+                          {plannedMinutes(session) || "?"} min
                           {isUserSessionCompleted(session) && (
                             <span
                               style={{
@@ -11788,7 +11917,7 @@ export default function Workout() {
                         const isDb = /halt[eè]re|dumbbell|\bdb\b/i.test(exo.name || "");
                         const uni = isUniEx(exo);
                         const w = Number(serie.actualWeight) || 0;
-                        const target = isOvercoming(exo) ? 0 : Number(calcOwnWeight(rmNameOf(exo), exo.rmPercent)) || 0;
+                        const target = isOvercoming(exo) ? 0 : exo.rmPercent === "KG" ? Number(exo.fixedKg) || 0 : Number(calcOwnWeight(rmNameOf(exo), exo.rmPercent)) || 0;
                         const suspicious = false; // saisie par haltère : plus de confusion total / une main
                         return (
                           <div style={{ marginTop: 6, fontSize: 12 }}>

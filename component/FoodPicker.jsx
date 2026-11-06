@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { FIELD_STYLE, TEXT, MUTED, ACCENT } from "./ui";
-import { FOODS, FOOD_CATS, allowedByDiet, scaleN, fmtN } from "./nutritionData";
+import { FOODS, FOOD_BY_ID, FOOD_CATS, allowedByDiet, scaleN, fmtN } from "./nutritionData";
 
 /* =====================================================================
    FoodPicker.jsx — recherche d'aliment + quantité (g ou portions) + création d'aliment perso.
@@ -23,15 +23,120 @@ const chip = (on, color = ACCENT) => ({
 const lbl = { display: "block", fontSize: 11.5, color: MUTED, fontWeight: 700, marginBottom: 4 };
 
 /* ---------- Sélecteur d'aliment ---------- */
-export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, onSaveCustom }) {
+/* Valeurs modifiées par l'utilisateur (settings.foodOverrides) appliquées aux aliments de base */
+export const withOverride = (f, overrides) => (f && overrides?.[f.id] ? { ...f, n: { ...f.n, ...overrides[f.id] }, edited: true } : f);
+export const findFood = (id, customFoods, overrides) =>
+  (customFoods || []).find((f) => f.id === id) || withOverride(FOOD_BY_ID[id], overrides) || null;
+const MACRO_FIELDS = [
+  ["kcal", "kcal"],
+  ["p", "Protéines g"],
+  ["c", "Glucides g"],
+  ["f", "Lipides g"],
+  ["fib", "Fibres g"],
+];
+
+/* ---------- Modifier une entrée du journal : quantité + valeurs pour 100 g ----------
+   onSave(entry, { food, per100 } | null) : food = aliment à mettre à jour pour les prochaines fois */
+export function EntryEditor({ entry, customFoods, foodOverrides, onSave, onCancel }) {
+  const food = findFood(entry.foodId, customFoods, foodOverrides);
+  const g0 = Number(entry.grams) || 0;
+  const base = food ? food.n : g0 > 0 ? Object.fromEntries(Object.entries(entry.n || {}).map(([k, v]) => [k, (v * 100) / g0])) : {};
+  const r1 = (v) => String(Math.round((Number(v) || 0) * 10) / 10);
+  const [grams, setGrams] = useState(String(g0 || ""));
+  const [vals, setVals] = useState(Object.fromEntries(MACRO_FIELDS.map(([k]) => [k, r1(base[k])])));
+  const [remember, setRemember] = useState(!!food);
+  const num = (v) => Number(String(v).replace(",", ".")) || 0;
+  const g = num(grams);
+  const changedVals = MACRO_FIELDS.some(([k]) => Math.abs(num(vals[k]) - (Number(base[k]) || 0)) > 0.05);
+  const per100 = { ...base, ...(changedVals ? Object.fromEntries(MACRO_FIELDS.map(([k]) => [k, num(vals[k])])) : {}) };
+  // valeurs inchangées : on garde les micronutriments de l'entrée, simplement mis à l'échelle
+  const n = !changedVals && g0 > 0 ? Object.fromEntries(Object.entries(entry.n || {}).map(([k, v]) => [k, (v * g) / g0])) : scaleN(per100, g);
+  return (
+    <div style={{ marginTop: 6, marginBottom: 6, padding: 12, borderRadius: 12, background: "#0d0c0a", border: `1px solid ${ACCENT}55` }}>
+      <div style={{ fontWeight: 800, color: TEXT, marginBottom: 8 }}>✏️ {entry.name}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 8 }}>
+        <div>
+          <label style={lbl}>Quantité (g)</label>
+          <input type="number" inputMode="decimal" min="0" value={grams} onChange={(e) => setGrams(e.target.value)} style={{ ...FIELD_STYLE, borderColor: ACCENT }} autoFocus />
+        </div>
+        {MACRO_FIELDS.map(([k, l]) => (
+          <div key={k}>
+            <label style={lbl}>{l} /100 g</label>
+            <input type="number" inputMode="decimal" min="0" value={vals[k]} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} style={FIELD_STYLE} />
+          </div>
+        ))}
+      </div>
+      {g > 0 && (
+        <div style={{ fontSize: 12.5, color: MUTED, marginTop: 8 }}>
+          {Math.round(g)} g → <b style={{ color: TEXT }}>{fmtN("kcal", n.kcal)} kcal</b> · P {fmtN("p", n.p)} g · G {fmtN("c", n.c)} g · L {fmtN("f", n.f)} g
+        </div>
+      )}
+      {food && changedVals && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: TEXT, marginTop: 8, cursor: "pointer" }}>
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          Garder ces valeurs pour « {food.name} » les prochaines fois
+        </label>
+      )}
+      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="pt-btn pt-btn--primary"
+          disabled={!(g > 0)}
+          onClick={() => onSave({ ...entry, grams: Math.round(g), n }, food && changedVals && remember ? { food, per100: Object.fromEntries(MACRO_FIELDS.map(([k]) => [k, num(vals[k])])) } : null)}
+        >
+          Enregistrer
+        </button>
+        <button type="button" className="pt-btn" onClick={onCancel}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Valeurs d'un aliment (pour 100 g) : modifier / revenir aux valeurs d'origine ---------- */
+function FoodValuesEditor({ food, onSave, onReset, onCancel }) {
+  const r1 = (v) => String(Math.round((Number(v) || 0) * 10) / 10);
+  const [vals, setVals] = useState(Object.fromEntries(MACRO_FIELDS.map(([k]) => [k, r1(food.n[k])])));
+  const num = (v) => Number(String(v).replace(",", ".")) || 0;
+  return (
+    <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: "#0d0c0a", border: `1px dashed ${ACCENT}66` }}>
+      <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 6 }}>Valeurs pour 100 g (corrige avec l'étiquette de ton produit)</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(95px, 1fr))", gap: 8 }}>
+        {MACRO_FIELDS.map(([k, l]) => (
+          <div key={k}>
+            <label style={lbl}>{l}</label>
+            <input type="number" inputMode="decimal" min="0" value={vals[k]} onChange={(e) => setVals({ ...vals, [k]: e.target.value })} style={FIELD_STYLE} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <button type="button" className="pt-btn pt-btn--primary" onClick={() => onSave(Object.fromEntries(MACRO_FIELDS.map(([k]) => [k, num(vals[k])])))}>
+          Enregistrer les valeurs
+        </button>
+        {food.edited && onReset && (
+          <button type="button" className="pt-btn" onClick={onReset}>
+            ↺ Valeurs d'origine
+          </button>
+        )}
+        <button type="button" className="pt-btn" onClick={onCancel}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, onSaveCustom, foodOverrides, onFoodValues }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const [sel, setSel] = useState(null);
   const [grams, setGrams] = useState("");
   const [count, setCount] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editVals, setEditVals] = useState(false);
   const [cf, setCf] = useState({ name: "", kcal: "", p: "", c: "", f: "", fib: "", portionLabel: "", portionG: "" });
-  const all = [...(customFoods || []).map((f) => ({ ...f, cat: "perso" })), ...FOODS];
+  const all = [...(customFoods || []).map((f) => ({ ...f, cat: "perso" })), ...FOODS.map((f) => withOverride(f, foodOverrides))];
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const list = all
     .filter((f) => (!cat || f.cat === cat) && (!q || norm(f.name).includes(norm(q))))
@@ -73,7 +178,38 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
           </div>
           {sel ? (
             <div style={{ padding: 10, borderRadius: 10, background: "#151310", border: `1px solid ${BORDER}` }}>
-              <div style={{ fontWeight: 800, color: TEXT, marginBottom: 6 }}>{sel.name}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontWeight: 800, color: TEXT }}>
+                  {sel.name}
+                  {sel.edited && <span style={{ fontSize: 11, color: ACCENT, fontWeight: 700 }}> · valeurs modifiées</span>}
+                </span>
+                {onFoodValues && !editVals && (
+                  <button type="button" className="pt-btn" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => setEditVals(true)}>
+                    ✏️ Valeurs
+                  </button>
+                )}
+              </div>
+              {editVals && (
+                <FoodValuesEditor
+                  key={sel.id}
+                  food={sel}
+                  onCancel={() => setEditVals(false)}
+                  onSave={(per100) => {
+                    onFoodValues(sel, per100);
+                    setSel({ ...sel, n: { ...sel.n, ...per100 }, edited: sel.cat !== "perso" });
+                    setEditVals(false);
+                  }}
+                  onReset={
+                    sel.cat !== "perso"
+                      ? () => {
+                          onFoodValues(sel, null);
+                          setSel(FOOD_BY_ID[sel.id] || sel);
+                          setEditVals(false);
+                        }
+                      : null
+                  }
+                />
+              )}
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "flex-end" }}>
                 <div>
                   <label style={lbl}>Quantité (g ou ml)</label>
@@ -111,7 +247,14 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
                 <button type="button" className="pt-btn pt-btn--primary" disabled={!(g > 0)} onClick={add}>
                   ＋ Ajouter
                 </button>
-                <button type="button" className="pt-btn" onClick={() => setSel(null)}>
+                <button
+                  type="button"
+                  className="pt-btn"
+                  onClick={() => {
+                    setSel(null);
+                    setEditVals(false);
+                  }}
+                >
                   ← Autre aliment
                 </button>
               </div>
@@ -146,6 +289,7 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
                   <span>
                     {f.cat === "perso" ? "⭐ " : ""}
                     {f.name}
+                    {f.edited ? " ✏️" : ""}
                   </span>
                   <span style={{ color: MUTED, fontSize: 12, whiteSpace: "nowrap" }}>
                     {Math.round(f.n.kcal)} kcal · P {fmtN("p", f.n.p)} /100 g
