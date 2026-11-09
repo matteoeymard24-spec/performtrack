@@ -341,6 +341,16 @@ const renumberAutoNames = (blocks) =>
 /* Nombre de tours d'un bloc muscu (= séries ; les exercices du bloc s'enchaînent) */
 const blockRounds = (b) => Math.max(1, ...((b?.exercises || []).map((x) => Math.max(1, Number(x.series) || 1))));
 const sameSeries = (b) => new Set((b?.exercises || []).map((x) => Math.max(1, Number(x.series) || 1))).size <= 1;
+/* TOURS du bloc (≥ 2 exercices, hors EMOM / AMRAP) : fixés en haut du bloc, ils imposent le nombre de séries
+   de chaque exercice (champ « Séries » verrouillé). block.rounds = 0 → séries réglées exercice par exercice ;
+   absent (anciens blocs) → tours si tous les exercices ont déjà le même nombre de séries. */
+const lockedRounds = (b) => {
+  const n = (b?.exercises || []).length;
+  if (n < 2 || b?.timerMode === "emom" || b?.timerMode === "amrap") return 0;
+  if (b.rounds === 0) return 0;
+  if (Number(b.rounds) > 0) return Number(b.rounds);
+  return sameSeries(b) ? blockRounds(b) : 0;
+};
 
 const restOf = (min, sec, defMin = 2) => Math.max(0, Math.round((Number(min ?? defMin) || 0) * 60 + (Number(sec) || 0)));
 const roundRestSec = (b) => restOf(b?.restMin ?? b?.exercises?.[0]?.restMin, b?.restSec);
@@ -3448,6 +3458,9 @@ export default function Workout() {
     const nb = [...blocks];
     // exercice du type du BLOC (séances mixtes)
     let newExercise = defaultExerciseFor(blockTypeOf(nb[bIdx], workoutType));
+    // bloc à tours fixés : le nouvel exercice prend le nombre de tours du bloc
+    const lr = lockedRounds(nb[bIdx]) || ((nb[bIdx].exercises || []).length === 1 && nb[bIdx].rounds !== 0 && !nb[bIdx].timerMode ? Number(nb[bIdx].exercises[0].series) || 0 : 0);
+    if (lr) newExercise = { ...newExercise, series: lr };
     nb[bIdx] = { ...nb[bIdx], exercises: [...(nb[bIdx].exercises || []), newExercise] };
     setBlocks(nb);
   };
@@ -3519,7 +3532,7 @@ export default function Workout() {
     );
   };
   const setBlockRounds = (bIdx, rounds) =>
-    setBlocks((prev) => prev.map((b, i) => (i !== bIdx ? b : { ...b, exercises: (b.exercises || []).map((x) => ({ ...x, series: rounds })) })));
+    setBlocks((prev) => prev.map((b, i) => (i !== bIdx ? b : { ...b, rounds, exercises: (b.exercises || []).map((x) => ({ ...x, series: rounds })) })));
   const setBlockMp = (bIdx, patch) =>
     setBlocks((prev) => prev.map((b, i) => (i !== bIdx ? b : { ...b, mp: { ...(b.mp || {}), ...patch } })));
   const setExMethod = (bIdx, eIdx, method) =>
@@ -7995,8 +8008,45 @@ export default function Workout() {
                   updateBlock(bIdx, "nextRestSec", v % 60);
                 };
                 const n = block.exercises.length;
+                const lr = lockedRounds(block);
+                const showRounds = !isTimer && n >= 2 && !isContrastBlock(block);
                 return (
                   <div style={{ marginBottom: 12 }}>
+                    {/* TOURS du bloc : un seul réglage en haut au lieu des séries de chaque exercice */}
+                    {showRounds && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, padding: "8px 10px", background: "rgba(79,174,125,0.10)", border: "1px solid rgba(79,174,125,0.35)", borderRadius: 8, flexWrap: "wrap" }}>
+                        <label htmlFor={`rounds-${bIdx}`} style={{ fontSize: 13, color: "#4fae7d", fontWeight: "bold", whiteSpace: "nowrap", minWidth: 190 }}>
+                          🔁 Tours du bloc
+                        </label>
+                        {lr ? (
+                          <>
+                            <input
+                              id={`rounds-${bIdx}`}
+                              type="number"
+                              min="1"
+                              max="20"
+                              inputMode="numeric"
+                              value={lr}
+                              onChange={(e) => setBlockRounds(bIdx, Math.max(1, Math.min(20, Math.round(Number(e.target.value) || 1))))}
+                              style={{ width: 70, padding: 6, borderRadius: 6, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontWeight: 800, fontSize: 15 }}
+                            />
+                            <span style={{ fontSize: 12, color: "#a8a199", flex: "1 1 200px" }}>
+                              = {lr} série{lr > 1 ? "s" : ""} pour chacun des {n} exercices.{" "}
+                              <button type="button" onClick={() => updateBlock(bIdx, "rounds", 0)} style={{ background: "none", border: "none", color: "#e0a13d", cursor: "pointer", padding: 0, fontSize: 12, textDecoration: "underline" }}>
+                                Séries différentes par exercice
+                              </button>
+                            </span>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 12, color: "#a8a199", flex: "1 1 200px" }}>
+                            Séries réglées exercice par exercice.{" "}
+                            <button type="button" onClick={() => setBlockRounds(bIdx, blockRounds(block))} style={{ background: "none", border: "none", color: "#4fae7d", cursor: "pointer", padding: 0, fontSize: 12, textDecoration: "underline" }}>
+                              Fixer un nombre de tours pour tout le bloc
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {/* EMOM / AMRAP : le chrono fixe déjà le rythme, seule la récup avant le bloc suivant compte */}
                     {!isTimer &&
                       row(
@@ -8638,13 +8688,15 @@ export default function Workout() {
                                 pas un nombre de séries par exercice. */}
                             {!isTimerBlock && (
                               <div>
-                                <label style={{ fontSize: 12, color: "#a8a199" }}>
-                                  Séries
+                                <label style={{ fontSize: 12, color: lockedRounds(block) ? "#4fae7d" : "#a8a199" }}>
+                                  {lockedRounds(block) ? "Séries 🔒 (tours)" : "Séries"}
                                 </label>
                                 <input
                                   type="number"
                                   min={1}
-                                  value={Math.max(1, Number(ex.series) || 1)}
+                                  disabled={!!lockedRounds(block)}
+                                  title={lockedRounds(block) ? "Fixé par les tours du bloc (en haut du bloc)" : undefined}
+                                  value={lockedRounds(block) || Math.max(1, Number(ex.series) || 1)}
                                   onChange={(e) =>
                                     updateExercise(
                                       bIdx,
@@ -8660,6 +8712,8 @@ export default function Workout() {
                                     border: "1px solid #2a2620",
                                     background: "#0d0c0a",
                                     color: "#f3f0ea",
+                                    opacity: lockedRounds(block) ? 0.65 : 1,
+                                    cursor: lockedRounds(block) ? "not-allowed" : "text",
                                   }}
                                 />
                               </div>

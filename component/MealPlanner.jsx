@@ -7,6 +7,7 @@ import { appConfirm, appAlert as alert } from "./appDialog";
 import { computeTargets, DAY_TYPES, DAY_BY_ID, MICROS, fmtN, todayISO, shiftISO, bestSources } from "./nutritionData";
 import { CUISINES, CUISINE_BY_ID } from "./recipes";
 import RecipeBook from "./RecipeBook";
+import RecipeView from "./RecipeView";
 import { loadTrainingDays, autoDayType } from "./trainingDays";
 import {
   recommendDay,
@@ -118,6 +119,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
   const [mealIdx, setMealIdx] = useState({}); // `${date}_${meal}` → modèle
   const [adding, setAdding] = useState(null); // id du repas où l'on ajoute
   const [swap, setSwap] = useState(null); // `${meal}_${i}`
+  const [viewMeal, setViewMeal] = useState(null); // repas dont la fiche recette est ouverte
   const saveTimers = useRef({});
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => shiftISO(weekStart, i)), [weekStart]);
@@ -616,12 +618,18 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
                           </button>
                         </div>
                       </div>
-                      {meal.recipe?.name && (
-                        <div style={{ fontSize: 12.5, color: "#c9c1b5", marginBottom: 6, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
-                          <span>{CUISINE_BY_ID[meal.recipe.cuisine]?.flag || "🍽️"}</span>
-                          <b style={{ color: TEXT }}>{meal.recipe.name}</b>
-                          {meal.recipe.withFood && <span style={{ color: ACCENT, fontSize: 11.5 }}>· avec {meal.recipe.withFood}</span>}
-                        </div>
+                      {(meal.items || []).length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setViewMeal(meal)}
+                          title="Voir la recette : ingrédients et préparation"
+                          style={{ width: "100%", textAlign: "left", font: "inherit", cursor: "pointer", padding: "8px 10px", borderRadius: 10, border: `1px solid ${ACCENT}44`, background: `${ACCENT}0f`, fontSize: 12.5, color: "#c9c1b5", marginBottom: 6, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}
+                        >
+                          <span>{CUISINE_BY_ID[meal.recipe?.cuisine]?.flag || "🍽️"}</span>
+                          <b style={{ color: TEXT }}>{meal.recipe?.name || "Repas composé"}</b>
+                          {meal.recipe?.withFood && <span style={{ color: ACCENT, fontSize: 11.5 }}>· avec {meal.recipe.withFood}</span>}
+                          <span style={{ marginLeft: "auto", color: ACCENT, fontWeight: 800, fontSize: 12, whiteSpace: "nowrap" }}>📖 Voir la recette</span>
+                        </button>
                       )}
                       {(meal.items || []).map((it, i) => {
                         const sk = `${mid}_${i}`;
@@ -723,6 +731,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
           </>
         )}
       </div>
+      {viewMeal && <RecipeView meal={viewMeal} dayLabel={dayLabel(sel, { weekday: "long", day: "numeric", month: "short" })} customFoods={customFoods} onClose={() => setViewMeal(null)} />}
     </div>
   );
 }
