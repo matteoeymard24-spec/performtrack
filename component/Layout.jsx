@@ -16,6 +16,27 @@ const TEXT_MUTED = "#a8a199";
 export default function Layout() {
   // Hauteur réelle de la barre du haut → variable CSS --pt-header-h (en-têtes collants des cartes, voir ui.jsx)
   const headerRef = React.useRef(null);
+  // Onglets sur une 2e ligne quand ils ne tiennent pas à côté du logo et des actions (sinon rognés)
+  const rowRef = React.useRef(null);
+  const [navWrap, setNavWrap] = useState(false);
+  React.useLayoutEffect(() => {
+    const row = rowRef.current;
+    if (!row) return undefined;
+    const measure = () => {
+      const kids = Array.from(row.children).filter((c) => c.offsetParent !== null);
+      const nav = row.querySelector(".desktop-nav");
+      if (!nav || nav.offsetParent === null) return setNavWrap(false);
+      const tabs = Array.from(nav.querySelectorAll("button"));
+      const navNeed = tabs.reduce((a, b) => a + b.offsetWidth, 0) + 2 * Math.max(0, tabs.length - 1);
+      const others = kids.filter((c) => c !== nav).reduce((a, c) => a + c.offsetWidth, 0);
+      setNavWrap(navNeed + others + 16 * (kids.length - 1) > row.clientWidth);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(row);
+    return () => ro.disconnect();
+  });
   React.useEffect(() => {
     const el = headerRef.current;
     if (!el) return undefined;
@@ -144,8 +165,11 @@ export default function Layout() {
             maxWidth: 1400,
             margin: "0 auto",
             gap: 16,
+            rowGap: 8,
+            flexWrap: navWrap ? "wrap" : "nowrap",
             width: "100%",
           }}
+          ref={rowRef}
         >
           {/* Logo + rôle */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
@@ -180,17 +204,16 @@ export default function Layout() {
           <nav
             style={{
               display: "flex",
-              flex: 1,
+              flex: navWrap ? "1 1 100%" : 1,
+              order: navWrap ? 3 : 0,
               minWidth: 0,
-              maxWidth: 760,
-              overflowX: "auto",
-              scrollbarWidth: "none",
-              padding: "4px 0",
+              padding: navWrap ? "6px 0 0" : "4px 0",
+              borderTop: navWrap ? `1px solid ${BORDER}` : "none",
             }}
             className="desktop-nav"
           >
-            {/* margin auto : centré quand ça tient, sinon aligné à gauche (rien n'est rogné) */}
-            <div style={{ display: "flex", gap: 2, margin: "0 auto" }}>
+            {/* centré ; passe sur une 2e ligne (navWrap) quand tous les onglets ne tiennent pas à côté des actions */}
+            <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 2, margin: "0 auto" }}>
             {visibleMenuItems.map((item) => {
               const active = location.pathname === item.path || (item.path === "/wellness" && WELLBEING_PATHS.includes(location.pathname));
               return (
@@ -222,7 +245,7 @@ export default function Layout() {
           </nav>
 
           {/* Actions desktop */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }} className="desktop-actions">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }} className="desktop-actions">
             {isSuperAdmin && coachScope && (
               <button
                 onClick={() => coachScope.setSeeAll(!coachScope.seeAll)}
@@ -343,9 +366,8 @@ export default function Layout() {
           }}
         >
           <span>👁 Aperçu athlète : tu vois l'appli comme un athlète (avec ton propre compte).</span>
-          <button
+          <button className="pt-btn pt-btn--ok pt-btn--sm"
             onClick={togglePreview}
-            style={{ background: "#06180f", color: "#4fae7d", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
           >
             Quitter l'aperçu
           </button>

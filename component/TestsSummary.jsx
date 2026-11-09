@@ -129,7 +129,7 @@ export default function TestsSummary({ uid, title = "🧪 Mes tests", simple = f
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: collapsed ? 0 : 10 }}>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: TEXT }}>{title}</h3>
           {onToggle && (
-            <button onClick={onToggle} title={collapsed ? "Afficher" : "Masquer"} style={{ padding: "4px 10px", background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, flexShrink: 0 }}>
+            <button className="pt-btn" onClick={onToggle} title={collapsed ? "Afficher" : "Masquer"} style={{ flexShrink: 0 }}>
               {collapsed ? "▸" : "▾"}
             </button>
           )}

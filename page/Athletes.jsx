@@ -601,18 +601,8 @@ export default function Athletes() {
         <div style={{ fontSize: 14, color: "#a8a199", marginBottom: 20 }}>
           {error}
         </div>
-        <button
+        <button className="pt-btn pt-btn--accent"
           onClick={() => window.location.reload()}
-          style={{
-            padding: "12px 24px",
-            background: "#e0a13d",
-            color: "#1a1306",
-            border: "none",
-            borderRadius: 10,
-            cursor: "pointer",
-            fontSize: 14,
-            fontWeight: "600",
-          }}
         >
           🔄 Réessayer
         </button>
@@ -658,17 +648,17 @@ export default function Athletes() {
           >
             {myCode || "…"}
           </div>
-          <button
+          <button className="pt-btn pt-btn--accent"
             onClick={copyCode}
             disabled={!myCode}
-            style={{ padding: "10px 16px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600, minHeight: 44 }}
+            style={{ minHeight: 44 }}
           >
             📋 Copier
           </button>
-          <button
+          <button className="pt-btn"
             onClick={regenerateCode}
             disabled={codeBusy || !myCode}
-            style={{ padding: "10px 16px", background: "transparent", color: "#a8a199", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 8, cursor: "pointer", minHeight: 44 }}
+            style={{ minHeight: 44 }}
           >
             🔄 Nouveau code
           </button>
@@ -719,33 +709,13 @@ export default function Athletes() {
                   {isSuperAdmin && <CoachPicker user={u} compact />}
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button
+                  <button className="pt-btn pt-btn--ok"
                     onClick={() => approveUser(u.id)}
-                    style={{
-                      padding: "8px 16px",
-                      background: "#4fae7d",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontWeight: "600",
-                      fontSize: 13,
-                    }}
                   >
                     ✅ Autoriser
                   </button>
-                  <button
+                  <button className="pt-btn pt-btn--danger"
                     onClick={() => rejectUser(u.id)}
-                    style={{
-                      padding: "8px 16px",
-                      background: "transparent",
-                      color: "#d9695a",
-                      border: "1px solid #d9695a",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontWeight: "600",
-                      fontSize: 13,
-                    }}
                   >
                     ❌ Refuser
                   </button>
@@ -847,19 +817,9 @@ export default function Athletes() {
                   />
                   </div>
                   {user.status === "rejected" && (
-                    <button
+                    <button className="pt-btn pt-btn--danger pt-btn--sm"
                       onClick={() => approveUser(user.id)}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: 14,
-                        fontSize: 10,
-                        fontWeight: "700",
-                        textTransform: "uppercase",
-                        background: "rgba(217,105,90,0.14)",
-                        color: "#d9695a",
-                        border: "1px solid rgba(217,105,90,0.4)",
-                        cursor: "pointer",
-                      }}
+                      style={{ textTransform: "uppercase" }}
                       title="Cliquer pour autoriser l'accès malgré tout"
                     >
                       🚫 Refusé — réautoriser
@@ -957,18 +917,9 @@ export default function Athletes() {
                   </div>
 
                   <div style={{ display: "flex", gap: 10 }}>
-                    <button
+                    <button className="pt-btn pt-btn--ok"
                       onClick={() => saveEdit(user.id)}
-                      style={{
-                        flex: 1,
-                        padding: 12,
-                        background: "#4fae7d",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 10,
-                        cursor: "pointer",
-                        fontWeight: "600",
-                                              }}
+                      style={{ flex: 1 }}
                     >
                       ✅ Enregistrer
                     </button>
@@ -1028,19 +979,9 @@ export default function Athletes() {
                   )}
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                    <button
+                    <button className="pt-btn pt-btn--accent"
                       onClick={() => startEdit(user)}
-                      style={{
-                        flex: "1 1 120px",
-                        padding: 12,
-                        background: "#e0a13d",
-                        color: "#1a1306",
-                        border: "none",
-                        borderRadius: 10,
-                        cursor: "pointer",
-                        fontWeight: "600",
-                                                transition: "all 0.3s ease",
-                      }}
+                      style={{ flex: "1 1 120px" }}
                       onMouseEnter={(e) => {
                         e.target.style.transform = "translateY(-2px)";
                         e.target.style.boxShadow = "0 6px 20px rgba(224, 161, 61, 0.6)";
@@ -1057,7 +998,7 @@ export default function Athletes() {
                       user.role === "admin" &&
                       (user.email || "").toLowerCase() === "matteo.eymard24@gmail.com"
                     ) && (
-                      <button
+                      <button className="pt-btn"
                         onClick={() =>
                           updateRole(
                             user.id,
@@ -1065,17 +1006,7 @@ export default function Athletes() {
                             user.email
                           )
                         }
-                        style={{
-                          flex: "1 1 120px",
-                          padding: 12,
-                          background: "#2a2620",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 10,
-                          cursor: "pointer",
-                          fontWeight: "600",
-                                                    transition: "all 0.3s ease",
-                        }}
+                        style={{ flex: "1 1 120px" }}
                         onMouseEnter={(e) => {
                           e.target.style.transform = "translateY(-2px)";
                           e.target.style.boxShadow = "0 6px 20px rgba(0, 0, 0, 0.45)";
@@ -1092,19 +1023,9 @@ export default function Athletes() {
                     {isSuperAdmin &&
                       (user.email || "").toLowerCase() !==
                         "matteo.eymard24@gmail.com" && (
-                      <button
+                      <button className="pt-btn pt-btn--danger"
                         onClick={() => deleteAthlete(user.id, user.email)}
-                        style={{
-                          flex: "1 1 120px",
-                          padding: 12,
-                          background: "#d9695a",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 10,
-                          cursor: "pointer",
-                          fontWeight: "600",
-                                                    transition: "all 0.3s ease",
-                        }}
+                        style={{ flex: "1 1 120px" }}
                         onMouseEnter={(e) => {
                           e.target.style.transform = "translateY(-2px)";
                           e.target.style.boxShadow = "0 6px 20px rgba(217, 105, 90, 0.6)";

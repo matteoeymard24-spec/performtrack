@@ -284,10 +284,9 @@ export default function Wellness() {
           title="🩹 Douleurs d'aujourd'hui"
           subtitle="Zone, intensité, type et sensation — touche une zone pour le détail"
           right={
-            <button
+            <button className="pt-btn pt-btn--accent pt-btn--sm"
               type="button"
               onClick={() => navigate(formUrl)}
-              style={{ padding: "6px 12px", background: "transparent", color: "#e0a13d", border: "1px solid #e0a13d66", borderRadius: 8, cursor: "pointer", fontSize: 12 }}
             >
               Modifier
             </button>
@@ -335,26 +334,23 @@ export default function Wellness() {
                 {confirmId === e.id ? (
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, color: "#d9695a" }}>Supprimer définitivement ?</span>
-                    <button
+                    <button className="pt-btn pt-btn--danger"
                       type="button"
                       onClick={() => deleteEntry(e.id)}
-                      style={{ padding: "7px 12px", background: "#d9695a", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}
                     >
                       Oui, supprimer
                     </button>
-                    <button
+                    <button className="pt-btn"
                       type="button"
                       onClick={() => setConfirmId(null)}
-                      style={{ padding: "7px 12px", background: "transparent", color: "#a8a199", border: "1px solid #3a342a", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
                     >
                       Annuler
                     </button>
                   </div>
                 ) : (
-                  <button
+                  <button className="pt-btn pt-btn--danger"
                     type="button"
                     onClick={() => { setConfirmId(e.id); setDeleteError(""); }}
-                    style={{ padding: "7px 12px", background: "transparent", color: "#d9695a", border: "1px solid #d9695a88", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
                   >
                     🗑️ Supprimer
                   </button>

@@ -1124,10 +1124,10 @@ export default function MyRM() {
         >
           <FeedbackList entries={fbEntries} mode="all" limit={15} searchable />
           {!fbAllHistory && (
-            <button
+            <button className="pt-btn pt-btn--accent"
               type="button"
               onClick={() => setFbAllHistory(true)}
-              style={{ marginTop: 10, padding: "8px 12px", background: "transparent", color: "#e0a13d", border: "1px solid rgba(224,161,61,0.4)", borderRadius: 8, cursor: "pointer", fontSize: 13, minHeight: 40 }}
+              style={{ marginTop: 10, minHeight: 40 }}
             >
               🕘 Afficher aussi les feedbacks de plus de 12 mois
             </button>
@@ -1266,34 +1266,15 @@ export default function MyRM() {
           )}
 
           <div style={{ display: "flex", gap: 10 }}>
-            <button
+            <button className="pt-btn pt-btn--accent"
               onClick={handleSaveRM}
-              style={{
-                flex: 1,
-                padding: 14,
-                background: "#e0a13d",
-                color: "#1a1306",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 16,
-                fontWeight: "bold",
-                cursor: "pointer",
-              }}
+              style={{ flex: 1 }}
             >
               ✅ Enregistrer
             </button>
-            <button
+            <button className="pt-btn"
               onClick={cancelForm}
-              style={{
-                flex: 1,
-                padding: 14,
-                background: "#a8a199",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                fontSize: 16,
-                cursor: "pointer",
-              }}
+              style={{ flex: 1 }}
             >
               Annuler
             </button>
@@ -1630,40 +1611,21 @@ export default function MyRM() {
                   📊 {selectedExercise}
                 </h3>
                 <div style={{ display: "flex", gap: 10 }}>
-                  <button
+                  <button className="pt-btn pt-btn--accent"
                     onClick={() => handleEditRM(selectedExercise)}
-                    style={{
-                      padding: "8px 14px",
-                      background: "#e0a13d",
-                      color: "#1a1306",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontSize: 14,
-                    }}
                   >
                     ✏️ Modifier
                   </button>
                   {fbEntries.some((e) => normKey(e.exercise) === normKey(selectedExercise)) && (
-                    <button
+                    <button className="pt-btn pt-btn--accent"
                       onClick={() => resetFromFeedback(selectedExercise)}
                       title="Recalculer le RM depuis les retours de séance"
-                      style={{ padding: "8px 14px", background: "#2a2620", color: "#e0a13d", border: "1px solid #e0a13d", borderRadius: 8, cursor: "pointer", fontSize: 14 }}
                     >
                       🔄 Recalculer
                     </button>
                   )}
-                  <button
+                  <button className="pt-btn"
                     onClick={() => setSelectedExercise(null)}
-                    style={{
-                      padding: "8px 14px",
-                      background: "#a8a199",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontSize: 14,
-                    }}
                   >
                     Fermer
                   </button>

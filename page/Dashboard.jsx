@@ -334,10 +334,10 @@ export default function Dashboard() {
   // Repli par carte (même principe que Workout) : le titre reste visible,
   // le bouton ▾/▸ replie le contenu. Mémorisé sur l'appareil.
   const foldBtn = (k) => (
-    <button
+    <button className="pt-btn"
       onClick={() => toggleDash(k)}
       title={vis(k) ? "Masquer" : "Afficher"}
-      style={{ padding: "3px 10px", background: "transparent", color: "#a8a199", border: "1px solid #2a2620", borderRadius: 8, cursor: "pointer", fontSize: 13, flexShrink: 0 }}
+      style={{ flexShrink: 0 }}
     >
       {vis(k) ? "▾" : "▸"}
     </button>
@@ -353,10 +353,10 @@ export default function Dashboard() {
   const [rmOpenEx, setRmOpenEx] = useState({});
 
   const SectionToggleBtn = ({ sectionKey }) => (
-    <button
+    <button className="pt-btn"
       onClick={() => toggleSection(sectionKey)}
       title={sectionVisibility[sectionKey] ? "Replier" : "Déplier"}
-      style={{ padding: "3px 10px", background: "transparent", color: "#a8a199", border: "1px solid #2a2620", borderRadius: 8, cursor: "pointer", fontSize: 13, flexShrink: 0 }}
+      style={{ flexShrink: 0 }}
     >
       {sectionVisibility[sectionKey] ? "▾" : "▸"}
     </button>
@@ -1900,12 +1900,12 @@ export default function Dashboard() {
           const hasAcwr = acwr !== null && acwr !== undefined && Number(acwr) > 0;
           const pct = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : null;
           const kpi = (key, icon, label, value, color, sub, onClick) => (
-            <button
+            <button className="pt-btn"
               key={key}
               type="button"
               onClick={onClick}
               disabled={!onClick}
-              style={{ textAlign: "left", padding: "12px 14px", borderRadius: 12, cursor: onClick ? "pointer" : "default", background: "#151310", border: "1px solid #2a2620", color: "#f3f0ea", minWidth: 0 }}
+              style={{ textAlign: "left", minWidth: 0 }}
             >
               <div style={{ fontSize: 12, color: "#a8a199", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {icon} {label}
@@ -2234,36 +2234,16 @@ export default function Dashboard() {
                   sans avoir à aller la chercher dans le calendrier de la
                   page Séances. */}
               <div style={{ display: "flex", gap: 10 }}>
-                <button
+                <button className="pt-btn"
                   onClick={() => goToWorkout(todayWorkout.id, false)}
-                  style={{
-                    flex: 1,
-                    padding: 12,
-                    background: "#2a2620",
-                    color: "#f3f0ea",
-                    border: "1px solid #2a2620",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                    fontSize: 14,
-                  }}
+                  style={{ flex: 1 }}
                 >
                   👁️ Voir la séance
                 </button>
                 {!isWorkoutCompleted(todayWorkout) && (
-                  <button
+                  <button className="pt-btn pt-btn--accent"
                     onClick={() => goToWorkout(todayWorkout.id, true)}
-                    style={{
-                      flex: 1,
-                      padding: 12,
-                      background: "#e0a13d",
-                      color: "#1a1306",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                      fontSize: 14,
-                    }}
+                    style={{ flex: 1 }}
                   >
                     {isWorkoutInProgress(todayWorkout)
                       ? "▶️ Reprendre"
@@ -2307,21 +2287,10 @@ export default function Dashboard() {
             {foldHead("wellness", "🧘 Wellness")}
             {vis("wellness") && (
             <>
-              <button
+              <button className="pt-btn pt-btn--accent pt-btn--block"
                 type="button"
                 onClick={() => navigate("/wellness?from=dashboard")}
-                style={{
-                  width: "100%",
-                  padding: "10px 14px",
-                  marginBottom: 14,
-                  background: "rgba(224,161,61,0.12)",
-                  color: "#e0a13d",
-                  border: "1px solid rgba(224,161,61,0.4)",
-                  borderRadius: 10,
-                  cursor: "pointer",
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
+                style={{ marginBottom: 14 }}
               >
                 🧘 Ouvrir l'onglet Wellness →
               </button>
@@ -2756,34 +2725,18 @@ export default function Dashboard() {
               />
               {renderBodyFatInputs()}
               <div style={{ display: "flex", gap: 10 }}>
-                <button
+                <button className="pt-btn pt-btn--ok"
                   onClick={saveWeight}
-                  style={{
-                    flex: 1,
-                    padding: 12,
-                    background: "#4fae7d",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                  }}
+                  style={{ flex: 1 }}
                 >
                   ✅
                 </button>
-                <button
+                <button className="pt-btn pt-btn--danger"
                   onClick={() => {
                     setEditingWeight(false);
                     setAthleteWeight(userProfile?.weight || "");
                   }}
-                  style={{
-                    flex: 1,
-                    padding: 12,
-                    background: "#d9695a",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                  }}
+                  style={{ flex: 1 }}
                 >
                   ✕
                 </button>
@@ -2946,10 +2899,10 @@ export default function Dashboard() {
                     Les derniers exercices pour lesquels tu as donné un feedback. Touche une ligne pour voir tes séries.
                   </div>
                   <FeedbackList entries={fbEntries} mode="last" limit={6} />
-                  <button
+                  <button className="pt-btn pt-btn--accent pt-btn--block"
                     type="button"
                     onClick={() => navigate("/myrm?from=dashboard#feedbacks")}
-                    style={{ width: "100%", marginTop: 12, padding: "10px 14px", background: "rgba(224,161,61,0.12)", color: "#e0a13d", border: "1px solid rgba(224,161,61,0.4)", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 600 }}
+                    style={{ marginTop: 12 }}
                   >
                     Voir tout ({fbEntries.length}) →
                   </button>
@@ -2992,9 +2945,9 @@ export default function Dashboard() {
                     const open = q ? true : !!rmOpenCats[cat.value];
                     return (
                       <div key={cat.value} style={{ marginBottom: 8 }}>
-                        <button
+                        <button className="pt-btn pt-btn--block"
                           onClick={() => setRmOpenCats((p) => ({ ...p, [cat.value]: !p[cat.value] }))}
-                          style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 12px", background: "#1d1a16", color: "#f3f0ea", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: 600, textAlign: "left" }}
+                          style={{ justifyContent: "space-between", alignItems: "center", textAlign: "left" }}
                         >
                           <span>{cat.label} <span style={{ color: "#a8a199", fontWeight: 400 }}>({list.length})</span></span>
                           <span style={{ color: "#a8a199" }}>{open ? "▾" : "▸"}</span>
@@ -3749,9 +3702,8 @@ export default function Dashboard() {
             <div style={{ background: "#151310", padding: 18, borderRadius: 12, marginBottom: 16, border: "1px solid #2a2620" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: sectionVisibility.links ? 12 : 0 }}>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>🔗 Wellness × sommeil × nutrition</h3>
-                <button
+                <button className="pt-btn"
                   onClick={() => toggleSection("links")}
-                  style={{ padding: "3px 10px", background: "transparent", color: "#a8a199", border: "1px solid #2a2620", borderRadius: 8, cursor: "pointer", fontSize: 13 }}
                 >
                   {sectionVisibility.links ? "▾" : "▸"}
                 </button>
@@ -4077,18 +4029,9 @@ export default function Dashboard() {
                       );
                     })}
                     {all.length > 15 && (
-                      <button
+                      <button className="pt-btn"
                         onClick={() => setShowAllAthleteSessions((v) => !v)}
-                        style={{
-                          marginTop: 6,
-                          padding: "8px 14px",
-                          background: "#2a2620",
-                          color: "#f3f0ea",
-                          border: "none",
-                          borderRadius: 6,
-                          cursor: "pointer",
-                          fontSize: 13,
-                        }}
+                        style={{ marginTop: 6 }}
                       >
                         {showAllAthleteSessions
                           ? "Voir moins"
@@ -4493,20 +4436,10 @@ export default function Dashboard() {
                           color: "#f3f0ea",
                         }}
                       />
-                      <button
+                      <button className="pt-btn pt-btn--ok"
                         disabled={savingVmaCmj === "vma"}
                         onClick={() => saveManualVmaCmj("vma")}
-                        style={{
-                          padding: "0 14px",
-                          background: "#4fae7d",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 6,
-                          cursor: savingVmaCmj === "vma" ? "wait" : "pointer",
-                          fontWeight: "bold",
-                          fontSize: 13,
-                          whiteSpace: "nowrap",
-                        }}
+                        style={{ whiteSpace: "nowrap" }}
                       >
                         {savingVmaCmj === "vma" ? "…" : "✅ Enregistrer"}
                       </button>
@@ -4589,20 +4522,10 @@ export default function Dashboard() {
                           color: "#f3f0ea",
                         }}
                       />
-                      <button
+                      <button className="pt-btn pt-btn--ok"
                         disabled={savingVmaCmj === "cmj"}
                         onClick={() => saveManualVmaCmj("cmj")}
-                        style={{
-                          padding: "0 14px",
-                          background: "#4fae7d",
-                          color: "white",
-                          border: "none",
-                          borderRadius: 6,
-                          cursor: savingVmaCmj === "cmj" ? "wait" : "pointer",
-                          fontWeight: "bold",
-                          fontSize: 13,
-                          whiteSpace: "nowrap",
-                        }}
+                        style={{ whiteSpace: "nowrap" }}
                       >
                         {savingVmaCmj === "cmj" ? "…" : "✅ Enregistrer"}
                       </button>
@@ -4782,17 +4705,8 @@ export default function Dashboard() {
                         ? `${matches.length} résultat${matches.length > 1 ? "s" : ""}`
                         : `Exercices faits / suivis (${entries.length})`}
                     </span>
-                    <button
+                    <button className="pt-btn pt-btn--sm"
                       onClick={() => setRmListOpen((v) => !v)}
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: 6,
-                        border: "1px solid #2a2620",
-                        background: "#0d0c0a",
-                        color: "#a8a199",
-                        fontSize: 12,
-                        cursor: "pointer",
-                      }}
                     >
                       {rmListOpen ? "▾ Masquer la liste" : "▸ Afficher la liste"}
                     </button>
@@ -4869,18 +4783,9 @@ export default function Dashboard() {
                         </h4>
                         <span style={{ fontSize: 12, color: "#a8a199" }}>
                           {getExerciseCategoryLabel(selected.category)}
-                          <button
+                          <button className="pt-btn pt-btn--sm"
                             onClick={() => setRmSelected(null)}
-                            style={{
-                              marginLeft: 10,
-                              padding: "2px 8px",
-                              borderRadius: 6,
-                              border: "1px solid #2a2620",
-                              background: "#151310",
-                              color: "#a8a199",
-                              fontSize: 12,
-                              cursor: "pointer",
-                            }}
+                            style={{ marginLeft: 10 }}
                           >
                             ✕ Fermer
                           </button>

@@ -695,10 +695,10 @@ class BoardBoundary extends React.Component {
       return (
         <div style={{ padding: 12, border: "1px solid #d9695a", borderRadius: 8, color: "#f3f0ea", fontSize: 13, background: "#2a1512" }}>
           ⚠️ Le schéma a rencontré un problème ({String(this.state.error.message || this.state.error)}). Ton dessin est conservé.
-          <button
+          <button className="pt-btn pt-btn--accent"
             type="button"
             onClick={() => this.setState({ error: null })}
-            style={{ marginLeft: 8, padding: "6px 12px", borderRadius: 6, border: "none", background: "#e0a13d", color: "#1a1306", cursor: "pointer" }}
+            style={{ marginLeft: 8 }}
           >
             Réessayer
           </button>

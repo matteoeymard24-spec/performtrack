@@ -230,20 +230,11 @@ const ColorSwatches = ({ value, onChange, emptyLabel }) => {
         />
       </label>
       {shown && (
-        <button
+        <button className="pt-btn pt-btn--sm"
           type="button"
           onClick={() => {
             setTmp("");
             onChange("");
-          }}
-          style={{
-            padding: "4px 10px",
-            borderRadius: 16,
-            fontSize: 12,
-            cursor: "pointer",
-            color: "#a8a199",
-            background: "transparent",
-            border: "1px solid #2a2620",
           }}
         >
           ✕ {emptyLabel}
@@ -5622,9 +5613,8 @@ export default function Workout() {
       {/* Boutons Admin */}
       {userRole !== "admin" && !showForm && !selectedSession && (
         <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-          <button
+          <button className="pt-btn pt-btn--accent"
             onClick={() => setShowAthleteRefs(true)}
-            style={{ padding: "8px 14px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
           >
             🧭 Repères RPE / vitesse de barre
           </button>
@@ -5662,7 +5652,6 @@ export default function Workout() {
                 setFormDate(date);
               }
             }}
-            style={{ fontSize: isMobileView() ? 14 : 15, padding: isMobileView() ? "10px 16px" : "11px 20px" }}
           >
             {athleteFilterId
               ? "➕ Créer séance pour cet athlète"
@@ -5731,15 +5720,15 @@ export default function Workout() {
           <div style={{ background: "#151310", border: "2px solid #e0a13d", borderRadius: 12, padding: isMobileView() ? 16 : 24, maxWidth: 460, width: "100%", maxHeight: "85vh", overflowY: "auto", color: "#f3f0ea" }}>
             <div style={{ whiteSpace: "pre-wrap", fontSize: 15, lineHeight: 1.5, marginBottom: 18 }}>{confirmDlg.message}</div>
             <div style={{ display: "flex", gap: 10 }}>
-              <button
+              <button className="pt-btn pt-btn--danger"
                 onClick={() => closeConfirm(true)}
-                style={{ flex: 1, padding: 14, background: "#d9695a", color: "white", border: "none", borderRadius: 8, fontSize: 15, fontWeight: "bold", cursor: "pointer" }}
+                style={{ flex: 1 }}
               >
                 Confirmer
               </button>
-              <button
+              <button className="pt-btn"
                 onClick={() => closeConfirm(false)}
-                style={{ flex: 1, padding: 14, background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 8, fontSize: 15, cursor: "pointer" }}
+                style={{ flex: 1 }}
               >
                 Annuler
               </button>
@@ -5979,20 +5968,10 @@ export default function Workout() {
                     style={{ display: "none" }}
                   />
                 </label>
-                <button
+                <button className="pt-btn pt-btn--ok"
                   disabled={addingExercise}
                   onClick={addNewExerciseName}
-                  style={{
-                    marginLeft: "auto",
-                    padding: "8px 16px",
-                    background: "#4fae7d",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 6,
-                    cursor: addingExercise ? "wait" : "pointer",
-                    fontWeight: "bold",
-                    fontSize: 13,
-                  }}
+                  style={{ marginLeft: "auto" }}
                 >
                   {addingExercise ? "…" : "➕ Ajouter"}
                 </button>
@@ -6004,21 +5983,11 @@ export default function Workout() {
               )}
             </div>
 
-            <button
+            <button className="pt-btn pt-btn--block"
               type="button"
               onClick={normalizeAllRMKeys}
               disabled={normalizingRM}
-              style={{
-                width: "100%",
-                padding: 10,
-                marginBottom: 10,
-                borderRadius: 8,
-                border: "1px solid #2a2620",
-                background: "#1a1814",
-                color: "#f3f0ea",
-                cursor: normalizingRM ? "wait" : "pointer",
-                fontSize: 13,
-              }}
+              style={{ marginBottom: 10 }}
             >
               {normalizingRM ? "⏳ Normalisation en cours…" : "🧹 Normaliser les noms de tous les Mes RM (garde les données)"}
             </button>
@@ -6071,32 +6040,15 @@ export default function Workout() {
                             color: "#f3f0ea",
                           }}
                         />
-                        <button
+                        <button className="pt-btn pt-btn--ok"
                           disabled={renameBusy}
                           onClick={() => confirmRenameExercise(entry.key)}
-                          style={{
-                            padding: "0 14px",
-                            background: "#4fae7d",
-                            color: "white",
-                            border: "none",
-                            borderRadius: 6,
-                            cursor: renameBusy ? "wait" : "pointer",
-                            fontWeight: "bold",
-                          }}
                         >
                           {renameBusy ? "…" : "✅"}
                         </button>
-                        <button
+                        <button className="pt-btn pt-btn--danger"
                           disabled={renameBusy}
                           onClick={cancelRenameExercise}
-                          style={{
-                            padding: "0 14px",
-                            background: "#d9695a",
-                            color: "white",
-                            border: "none",
-                            borderRadius: 6,
-                            cursor: "pointer",
-                          }}
                         >
                           ✕
                         </button>
@@ -6148,33 +6100,14 @@ export default function Workout() {
                           </label>
                         </div>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button
+                          <button className="pt-btn pt-btn--ok"
                             disabled={propagatingCategory === entry.key}
                             onClick={() => confirmCategorizeExercise(entry)}
-                            style={{
-                              padding: "6px 14px",
-                              background: "#4fae7d",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 6,
-                              cursor: propagatingCategory === entry.key ? "wait" : "pointer",
-                              fontWeight: "bold",
-                              fontSize: 13,
-                            }}
                           >
                             {propagatingCategory === entry.key ? "Diffusion…" : "✅ Enregistrer"}
                           </button>
-                          <button
+                          <button className="pt-btn"
                             onClick={cancelCategorizeExercise}
-                            style={{
-                              padding: "6px 14px",
-                              background: "#2a2620",
-                              color: "#f3f0ea",
-                              border: "1px solid #2a2620",
-                              borderRadius: 6,
-                              cursor: "pointer",
-                              fontSize: 13,
-                            }}
                           >
                             Annuler
                           </button>
@@ -6201,32 +6134,15 @@ export default function Workout() {
                               color: "#f3f0ea",
                             }}
                           />
-                          <button
+                          <button className="pt-btn pt-btn--ok"
                             disabled={savingVideo}
                             onClick={() => confirmEditVideo(entry)}
-                            style={{
-                              padding: "0 14px",
-                              background: "#4fae7d",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 6,
-                              cursor: savingVideo ? "wait" : "pointer",
-                              fontWeight: "bold",
-                            }}
                           >
                             {savingVideo ? "…" : "✅"}
                           </button>
-                          <button
+                          <button className="pt-btn pt-btn--danger"
                             disabled={savingVideo}
                             onClick={cancelEditVideo}
-                            style={{
-                              padding: "0 14px",
-                              background: "#d9695a",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 6,
-                              cursor: "pointer",
-                            }}
                           >
                             ✕
                           </button>
@@ -6277,18 +6193,9 @@ export default function Workout() {
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          <button
+                          <button className="pt-btn"
                             onClick={() => startCategorizeExercise(entry)}
-                            style={{
-                              padding: "6px 10px",
-                              background: "#2a2620",
-                              color: "#f3f0ea",
-                              border: "1px solid #2a2620",
-                              borderRadius: 6,
-                              cursor: "pointer",
-                              fontSize: 13,
-                              whiteSpace: "nowrap",
-                            }}
+                            style={{ whiteSpace: "nowrap" }}
                           >
                             🏷️ Catégorie
                           </button>
@@ -6336,37 +6243,19 @@ export default function Workout() {
                           >
                             {entry.videoUrl ? "🎬 Vidéo ✓" : "🎬 Vidéo"}
                           </button>
-                          <button
+                          <button className="pt-btn"
                             onClick={() => startRenameExercise(entry)}
-                            style={{
-                              padding: "6px 10px",
-                              background: "#2a2620",
-                              color: "#f3f0ea",
-                              border: "1px solid #2a2620",
-                              borderRadius: 6,
-                              cursor: "pointer",
-                              fontSize: 13,
-                              whiteSpace: "nowrap",
-                            }}
+                            style={{ whiteSpace: "nowrap" }}
                           >
                             ✏️ Renommer
                           </button>
-                          <button
+                          <button className="pt-btn pt-btn--danger"
                             onClick={() => deleteExerciseCatalogEntry(entry)}
                             title={
                               entry.mediaUrl && entry.usedInSessions
                                 ? "Supprimer la photo"
                                 : "Retirer de la liste"
                             }
-                            style={{
-                              padding: "6px 10px",
-                              background: "#d9695a",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 6,
-                              cursor: "pointer",
-                              fontSize: 13,
-                            }}
                           >
                             🗑️
                           </button>
@@ -6479,20 +6368,9 @@ export default function Workout() {
               apparaît dans la liste "Groupe cible" lors de la création d'une séance.
             </p>
 
-            <button
+            <button className="pt-btn pt-btn--ok pt-btn--block"
               onClick={() => { resetGroupForm(); setGroupEditorOpen(true); }}
-              style={{
-                width: "100%",
-                padding: 12,
-                marginBottom: 14,
-                borderRadius: 12,
-                border: "1px dashed #4fae7d",
-                background: "rgba(79,174,125,0.08)",
-                color: "#4fae7d",
-                fontWeight: 700,
-                fontSize: 14,
-                cursor: "pointer",
-              }}
+              style={{ marginBottom: 14 }}
             >
               ➕ Nouveau groupe
             </button>
@@ -6760,20 +6638,18 @@ export default function Workout() {
                       · {groupAthleteIds.length}/{athletes.length}
                     </span>
                   </div>
-                  <button
+                  <button className="pt-btn pt-btn--sm"
                     type="button"
                     onClick={() => setGroupAthleteIds(athletes.map((a) => a.id))}
-                    style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid #3a342a", background: "transparent", color: "#a8a199", fontSize: 12, cursor: "pointer" }}
                   >
                     Tous
                   </button>
-                  <button
+                  <button className="pt-btn pt-btn--sm"
                     type="button"
                     onClick={() => {
                       setGroupAthleteIds([]);
                       setGroupSubGroups((prev) => prev.map((sg) => ({ ...sg, athleteIds: [] })));
                     }}
-                    style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid #3a342a", background: "transparent", color: "#a8a199", fontSize: 12, cursor: "pointer" }}
                   >
                     Aucun
                   </button>
@@ -6835,20 +6711,10 @@ export default function Workout() {
                       pourra être ciblé dans "Groupe cible" d'une séance.
                     </div>
                   </div>
-                  <button
+                  <button className="pt-btn pt-btn--accent pt-btn--sm"
                     type="button"
                     onClick={addGroupSubGroup}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 6,
-                      border: "none",
-                      background: "#e0a13d",
-                      color: "#1a1306",
-                      fontSize: 12,
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
+                    style={{ whiteSpace: "nowrap" }}
                   >
                     ➕ Sous-groupe
                   </button>
@@ -6879,17 +6745,9 @@ export default function Workout() {
                           fontSize: 13,
                         }}
                       />
-                      <button
+                      <button className="pt-btn pt-btn--danger"
                         type="button"
                         onClick={() => removeGroupSubGroup(sg.id)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 6,
-                          border: "1px solid #d9695a",
-                          background: "transparent",
-                          color: "#d9695a",
-                          cursor: "pointer",
-                        }}
                       >
                         🗑️
                       </button>
@@ -6947,15 +6805,14 @@ export default function Workout() {
               </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, padding: 12, borderTop: "1px solid #2a2620", background: "#110f0c" }}>
-                    <button
+                    <button className="pt-btn"
                       onClick={resetGroupForm}
-                      style={{ padding: "12px 18px", borderRadius: 12, border: "1px solid #3a342a", background: "transparent", color: "#a8a199", fontWeight: 600, cursor: "pointer" }}
                     >
                       Annuler
                     </button>
-                    <button
+                    <button className="pt-btn pt-btn--primary"
                       onClick={saveGroup}
-                      style={{ flex: 1, padding: "12px 18px", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #5cc08c, #3f9b6c)", color: "white", fontWeight: 700, fontSize: 15, cursor: "pointer" }}
+                      style={{ flex: 1 }}
                     >
                       {editingGroupId ? "💾 Enregistrer" : "✅ Créer le groupe"}
                     </button>
@@ -7088,21 +6945,12 @@ export default function Workout() {
               >
                 {isDuplicatingWeek ? "Duplication..." : "✅ Dupliquer"}
               </button>
-              <button
+              <button className="pt-btn"
                 onClick={() => {
                   setShowDuplicateModal(false);
                   setDuplicateWeekStart(null);
                 }}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  background: "#a8a199",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 16,
-                  cursor: "pointer",
-                }}
+                style={{ flex: 1 }}
               >
                 Annuler
               </button>
@@ -7199,22 +7047,13 @@ export default function Workout() {
               >
                 {isDuplicatingDay ? "Duplication..." : "✅ Dupliquer"}
               </button>
-              <button
+              <button className="pt-btn"
                 onClick={() => {
                   setShowDuplicateDayModal(false);
                   setDuplicateDaySource(null);
                   setDuplicateDayTarget(null);
                 }}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  background: "#a8a199",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 16,
-                  cursor: "pointer",
-                }}
+                style={{ flex: 1 }}
               >
                 Annuler
               </button>
@@ -7365,22 +7204,13 @@ export default function Workout() {
               >
                 {isDuplicatingSession ? "Duplication..." : "✅ Dupliquer"}
               </button>
-              <button
+              <button className="pt-btn"
                 onClick={() => {
                   setShowDuplicateSessionModal(false);
                   setSessionToDuplicate(null);
                   setDuplicateTargetDate(null);
                 }}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  background: "#a8a199",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 16,
-                  cursor: "pointer",
-                }}
+                style={{ flex: 1 }}
               >
                 Annuler
               </button>
@@ -7391,22 +7221,10 @@ export default function Workout() {
 
       {/* ============ FORMULAIRE CRÉATION/MODIFICATION ============ */}
       {showForm && userRole === "admin" && removedItems.length > 0 && (
-        <button
+        <button className="pt-btn pt-btn--sm"
           onClick={undoRemoval}
           title="Remettre le dernier bloc / exercice supprimé"
-          style={{
-            position: "fixed",
-            left: 16,
-            bottom: 16,
-            zIndex: 9999,
-            padding: "6px 12px",
-            background: "rgba(21,19,16,0.92)",
-            color: "#a8a199",
-            border: "1px solid #2a2620",
-            borderRadius: 16,
-            fontSize: 12,
-            cursor: "pointer",
-          }}
+          style={{ position: "fixed", left: 16, bottom: 16, zIndex: 9999 }}
         >
           ↩️ Annuler (
           {removedItems[removedItems.length - 1].kind === "block"
@@ -7440,25 +7258,16 @@ export default function Workout() {
             <h3 style={{ margin: 0, fontSize: 18 }}>
               {isEdit ? "✏️ Modifier séance" : "➕ Nouvelle séance"}
             </h3>
-            <button
+            <button className="pt-btn pt-btn--accent"
               onClick={() => setShowPlanRefs(true)}
               title="Tables RPE / %RM, vitesse de barre et état de forme des athlètes ciblés"
-              style={{ padding: "6px 12px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14, fontWeight: "bold", marginLeft: "auto" }}
+              style={{ marginLeft: "auto" }}
             >
               🧭 Repères
             </button>
-            <button
+            <button className="pt-btn"
               onClick={resetForm}
               title="Fermer sans enregistrer"
-              style={{
-                padding: "6px 12px",
-                background: "#2a2620",
-                color: "#f3f0ea",
-                border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontSize: 14,
-              }}
             >
               ✕ Fermer
             </button>
@@ -7692,10 +7501,10 @@ export default function Workout() {
                 title="Quand ?"
                 summary={`📅 ${longDate}${sessionTime ? ` · 🕒 ${sessionTime}` : " · sans horaire"}`}
                 right={
-                  <button
+                  <button className="pt-btn"
                     type="button"
                     onClick={() => setWhenOpen(!whenOpen)}
-                    style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #2a2620", background: "#151310", color: "#f3f0ea", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
+                    style={{ whiteSpace: "nowrap" }}
                   >
                     {whenOpen ? "Masquer" : "✏️ Modifier"}
                   </button>
@@ -7736,7 +7545,7 @@ export default function Workout() {
                           ))}
                         </select>
                         {sessionTime && (
-                          <button type="button" onClick={() => setSessionTime("")} style={{ padding: "10px 14px", background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 14 }}>
+                          <button className="pt-btn" type="button" onClick={() => setSessionTime("")}>
                             ✕ Sans horaire
                           </button>
                         )}
@@ -7782,10 +7591,10 @@ export default function Workout() {
             title="Pour qui ?"
             summary={`👥 ${sum || "—"}`}
             right={
-              <button
+              <button className="pt-btn"
                 type="button"
                 onClick={() => setWhoOpen(!whoOpen)}
-                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #2a2620", background: "#151310", color: "#f3f0ea", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
+                style={{ whiteSpace: "nowrap" }}
               >
                 {whoOpen ? "Masquer" : "✏️ Modifier"}
               </button>
@@ -7917,30 +7726,14 @@ export default function Workout() {
                 >
                   🔥{isWarmBlock(block) ? " Warm-up" : ""}
                 </button>
-                <button
+                <button className="pt-btn"
                   onClick={() => toggleBlockCollapsed(bIdx)}
                   title={collapsedBlocks[bIdx] ? "Déplier ce bloc" : "Replier ce bloc"}
-                  style={{
-                    padding: "6px 10px",
-                    background: "#2a2620",
-                    color: "#f3f0ea",
-                    border: "none",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                  }}
                 >
                   {collapsedBlocks[bIdx] ? "▸" : "▾"}
                 </button>
-                <button
+                <button className="pt-btn pt-btn--danger"
                   onClick={() => removeBlock(bIdx)}
-                  style={{
-                    padding: "6px 12px",
-                    background: "#d9695a",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                  }}
                 >
                   🗑️
                 </button>
@@ -8456,16 +8249,8 @@ export default function Workout() {
                           </div>
                         )}
                     </div>
-                    <button
+                    <button className="pt-btn"
                       onClick={() => removeExercise(bIdx, eIdx)}
-                      style={{
-                        padding: "8px 12px",
-                        background: "#a8a199",
-                        color: "white",
-                        border: "none",
-                        borderRadius: 6,
-                        cursor: "pointer",
-                      }}
                     >
                       ✕
                     </button>
@@ -8508,18 +8293,18 @@ export default function Workout() {
                         </div>
                       )}
                       <div style={{ display: "flex", gap: 6 }}>
-                        <button
+                        <button className="pt-btn pt-btn--accent"
                           type="button"
                           onClick={() => setDiagramEdit({ bIdx, eIdx })}
-                          style={{ flex: 1, minHeight: 40, padding: 8, background: "#1a1815", color: "#e0a13d", border: "1px solid #2a2620", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
+                          style={{ flex: 1, minHeight: 40 }}
                         >
                           {ex.diagram && (ex.diagram.items || []).length ? "✏️ Modifier le schéma" : "✏️ Dessiner le schéma"}
                         </button>
                         {ex.diagram && (
-                          <button
+                          <button className="pt-btn pt-btn--danger"
                             type="button"
                             onClick={() => updateExercise(bIdx, eIdx, "diagram", null)}
-                            style={{ minHeight: 40, padding: "8px 12px", background: "#1a1815", color: "#d9695a", border: "1px solid #2a2620", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
+                            style={{ minHeight: 40 }}
                           >
                             🗑️
                           </button>
@@ -9681,26 +9466,16 @@ export default function Workout() {
                   })()}
                 </div>
               ))}
-              <button
+              <button className="pt-btn pt-btn--accent pt-btn--block"
                 onClick={() => addExercise(bIdx)}
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  background: "#e0a13d",
-                  color: "#1a1306",
-                  border: "none",
-                  borderRadius: 6,
-                  cursor: "pointer",
-                  fontSize: 14,
-                }}
               >
                 ➕ Ajouter exercice
               </button>
               {(workoutType === "sprint" || workoutType === "endurance") && (
-                <button
+                <button className="pt-btn pt-btn--accent pt-btn--block"
                   type="button"
                   onClick={() => setBankForBlock(bIdx)}
-                  style={{ width: "100%", padding: 10, marginTop: 6, background: "#1a1815", color: "#e0a13d", border: "1px solid #e0a13d", borderRadius: 6, cursor: "pointer", fontSize: 14 }}
+                  style={{ marginTop: 6 }}
                 >
                   📚 Banque d'exos {workoutType === "sprint" ? "sprint" : "endurance"}
                 </button>
@@ -9746,7 +9521,7 @@ export default function Workout() {
               <div style={{ background: "#151310", border: "1px solid #e0a13d", borderRadius: 12, width: "100%", maxWidth: 960, maxHeight: "95vh", overflowY: "auto", padding: 12, boxSizing: "border-box", color: "#f3f0ea" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 8 }}>
                   <div style={{ fontWeight: 700 }}>🎯 Schéma — {blocks[diagramEdit.bIdx].exercises[diagramEdit.eIdx].name || "exercice"}</div>
-                  <button type="button" onClick={() => setDiagramEdit(null)} style={{ padding: "8px 16px", minHeight: 40, background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>
+                  <button className="pt-btn pt-btn--accent" type="button" onClick={() => setDiagramEdit(null)} style={{ minHeight: 40 }}>
                     ✓ Terminé
                   </button>
                 </div>
@@ -9758,20 +9533,9 @@ export default function Workout() {
             </div>
           )}
 
-          <button
+          <button className="pt-btn pt-btn--accent pt-btn--block"
             onClick={addBlock}
-            style={{
-              width: "100%",
-              padding: 12,
-              background: "#d9a441",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              cursor: "pointer",
-              fontSize: 14,
-              fontWeight: "bold",
-              marginBottom: 18,
-            }}
+            style={{ marginBottom: 18 }}
           >
             ➕ Ajouter un bloc
           </button>
@@ -9809,36 +9573,15 @@ export default function Workout() {
                 boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
               }}
             >
-              <button
+              <button className="pt-btn"
                 onClick={resetForm}
-                style={{
-                  flex: "0 0 auto",
-                  padding: "12px 18px",
-                  background: "transparent",
-                  color: "#a8a199",
-                  border: "1px solid #3a342a",
-                  borderRadius: 12,
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
+                style={{ flex: "0 0 auto" }}
               >
                 Annuler
               </button>
-              <button
+              <button className="pt-btn pt-btn--primary"
                 onClick={handleSubmit}
-                style={{
-                  flex: 1,
-                  padding: "12px 18px",
-                  background: "linear-gradient(135deg, #5cc08c, #3f9b6c)",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 12,
-                  fontSize: 15,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  boxShadow: "0 4px 14px rgba(79,174,125,0.35)",
-                }}
+                style={{ flex: 1 }}
               >
                 {isEdit ? "💾 Enregistrer" : "✅ Créer"}
               </button>
@@ -9886,23 +9629,12 @@ export default function Workout() {
             </span>
             {/* « Modifier » toujours à portée, comme « Retour » (coachs) */}
             {isAdminLike && (
-              <button
+              <button className="pt-btn pt-btn--accent"
                 type="button"
                 onClick={() => editSession(selectedSession)}
                 title="Modifier la séance"
                 aria-label="Modifier la séance"
-                style={{
-                  flexShrink: 0,
-                  padding: isMobileView() ? "8px 12px" : "8px 14px",
-                  background: "rgba(224,161,61,0.12)",
-                  color: "#e0a13d",
-                  border: "1px solid rgba(224,161,61,0.55)",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  fontSize: 14,
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                }}
+                style={{ flexShrink: 0, whiteSpace: "nowrap" }}
               >
                 ✏️{isMobileView() ? "" : " Modifier"}
               </button>
@@ -9987,9 +9719,8 @@ export default function Workout() {
             );
           })()}
           <div style={{ display: "flex", justifyContent: isMobileView() ? "flex-start" : "flex-end", marginBottom: 10 }}>
-            <button
+            <button className="pt-btn pt-btn--accent"
             onClick={() => setShowAthleteRefs(true)}
-            style={{ padding: "8px 14px", background: "#e0a13d", color: "#1a1306", border: "none", borderRadius: 8, cursor: "pointer", fontSize: 13, fontWeight: "bold" }}
           >
             🧭 Repères RPE / vitesse de barre
           </button>
@@ -10068,7 +9799,7 @@ export default function Workout() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
               {isAdminLike && (
                 <>
-                  <button
+                  <button className="pt-btn pt-btn--ok"
                     onClick={() => {
                       setSessionToDuplicate(selectedSession);
                       setDuplicateTargetDate(selectedSession.date);
@@ -10078,32 +9809,12 @@ export default function Workout() {
                       setShowDuplicateSessionModal(true);
                     }}
                     title="Dupliquer cette séance (autre jour, autre groupe)"
-                    style={{
-                      padding: "8px 14px",
-                      background: "rgba(79,174,125,0.12)",
-                      color: "#4fae7d",
-                      border: "1px solid rgba(79,174,125,0.55)",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontSize: 14,
-                      fontWeight: 700,
-                    }}
                   >
                     📋 Dupliquer
                   </button>
-                  <button
+                  <button className="pt-btn pt-btn--danger"
                     onClick={() => deleteSession(selectedSession.id)}
                     title="Supprimer cette séance (annulable 30 s)"
-                    style={{
-                      padding: "8px 14px",
-                      background: "rgba(217,105,90,0.1)",
-                      color: "#d9695a",
-                      border: "1px solid rgba(217,105,90,0.55)",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontSize: 14,
-                      fontWeight: 700,
-                    }}
                   >
                     🗑 Supprimer
                   </button>
@@ -10280,37 +9991,15 @@ export default function Workout() {
                         : `⏱️ En cours – ${mins} min`;
                     })()}
                   </div>
-                  <button
+                  <button className="pt-btn pt-btn--danger pt-btn--block"
                     onClick={endSession}
-                    style={{
-                      width: "100%",
-                      padding: 16,
-                      background: "#d9695a",
-                      color: "white",
-                      border: "none",
-                      borderRadius: 12,
-                      fontSize: 18,
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                    }}
                   >
                     ⏹️ Terminer la séance
                   </button>
                 </>
               ) : (
-                <button
+                <button className="pt-btn pt-btn--ok pt-btn--block"
                   onClick={() => startSession(selectedSession)}
-                  style={{
-                    width: "100%",
-                    padding: 16,
-                    background: "#4fae7d",
-                    color: "white",
-                    border: "none",
-                    borderRadius: 12,
-                    fontSize: 18,
-                    fontWeight: "bold",
-                    cursor: "pointer",
-                  }}
                 >
                   ▶️ Démarrer la séance
                 </button>
@@ -10594,46 +10283,20 @@ export default function Workout() {
                       </div>
                       <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                         {!active || (!active.running && round >= totalRounds) ? (
-                          <button
+                          <button className="pt-btn pt-btn--ok"
                             onClick={() => startBlockTimer(bIdx, block)}
-                            style={{
-                              padding: "10px 20px",
-                              background: "#4fae7d",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 8,
-                              fontWeight: "bold",
-                              cursor: "pointer",
-                            }}
                           >
                             ▶️ Démarrer
                           </button>
                         ) : (
                           <>
-                            <button
+                            <button className="pt-btn pt-btn--accent"
                               onClick={toggleBlockTimerPause}
-                              style={{
-                                padding: "10px 20px",
-                                background: "#e0a13d",
-                                color: "#1a1306",
-                                border: "none",
-                                borderRadius: 8,
-                                fontWeight: "bold",
-                                cursor: "pointer",
-                              }}
                             >
                               {active.running ? "⏸️ Pause" : "▶️ Reprendre"}
                             </button>
-                            <button
+                            <button className="pt-btn"
                               onClick={resetBlockTimer}
-                              style={{
-                                padding: "10px 20px",
-                                background: "#2a2620",
-                                color: "#f3f0ea",
-                                border: "none",
-                                borderRadius: 8,
-                                cursor: "pointer",
-                              }}
                             >
                               🔁 Réinitialiser
                             </button>
@@ -11394,12 +11057,12 @@ export default function Workout() {
                 return (
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
                     {roundSec > 0 && rounds > 1 && (
-                      <button type="button" onClick={() => startRest(roundSec, `${bname} · entre les tours`, "tour suivant")} style={btn("#e0a13d")}>
+                      <button type="button" onClick={() => startRest(roundSec, `${bname} · entre les tours`, "tour suivant")} className="pt-btn pt-btn--accent" style={{ flex: "1 1 220px" }}>
                         ⏱️ Récup entre les tours ({fmt(roundSec)})
                       </button>
                     )}
                     {nextSec > 0 && (
-                      <button type="button" onClick={() => startRest(nextSec, `${bname} terminé`, nname)} style={btn("#4a90d9")}>
+                      <button type="button" onClick={() => startRest(nextSec, `${bname} terminé`, nname)} className="pt-btn pt-btn--info" style={{ flex: "1 1 220px" }}>
                         ➡️ Récup avant {nname} ({fmt(nextSec)})
                       </button>
                     )}
@@ -11429,20 +11092,11 @@ export default function Workout() {
               borderRadius: 8,
             }}
           >
-            <button
+            <button className="pt-btn" aria-label="Mois précédent"
               onClick={() => {
                 const d = new Date(currentMonth);
                 d.setMonth(d.getMonth() - 1);
                 setCurrentMonth(d);
-              }}
-              style={{
-                padding: isMobileView() ? "4px 10px" : "6px 16px",
-                background: "rgba(255,255,255,0.16)",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-                fontSize: isMobileView() ? 16 : 18,
               }}
             >
               ←
@@ -11459,20 +11113,11 @@ export default function Workout() {
                 year: "numeric",
               })}
             </h3>
-            <button
+            <button className="pt-btn" aria-label="Mois suivant"
               onClick={() => {
                 const d = new Date(currentMonth);
                 d.setMonth(d.getMonth() + 1);
                 setCurrentMonth(d);
-              }}
-              style={{
-                padding: isMobileView() ? "4px 10px" : "6px 16px",
-                background: "rgba(255,255,255,0.16)",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-                fontSize: isMobileView() ? 16 : 18,
               }}
             >
               →
@@ -11809,10 +11454,10 @@ export default function Workout() {
               >
                 ✅ Terminer la séance
               </button>
-              <button
+              <button className="pt-btn"
                 type="button"
                 onClick={() => closeEndAsk("cancel")}
-                style={{ flex: 1, padding: 12, borderRadius: 8, border: "1px solid #2a2620", background: "transparent", color: "#a8a199", fontSize: 14, cursor: "pointer" }}
+                style={{ flex: 1 }}
               >
                 Retour
               </button>
@@ -12398,10 +12043,10 @@ export default function Workout() {
                                 onRir: (r) => setSerie({ drops: dr.map((y, j) => (j === k ? { ...y, rir: r } : y)) }),
                               })
                             )}
-                            <button
+                            <button className="pt-btn pt-btn--sm"
                               type="button"
                               onClick={() => setSerie({ drops: dropLoads(serie.actualWeight, exo).map((w, k) => ({ ...(dr[k] || {}), w, r: dr[k]?.r ?? "" })) })}
-                              style={{ marginTop: 8, padding: "6px 12px", borderRadius: 8, border: "1px solid #2a2620", background: "#151310", color: "#f3f0ea", fontSize: 12, cursor: "pointer" }}
+                              style={{ marginTop: 8 }}
                             >
                               ↻ Recalculer les charges des drops (−{mpOf(exo).dropPct} %)
                             </button>
@@ -13066,37 +12711,18 @@ export default function Workout() {
             )}
 
             <div style={{ display: "flex", gap: 10 }}>
-              <button
+              <button className="pt-btn pt-btn--ok"
                 onClick={saveFeedback}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  background: "#4fae7d",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 16,
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                }}
+                style={{ flex: 1 }}
               >
                 ✅ Valider
               </button>
-              <button
+              <button className="pt-btn"
                 onClick={() => {
                   setShowFeedbackModal(false);
                   setCurrentExerciseFeedback(null);
                 }}
-                style={{
-                  flex: 1,
-                  padding: 14,
-                  background: "#a8a199",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 16,
-                  cursor: "pointer",
-                }}
+                style={{ flex: 1 }}
               >
                 Annuler
               </button>

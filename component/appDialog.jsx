@@ -57,9 +57,9 @@ export function DialogHost() {
               >
                 {dlg.ok}
               </button>
-              <button
+              <button className="pt-btn"
                 onClick={() => close(false)}
-                style={{ flex: "1 1 140px", minHeight: 48, padding: 12, background: "#2a2620", color: "#f3f0ea", border: "none", borderRadius: 8, fontSize: 15, cursor: "pointer" }}
+                style={{ flex: "1 1 140px", minHeight: 48 }}
               >
                 {dlg.cancel}
               </button>

@@ -115,7 +115,7 @@ export function CycleBanner({ cycles, fixtures, scopes, todayStr, open, onToggle
     .sort((a, b) => a.startDate.localeCompare(b.startDate))[0];
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
-      <button onClick={onToggle} style={btn(open ? "#2a2620" : "#5b8def")}>
+      <button onClick={onToggle} className={open ? "pt-btn" : "pt-btn pt-btn--info"}>
         🗂️ {label} {open ? "▲" : "▼"}
       </button>
       {now.map((c) => {
@@ -752,16 +752,16 @@ export default function PlanningPanel({
         {/* Boutons d'ajout : à côté du titre, indépendants du zoom (ils ne bougent plus) */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           {!isAdmin && currentUser && (
-            <button onClick={() => { setForm(null); setFForm(blankFixture()); }} style={btn("#d9534f")}>
+            <button onClick={() => { setForm(null); setFForm(blankFixture()); }} className="pt-btn pt-btn--danger">
               🏉 Mon match / compétition
             </button>
           )}
           {isAdmin && (
             <>
-              <button onClick={() => { setForm(null); setFForm(blankFixture()); }} style={btn("#d9534f")}>
+              <button onClick={() => { setForm(null); setFForm(blankFixture()); }} className="pt-btn pt-btn--danger">
                 🏉 Match / compétition
               </button>
-              <button onClick={() => { setFForm(null); setForm(blank()); }} style={btn(GREEN)}>
+              <button onClick={() => { setFForm(null); setForm(blank()); }} className="pt-btn pt-btn--primary">
                 ➕ Nouveau cycle
               </button>
             </>
@@ -771,13 +771,13 @@ export default function PlanningPanel({
 
       {/* Navigation dans le temps : période à largeur fixe pour que rien ne bouge au zoom */}
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
-        <button onClick={() => panBy(-view.span * 0.25)} style={btn("#2a2620")} title="Reculer dans le temps">◀</button>
+        <button onClick={() => panBy(-view.span * 0.25)} className="pt-btn" title="Reculer dans le temps">◀</button>
         <span style={{ color: TEXT, fontSize: 12, fontWeight: 700, width: 170, flexShrink: 0, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontVariantNumeric: "tabular-nums" }}>
           {monthYear(view.start)} → {monthYear(view.start + view.span)}
         </span>
-        <button onClick={() => panBy(view.span * 0.25)} style={btn("#2a2620")} title="Avancer dans le temps">▶</button>
-        <button onClick={() => zoomAt(0.5, 1.5)} style={btn("#2a2620")} title="Dézoomer (voir plus large)">−</button>
-        <button onClick={() => zoomAt(0.5, 1 / 1.5)} style={btn("#2a2620")} title="Zoomer (voir plus de détails)">+</button>
+        <button onClick={() => panBy(view.span * 0.25)} className="pt-btn" title="Avancer dans le temps">▶</button>
+        <button onClick={() => zoomAt(0.5, 1.5)} className="pt-btn" title="Dézoomer (voir plus large)">−</button>
+        <button onClick={() => zoomAt(0.5, 1 / 1.5)} className="pt-btn" title="Zoomer (voir plus de détails)">+</button>
         <button onClick={recenter} style={{ ...btn("#2a2620"), fontWeight: 500, fontSize: 12 }} title="Revenir à la vue centrée sur aujourd'hui">
           🎯 Recentrer
         </button>
@@ -1024,8 +1024,8 @@ export default function PlanningPanel({
               )}
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <button disabled={busy} onClick={doDuplicate} style={btn(AMBER, "#1a1814")}>📋 Créer la copie</button>
-              <button onClick={() => setDup(null)} style={btn("#2a2620")}>Annuler</button>
+              <button disabled={busy} onClick={doDuplicate} className="pt-btn pt-btn--accent">📋 Créer la copie</button>
+              <button onClick={() => setDup(null)} className="pt-btn">Annuler</button>
             </div>
           </div>
         </Modal>
@@ -1173,8 +1173,8 @@ export default function PlanningPanel({
             <textarea style={{ ...inputStyle, minHeight: 60 }} value={form.notes} onChange={(e) => setF({ notes: e.target.value })} />
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button disabled={busy} onClick={save} style={btn(GREEN)}>{busy ? "…" : "Enregistrer"}</button>
-            <button onClick={() => setForm(null)} style={btn("#2a2620")}>Annuler</button>
+            <button disabled={busy} onClick={save} className="pt-btn pt-btn--primary">{busy ? "…" : "Enregistrer"}</button>
+            <button onClick={() => setForm(null)} className="pt-btn">Annuler</button>
           </div>
         </div>
         </Modal>
@@ -1335,17 +1335,17 @@ export default function PlanningPanel({
                   {c.notes && <div style={{ color: MUTED, fontSize: 12, whiteSpace: "pre-wrap", marginBottom: 8 }}>{c.notes}</div>}
                   {isAdmin && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
-                      <button onClick={() => { setFForm(null); setForm({ ...c, model: c.model || "bloc", _dur: Math.max(0, diffDays(c.startDate, c.endDate)) }); }} style={btn("#2a2620")}>✏️ Modifier</button>
+                      <button onClick={() => { setFForm(null); setForm({ ...c, model: c.model || "bloc", _dur: Math.max(0, diffDays(c.startDate, c.endDate)) }); }} className="pt-btn">✏️ Modifier</button>
                       {c.level !== "micro" && c.model !== "ondulation" && (
-                        <button disabled={busy} onClick={() => generateWeeks(c)} style={btn("#5b8def")}>
+                        <button disabled={busy} onClick={() => generateWeeks(c)} className="pt-btn pt-btn--info">
                           ➕ Générer les semaines
                         </button>
                       )}
-                      <button disabled={busy} onClick={() => openDup(c)} style={btn("#2a2620")} title="Copier ce cycle (et ses semaines) à une autre date">📋 Dupliquer</button>
-                      <button disabled={busy} onClick={() => toggleHidden(c)} style={btn("#2a2620")}>
+                      <button disabled={busy} onClick={() => openDup(c)} className="pt-btn" title="Copier ce cycle (et ses semaines) à une autre date">📋 Dupliquer</button>
+                      <button disabled={busy} onClick={() => toggleHidden(c)} className="pt-btn">
                         {c.hidden ? "👁 Réafficher" : "🙈 Masquer (terminé)"}
                       </button>
-                      <button disabled={busy} onClick={() => remove(c)} style={btn("rgba(217,105,90,0.18)", "#d9695a")}>🗑️ Supprimer</button>
+                      <button disabled={busy} onClick={() => remove(c)} className="pt-btn pt-btn--danger">🗑️ Supprimer</button>
                     </div>
                   )}
                 </div>
@@ -1421,8 +1421,8 @@ export default function PlanningPanel({
             <input style={inputStyle} value={fForm.notes || ""} onChange={(e) => setFF({ notes: e.target.value })} />
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-            <button disabled={busy} onClick={saveFixture} style={btn(GREEN)}>{busy ? "…" : "Enregistrer"}</button>
-            <button onClick={() => setFForm(null)} style={btn("#2a2620")}>Annuler</button>
+            <button disabled={busy} onClick={saveFixture} className="pt-btn pt-btn--primary">{busy ? "…" : "Enregistrer"}</button>
+            <button onClick={() => setFForm(null)} className="pt-btn">Annuler</button>
           </div>
         </div>
         </Modal>
@@ -1465,8 +1465,8 @@ export default function PlanningPanel({
                     )}
                     {canEditFx(f) && (
                       <>
-                        <button onClick={() => { setForm(null); setFForm({ ...f }); }} style={btn("#2a2620")}>✏️</button>
-                        <button disabled={busy} onClick={() => removeFixture(f)} style={btn("rgba(217,105,90,0.18)", "#d9695a")}>🗑️</button>
+                        <button onClick={() => { setForm(null); setFForm({ ...f }); }} className="pt-btn">✏️</button>
+                        <button disabled={busy} onClick={() => removeFixture(f)} className="pt-btn pt-btn--danger">🗑️</button>
                       </>
                     )}
                   </div>

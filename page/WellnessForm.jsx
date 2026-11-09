@@ -231,10 +231,9 @@ export default function WellnessForm() {
             <div style={{ marginBottom: 25, padding: "14px 16px", borderRadius: 12, background: "rgba(123,143,217,0.08)", border: "1px solid rgba(123,143,217,0.5)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <div style={{ fontWeight: 800, color: "#f3f0ea", fontSize: 15 }}>📊 D'après tes journaux</div>
-                <button
+                <button className="pt-btn"
                   type="button"
                   onClick={() => items.forEach((it) => it.set(Math.round(it.score)))}
-                  style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #7b8fd9", background: "rgba(123,143,217,0.18)", color: "#f3f0ea", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
                 >
                   Tout appliquer
                 </button>

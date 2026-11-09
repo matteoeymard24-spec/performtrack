@@ -355,21 +355,9 @@ export default function MyProfile() {
         {/* Boutons */}
         <div style={{ display: "flex", gap: 12, marginTop: 30 }}>
           {!editing ? (
-            <button
+            <button className="pt-btn pt-btn--accent"
               onClick={() => setEditing(true)}
-              style={{
-                flex: 1,
-                padding: 16,
-                background: "#e0a13d",
-                color: "#1a1306",
-                border: "none",
-                borderRadius: 12,
-                fontSize: 16,
-                fontWeight: "700",
-                cursor: "pointer",
-                boxShadow: "0 4px 15px rgba(224, 161, 61, 0.4)",
-                transition: "all 0.3s ease",
-              }}
+              style={{ flex: 1 }}
               onMouseEnter={(e) => {
                 e.target.style.transform = "translateY(-2px)";
                 e.target.style.boxShadow = "0 6px 20px rgba(224, 161, 61, 0.6)";
@@ -383,21 +371,9 @@ export default function MyProfile() {
             </button>
           ) : (
             <>
-              <button
+              <button className="pt-btn pt-btn--ok"
                 onClick={handleSave}
-                style={{
-                  flex: 1,
-                  padding: 16,
-                  background: "#4fae7d",
-                  color: "white",
-                  border: "none",
-                  borderRadius: 12,
-                  fontSize: 16,
-                  fontWeight: "700",
-                  cursor: "pointer",
-                  boxShadow: "0 4px 15px rgba(79, 174, 125, 0.4)",
-                  transition: "all 0.3s ease",
-                }}
+                style={{ flex: 1 }}
                 onMouseEnter={(e) => {
                   e.target.style.transform = "translateY(-2px)";
                   e.target.style.boxShadow = "0 6px 20px rgba(79, 174, 125, 0.6)";

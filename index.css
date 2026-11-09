@@ -188,38 +188,9 @@ a:focus-visible {
    UTILITAIRES PARTAGÉS (à réutiliser page par page)
    ================================================ */
 
-.pt-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 11px 20px;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.15s ease, background 0.15s ease, opacity 0.15s ease;
-  white-space: nowrap;
-}
-.pt-btn:active {
-  transform: scale(0.97);
-}
-.pt-btn-primary {
-  background: var(--accent);
-  color: var(--accent-text);
-}
-.pt-btn-primary:hover {
-  background: var(--accent-hover);
-}
-.pt-btn-ghost {
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-}
-.pt-btn-ghost:hover {
-  background: var(--surface-hover);
-  border-color: var(--border-strong);
-}
+/* (anciens alias conservés) */
+.pt-btn-primary { background: #4fae7d; border: 1px solid #4fae7d; color: #0d1a12; }
+.pt-btn-ghost { background: #1a1815; color: #f3f0ea; border: 1px solid #2a2620; }
 
 .pt-card {
   background: var(--surface);
@@ -259,27 +230,55 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   background-color: var(--accent-hover);
 }
 
-/* Barre d'actions du Workout : boutons homogènes */
+/* ================================================
+   BOUTONS — une seule DA pour toute l'app
+   Même forme partout (rayon 10, gras, hauteur ~38 px) ; la COULEUR dit l'action :
+   .pt-btn            neutre (Annuler, Fermer, navigation)
+   .pt-btn--primary   action principale de l'écran (vert plein : Enregistrer, Démarrer…)
+   .pt-btn--ok        valider / dupliquer / ajouter (vert teinté)
+   .pt-btn--accent    modifier / régler (ambre teinté)
+   .pt-btn--info      information, récup, liens (bleu teinté)
+   .pt-btn--danger    supprimer / retirer (rouge teinté)
+   .pt-btn--block     pleine largeur
+   ================================================ */
 .pt-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
-  padding: 10px 16px;
+  padding: 9px 15px;
+  min-height: 38px;
+  box-sizing: border-box;
   border-radius: 10px;
   border: 1px solid #2a2620;
   background: #1a1815;
   color: #f3f0ea;
+  font: inherit;
   font-size: 14px;
   font-weight: 700;
+  line-height: 1.2;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease, opacity 0.15s ease;
 }
 .pt-btn:hover { background: #23201b; border-color: #3a342a; }
 .pt-btn:active { transform: translateY(1px); }
+.pt-btn:focus-visible { outline: 2px solid #e0a13d; outline-offset: 2px; }
+.pt-btn:disabled, .pt-btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; transform: none; }
 .pt-btn--primary { background: #4fae7d; border-color: #4fae7d; color: #0d1a12; }
 .pt-btn--primary:hover { background: #5cbd8a; border-color: #5cbd8a; }
+.pt-btn--ok { background: rgba(79, 174, 125, 0.12); border-color: rgba(79, 174, 125, 0.55); color: #4fae7d; }
+.pt-btn--ok:hover { background: rgba(79, 174, 125, 0.2); border-color: #4fae7d; }
+.pt-btn--accent { background: rgba(224, 161, 61, 0.12); border-color: rgba(224, 161, 61, 0.55); color: #e0a13d; }
+.pt-btn--accent:hover { background: rgba(224, 161, 61, 0.2); border-color: #e0a13d; }
+.pt-btn--info { background: rgba(91, 155, 213, 0.12); border-color: rgba(91, 155, 213, 0.55); color: #7fb6e0; }
+.pt-btn--info:hover { background: rgba(91, 155, 213, 0.2); border-color: #5b9bd5; }
+.pt-btn--danger { background: rgba(217, 105, 90, 0.1); border-color: rgba(217, 105, 90, 0.55); color: #d9695a; }
+.pt-btn--danger:hover { background: rgba(217, 105, 90, 0.18); border-color: #d9695a; }
 .pt-btn--open { border-color: #e0a13d; color: #e0a13d; }
+.pt-btn--block { display: flex; width: 100%; }
+.pt-btn--sm { padding: 5px 10px; min-height: 30px; font-size: 12.5px; }
 .pt-menu {
   position: absolute;
   top: calc(100% + 6px);
