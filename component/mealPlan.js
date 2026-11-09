@@ -272,9 +272,23 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
         const tot = sumN(items.map((x) => x.n));
         const cost = itemsCost(items);
         // recette déjà au menu cette semaine → légère pénalité (variété) ; budget : part du repas
-        return { tpl, items, total: tot, cost, sc: scoreTotals(tot, tm) + (avoid.includes(tpl.rid) ? 0.4 : 0) + budgetPen(cost, bDay * t.share, 0.6) };
+        const q = scoreTotals(tot, tm) + (avoid.includes(tpl.rid) ? 0.4 : 0);
+        return { tpl, items, total: tot, cost, q, sc: q + budgetPen(cost, bDay * t.share, 0.6) };
       })
-      .sort((a, b) => a.sc - b.sc);
+      .sort((a, b) => a.q - b.q);
+    // avec un budget : les meilleures pour les besoins + les moins chères parmi celles qui restent proches
+    if (bDay > 0) {
+      const top = scored.slice(0, 3);
+      const q0 = scored.length ? scored[0].q : 0;
+      const cheap = scored.filter((o) => !top.includes(o) && o.q <= q0 + 0.35).sort((a, b) => a.cost - b.cost).slice(0, rank === 0 ? 2 : 6);
+      if (rank === 0) return [...top, ...cheap];
+      const pool2 = [...scored.slice(0, 8), ...cheap].filter((o, i, a) => a.indexOf(o) === i);
+      for (let i = pool2.length - 1; i > 0; i--) {
+        const j = Math.floor(rand() * (i + 1));
+        [pool2[i], pool2[j]] = [pool2[j], pool2[i]];
+      }
+      return pool2.slice(0, 5);
+    }
     if (rank === 0) return scored.slice(0, K);
     // tirage parmi la meilleure moitié (au moins 8) : on reste dans les clous tout en variant
     const pool = scored.slice(0, Math.max(8, Math.ceil(scored.length / 2)));
@@ -284,15 +298,16 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
     }
     return pool.slice(0, K);
   });
-  let best = null;
+  // 1) qualité nutritionnelle d'abord ; 2) avec un budget, la moins chère parmi les combinaisons
+  //    presque aussi bonnes (qualité ≤ meilleure + tolérance) — le budget ne dégrade pas les besoins
+  const combos = [];
   const walk = (i, picked) => {
     if (i === options.length) {
       const T = sumN(picked.map((o) => o.total));
       const rids = picked.map((o) => o.tpl.rid);
       const dupPen = rids.length - new Set(rids).size; // même recette midi et soir
       const cost = picked.reduce((s, o) => s + o.cost, 0);
-      const sc = scoreTotals(T, targets) + 0.5 * dupPen + budgetPen(cost, bDay);
-      if (!best || sc < best.score) best = { picked: picked.slice(), score: sc };
+      combos.push({ picked: picked.slice(), q: scoreTotals(T, targets) + 0.5 * dupPen, cost });
       return;
     }
     options[i].forEach((o) => {
@@ -302,7 +317,14 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
     });
   };
   walk(0, []);
-  if (!best) return null;
+  if (!combos.length) return null;
+  const qMin = Math.min(...combos.map((c) => c.q));
+  let best;
+  if (bDay > 0) {
+    const ok = combos.filter((c) => c.q <= qMin + 0.12);
+    best = ok.reduce((a, c) => (c.cost + c.q * 0.5 < a.cost + a.q * 0.5 ? c : a), ok[0]);
+  } else best = combos.reduce((a, c) => (c.q < a.q ? c : a), combos[0]);
+  best = { ...best, score: best.q };
   return {
     meals: meals.map((m, i) => ({ id: m.id, items: fromSolved(best.picked[i].items), recipe: recipeMeta(best.picked[i].tpl, diet, lib.lookup) })),
     score: best.score,

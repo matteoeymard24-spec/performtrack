@@ -12,6 +12,7 @@
 /* ---- Nutriments suivis ---- */
 import { TH } from "./thresholdsCore";
 import { MORE_FOODS } from "./foodsMore";
+import { CIQUAL } from "./ciqual";
 import { ALL_RECIPES } from "./recipes";
 
 export const MACROS = [
@@ -169,6 +170,14 @@ export const FOODS = [
 const SRC = { sauce_nuoc_mam: "poisson", anchois: "poisson" };
 FOODS.forEach((f) => {
   if (SRC[f.id]) f.src = SRC[f.id];
+});
+// Valeurs officielles Ciqual 2025 (ANSES) quand l'aliment y a un équivalent (voir ciqual.js)
+FOODS.forEach((f) => {
+  const q = CIQUAL[f.id];
+  if (!q) return;
+  f.n = { ...f.n, ...q.v };
+  f.ciqual = q.c;
+  f.ciqualName = q.n;
 });
 export const FOOD_BY_ID = Object.fromEntries(FOODS.map((f) => [f.id, f]));
 export const MEAT_CATS = ["viande"];

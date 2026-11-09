@@ -247,6 +247,11 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
                 <span style={{ fontWeight: 800, color: TEXT }}>
                   {sel.name}
                   {sel.edited && <span style={{ fontSize: 11, color: ACCENT, fontWeight: 700 }}> · valeurs modifiées</span>}
+                  {!sel.edited && sel.ciqual && (
+                    <span style={{ display: "block", fontSize: 11, color: MUTED, fontWeight: 500 }} title={sel.ciqualName}>
+                      Valeurs Ciqual 2025 (ANSES) · {sel.ciqualName} · code {sel.ciqual}
+                    </span>
+                  )}
                 </span>
                 {onFoodValues && !editVals && (
                   <button type="button" className="pt-btn" style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => setEditVals(true)}>
