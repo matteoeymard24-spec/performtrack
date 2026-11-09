@@ -97,6 +97,134 @@ const P = {
   sauce_bbq: [6, 1, ""], sauce_cacahuete: [12, 1, ""], sauce_nuoc_mam: [8, 1, ""], sauce_teriyaki: [10, 1, ""], sauce_tomate: [3.5, 1, ""], coulis_tomate: [2.5, 1, ""], tzatziki: [9, 1, ""],
 };
 
+/* ---- PRIX RELEVÉS sur carrefour.fr le 9 novembre 2026 (120 produits de base) ----
+   € / kg (ou / L) du produit standard le moins cher (marques Carrefour / Simpl le plus souvent), tel
+   qu'acheté (cru / sec). Les autres enseignes en sont déduites avec l'écart de prix mesuré par
+   UFC-Que Choisir (Carrefour ≈ indice 1,07). Les produits non relevés gardent un prix moyen estimé. */
+export const CARREFOUR_PRICES = {
+  riz_blanc: [1.19, "Riz Long Blanc SIMPL"],
+  riz_complet: [3.18, "Riz Complet CARREFOUR CLASSIC'"],
+  pates: [0.95, "Pâtes spaghetti SIMPL"],
+  pates_comp: [2.38, "Penne blé complet CARREFOUR EXTRA"],
+  quinoa: [6.88, "Quinoa CARREFOUR SENSATION"],
+  semoule: [1.15, "Couscous moyen SIMPL"],
+  pdt: [0.66, "Pommes de terre PETIT PRIX"],
+  patate_douce: [2.0, "Patate douce"],
+  avoine: [1.58, "Flocons d'avoine CARREFOUR"],
+  pain_complet: [2.16, "Pain de mie complet CARREFOUR CLASSIC'"],
+  baguette: [2.36, "Baguette"],
+  galette_riz: [21.5, "Galettes de riz CARREFOUR SENSATION"],
+  muesli: [3.0, "Muesli SIMPL"],
+  lentilles: [3.1, "Lentilles vertes CARREFOUR CLASSIC'"],
+  pois_chiches: [2.25, "Pois chiches CARREFOUR CLASSIC'"],
+  haricots_rouges: [2.16, "Haricots rouges SIMPL"],
+  poulet: [10.29, "Filets de poulet SIMPL"],
+  dinde: [12.79, "Escalopes de dinde SIMPL"],
+  boeuf5: [18.48, "Steaks hachés 5% CARREFOUR EXTRA"],
+  boeuf15: [12.99, "Steaks hachés 15% CARREFOUR EXTRA"],
+  porc: [9.2, "Filet mignon de porc CARREFOUR"],
+  jambon: [5.25, "Épaule cuite SIMPL"],
+  saumon: [21.36, "Pavé de saumon CARREFOUR"],
+  thon: [12.79, "Thon au naturel CARREFOUR CLASSIC'"],
+  cabillaud: [21.65, "Filets de cabillaud CARREFOUR EXTRA"],
+  sardines: [9.66, "Sardines à l'huile SIMPL"],
+  maquereau: [8.47, "Filets de maquereau SIMPL"],
+  crevettes: [9.9, "Crevettes décortiquées cuites SIMPL"],
+  oeuf: [3.6, "Œufs plein air x12"],
+  blanc_oeuf: [5.98, "Blanc d'œuf liquide"],
+  tofu: [12.5, "Tofu nature"],
+  lait: [1.01, "Lait demi-écrémé CARREFOUR CLASSIC'"],
+  yaourt: [1.12, "Yaourts nature CARREFOUR CLASSIC'"],
+  fromage_blanc: [2.32, "Fromage blanc 3,2% CARREFOUR CLASSIC'"],
+  skyr: [3.12, "Skyr CARREFOUR SENSATION"],
+  emmental: [7.15, "Emmental râpé SIMPL"],
+  camembert: [5.8, "Camembert SIMPL"],
+  mozza: [6.0, "Mozzarella SIMPL"],
+  brocoli: [1.99, "Brocoli coupé SIMPL"],
+  epinards: [1.29, "Épinards CARREFOUR CLASSIC'"],
+  haricots_verts: [1.29, "Haricots verts SIMPL"],
+  carotte: [1.5, "Carottes SIMPL"],
+  tomate: [2.19, "Tomate SIMPL"],
+  salade: [3.97, "Salade batavia (1,19 € pièce ≈ 300 g)"],
+  courgette: [2.29, "Courgette SIMPL"],
+  poivron: [4.28, "Poivrons rouges vrac"],
+  champignons: [1.89, "Champignons de Paris CARREFOUR CLASSIC'"],
+  banane: [1.99, "Bananes Cavendish"],
+  pomme: [1.5, "Pommes SIMPL"],
+  orange: [1.99, "Oranges SIMPL"],
+  riz_basmati: [2.55, "Riz basmati CARREFOUR EXTRA"],
+  riz_thai: [2.35, "Riz thaï CARREFOUR EXTRA"],
+  riz_sushi: [2.38, "Riz sushi CARREFOUR SENSATION"],
+  boulgour: [3.53, "Boulgour CARREFOUR CLASSIC'"],
+  polenta: [2.58, "Polenta CARREFOUR"],
+  pates_fraiches: [3.32, "Tagliatelles fraîches CARREFOUR CLASSIC'"],
+  gnocchis: [2.79, "Gnocchi CARREFOUR EXTRA"],
+  tortellini: [5.83, "Tortellini ricotta-épinards CARREFOUR ORIGINAL"],
+  nouilles_ble: [8.22, "Nouilles chinoises aux œufs MEI ASIA"],
+  nouilles_udon: [3.63, "Nouilles udon MEI ASIA"],
+  vermicelles_riz: [7.0, "Vermicelles de riz MEI ASIA"],
+  pain_seigle: [4.38, "Pain au seigle CARREFOUR ORIGINAL"],
+  pain_cereales: [4.97, "Pain aux céréales CARREFOUR"],
+  cuisse_poulet: [5.99, "Cuisses de poulet CARREFOUR CLASSIC'"],
+  aiguillette_poulet: [15.39, "Aiguillettes de poulet CARREFOUR CLASSIC'"],
+  steak: [28.35, "Rumsteck CARREFOUR LE MARCHÉ"],
+  bavette: [30.95, "Bavette CARREFOUR LE MARCHÉ"],
+  cote_porc: [4.34, "Côtes de porc échine CARREFOUR CLASSIC'"],
+  roti_porc: [12.9, "Rôti de porc Label Rouge CARREFOUR SÉLECTION"],
+  jambon_cru: [9.75, "Jambon cru fumé CARREFOUR"],
+  bacon: [8.45, "Allumettes de bacon CARREFOUR CLASSIC'"],
+  lardons: [8.9, "Lardons fumés CARREFOUR CLASSIC'"],
+  saumon_fume: [29.95, "Saumon fumé CARREFOUR CLASSIC'"],
+  truite: [19.23, "Filet de truite SIMPL"],
+  colin: [8.99, "Colin d'Alaska CARREFOUR CLASSIC'"],
+  merlu: [18.23, "Filet de merlu CITÉ MARINE"],
+  lait_entier: [1.12, "Lait entier CARREFOUR CLASSIC'"],
+  lait_ecreme: [0.95, "Lait écrémé CARREFOUR CLASSIC'"],
+  yaourt_grec: [2.17, "Yaourts à la grecque CARREFOUR EXTRA"],
+  yaourt_grec_0: [5.89, "Yaourt grec 0 % MAVROMMATIS"],
+  petit_suisse: [2.9, "Petits suisses CARREFOUR CLASSIC'"],
+  ricotta: [5.4, "Ricotta CARREFOUR CLASSIC'"],
+  feta: [12.25, "Feta CARREFOUR EXTRA"],
+  parmesan: [19.75, "Parmigiano Reggiano râpé CARREFOUR EXTRA"],
+  comte: [14.11, "Comté AOP CARREFOUR EXTRA"],
+  chevre: [9.95, "Chèvre frais CARREFOUR CLASSIC'"],
+  oignon: [2.79, "Oignon jaune"],
+  oignon_rouge: [3.0, "Oignons rouges CARREFOUR CLASSIC'"],
+  ail: [8.76, "Ail SIMPL"],
+  poireau: [1.39, "Poireaux CARREFOUR CLASSIC'"],
+  chou_fleur: [1.75, "Chou-fleur fleurettes CARREFOUR CLASSIC'"],
+  chou_vert: [2.69, "Chou vert"],
+  choux_bruxelles: [1.89, "Choux de Bruxelles CARREFOUR CLASSIC'"],
+  petits_pois: [1.65, "Petits pois SIMPL"],
+  concombre: [3.69, "Concombre (1,29 € pièce)"],
+  betterave: [2.0, "Betteraves cuites"],
+  celeri_branche: [2.69, "Céleri branche"],
+  asperges: [9.71, "Asperges CARREFOUR CLASSIC'"],
+  artichaut: [11.62, "Cœurs d'artichauts CARREFOUR CLASSIC'"],
+  potiron: [3.33, "Butternut CARREFOUR CLASSIC'"],
+  kiwi: [6.9, "Kiwi Hayward (0,69 € pièce)"],
+  fruits_rouges: [7.78, "Fruits rouges CARREFOUR CLASSIC'"],
+  raisins_secs: [8.36, "Raisins secs CARREFOUR LE MARCHÉ"],
+  dattes: [5.5, "Dattes CARREFOUR"],
+  compote: [1.82, "Compote sans sucres ajoutés CARREFOUR CLASSIC'"],
+  poire: [2.49, "Poires SIMPL"],
+  abricot: [3.39, "Abricots SIMPL"],
+  peche: [2.99, "Nectarines SIMPL"],
+  huile_olive: [8.99, "Huile d'olive vierge extra CARREFOUR EXTRA"],
+  huile_colza: [1.95, "Huile de colza CARREFOUR CLASSIC'"],
+  amandes: [14.5, "Amandes CARREFOUR LE MARCHÉ"],
+  noix: [25.6, "Cerneaux de noix CARREFOUR ORIGINAL"],
+  beurre_cacahuete: [7.67, "Beurre de cacahuètes CARREFOUR SENSATION"],
+  avocat: [6.45, "Avocat (1,29 € pièce)"],
+  cacahuetes: [3.3, "Cacahuètes CARREFOUR CLASSIC'"],
+  lait_coco_light: [8.75, "Lait de coco light KARA"],
+  olives: [5.56, "Olives vertes CARREFOUR CLASSIC'"],
+  pesto: [7.84, "Pesto CARREFOUR CLASSIC'"],
+  miel: [6.3, "Miel de fleurs CARREFOUR CLASSIC'"],
+  chocolat_noir: [8.63, "Chocolat noir CARREFOUR CLASSIC'"],
+};
+const CARREFOUR_INDEX = 1.07;
+
 /* ---- MAGASINS ----
    Niveau de prix de l'enseigne : écart au moins cher d'après le palmarès UFC-Que Choisir des drives
    (mai 2026 : E.Leclerc référence, Intermarché +3 à +5 %, Système U +3 à +6 %, Carrefour +6 à +7 %,
@@ -117,6 +245,19 @@ export const STORES = [
   { id: "casino", label: "Casino / Franprix", index: 1.2, estimated: true, search: null },
   { id: "monoprix", label: "Monoprix", index: 1.25, estimated: true, search: (q) => `https://courses.monoprix.fr/search?q=${encodeURIComponent(q)}` },
 ];
+/* Assortiment du HARD DISCOUNT (Lidl, Aldi) : pas de catalogue alimentaire en ligne pour le vérifier.
+   Liste ESTIMÉE des produits rarement présents (spécialités, produits de niche) ; chacun complète
+   avec « 🚫 pas dans ce magasin » depuis la liste de courses (settings.unavailable[magasin]). */
+const DISCOUNT_MISSING = [
+  "tempeh", "seitan", "tofu_soyeux", "proteines_soja", "noix_st_jacques", "crabe", "sole", "bar", "dorade", "calamar", "lapin", "veau", "foie_volaille",
+  "canard", "thon_frais", "saumon_cru", "riz_sauvage", "millet", "orge", "sarrasin", "flocons_sarrasin", "nouilles_soba", "nouilles_udon", "pak_choi",
+  "algues_nori", "algues_wakame", "miso", "kimchi", "edamame", "fruit_passion", "litchi", "grenade", "noix_bresil", "huile_noix", "tahini", "puree_amandes",
+  "mochi", "sauce_nuoc_mam", "sauce_teriyaki", "caseine", "proteine_vegetale", "boisson_recup", "gel_energetique", "kefir", "cottage", "manioc", "banane_plantain",
+  "pain_suedois", "celeri_rave", "fenouil", "artichaut", "chou_kale", "harissa", "pate_curry",
+];
+STORES.forEach((x) => {
+  if (x.id === "lidl" || x.id === "aldi") x.missing = DISCOUNT_MISSING;
+});
 export const STORE_BY_ID = Object.fromEntries(STORES.map((x) => [x.id, x]));
 let STORE = "";
 let VERSION = 0; // change à chaque réglage de prix (cache des prix par portion)
@@ -125,8 +266,23 @@ export const setStore = (id) => {
   const nid = STORE_BY_ID[id] ? id : "";
   if (nid !== STORE) VERSION++;
   STORE = nid;
+  rebuildMissing();
 };
 export const currentStore = () => STORE_BY_ID[STORE] || STORES[0];
+/* Produits ABSENTS du magasin choisi : liste estimée de l'enseigne + ceux marqués par la personne */
+let USER_MISSING = {};
+let MISSING = new Set();
+const rebuildMissing = () => {
+  MISSING = new Set([...(STORE_BY_ID[STORE]?.missing || []), ...((USER_MISSING || {})[STORE || "_"] || [])]);
+};
+export const setUnavailable = (m) => {
+  const next = m && typeof m === "object" ? m : {};
+  if (JSON.stringify(next) !== JSON.stringify(USER_MISSING)) VERSION++;
+  USER_MISSING = next;
+  rebuildMissing();
+};
+export const isAvailable = (id) => !MISSING.has(id);
+export const missingCount = () => MISSING.size;
 const storeFactor = () => (STORE_BY_ID[STORE]?.index || 1.05) / 1.05;
 /* Nom de recherche d'un aliment en magasin (« Blanc de poulet cuit » → « blanc de poulet ») */
 export const shopQuery = (food) =>
@@ -163,6 +319,8 @@ export function priceInfo(food) {
   if (user > 0) return { kg: user, yield: yld, buy, src: "perso" };
   if (Number(food.price) > 0) return { kg: Number(food.price), yield: yld, buy, src: "aliment" };
   const k = storeFactor();
+  const rel = CARREFOUR_PRICES[food.id];
+  if (rel) return { kg: Math.round(((rel[0] * (STORE_BY_ID[STORE]?.index || 1.05)) / CARREFOUR_INDEX) * 100) / 100, yield: yld, buy, src: "releve", ref: rel[1] };
   if (base) return { kg: Math.round(base[0] * k * 100) / 100, yield: yld, buy, src: "base" };
   return { kg: Math.round((CAT_PRICE[food.cat] || 6) * k * 100) / 100, yield: 1, buy: "", src: "cat" };
 }

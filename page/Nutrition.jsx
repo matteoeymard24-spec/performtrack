@@ -12,7 +12,7 @@ import { loadTrainingDays } from "../component/trainingDays";
 import MealPlanner from "../component/MealPlanner";
 import ShoppingList from "../component/ShoppingList";
 import { loadBank, publishFood, publishRecipe, deleteBankItem, setPrivateRecipes, recipeToDoc } from "../component/foodBank";
-import { setBudget, setUserPrices, setStore } from "../component/prices";
+import { setBudget, setUserPrices, setStore, setUnavailable } from "../component/prices";
 import { useAuth } from "../auth/AuthProvider";
 import usePersonScope from "../component/usePersonScope";
 import { normSex } from "../component/cycling";
@@ -393,9 +393,9 @@ export default function Nutrition() {
         if (!alive) return;
         const info = m[date] || null;
         setTrainDay(info);
-        const saved = history.some((d) => d.date === date && d.dayType);
+        // le type de journée suit TOUJOURS Workout (séance modifiée, RPE…), sauf s'il a été choisi à la main
         const auto = info ? info.dayType : "repos";
-        if (!saved) setDay((d) => (d && d.date === date && !d.dayTypeManual ? { ...d, dayType: auto } : d));
+        setDay((d) => (d && d.date === date && !d.dayTypeManual ? { ...d, dayType: auto } : d));
       })
       .catch(() => alive && setTrainDay(null));
     return () => {
@@ -436,6 +436,7 @@ export default function Nutrition() {
   setBudget(settings?.budgetWeek, settings?.shopPeople);
   setUserPrices(settings?.prices);
   setStore(settings?.store || "");
+  setUnavailable(settings?.unavailable);
   setPrivateRecipes(settings?.myRecipes);
 
   /* Eau : nouvelle quantité totale (glisser / saisie) ; l'écart est noté dans l'historique du jour */
@@ -744,6 +745,11 @@ export default function Nutrition() {
                           {auto === d.id ? <span style={{ fontSize: 10.5, color: GREEN, marginLeft: 4 }}>· Workout</span> : null}
                         </button>
                       ))}
+                      {day.dayTypeManual && auto && (
+                        <button type="button" style={{ ...chip(false, GREEN), padding: "6px 11px", fontSize: 12.5, flexShrink: 0 }} onClick={() => saveDay({ ...day, dayType: auto, dayTypeManual: false })}>
+                          ↺ Suivre Workout
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

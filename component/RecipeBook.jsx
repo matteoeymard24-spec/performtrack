@@ -4,7 +4,7 @@ import { FOODS, FOOD_BY_ID, FOOD_CATS, MEALS, allowedByDiet } from "./nutritionD
 import { ALL_RECIPES as RECIPES, CUISINES, CUISINE_BY_ID } from "./recipes";
 import { recipeForMeal, foodOf, itemsCost, portionCost } from "./mealPlan";
 import { bankRecipes, bankFoods, recipeFromIngredients, normName } from "./bankCore";
-import { fmtEur } from "./prices";
+import { fmtEur, isAvailable, currentStore } from "./prices";
 import { appConfirm } from "./appDialog";
 
 /* =====================================================================
@@ -198,6 +198,7 @@ export default function RecipeBook({ diet = "omni", targetsFor, customFoods, ove
         return norm(`${r.name} ${CUISINE_BY_ID[r.cuisine]?.label} ${ing} ${r.byName || ""}`).includes(nq);
       })
       .filter((r) => !(r.gen && diet !== "omni" && (r.P || []).length && !allowedByDiet(fd(r.P[0]), diet))) // catalogue : versions du régime seulement
+      .filter((r) => (r.fixed || []).every(([id]) => isAvailable(id)) && (!(r.P || []).length || (r.P || []).some(isAvailable)) && (!(r.C || []).length || (r.C || []).some(isAvailable))) // produits du magasin choisi
       .filter((r) => (!maxTime || (r.time || 25) <= maxTime) && (!maxCost || pc(r) <= maxCost));
     if (sort === "cost") l.sort((a, b) => pc(a) - pc(b));
     else if (sort === "time") l.sort((a, b) => (a.time || 25) - (b.time || 25));
@@ -291,7 +292,8 @@ export default function RecipeBook({ diet = "omni", targetsFor, customFoods, ove
         </select>
       </div>
       <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>
-        {list.length.toLocaleString("fr-FR")} recette{list.length > 1 ? "s" : ""} · prix pour une portion moyenne, au niveau de prix de ton magasin
+        {list.length.toLocaleString("fr-FR")} recette{list.length > 1 ? "s" : ""}
+        {currentStore().id ? ` avec des produits de ${currentStore().label}` : ""} · prix pour une portion moyenne, au niveau de prix de ton magasin
       </div>
       <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", overflowX: "auto", paddingBottom: 6, marginBottom: 10 }}>
         <button

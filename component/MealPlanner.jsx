@@ -25,7 +25,7 @@ import {
   mealCost,
   planCost,
 } from "./mealPlan";
-import { fmtEur, budgetWeek, setBudget, setUserPrices, setStore } from "./prices";
+import { fmtEur, budgetWeek, setBudget, setUserPrices, setStore, setUnavailable } from "./prices";
 
 /* =====================================================================
    MealPlanner.jsx — Nutrition › 🗓️ Planning : menus de la semaine.
@@ -104,6 +104,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
   setBudget(settings?.budgetWeek, settings?.shopPeople);
   setUserPrices(settings?.prices);
   setStore(settings?.store || "");
+  setUnavailable(settings?.unavailable);
   const customFoods = settings?.customFoods || [];
   const cuisines = settings?.cuisines || []; // [] = toutes les cuisines
   const [showCuisines, setShowCuisines] = useState(false);
@@ -155,6 +156,14 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
     };
   }, [uid, weekStart]); // eslint-disable-line react-hooks/exhaustive-deps
   const autoDt = (d) => (train ? autoDayType(train, d) : "modere");
+  // menus non choisis à la main : le type de journée suit Workout (séance ajoutée, RPE modifié…)
+  useEffect(() => {
+    if (!train || loading) return;
+    days.forEach((d) => {
+      const p = plans[d];
+      if (p && p.dayTypeSource !== "manuel" && p.dayType !== autoDayType(train, d)) applyDayType(d, autoDayType(train, d), "auto");
+    });
+  }, [train, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   const dayTypeOf = (d) => plans[d]?.dayType || autoDt(d);
   const targetsOf = (d) => computeTargets(settings, dayTypeOf(d));
   /* Nouveau type de journée : quantités recalculées ; prise « autour de la séance » ajoutée / retirée */

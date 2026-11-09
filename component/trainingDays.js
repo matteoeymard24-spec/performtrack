@@ -37,6 +37,12 @@ const durationOf = (w, uid) => {
    Moins de 8 jours d'historique : repères fixes < 300 légère · 300-599 modérée · ≥ 600 intense. */
 const DEFAULT_RPE = () => TH("defaultRpe");
 const loadOf = (x) => (Number(x.rpe) > 0 ? Number(x.rpe) : DEFAULT_RPE()) * (Number(x.min) || 0);
+/* Type de journée = le plus élevé de deux critères :
+   1) CHARGE (RPE × minutes) comparée à l'habitude de l'athlète (z), sinon repères fixes ;
+   2) INTENSITÉ : une séance dure n'est jamais « légère » même courte (RPE ≥ 7 → au moins modérée),
+      et une séance très dure et assez longue est « intense » (RPE ≥ 8 pendant ≥ 45 min). Les besoins en
+      glucides dépendent de la durée ET de l'intensité (Burke et al. 2011, J Sports Sci 29:S17). */
+const RANK = { leger: 0, modere: 1, intense: 2 };
 export function dayTypeOf(info) {
   if (!info) return "repos";
   if (info.match) return "match";
@@ -44,16 +50,23 @@ export function dayTypeOf(info) {
   if (!n) return "repos";
   const L = info.load;
   const ref = info.ref;
+  let byLoad;
   if (ref && ref.sd > 0) {
     const z = (L - ref.mean) / ref.sd;
     info.z = Math.round(z * 10) / 10;
-    if (z > TH("dayZHard") || (n >= 2 && z > TH("dayZTwo"))) return "intense";
-    if (z < TH("dayZLight")) return "leger";
-    return "modere";
-  }
-  if (L >= TH("loadHard") || (n >= 2 && L >= 0.75 * TH("loadHard"))) return "intense";
-  if (L >= TH("loadLight")) return "modere";
-  return "leger";
+    byLoad = z > TH("dayZHard") || (n >= 2 && z > TH("dayZTwo")) ? "intense" : z < TH("dayZLight") ? "leger" : "modere";
+  } else byLoad = L >= TH("loadHard") || (n >= 2 && L >= 0.75 * TH("loadHard")) ? "intense" : L >= TH("loadLight") ? "modere" : "leger";
+  // intensité : séance la plus dure de la journée
+  let byRpe = "leger";
+  info.sessions.forEach((x) => {
+    const r = Number(x.rpe) > 0 ? Number(x.rpe) : DEFAULT_RPE();
+    const m = Number(x.min) || 0;
+    const t = r >= TH("dayRpeHard") && m >= TH("dayRpeHardMin") ? "intense" : r >= TH("dayRpeMod") ? "modere" : "leger";
+    if (RANK[t] > RANK[byRpe]) byRpe = t;
+  });
+  info.byRpe = byRpe;
+  info.byLoad = byLoad;
+  return RANK[byRpe] > RANK[byLoad] ? byRpe : byLoad;
 }
 const SRC_TXT = { ressenti: "ressenti", prevu: "prévu", auto: "attendu pour lui", estime: "estimé" };
 export function whyOf(info) {
@@ -65,9 +78,9 @@ export function whyOf(info) {
   if (s.length === 1) {
     const x = s[0];
     const r = Number(x.rpe) > 0 ? String(Math.round(x.rpe * 10) / 10).replace(".", ",") : DEFAULT_RPE();
-    return `${x.title || TYPE_LABEL[x.type] || "Séance"} · ${x.min} min × RPE ${r} (${SRC_TXT[x.rpeSrc] || "estimé"}) = ${Math.round(info.load)} UA${vs}${x.time ? ` · ${x.time}` : ""}`;
+    return `${x.title || TYPE_LABEL[x.type] || "Séance"} · ${x.min} min × RPE ${r} (${SRC_TXT[x.rpeSrc] || "estimé"}) = ${Math.round(info.load)} UA${vs}${info.byRpe && RANK[info.byRpe] > RANK[info.byLoad] ? ` · RPE ${r} → journée au moins ${info.byRpe === "intense" ? "intense" : "modérée"}` : ""}${x.time ? ` · ${x.time}` : ""}`;
   }
-  return `${s.length} séances · ${info.minutes} min · charge ${Math.round(info.load)} UA${vs}`;
+  return `${s.length} séances · ${info.minutes} min · charge ${Math.round(info.load)} UA${vs}${info.byRpe && RANK[info.byRpe] > RANK[info.byLoad] ? " · relevée par l'intensité" : ""}`;
 }
 
 async function computeTrainingDays(uid, from, to) {

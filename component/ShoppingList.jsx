@@ -5,7 +5,7 @@ import { CARD_STYLE, FIELD_STYLE, Kpi, KpiGrid, TEXT, MUTED, ACCENT } from "./ui
 import { FOOD_CATS, todayISO, shiftISO, computeTargets } from "./nutritionData";
 import { foodOf, recommendDay, planCost, planTotal, dayCheck } from "./mealPlan";
 import { loadTrainingDays, autoDayType } from "./trainingDays";
-import { buyOf, costOf, priceInfo, fmtEur, budgetWeek, setBudget, setUserPrices, STORES, STORE_BY_ID, setStore, shopQuery } from "./prices";
+import { buyOf, costOf, priceInfo, fmtEur, budgetWeek, setBudget, setUserPrices, STORES, STORE_BY_ID, setStore, setUnavailable, shopQuery } from "./prices";
 import { appConfirm } from "./appDialog";
 
 /* =====================================================================
@@ -76,11 +76,13 @@ function Check({ on, onClick, label }) {
 }
 
 export default function ShoppingList({ uid, settings, onPrice, onGoPlanning, onBudget, onShopPrefs }) {
+  const [missMsg, setMissMsg] = useState("");
   const customFoods = settings?.customFoods || [];
   const people = Math.max(1, Number(settings?.shopPeople) || 1); // courses pour N personnes (menus × N)
   setBudget(settings?.budgetWeek, people); // budget du foyer → part d'une personne pour les menus
   setUserPrices(settings?.prices);
   setStore(settings?.store || "");
+  setUnavailable(settings?.unavailable);
   const store = STORE_BY_ID[settings?.store || ""] || STORES[0];
   const today = todayISO();
   const [weekStart, setWeekStart] = useState(() => mondayOf(today));
@@ -269,7 +271,7 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning, onB
         </div>
         <div style={{ fontSize: 12, color: MUTED, marginTop: 8 }}>
           Faite à partir des menus du Planning ({planned.length}/{range.length} jour{range.length > 1 ? "s" : ""} planifié{planned.length > 1 ? "s" : ""}). Quantités à acheter (cru / sec quand
-          l'aliment est pesé cuit) ; prix moyens estimés, modifiables avec ✏️.
+          l'aliment est pesé cuit). Prix : ✓ relevé en magasin en ligne (Carrefour, 9 nov. 2026, ajusté à ton enseigne) · ~ estimé · modifiables avec ✏️.
         </div>
         <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 10 }}>
           <label style={{ display: "block" }}>
@@ -294,6 +296,35 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning, onB
             </div>
           </div>
         </div>
+        {(() => {
+          const mine = (settings?.unavailable || {})[store.id || "_"] || [];
+          const est = store.missing || [];
+          if (!mine.length && !est.length) return null;
+          return (
+            <div style={{ fontSize: 11.5, color: MUTED, marginTop: 8 }}>
+              🚫 Produits écartés des recettes{store.id ? ` (${store.label})` : ""} :{" "}
+              {est.length > 0 && <span>{est.length} rarement vendus en hard discount (liste estimée){mine.length ? " + " : ""}</span>}
+              {mine.map((id) => {
+                const f = foodOf(id, customFoods);
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    title="Remettre ce produit"
+                    onClick={() => {
+                      const um = { ...(settings?.unavailable || {}) };
+                      um[store.id || "_"] = mine.filter((x) => x !== id);
+                      onShopPrefs && onShopPrefs({ unavailable: um });
+                    }}
+                    style={{ ...chip(false, RED), padding: "2px 8px", fontSize: 11, margin: "2px 4px 0 0" }}
+                  >
+                    {f?.name || id} ✕
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
         <div style={{ fontSize: 11.5, color: "#6f6a62", marginTop: 6 }}>
           {store.id
             ? `Prix ajustés au niveau de ${store.label} (palmarès UFC-Que Choisir des drives, mai 2026${store.estimated ? " ; enseigne hors palmarès : niveau estimé" : ""}).${store.search ? " 🔎 ouvre le produit sur son site." : store.note ? ` ${store.note}.` : ""}`
@@ -324,6 +355,7 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning, onB
             moins cher qui couvre tes besoins est gardé. Vide = pas de contrainte de prix.
           </div>
           {adaptMsg && <div style={{ fontSize: 12.5, color: adaptMsg.includes("au-dessus") ? ACCENT : GREEN, marginTop: 6, fontWeight: 700 }}>{adaptMsg}</div>}
+          {missMsg && <div style={{ fontSize: 12.5, color: ACCENT, marginTop: 6, fontWeight: 700 }}>{missMsg}</div>}
         </div>
       </div>
 
@@ -419,13 +451,14 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning, onB
                               style={{ background: "none", border: "none", color: MUTED, fontSize: 11, cursor: "pointer", padding: 0 }}
                               aria-label={`Modifier le prix de ${l.food.name}`}
                             >
-                              ✏️ {String(Math.round((pi?.kg || 0) * 100) / 100).replace(".", ",")} €/kg{pi?.src === "perso" ? " (toi)" : ""}
+                              ✏️ {String(Math.round((pi?.kg || 0) * 100) / 100).replace(".", ",")} €/kg{pi?.src === "perso" ? " (toi)" : pi?.src === "releve" ? " ✓" : " ~"}
                             </button>
                           )}
                         </div>
                       </div>
                       {editPrice?.id === l.key && (
                         <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 8, marginLeft: 40, flexWrap: "wrap" }}>
+                          {pi?.src === "releve" && <span style={{ fontSize: 11.5, color: MUTED, flexBasis: "100%" }}>✓ Relevé chez Carrefour : {pi.ref}{store.id && store.id !== "carrefour" ? `, ajusté au niveau de ${store.label}` : ""}</span>}
                           <span style={{ fontSize: 12, color: MUTED }}>Prix au kg acheté</span>
                           <input
                             autoFocus
@@ -448,6 +481,23 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning, onB
                           >
                             OK
                           </button>
+                          {onShopPrefs && (
+                            <button
+                              type="button"
+                              className="pt-btn"
+                              style={{ padding: "5px 10px", color: RED }}
+                              onClick={() => {
+                                const key = store.id || "_";
+                                const um = { ...(settings?.unavailable || {}) };
+                                um[key] = [...new Set([...(um[key] || []), l.key])];
+                                onShopPrefs({ unavailable: um });
+                                setEditPrice(null);
+                                setMissMsg(`🚫 « ${l.food.name} » retiré${store.id ? ` pour ${store.label}` : ""} : « ✨ Adapter les menus » refait les menus sans lui.`);
+                              }}
+                            >
+                              🚫 Pas dans {store.id ? store.label : "mon magasin"}
+                            </button>
+                          )}
                           {pi?.src === "perso" && (
                             <button
                               type="button"

@@ -51,7 +51,7 @@ export function NutritionDashCard({ uid, onOpen }) {
         const day = d.exists() ? d.data() : null;
         // type de journée : celui enregistré, sinon celui de l'entraînement prévu dans Workout
         const auto = tr[todayISO()]?.dayType || "repos";
-        if (alive) setSt({ settings: s.exists() ? s.data() : null, day: { ...(day || {}), dayType: day?.dayType || auto } });
+        if (alive) setSt({ settings: s.exists() ? s.data() : null, day: { ...(day || {}), dayType: day?.dayTypeManual ? day.dayType : auto } });
       } catch (e) {
         if (alive) setSt({ settings: null, day: null });
       }

@@ -10,7 +10,7 @@
    ===================================================================== */
 import { TH } from "./thresholdsCore";
 import { bankFoods, bankTemplates, normName } from "./bankCore";
-import { costOf, budgetDay, priceVersion } from "./prices";
+import { costOf, budgetDay, priceVersion, isAvailable } from "./prices";
 import {
   FOODS,
   FOOD_BY_ID,
@@ -130,7 +130,18 @@ export function buildLibrary(customFoods = [], overrides = {}, diet = "omni") {
         }
       });
     });
-    templates[mid] = out;
+    // magasin choisi : recettes dont un ingrédient n'y est pas vendu → retirées (titres justes) ;
+    // un levier avec plusieurs choix garde les choix disponibles
+    templates[mid] = out
+      .filter((tpl) => (tpl.fixed || []).every(([id]) => isAvailable(id) || byId.has(id)) && (!(tpl.P || []).length || isAvailable(tpl.P[0]) || byId.has(tpl.P[0]) || !tpl.gen) && (!(tpl.C || []).length || (tpl.C || []).some((id) => isAvailable(id) || byId.has(id))))
+      .map((tpl) => {
+        const keep = (ids) => {
+          const k = (ids || []).filter((id) => isAvailable(id) || byId.has(id));
+          return k.length ? k : ids || [];
+        };
+        return { ...tpl, P: keep(tpl.P), C: keep(tpl.C), F: (tpl.F || []).filter((id) => isAvailable(id) || byId.has(id)) };
+      })
+      .filter((tpl) => (tpl.P || []).length === 0 || (tpl.P || []).some((id) => isAvailable(id) || byId.has(id)));
   });
   return { lookup, templates, customs };
 }
