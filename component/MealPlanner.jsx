@@ -22,7 +22,10 @@ import {
   planMeals,
   STATUS_UI,
   MEAL_BY_ID,
+  mealCost,
+  planCost,
 } from "./mealPlan";
+import { fmtEur, budgetWeek, setBudget, setUserPrices } from "./prices";
 
 /* =====================================================================
    MealPlanner.jsx — Nutrition › 🗓️ Planning : menus de la semaine.
@@ -95,8 +98,11 @@ function Gauge({ label, v, t, unit, color, tol = 0.1 }) {
   );
 }
 
-export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd, onFoodValues, onCuisines }) {
+export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd, onFoodValues, onCuisines, onSaveRecipe, onDeleteRecipe, canModerate, onGoBudget }) {
   const diet = settings?.diet || "omni";
+  // budget et prix corrigés de la personne (utilisés par les recommandations, voir prices.js)
+  setBudget(settings?.budgetWeek);
+  setUserPrices(settings?.prices);
   const customFoods = settings?.customFoods || [];
   const cuisines = settings?.cuisines || []; // [] = toutes les cuisines
   const [showCuisines, setShowCuisines] = useState(false);
@@ -280,6 +286,35 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
           </button>
         </div>
         {(() => {
+          // ---- 💶 Coût de la semaine planifiée vs budget ----
+          const planned = days.filter((d) => plans[d]);
+          const cost = planned.reduce((s, d) => s + planCost(plans[d], customFoods), 0);
+          const bw = budgetWeek();
+          if (!planned.length && !bw) return null;
+          const proj = planned.length ? (cost / planned.length) * 7 : 0;
+          const over = bw > 0 && proj > bw * 1.02;
+          return (
+            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 6, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "baseline" }}>
+              <span>
+                💶 Semaine planifiée : <b style={{ color: TEXT }}>{fmtEur(cost)}</b>
+                {planned.length && planned.length < 7 ? ` sur ${planned.length} jour${planned.length > 1 ? "s" : ""} (≈ ${fmtEur(proj)} pour 7 jours)` : ""}
+              </span>
+              {bw > 0 ? (
+                <span style={{ color: over ? RED : GREEN, fontWeight: 700 }}>
+                  · budget {fmtEur(bw)} {over ? `dépassé d'environ ${fmtEur(proj - bw)} : les menus restent calés sur tes besoins, essaie « Autre proposition » ou des recettes moins chères` : "respecté"}
+                </span>
+              ) : (
+                onGoBudget && (
+                  <button type="button" onClick={onGoBudget} style={{ background: "none", border: "none", color: ACCENT, cursor: "pointer", fontSize: 12.5, padding: 0, textDecoration: "underline" }}>
+                    · fixer un budget
+                  </button>
+                )
+              )}
+              <span style={{ fontSize: 11, color: "#6f6a62" }}>(prix moyens estimés en grande surface)</span>
+            </div>
+          );
+        })()}
+        {(() => {
           // ---- oméga-3 EPA/DHA : moyenne de la semaine planifiée (repère hebdomadaire) ----
           const planned = days.filter((d) => plans[d]);
           if (!planned.length) return null;
@@ -323,6 +358,10 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
             dayLabel={dayLabel(sel, { weekday: "long", day: "numeric", month: "short" })}
             onUse={useRecipe}
             onClose={() => setShowBook(false)}
+            uid={uid}
+            canModerate={canModerate}
+            onSaveRecipe={onSaveRecipe}
+            onDeleteRecipe={onDeleteRecipe}
           />
         )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
@@ -374,6 +413,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
                 {p ? (
                   <>
                     <div style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>{Math.round(tot.kcal)} kcal</div>
+                    <div style={{ fontSize: 10.5, color: GREEN, whiteSpace: "nowrap" }}>{fmtEur(planCost(p, customFoods))}</div>
                     <div style={{ height: 4, borderRadius: 2, background: "#1a1815", marginTop: 4, overflow: "hidden" }}>
                       <div style={{ width: `${(pct / 1.2) * 100}%`, height: "100%", background: st.color }} />
                     </div>
@@ -545,6 +585,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
                         <div style={{ fontWeight: 800, color: TEXT }}>
                           {info?.icon} {info?.label || mid}
                           <span style={{ fontSize: 12, color: ACCENT, fontWeight: 800, marginLeft: 8 }}>{Math.round(tot.kcal)} kcal</span>
+                          {(meal.items || []).length > 0 && <span style={{ fontSize: 12, color: GREEN, fontWeight: 700, marginLeft: 6 }}>{fmtEur(mealCost(meal, customFoods))}</span>}
                         </div>
                         <div style={{ display: "flex", gap: 4 }}>
                           <button

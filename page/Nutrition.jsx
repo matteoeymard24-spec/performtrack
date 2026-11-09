@@ -10,6 +10,10 @@ import PersonPicker from "../component/PersonPicker";
 import FoodPicker, { EntryEditor } from "../component/FoodPicker";
 import { loadTrainingDays } from "../component/trainingDays";
 import MealPlanner from "../component/MealPlanner";
+import ShoppingList from "../component/ShoppingList";
+import { loadBank, publishFood, publishRecipe, deleteBankItem, setPrivateRecipes, recipeToDoc } from "../component/foodBank";
+import { setBudget, setUserPrices } from "../component/prices";
+import { useAuth } from "../auth/AuthProvider";
 import usePersonScope from "../component/usePersonScope";
 import { normSex } from "../component/cycling";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
@@ -250,16 +254,6 @@ function Bottle({ ml, target, size = 120, onDrag, onCommit }) {
   );
 }
 
-const URINE = [
-  { c: "#f7f3d0", t: "Bien hydraté" },
-  { c: "#f2e8a2", t: "Bien hydraté" },
-  { c: "#eedc6c", t: "Correct" },
-  { c: "#e3c53f", t: "Bois un peu plus" },
-  { c: "#d4aa2a", t: "Déshydratation légère" },
-  { c: "#bf8b22", t: "Déshydraté : bois" },
-  { c: "#9c6b1c", t: "Très déshydraté" },
-  { c: "#7a5214", t: "Consulte si ça persiste" },
-];
 
 /* =====================================================================
    PAGE
@@ -267,10 +261,21 @@ const URINE = [
 export default function Nutrition() {
   const navigate = useNavigate();
   const ps = usePersonScope();
+  const { userProfile, isSuperAdmin } = useAuth();
+  // Banque commune d'aliments / recettes (partagée par tous) : chargée une fois, re-rendu à chaque mise à jour
+  const [, setBankV] = useState(0);
+  useEffect(() => {
+    const on = () => setBankV((v) => v + 1);
+    window.addEventListener("pt-foodbank", on);
+    loadBank();
+    return () => window.removeEventListener("pt-foodbank", on);
+  }, []);
+  const myName = [userProfile?.firstName, userProfile?.lastName ? `${userProfile.lastName[0]}.` : ""].filter(Boolean).join(" ") || "Membre";
   const uid = ps.uid;
   const fold = useFold("nutrition");
   const [tab, setTab] = useState(() => {
     const t = new URLSearchParams(window.location.search).get("tab") || "journal";
+    if (t === "eau") return "journal"; // ancien onglet Hydratation → la gourde du journal
     return t === "menus" ? "planning" : t; // ancien onglet « Menus types » → Planning
   });
   const [date, setDate] = useState(todayISO());
@@ -297,7 +302,7 @@ export default function Nutrition() {
     };
   }, []);
   // Arrivée depuis le dashboard : « Ajouter un repas » ouvre le repas de l'heure, « Eau » va à la gourde
-  const focusRef = React.useRef(new URLSearchParams(window.location.search).get("focus"));
+  const focusRef = React.useRef(new URLSearchParams(window.location.search).get("focus") || (new URLSearchParams(window.location.search).get("tab") === "eau" ? "eau" : null));
   const [settings, setSettings] = useState(null);
   const [draft, setDraft] = useState(null); // réglages en cours d'édition (onglet Objectifs)
   const [day, setDay] = useState(null);
@@ -305,7 +310,6 @@ export default function Nutrition() {
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(null); // id du repas où l'on ajoute
   const [editEntry, setEditEntry] = useState(null); // id de l'aliment du journal en cours de modification
-  const [sweat, setSweat] = useState({ before: "", after: "", drunk: "", min: "" });
   const [saved, setSaved] = useState("");
 
   const person = ps.person || {};
@@ -405,13 +409,33 @@ export default function Nutrition() {
     const h = new Date().getHours();
     const meal = h < 11 ? "petitdej" : h < 15 ? "dejeuner" : h < 18 ? "collation" : "diner";
     if (f === "repas") setAdding(meal);
+    if (f === "eau") return goWater();
     setTimeout(() => {
-      const el = document.getElementById(f === "eau" ? "nutri-eau" : `nutri-meal-${meal}`);
+      const el = document.getElementById(`nutri-meal-${meal}`);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 120);
-  }, [loading, day, tab]);
+  }, [loading, day, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* Aller à la gourde : carte dépliée si besoin, puis défilement ; recalé une 2e fois si la page a
+     bougé entre-temps (contenu chargé au-dessus : graphiques, séances…) */
+  const goWater = () => {
+    if (tab !== "journal") setTab("journal");
+    if (!fold.isOpen("water_day")) fold.toggle("water_day");
+    const go = (smooth) => {
+      const el = document.getElementById("nutri-eau");
+      if (el) el.scrollIntoView({ behavior: smooth ? "smooth" : "auto", block: "start" });
+    };
+    setTimeout(() => go(true), 80);
+    setTimeout(() => {
+      const el = document.getElementById("nutri-eau");
+      if (el && Math.abs(el.getBoundingClientRect().top) > 140) go(false);
+    }, 900);
+  };
 
   const targets = useMemo(() => (settings ? computeTargets(settings, day?.dayType || "modere") : null), [settings, day?.dayType]);
+  // budget, prix corrigés et recettes privées de la personne affichée (utilisés par les menus et les courses)
+  setBudget(settings?.budgetWeek);
+  setUserPrices(settings?.prices);
+  setPrivateRecipes(settings?.myRecipes);
 
   /* Eau : nouvelle quantité totale (glisser / saisie) ; l'écart est noté dans l'historique du jour */
   const setWaterTo = (v) => {
@@ -433,6 +457,42 @@ export default function Nutrition() {
     } catch (e) {
       alert("Erreur d'enregistrement : " + e.message);
     }
+  };
+  /* Nouvel aliment perso : « Mes aliments » + banque commune si partagé */
+  const addCustomFood = async (food, opts = {}) => {
+    await saveSettings({ ...settings, customFoods: [...(settings.customFoods || []), food] }, opts.share ? "✅ Aliment enregistré et partagé" : "✅ Aliment enregistré");
+    if (opts.share)
+      publishFood(food, myName).catch((e) => alert("Aliment enregistré chez toi, mais pas partagé dans la banque commune (" + e.message + "). La règle Firestore « foodBank » est peut-être à publier."));
+  };
+  /* Recette créée : banque commune (partagée) ou recette privée (settings.myRecipes) */
+  const saveRecipe = async (recipe, share) => {
+    if (share) {
+      try {
+        await publishRecipe(recipe, myName, settings.customFoods || []);
+        setSaved("✅ Recette partagée");
+        setTimeout(() => setSaved(""), 2500);
+        return true;
+      } catch (e) {
+        alert("Recette non partagée (" + e.message + ") : elle est gardée comme recette perso. La règle Firestore « foodBank » est peut-être à publier.");
+      }
+    }
+    await saveSettings({ ...settings, myRecipes: [...(settings.myRecipes || []), recipeToDoc(recipe)] }, "✅ Recette enregistrée");
+    return true;
+  };
+  const deleteRecipe = async (r) => {
+    if (r.private) return saveSettings({ ...settings, myRecipes: (settings.myRecipes || []).filter((x) => x.id !== r.id) }, "🗑 Recette supprimée");
+    try {
+      await deleteBankItem(r.id);
+    } catch (e) {
+      alert("Suppression impossible : " + e.message);
+    }
+  };
+  /* Prix corrigé d'un aliment (€ / kg acheté) ; null = retour au prix moyen */
+  const savePrice = (foodId, kg) => {
+    const pr = { ...(settings.prices || {}) };
+    if (kg > 0) pr[foodId] = Math.round(kg * 100) / 100;
+    else delete pr[foodId];
+    return saveSettings({ ...settings, prices: pr }, "✅ Prix enregistré");
   };
   const saveSettings = async (next, msg = "✅ Réglages enregistrés") => {
     setSettings(next);
@@ -526,8 +586,8 @@ export default function Nutrition() {
     ["journal", "📅 Journal"],
     ["objectifs", "🎯 Objectifs"],
     ["planning", "🗓️ Planning"],
+    ["courses", "🛒 Courses"],
     ["supps", "💊 Compléments"],
-    ["eau", "💧 Hydratation"],
   ];
 
   return (
@@ -572,7 +632,7 @@ export default function Nutrition() {
               <>
                 <Kpi icon="🔥" label={isToday ? "Énergie du jour" : `Énergie · ${date.slice(8, 10)}/${date.slice(5, 7)}`} value={`${Math.round(totalN.kcal).toLocaleString("fr-FR")} kcal`} sub={`objectif ${targets.kcal.toLocaleString("fr-FR")} · ${Math.round(pk * 100)} %`} color={c3(pk)} />
                 <Kpi icon="🥩" label="Protéines" value={`${Math.round(totalN.p)} g`} sub={`objectif ${targets.p} g · ${targets.proteinPerKg} g/kg`} color={c3(pp, 1.5)} />
-                <Kpi icon="💧" label="Eau" value={`${((day.water || 0) / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} L`} sub={`objectif ${(targets.water / 1000).toLocaleString("fr-FR")} L`} color={pw >= 0.9 ? BLUE : c3(pw, 9)} />
+                <Kpi icon="💧" label="Eau" value={`${((day.water || 0) / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} L`} sub={`objectif ${(targets.water / 1000).toLocaleString("fr-FR")} L · toucher → gourde`} color={pw >= 0.9 ? BLUE : c3(pw, 9)} onClick={goWater} />
                 <Kpi
                   icon={dt.icon}
                   label="Journée"
@@ -827,7 +887,7 @@ export default function Nutrition() {
                         meal={m.id}
                         onClose={() => setAdding(null)}
                         onAdd={(entry) => saveDay({ ...day, entries: [...(day.entries || []), entry] })}
-                        onSaveCustom={(food) => saveSettings({ ...settings, customFoods: [...(settings.customFoods || []), food] }, "✅ Aliment enregistré")}
+                        onSaveCustom={addCustomFood}
                         foodOverrides={settings.foodOverrides}
                         onFoodValues={saveFoodValues}
                       />
@@ -1157,6 +1217,27 @@ export default function Nutrition() {
                   ))}
                 </div>
 
+                <SectionLabel>💶 Budget courses</SectionLabel>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    step={5}
+                    value={draft.budgetWeek ?? ""}
+                    onChange={(e) => setDraft({ ...draft, budgetWeek: e.target.value === "" ? "" : Number(e.target.value) })}
+                    placeholder="ex : 60"
+                    aria-label="Budget par semaine en euros"
+                    style={{ ...FIELD_STYLE, width: 110 }}
+                  />
+                  <span style={{ fontSize: 13, color: TEXT }}>€ / semaine</span>
+                  {Number(draft.budgetWeek) > 0 && <span style={{ fontSize: 12.5, color: MUTED }}>≈ {(Number(draft.budgetWeek) / 7).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} € / jour</span>}
+                </div>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 16 }}>
+                  Les menus proposés privilégient les recettes qui tiennent dans ce budget, sans sacrifier tes besoins (protéines, glucides…). Vide = pas de contrainte de prix. Prix moyens
+                  estimés en grande surface, à corriger dans 🛒 Courses.
+                </div>
+
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                   <button className="pt-btn pt-btn--primary" onClick={() => saveSettings(draft)}>
                     💾 Enregistrer
@@ -1256,12 +1337,19 @@ export default function Nutrition() {
             <MealPlanner
               uid={uid}
               settings={settings}
-              onSaveCustom={(food) => saveSettings({ ...settings, customFoods: [...(settings.customFoods || []), food] }, "✅ Aliment enregistré")}
+              onSaveCustom={addCustomFood}
               onJournalAdd={addToJournal}
               onFoodValues={saveFoodValues}
               onCuisines={(cuisines) => saveSettings({ ...settings, cuisines }, "✅ Cuisines enregistrées")}
+              onSaveRecipe={saveRecipe}
+              onDeleteRecipe={deleteRecipe}
+              canModerate={!!isSuperAdmin}
+              onGoBudget={() => setTab("objectifs")}
             />
           )}
+
+          {/* ======================= COURSES ======================= */}
+          {tab === "courses" && <ShoppingList uid={uid} settings={settings} onPrice={savePrice} onGoPlanning={() => setTab("planning")} />}
 
           {/* ======================= COMPLÉMENTS ======================= */}
           {tab === "supps" && (
@@ -1323,82 +1411,6 @@ export default function Nutrition() {
             </>
           )}
 
-          {/* ======================= HYDRATATION ======================= */}
-          {tab === "eau" && targets && (
-            <>
-              <KpiGrid min={150}>
-                <Kpi icon="💧" label="Objectif du jour" value={`${(targets.water / 1000).toLocaleString("fr-FR")} L`} color={BLUE} sub={DAY_BY_ID[day?.dayType]?.label} />
-                <Kpi icon="🥤" label="Bu aujourd'hui" value={`${(((day?.date === todayISO() ? day?.water : history.find((d) => d.date === todayISO())?.water) || 0) / 1000).toLocaleString("fr-FR")} L`} color={BLUE} onClick={() => { setDate(todayISO()); setTab("journal"); }} sub="toucher pour ajouter" />
-                <Kpi icon="⏰" label="Avant la séance" value={`${Math.round((Number(settings.weight) || 0) * 6)} ml`} sub="5-7 ml/kg, 2 à 4 h avant" />
-              </KpiGrid>
-              <div style={CARD_STYLE}>
-                <SectionLabel>Autour de l'entraînement (ACSM)</SectionLabel>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))", gap: 10 }}>
-                  {[
-                    ["⏰ Avant", `${Math.round((Number(settings.weight) || 0) * 5)}-${Math.round((Number(settings.weight) || 0) * 7)} ml 2 à 4 h avant. Urines claires au départ.`],
-                    ["🏃 Pendant", "Boire pour limiter la perte à moins de 2 % du poids. Au-delà d'1 h ou s'il fait chaud : boisson avec sodium et glucides."],
-                    ["🔁 Après", "1,25 à 1,5 L par kg perdu (pesée avant / après), avec du sel (repas, boisson de récupération)."],
-                  ].map(([t, x]) => (
-                    <div key={t} style={{ padding: 12, borderRadius: 10, background: "#0d0c0a", border: `1px solid ${BORDER}` }}>
-                      <div style={{ fontWeight: 800, color: BLUE, marginBottom: 4 }}>{t}</div>
-                      <div style={{ fontSize: 13, color: "#d8cfbd", lineHeight: 1.45 }}>{x}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div style={CARD_STYLE}>
-                <SectionLabel>Calculer mon taux de sudation</SectionLabel>
-                <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>Pèse-toi avant et après une séance (sans vêtements mouillés), note ce que tu as bu.</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
-                  {[
-                    ["before", "Poids avant (kg)"],
-                    ["after", "Poids après (kg)"],
-                    ["drunk", "Bu pendant (ml)"],
-                    ["min", "Durée (min)"],
-                  ].map(([k, l]) => (
-                    <div key={k}>
-                      <label style={lbl}>{l}</label>
-                      <input type="number" inputMode="decimal" value={sweat[k]} onChange={(e) => setSweat({ ...sweat, [k]: e.target.value })} style={FIELD_STYLE} />
-                    </div>
-                  ))}
-                </div>
-                {(() => {
-                  const n = (v) => Number(String(v).replace(",", "."));
-                  const b = n(sweat.before);
-                  const a = n(sweat.after);
-                  const d = n(sweat.drunk) || 0;
-                  const m = n(sweat.min);
-                  if (!(b > 0 && a > 0 && m > 0)) return null;
-                  const lossL = b - a + d / 1000;
-                  const rate = lossL / (m / 60);
-                  const pct = ((b - a) / b) * 100;
-                  return (
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                      <Kpi icon="💦" label="Sueur" value={`${rate.toFixed(2).replace(".", ",")} L/h`} color={BLUE} />
-                      <Kpi icon="⚖️" label="Perte de poids" value={`${pct.toFixed(1).replace(".", ",")} %`} color={pct > 2 ? RED : GREEN} sub={pct > 2 ? "> 2 % : performance altérée" : "< 2 % : OK"} />
-                      <Kpi icon="🔁" label="À reboire" value={`${Math.max(0, Math.round((b - a) * 1.5 * 10) / 10).toLocaleString("fr-FR")} L`} sub="150 % de la perte" />
-                    </div>
-                  );
-                })()}
-              </div>
-              <div style={CARD_STYLE}>
-                <SectionLabel>Couleur des urines</SectionLabel>
-                <div style={{ display: "flex", borderRadius: 10, overflow: "hidden", marginBottom: 8 }}>
-                  {URINE.map((u, i) => (
-                    <div key={i} title={u.t} style={{ flex: 1, height: 38, background: u.c, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: i < 4 ? "#3a342a" : "#f3f0ea" }}>
-                      {i + 1}
-                    </div>
-                  ))}
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: MUTED }}>
-                  <span style={{ color: GREEN }}>1-3 : bien hydraté</span>
-                  <span style={{ color: ACCENT }}>4-5 : bois davantage</span>
-                  <span style={{ color: RED }}>6-8 : déshydraté</span>
-                </div>
-                <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>Repère indicatif (échelle d'Armstrong) : la vitamine B en complément colore les urines en jaune vif.</div>
-              </div>
-            </>
-          )}
         </>
       )}
     </Page>

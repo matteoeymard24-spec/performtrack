@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import { FIELD_STYLE, TEXT, MUTED, ACCENT } from "./ui";
 import { FOODS, FOOD_BY_ID, FOOD_CATS, MEALS, allowedByDiet, scaleN, fmtN } from "./nutritionData";
 import { guessCat, roleOfCat, defaultMeals } from "./mealPlan";
+import { bankFoods, normName } from "./bankCore";
 
 /* =====================================================================
    FoodPicker.jsx — recherche d'aliment + quantité (g ou portions) + création d'aliment perso.
    Utilisé par le Journal et le Planning de la page Nutrition.
-   onAdd({ id, meal, foodId, name, grams, n }) ; onSaveCustom(food)
+   onAdd({ id, meal, foodId, name, grams, n }) ; onSaveCustom(food, { share }) — share : publié dans la banque commune
    ===================================================================== */
 const BORDER = "#2a2620";
 const uidN = () => Math.random().toString(36).slice(2, 10);
@@ -27,7 +28,7 @@ const lbl = { display: "block", fontSize: 11.5, color: MUTED, fontWeight: 700, m
 /* Valeurs modifiées par l'utilisateur (settings.foodOverrides) appliquées aux aliments de base */
 export const withOverride = (f, overrides) => (f && overrides?.[f.id] ? { ...f, n: { ...f.n, ...overrides[f.id] }, edited: true } : f);
 export const findFood = (id, customFoods, overrides) =>
-  (customFoods || []).find((f) => f.id === id) || withOverride(FOOD_BY_ID[id], overrides) || null;
+  (customFoods || []).find((f) => f.id === id) || withOverride(FOOD_BY_ID[id], overrides) || bankFoods().find((f) => f.id === id) || null;
 const MACRO_FIELDS = [
   ["kcal", "kcal"],
   ["p", "Protéines g"],
@@ -183,13 +184,23 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
   const [count, setCount] = useState("");
   const [creating, setCreating] = useState(false);
   const [editVals, setEditVals] = useState(false);
-  const [cf, setCf] = useState({ name: "", kcal: "", p: "", c: "", f: "", fib: "", portionLabel: "", portionG: "" });
+  const [cf, setCf] = useState({ name: "", kcal: "", p: "", c: "", f: "", fib: "", portionLabel: "", portionG: "", price: "" });
   const [cfUse, setCfUse] = useState(null); // { cat, meals } choisis ; null = deviné d'après les macros
-  const all = [...(customFoods || []).map((f) => ({ ...f, foodCat: f.cat && f.cat !== "perso" ? f.cat : undefined, cat: "perso" })), ...FOODS.map((f) => withOverride(f, foodOverrides))];
+  const [share, setShare] = useState(true); // partager l'aliment dans la banque commune
+  // aliments partagés par les autres (banque commune), sans doublon avec les miens ni ceux de base
+  const mineIds = new Set((customFoods || []).map((f) => f.id));
+  const takenNames = new Set([...(customFoods || []), ...FOODS].map((f) => normName(f.name)));
+  const shared = bankFoods().filter((f) => !mineIds.has(f.id) && !takenNames.has(normName(f.name)));
+  const all = [
+    ...(customFoods || []).map((f) => ({ ...f, foodCat: f.cat && f.cat !== "perso" ? f.cat : undefined, cat: "perso" })),
+    ...shared.map((f) => ({ ...f, foodCat: f.cat && f.cat !== "perso" ? f.cat : undefined, cat: "banque" })),
+    ...FOODS.map((f) => withOverride(f, foodOverrides)),
+  ];
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const list = all
     .filter((f) => (!cat || f.cat === cat) && (!q || norm(f.name).includes(norm(q))))
-    .sort((a, b) => (a.cat === "perso" ? -1 : 0) - (b.cat === "perso" ? -1 : 0) || (allowedByDiet(b, diet) ? 1 : 0) - (allowedByDiet(a, diet) ? 1 : 0));
+    .sort((a, b) => (a.cat === "perso" ? -1 : 0) - (b.cat === "perso" ? -1 : 0) || (allowedByDiet(b, diet) ? 1 : 0) - (allowedByDiet(a, diet) ? 1 : 0))
+    .slice(0, q || cat ? 400 : 120);
   const g = sel ? (count && sel.portion ? Number(String(count).replace(",", ".")) * sel.portion[1] : Number(String(grams).replace(",", "."))) : 0;
   const n = sel && g > 0 ? scaleN(sel.n, g) : null;
   const add = () => {
@@ -217,6 +228,11 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
             {(customFoods || []).length > 0 && (
               <button type="button" style={{ ...chip(cat === "perso"), padding: "5px 10px", fontSize: 12 }} onClick={() => setCat("perso")}>
                 ⭐ Mes aliments
+              </button>
+            )}
+            {shared.length > 0 && (
+              <button type="button" style={{ ...chip(cat === "banque"), padding: "5px 10px", fontSize: 12 }} onClick={() => setCat("banque")} title="Aliments ajoutés par les autres membres">
+                🌍 Banque commune ({shared.length})
               </button>
             )}
             {Object.entries(FOOD_CATS).map(([k, l]) => (
@@ -337,11 +353,12 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                     <span style={{ width: 26, height: 26, borderRadius: 8, background: "#0d0c0a", border: `1px solid ${BORDER}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
-                      {f.cat === "perso" ? "⭐" : FOOD_CATS[f.cat]?.split(" ")[0] || "🍽️"}
+                      {f.cat === "perso" ? "⭐" : f.cat === "banque" ? "🌍" : FOOD_CATS[f.cat]?.split(" ")[0] || "🍽️"}
                     </span>
                     <span style={{ minWidth: 0 }}>
                       {f.name}
                       {f.edited ? " ✏️" : ""}
+                      {f.cat === "banque" && f.byName ? <span style={{ color: "#6f6a62", fontSize: 11 }}> · par {f.byName}</span> : null}
                     </span>
                   </span>
                   <span style={{ color: MUTED, fontSize: 12, whiteSpace: "nowrap" }}>
@@ -384,6 +401,10 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
               <label style={lbl}>Portion (g)</label>
               <input type="number" value={cf.portionG} onChange={(e) => setCf({ ...cf, portionG: e.target.value })} style={FIELD_STYLE} />
             </div>
+            <div>
+              <label style={lbl}>Prix € / kg (facultatif)</label>
+              <input type="number" inputMode="decimal" value={cf.price} onChange={(e) => setCf({ ...cf, price: e.target.value })} style={FIELD_STYLE} placeholder="pour le budget" />
+            </div>
             {(() => {
               const n0 = { kcal: num(cf.kcal), p: num(cf.p), c: num(cf.c), f: num(cf.f), fib: num(cf.fib) };
               const gc = guessCat({ n: n0 });
@@ -391,6 +412,10 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
               return <MenuUse cat={use.cat} meals={use.meals} n={n0} onChange={(cat, meals) => setCfUse({ cat, meals })} />;
             })()}
           </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10, fontSize: 13, color: TEXT, cursor: "pointer" }}>
+            <input type="checkbox" checked={share} onChange={(e) => setShare(e.target.checked)} />
+            🌍 Partager dans la banque commune <span style={{ color: MUTED, fontSize: 12 }}>(les autres pourront l'utiliser ; ton prénom est affiché)</span>
+          </label>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button
               type="button"
@@ -407,8 +432,9 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
                   cat: use.cat,
                   meals: use.meals,
                   ...(cf.portionLabel && num(cf.portionG) > 0 ? { portion: [cf.portionLabel, num(cf.portionG)] } : {}),
+                  ...(num(cf.price) > 0 ? { price: num(cf.price) } : {}),
                 };
-                onSaveCustom(food);
+                onSaveCustom(food, { share });
                 setCreating(false);
                 setCfUse(null);
                 setSel({ ...food, foodCat: food.cat, cat: "perso" });

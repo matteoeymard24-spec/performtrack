@@ -368,11 +368,11 @@ export function capsOf(food, role) {
 export function solveMeal(tpl, target, diet, lookup = (id) => FOOD_BY_ID[id]) {
   const pick = (ids) => ids.map((id) => lookup(id)).find((f) => f && allowedByDiet(f, diet)) || lookup(ids[ids.length - 1]);
   const levers = [
-    { food: pick(tpl.P), k: "p", role: "P" },
-    { food: pick(tpl.C), k: "c", role: "C" },
-    { food: pick(tpl.F), k: "f", role: "F" },
-  ];
-  const fixed = tpl.fixed.map(([id, g]) => ({ food: lookup(id), g })).filter((x) => x.food && allowedByDiet(x.food, diet));
+    { food: (tpl.P || []).length ? pick(tpl.P) : null, k: "p", role: "P" },
+    { food: (tpl.C || []).length ? pick(tpl.C) : null, k: "c", role: "C" },
+    { food: (tpl.F || []).length ? pick(tpl.F) : null, k: "f", role: "F" },
+  ].filter((l) => l.food); // recette sans levier (ex. recette partagée sans matière grasse) : on s'en passe
+  const fixed = (tpl.fixed || []).map(([id, g]) => ({ food: lookup(id), g })).filter((x) => x.food && allowedByDiet(x.food, diet));
   const base = sumN(fixed.map((x) => scaleN(x.food.n, x.g)));
   const caps = levers.map((l) => capsOf(l.food, l.role));
   const g = caps.map((c) => c[0]);

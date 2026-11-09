@@ -240,6 +240,21 @@ service cloud.firestore {
       allow update, delete: if isSuperAdmin() || (isAdmin() && resource.data.coachId == request.auth.uid);
     }
 
+    // ===================== FOOD BANK (banque commune d'aliments et de recettes) =====================
+    // Tout compte connecté lit la banque et y partage ses aliments / recettes EN SON NOM (champ by).
+    // Seul l'auteur (ou le superadmin) modifie ou supprime ce qu'il a partagé.
+    match /foodBank/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() &&
+        request.resource.data.by == request.auth.uid &&
+        request.resource.data.kind in ['food', 'recipe'];
+      allow update: if isSuperAdmin() || (
+        isSignedIn() && resource.data.by == request.auth.uid &&
+        request.resource.data.by == request.auth.uid
+      );
+      allow delete: if isSuperAdmin() || (isSignedIn() && resource.data.by == request.auth.uid);
+    }
+
     // ===================== ARCHIVED ATHLETES =====================
     match /archivedAthletes/{athleteId} {
       allow read, write: if isAdmin();

@@ -25,6 +25,7 @@ export const CUISINES = [
   { id: "no", flag: "🇸🇪", label: "Scandinave" },
   { id: "af", flag: "🌍", label: "Africaine & antillaise" },
   { id: "sp", flag: "🏃", label: "Sportive express" },
+  { id: "autre", flag: "🍽️", label: "Maison / autre" },
 ];
 export const CUISINE_BY_ID = Object.fromEntries(CUISINES.map((c) => [c.id, c]));
 

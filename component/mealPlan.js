@@ -9,6 +9,8 @@
    Firestore : users/{uid}/nutrition/plan_AAAA-MM-JJ = { date, dayType, meals: [{ id, items: [{ foodId, name, g, role, n }] }] }
    ===================================================================== */
 import { TH } from "./thresholdsCore";
+import { bankFoods, bankTemplates, normName } from "./bankCore";
+import { costOf, budgetDay } from "./prices";
 import {
   FOODS,
   FOOD_BY_ID,
@@ -78,11 +80,20 @@ export const defaultMeals = (cat, n) => {
   if (cat === "gras") return (Number(n?.f) || 0) > 90 ? ["dejeuner", "diner"] : ["petitdej", "collation", "seance"];
   return DEFAULT_MEALS_BY_CAT[cat] || [];
 };
-export const prepCustom = (customFoods) =>
-  (customFoods || []).map((f) => {
+let BASE_NAMES = null;
+/* Aliments perso + aliments de la BANQUE COMMUNE (partagés par les autres ; sans doublon de nom
+   avec un aliment de base ou un de tes aliments) */
+export const prepCustom = (customFoods) => {
+  if (!BASE_NAMES) BASE_NAMES = new Set(FOODS.map((f) => normName(f.name)));
+  const mine = customFoods || [];
+  const ids = new Set(mine.map((f) => f.id));
+  const names = new Set(mine.map((f) => normName(f.name)));
+  const shared = bankFoods().filter((f) => !ids.has(f.id) && !names.has(normName(f.name)) && !BASE_NAMES.has(normName(f.name)));
+  return [...mine, ...shared].map((f) => {
     const cat = f.cat && f.cat !== "perso" ? f.cat : guessCat(f);
-    return { ...f, cat, custom: true, meals: Array.isArray(f.meals) ? f.meals : defaultMeals(cat, f.n) };
+    return { ...f, cat, custom: true, meals: Array.isArray(f.meals) && f.meals.length ? f.meals : defaultMeals(cat, f.n) };
   });
+};
 
 /* Bibliothèque de menus : aliments de base (avec tes valeurs corrigées) + tes aliments perso.
    Chaque aliment perso est essayé dans chaque modèle de ses repas, à la place de l'aliment du même rôle
@@ -92,8 +103,10 @@ export function buildLibrary(customFoods = [], overrides = {}, diet = "omni") {
   const byId = new Map(customs.map((f) => [f.id, f]));
   const lookup = (id) => byId.get(id) || (FOOD_BY_ID[id] && overrides?.[id] ? { ...FOOD_BY_ID[id], n: { ...FOOD_BY_ID[id].n, ...overrides[id] } } : FOOD_BY_ID[id]) || null;
   const templates = {};
-  Object.entries(MENU_TEMPLATES).forEach(([mid, list]) => {
-    const out = list.map((tpl) => ({ ...tpl, src: "base" }));
+  Object.entries(MENU_TEMPLATES).forEach(([mid, list0]) => {
+    // recettes de base + recettes partagées dans la banque commune
+    const list = [...list0, ...bankTemplates(mid)];
+    const out = list.map((tpl) => ({ ...tpl, src: tpl.bank ? "banque" : "base" }));
     customs.forEach((f) => {
       if (!f.meals.includes(mid) || !allowedByDiet(f, diet)) return;
       const role = roleOfCat(f.cat, f);
@@ -102,13 +115,14 @@ export function buildLibrary(customFoods = [], overrides = {}, diet = "omni") {
       list.forEach((tpl) => {
         // un féculent remplace un féculent « du même genre » (cuit ↔ cuit, pain/céréales ↔ pain/céréales)
         if (role === "C") {
-          const c0 = FOOD_BY_ID[tpl.C[0]];
+          const c0 = FOOD_BY_ID[(tpl.C || [])[0]];
           if (c0 && (c0.n.kcal > 200) !== dry) return;
         }
         if (role === "fixe") {
-          const i = tpl.fixed.findIndex(([id]) => FOOD_BY_ID[id]?.cat === f.cat);
+          const fx = tpl.fixed || [];
+          const i = fx.findIndex(([id]) => FOOD_BY_ID[id]?.cat === f.cat);
           const g = f.portion?.[1] || (f.cat === "fruit" ? 120 : 150);
-          const fixed = i >= 0 ? tpl.fixed.map((x, j) => (j === i ? [f.id, g] : x)) : [...tpl.fixed, [f.id, g]];
+          const fixed = i >= 0 ? fx.map((x, j) => (j === i ? [f.id, g] : x)) : [...fx, [f.id, g]];
           out.push({ ...tpl, fixed, src: f.id, withFood: f.name });
         } else {
           out.push({ ...tpl, [role]: [f.id], src: f.id, withFood: f.name });
@@ -136,6 +150,14 @@ export const planMeals = (targets) => MEALS.filter((m) => (menuShares(targets.kc
 /* Totaux d'un plan */
 export const mealTotal = (meal) => sumN((meal?.items || []).map((x) => x.n));
 export const planTotal = (plan) => sumN((plan?.meals || []).map(mealTotal));
+
+/* Coût (€) d'une liste d'items { foodId | food, g } / d'un repas / d'un plan (prix : prices.js) */
+export const itemsCost = (items, customFoods = []) =>
+  (items || []).reduce((s, x) => s + costOf(x.food || foodOf(x.foodId, customFoods), Number(x.g) || 0), 0);
+export const mealCost = (meal, customFoods = []) => itemsCost(meal?.items, customFoods);
+export const planCost = (plan, customFoods = []) => (plan?.meals || []).reduce((s, m) => s + mealCost(m, customFoods), 0);
+/* Pénalité budget (0 si pas de budget) : au-dessus du budget → forte ; en dessous → légère préférence pour le moins cher */
+const budgetPen = (cost, budget, w = 1) => (budget > 0 ? w * (3 * Math.max(0, cost / budget - 1) + 0.15 * Math.min(2, cost / budget)) : 0);
 
 /* Écart d'un total aux besoins (plus petit = mieux) */
 function scoreTotals(T, t) {
@@ -179,6 +201,7 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
   const meals = planMeals(targets);
   const rand = rng(rank + 1);
   const K = 4; // recettes retenues par repas → 4^5 combinaisons au plus
+  const bDay = budgetDay(); // budget du jour (0 = pas de budget)
   let total = 1;
   const options = meals.map((m) => {
     const t = mealTarget(targets, m.id);
@@ -189,8 +212,9 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
       .map((tpl) => {
         const items = solveMeal(tpl, t, diet, lib.lookup);
         const tot = sumN(items.map((x) => x.n));
-        // recette déjà au menu cette semaine → légère pénalité (variété)
-        return { tpl, items, total: tot, sc: scoreTotals(tot, tm) + (avoid.includes(tpl.rid) ? 0.4 : 0) };
+        const cost = itemsCost(items);
+        // recette déjà au menu cette semaine → légère pénalité (variété) ; budget : part du repas
+        return { tpl, items, total: tot, cost, sc: scoreTotals(tot, tm) + (avoid.includes(tpl.rid) ? 0.4 : 0) + budgetPen(cost, bDay * t.share, 0.6) };
       })
       .sort((a, b) => a.sc - b.sc);
     if (rank === 0) return scored.slice(0, K);
@@ -208,7 +232,8 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
       const T = sumN(picked.map((o) => o.total));
       const rids = picked.map((o) => o.tpl.rid);
       const dupPen = rids.length - new Set(rids).size; // même recette midi et soir
-      const sc = scoreTotals(T, targets) + 0.5 * dupPen;
+      const cost = picked.reduce((s, o) => s + o.cost, 0);
+      const sc = scoreTotals(T, targets) + 0.5 * dupPen + budgetPen(cost, bDay);
       if (!best || sc < best.score) best = { picked: picked.slice(), score: sc };
       return;
     }

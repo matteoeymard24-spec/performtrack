@@ -140,3 +140,23 @@ export function analyzeSets(series, exercise, uni = false, bw = 0) {
 
 export const fr = (x) => String(Math.round(x * 10) / 10).replace(".", ",");
 export const rirTxt = (r) => (r >= 5 ? "5+" : String(Math.round(r)));
+
+/* RM ESTIMÉ à partir d'une série SOUS-MAXIMALE (quand aucune série lourde ≤ 6 reps / RPE ≥ 8 n'existe) :
+   reps à l'échec théorique = reps faites + reps en réserve (RIR ≤ 4), jusqu'à 15 ; au-delà de 12 on
+   prolonge la relation reps-%RM utilisée par maxRepsAtPct (−2 % par rep : 13 → 66 %, 15 → 62 %).
+   ESTIMATION moins précise (RIR déclaré à ± 1-2 reps loin de l'échec : Zourdos 2016 ; Halperin 2022) :
+   sert de point de départ et est remplacée dès qu'une série lourde est saisie. */
+export const EST_MAX_FAILURE_REPS = 15;
+export function estimateE1rm(serie, uni = false) {
+  const w = num(serie?.actualWeight);
+  const rR = num(serie?.actualRepsR);
+  const rL = num(serie?.actualRepsL);
+  const r = rR != null && rL != null ? Math.min(rR, rL) : num(serie?.actualReps);
+  let rir = serie?.rir != null && serie.rir !== "" ? Number(serie.rir) : null;
+  if (rir == null && num(serie?.rpe) != null) rir = 10 - num(serie.rpe);
+  if (!(w > 0) || !(r > 0) || rir == null || rir < 0 || rir > 4) return null;
+  const n = uniToBilat(r + rir, uni);
+  if (n > EST_MAX_FAILURE_REPS) return null;
+  const pct = n <= 12 ? pct1RMFromRepsRpe(n, 10) : (68 - (n - 12) * 2) / 100;
+  return pct ? Math.round((w / pct) * 10) / 10 : null;
+}

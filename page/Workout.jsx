@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import { isMobileView } from "../component/viewMode";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
@@ -6,7 +6,7 @@ import { db } from "../firebase";
 import { RIR_CHOICES, rpeFromRir, rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { buildEnduranceReps, summarizeEndurance, enduranceEntry, nextBlockAdjustment, adjustmentBefore, END_LOSS_WARN, END_LOSS_STOP, summarizeTimed, enduranceEntryTimed, factorFromRatio } from "../component/enduranceFeedback";
 import { isDistanceMode, courseOf, targetTimeSec, distanceInTime, estimatedEffortSec, fmtTime as fmtDur, COD_SEC, timerBlockPlan, adjustPlan, planText } from "../component/enduranceTarget";
-import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
+import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP, estimateE1rm } from "../component/loadAdjust";
 import { isLoadedBodyweight, totalLoad, lestText } from "../component/bodyweightLoad";
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel, setDefaultEnduRef, defaultEnduRef } from "../component/blockType";
 import { FOSTER_CR10, doneDateOf, sessionRpe } from "../component/sessionLoad";
@@ -1491,7 +1491,7 @@ export default function Workout() {
   const calcOwnWeight = (rmName, percent) => {
     if (!rmName || !percent) return "-";
     // poids pré-rempli du feedback : RM de la personne qui fait la séance
-    const rm = (actingUid ? rmCache[actingUid] || {} : userRM)[normalizeExerciseName(rmName)];
+    const rm = (actingUid ? rmCache[actingUid] || {} : userRM)[normalizeExerciseName(rmName)] || estRmOf(actingUid || currentUser?.uid, normalizeExerciseName(rmName))?.kg;
     if (!rm) return "-";
     const total = (rm * percent) / 100;
     // tractions : on pré-remplit le LEST (charge totale − poids du corps), jamais négatif
@@ -1506,7 +1506,7 @@ export default function Workout() {
     if (!rmName || !percent) return "-";
     // Normaliser le nom recherché
     const normalizedName = normalizeExerciseName(rmName);
-    const rm = activeRM ? activeRM[normalizedName] : null;
+    const rm = activeRM ? activeRM[normalizedName] || estRmOf(activeRmUid, normalizedName)?.kg : null;
     if (!rm) return "-";
     return Math.round((rm * percent) / 100); // charge TOTALE (tractions : voir activeLestText)
   };
@@ -1522,10 +1522,11 @@ export default function Workout() {
     if (isNoRmIntensity(pct) || isOvercoming(ex) || !(Number(pct) > 0)) return null;
     const key = normalizeExerciseName(rmNameOf(ex));
     return rmCandidates.map((a) => {
-      const rm = rmCache[a.id]?.[key];
+      const est = rmCache[a.id]?.[key] ? null : estRmOf(a.id, key);
+      const rm = rmCache[a.id]?.[key] || est?.kg;
       const t = rm ? Math.round((rm * Number(pct)) / 100) : null;
       const name = a.firstName ? `${a.firstName}${a.lastName ? ` ${a.lastName[0]}.` : ""}` : a.displayName || a.email || "Athlète";
-      return { id: a.id, name, txt: t == null ? "pas de RM" : isLoadedBodyweight(ex.name) ? lestText(t, bwOf(a.id)) || `${t} kg` : `${t} kg`, ok: t != null, loading: !rmCache[a.id] };
+      return { id: a.id, name, txt: t == null ? "pas de RM" : (isLoadedBodyweight(ex.name) ? lestText(t, bwOf(a.id)) || `${t} kg` : `${t} kg`) + (est ? " (RM estimé)" : ""), ok: t != null, loading: !rmCache[a.id] };
     });
   };
   const activeLestText = (rmName, percent) => {
@@ -2132,6 +2133,19 @@ export default function Workout() {
           const p = calculatePredictedRM(w, r, rpeVal);
           if (p) validPredictions.push({ predicted: p, weight: w, reps: r, rpe: rpeVal });
         });
+        // Aucune série lourde (≤ 6 reps, RPE ≥ 8) : RM ESTIMÉ d'après les séries sous-maximales
+        // (voir estimateE1rm). Il ne sert qu'à CRÉER un RM absent ou à affiner un RM déjà estimé :
+        // il ne remplace jamais un RM issu de séries lourdes ou saisi à la main.
+        let fromEstimate = false;
+        if (validPredictions.length === 0) {
+          const uniEx = isUniEx(exercise);
+          normalized.series.map((s0) => rmSerie(s0, exercise)).filter(Boolean).forEach((s) => {
+            const w = bwAdd ? totalLoad(exercise.name, s.actualWeight, bwAdd) : Number(s.actualWeight);
+            const p = estimateE1rm({ ...s, actualWeight: w }, uniEx);
+            if (p) validPredictions.push({ predicted: p, weight: w, reps: Number(s.actualReps) || Number(s.actualRepsR) || 0, rpe: Number(s.rpe) || (s.rir != null && s.rir !== "" ? 10 - Number(s.rir) : null) });
+          });
+          fromEstimate = validPredictions.length > 0;
+        }
         if (validPredictions.length === 0) continue;
 
         const sortedPreds = [...validPredictions].sort((a, b) => a.predicted - b.predicted);
@@ -2154,6 +2168,8 @@ export default function Workout() {
         const rmRef = doc(db, "users", actorUid, "rm", normalizedRmName); // RM de la personne qui a fait la séance
         const existingSnap = await getDoc(rmRef);
         const existingData = existingSnap.exists() ? existingSnap.data() : null;
+        // RM estimé : jamais par-dessus un RM « solide » (séries lourdes ou saisi à la main)
+        if (fromEstimate && Number(existingData?.kg) > 0 && existingData?.estimated !== true) continue;
         const history0 = [...(existingData?.history || [])];
         const sameIdx = session.id ? history0.findIndex((h) => h && h.sessionId === session.id) : -1;
         // RM de référence : celui d'AVANT cette séance si elle a déjà ajusté ce RM
@@ -2183,7 +2199,7 @@ export default function Workout() {
           // point, plutôt que d'écraser l'unique valeur — c'est ce qui rend
           // le graphique d'évolution possible avec plus d'un point.
           const history = history0;
-          const histEntry = { date: nowIso, kg: roundedRM, autoAdjusted: true, ...(session.id ? { sessionId: session.id } : {}), prev: currentRM || 0 };
+          const histEntry = { date: nowIso, kg: roundedRM, autoAdjusted: true, ...(fromEstimate ? { estimated: true } : {}), ...(session.id ? { sessionId: session.id } : {}), prev: currentRM || 0 };
           if (sameIdx >= 0) history[sameIdx] = { ...histEntry, date: history[sameIdx].date || nowIso };
           else history.push(histEntry);
           // valeur actuelle = dernière entrée de l'historique (une séance plus récente garde la main)
@@ -2206,6 +2222,7 @@ export default function Workout() {
               updatedAt: nowIso,
               autoAdjusted: true,
               autoCreated: false,
+              estimated: fromEstimate, // true = estimé d'après des séries loin de l'échec
               lastRPE: refSeries.rpe,
               lastWeight: refSeries.weight,
               lastReps: refSeries.reps,
@@ -3608,6 +3625,58 @@ export default function Workout() {
   // Banque sprint / endurance : exos enregistrés automatiquement à chaque
   // séance créée (docs exerciseMedia "drill_<type>_<nom>") + ceux des séances.
   const [savedDrills, setSavedDrills] = useState({ sprint: {}, endurance: {} });
+  // RM ESTIMÉ d'après l'historique (séances terminées déjà chargées) quand la fiche RM n'existe pas
+  // encore : médiane des séries du dernier retour sur cet exercice (séries lourdes, sinon estimation
+  // sous-maximale — voir estimateE1rm). Affiché « RM estimé » ; la fiche est créée à la prochaine séance.
+  const histEstRm = useMemo(() => {
+    const out = {};
+    (events || []).forEach((w) => {
+      if (!w?.blocks || !w.userProgress) return;
+      Object.entries(w.userProgress).forEach(([uid, prog]) => {
+        if (!prog?.completedAt || !prog.feedback) return;
+        const date = doneDateOf(w, uid) || String(w.date || "").slice(0, 10);
+        Object.entries(prog.feedback).forEach(([key, fb]) => {
+          const [bi, ei] = key.split("-").map(Number);
+          const block = w.blocks[bi];
+          const ex = block?.exercises?.[ei];
+          if (!ex?.name || blockTypeOf(block, w.type) !== "muscu") return;
+          if (/échauffement|echauffement|warm.?up|activation/i.test(block?.name || "")) return;
+          if (isSpecialContraction(ex) || /^(cmj|counter movement jump)$/i.test(ex.name.trim())) return;
+          if (isBodyIntensity(ex.rmPercent) && !isLoadedBodyweight(ex.name)) return;
+          const nf = normalizeFeedback(fb);
+          if (!nf?.series?.length) return;
+          const uni = isUniEx(ex);
+          const bw = isLoadedBodyweight(ex.name) ? bwOf(uid) : null;
+          const vals = nf.series
+            .map((s0) => rmSerie(s0, ex))
+            .filter(Boolean)
+            .map((s) => {
+              const wt = bw ? totalLoad(ex.name, s.actualWeight, bw) : Number(s.actualWeight);
+              return calculatePredictedRM(wt, Number(s.actualReps), Number(s.rpe)) || estimateE1rm({ ...s, actualWeight: wt }, uni);
+            })
+            .filter((v) => v > 0)
+            .sort((a, b) => a - b);
+          if (!vals.length) return;
+          const mid = Math.floor(vals.length / 2);
+          const kg = Math.round((vals.length % 2 ? vals[mid] : (vals[mid - 1] + vals[mid]) / 2) * 10) / 10;
+          const k = normalizeExerciseName(ex.name);
+          const m = (out[uid] = out[uid] || {});
+          if (!m[k] || date > m[k].date) m[k] = { kg, date };
+        });
+      });
+    });
+    return out;
+  }, [events, exerciseMediaLibrary, athletes, adminUsers]); // eslint-disable-line react-hooks/exhaustive-deps
+  const estRmOf = (uid, normName) => (uid && normName ? histEstRm[uid]?.[normName] || null : null);
+  const estNote = (uid, rmName, rmMap) => {
+    const k = normalizeExerciseName(rmName);
+    if (rmMap?.[k]) return "";
+    const e = estRmOf(uid, k);
+    if (!e) return "";
+    const [, mm, dd] = String(e.date || "").split("-");
+    return ` · RM estimé ≈ ${String(e.kg).replace(".", ",")} kg${dd ? ` (séance du ${dd}/${mm})` : ""}`;
+  };
+
   const [drillsFromEvents, setDrillsFromEvents] = useState({ sprint: {}, endurance: {} });
   const [bankTab, setBankTab] = useState("muscu");
   const [legacyExerciseMedia, setLegacyExerciseMedia] = useState({});
@@ -10822,7 +10891,7 @@ export default function Workout() {
                               } else {
                                 const w = calculateWeight(rmNameOf(ex), pct);
                                 big = w === "-" ? "—" : `${w} kg`;
-                                sub = `${pct} % RM${rmNameOf(ex) !== ex.name ? ` ${rmNameOf(ex)}` : ""}${w === "-" ? " · pas encore de RM" : ""}${dbSplit(ex, w)}`;
+                                sub = `${pct} % RM${rmNameOf(ex) !== ex.name ? ` ${rmNameOf(ex)}` : ""}${w === "-" ? " · pas encore de RM" : estNote(activeRmUid, rmNameOf(ex), activeRM)}${dbSplit(ex, w)}`;
                               }
                             }
                             const reps = timer ? ex.reps || "—" : Math.max(1, Number(ex.reps) || 1);
