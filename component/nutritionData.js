@@ -12,7 +12,7 @@
 /* ---- Nutriments suivis ---- */
 import { TH } from "./thresholdsCore";
 import { MORE_FOODS } from "./foodsMore";
-import { RECIPES } from "./recipes";
+import { ALL_RECIPES } from "./recipes";
 
 export const MACROS = [
   { k: "kcal", label: "Énergie", unit: "kcal", dec: 0 },
@@ -320,7 +320,13 @@ export const EVIDENCE = {
 export const MENU_TEMPLATES = Object.fromEntries(
   ["petitdej", "dejeuner", "collation", "seance", "diner"].map((mid) => [
     mid,
-    RECIPES.filter((r) => r.meals.includes(mid)).map((r) => ({ rid: r.id, name: r.name, cuisine: r.cuisine, fixed: r.fixed, P: r.P, C: r.C, F: r.F })),
+    ALL_RECIPES.filter((r) => r.meals.includes(mid))
+      .map((r) => {
+        // identifiants d'aliments inconnus retirés (catalogue généré) ; recette gardée s'il reste un levier
+        const ok = (id) => !!FOOD_BY_ID[id];
+        return { rid: r.id, name: r.name, cuisine: r.cuisine, fixed: (r.fixed || []).filter(([id]) => ok(id)), P: (r.P || []).filter(ok), C: (r.C || []).filter(ok), F: (r.F || []).filter(ok), time: r.time, gen: !!r.gen };
+      })
+      .filter((t) => t.P.length || t.C.length),
   ])
 );
 

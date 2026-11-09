@@ -25,7 +25,7 @@ import {
   mealCost,
   planCost,
 } from "./mealPlan";
-import { fmtEur, budgetWeek, setBudget, setUserPrices } from "./prices";
+import { fmtEur, budgetWeek, setBudget, setUserPrices, setStore } from "./prices";
 
 /* =====================================================================
    MealPlanner.jsx — Nutrition › 🗓️ Planning : menus de la semaine.
@@ -101,8 +101,9 @@ function Gauge({ label, v, t, unit, color, tol = 0.1 }) {
 export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd, onFoodValues, onCuisines, onSaveRecipe, onDeleteRecipe, canModerate, onGoBudget }) {
   const diet = settings?.diet || "omni";
   // budget et prix corrigés de la personne (utilisés par les recommandations, voir prices.js)
-  setBudget(settings?.budgetWeek);
+  setBudget(settings?.budgetWeek, settings?.shopPeople);
   setUserPrices(settings?.prices);
+  setStore(settings?.store || "");
   const customFoods = settings?.customFoods || [];
   const cuisines = settings?.cuisines || []; // [] = toutes les cuisines
   const [showCuisines, setShowCuisines] = useState(false);
@@ -301,7 +302,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
               </span>
               {bw > 0 ? (
                 <span style={{ color: over ? RED : GREEN, fontWeight: 700 }}>
-                  · budget {fmtEur(bw)} {over ? `dépassé d'environ ${fmtEur(proj - bw)} : les menus restent calés sur tes besoins, essaie « Autre proposition » ou des recettes moins chères` : "respecté"}
+                  · budget {fmtEur(bw)}{Number(settings?.shopPeople) > 1 ? ` (ta part des ${fmtEur(settings.budgetWeek)} du foyer)` : ""} {over ? `dépassé d'environ ${fmtEur(proj - bw)} : les menus restent calés sur tes besoins, essaie « Autre proposition » ou des recettes moins chères` : "respecté"}
                 </span>
               ) : (
                 onGoBudget && (

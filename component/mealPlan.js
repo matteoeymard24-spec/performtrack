@@ -10,7 +10,7 @@
    ===================================================================== */
 import { TH } from "./thresholdsCore";
 import { bankFoods, bankTemplates, normName } from "./bankCore";
-import { costOf, budgetDay } from "./prices";
+import { costOf, budgetDay, priceVersion } from "./prices";
 import {
   FOODS,
   FOOD_BY_ID,
@@ -107,12 +107,13 @@ export function buildLibrary(customFoods = [], overrides = {}, diet = "omni") {
     // recettes de base + recettes partagées dans la banque commune
     const list = [...list0, ...bankTemplates(mid)];
     const out = list.map((tpl) => ({ ...tpl, src: tpl.bank ? "banque" : "base" }));
+    const handMade = list.filter((tpl) => !tpl.gen); // variantes « aliment perso » : sur les recettes écrites à la main seulement
     customs.forEach((f) => {
       if (!f.meals.includes(mid) || !allowedByDiet(f, diet)) return;
       const role = roleOfCat(f.cat, f);
       if (!role) return;
       const dry = (Number(f.n?.kcal) || 0) > 200;
-      list.forEach((tpl) => {
+      handMade.forEach((tpl) => {
         // un féculent remplace un féculent « du même genre » (cuit ↔ cuit, pain/céréales ↔ pain/céréales)
         if (role === "C") {
           const c0 = FOOD_BY_ID[(tpl.C || [])[0]];
@@ -156,6 +157,28 @@ export const itemsCost = (items, customFoods = []) =>
   (items || []).reduce((s, x) => s + costOf(x.food || foodOf(x.foodId, customFoods), Number(x.g) || 0), 0);
 export const mealCost = (meal, customFoods = []) => itemsCost(meal?.items, customFoods);
 export const planCost = (plan, customFoods = []) => (plan?.meals || []).reduce((s, m) => s + mealCost(m, customFoods), 0);
+/* Prix d'une PORTION type (1 personne, portions moyennes : protéine 130 g, féculent 200 g cuit,
+   matière grasse 10 g + aliments fixes) — pour filtrer / trier le catalogue sans tout calculer */
+const NOMINAL = { P: 130, C: 200, F: 10 };
+const nominalCache = new Map();
+export function portionCost(tpl, customFoods = [], diet = "omni") {
+  const key = `${tpl.rid || tpl.id}|${diet}|${customFoods.length}|${priceVersion()}`;
+  if (nominalCache.has(key)) return nominalCache.get(key);
+  const fd = (id) => foodOf(id, customFoods);
+  const pick = (ids) => (ids || []).map(fd).find((f) => f && allowedByDiet(f, diet)) || null;
+  let c = (tpl.fixed || []).reduce((s0, [id, g]) => s0 + costOf(fd(id), g), 0);
+  ["P", "C", "F"].forEach((r) => {
+    const f = pick(tpl[r]);
+    if (!f) return;
+    const g = r === "C" && f.n?.kcal > 300 ? 70 : NOMINAL[r]; // féculent sec (flocons, muesli…) : 70 g
+    c += costOf(f, g);
+  });
+  if (nominalCache.size > 60000) nominalCache.clear();
+  nominalCache.set(key, c);
+  return c;
+}
+export const clearPortionCost = () => nominalCache.clear();
+
 /* Pénalité budget (0 si pas de budget) : au-dessus du budget → forte ; en dessous → légère préférence pour le moins cher */
 const budgetPen = (cost, budget, w = 1) => (budget > 0 ? w * (3 * Math.max(0, cost / budget - 1) + 0.15 * Math.min(2, cost / budget)) : 0);
 
@@ -185,7 +208,13 @@ const rng = (seed) => {
     return x / 4294967296;
   };
 };
-const recipeMeta = (tpl) => (tpl?.rid ? { rid: tpl.rid, name: tpl.name, cuisine: tpl.cuisine, ...(tpl.withFood ? { withFood: tpl.withFood } : {}) } : null);
+// titre de la recette ; protéine principale remplacée pour le régime → « (version végé / poisson) »
+const recipeMeta = (tpl, diet = "omni", lookup = null) => {
+  if (!tpl?.rid) return null;
+  const p0 = lookup && (tpl.P || [])[0] ? lookup(tpl.P[0]) : null;
+  const adapted = diet !== "omni" && p0 && !allowedByDiet(p0, diet);
+  return { rid: tpl.rid, name: adapted ? `${tpl.name} (version ${diet === "vege" ? "végé" : "poisson"})` : tpl.name, cuisine: tpl.cuisine, ...(tpl.withFood ? { withFood: tpl.withFood } : {}) };
+};
 const byCuisine = (list, cuisines) => {
   if (!cuisines || !cuisines.length) return list;
   const f = list.filter((t) => cuisines.includes(t.cuisine));
@@ -206,8 +235,26 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
   const options = meals.map((m) => {
     const t = mealTarget(targets, m.id);
     const tm = { ...t, fib: (targets.fib || 30) * t.share, micro: Object.fromEntries(Object.entries(targets.micro || {}).map(([key, v]) => [key, v * t.share])) };
-    const list = byCuisine(lib.templates[m.id] || [], cuisines);
-    total *= Math.max(1, list.length);
+    const list0 = byCuisine(lib.templates[m.id] || [], cuisines);
+    total *= Math.max(1, list0.length);
+    // catalogue généré (plusieurs milliers de recettes) : on en tire un échantillon par proposition
+    // (toujours toutes les recettes écrites à la main / perso / partagées) ; avec un budget, on garde
+    // les moins chères de l'échantillon élargi
+    const hand = list0.filter((x) => !x.gen);
+    // recettes générées : seulement celles dont la protéine principale convient au régime (le titre reste juste ;
+    // les versions végétariennes existent déjà dans le catalogue : tofu, pois chiches, tempeh…)
+    const gen = list0.filter((x) => x.gen && (!x.P.length || allowedByDiet(lib.lookup(x.P[0]), diet)));
+    let sample = gen;
+    const N = 70;
+    if (gen.length > N) {
+      const r2 = rng((rank + 1) * 7919 + meals.indexOf(m) * 104729 + 13);
+      const want = bDay > 0 ? N * 3 : N;
+      const picked = new Set();
+      while (picked.size < Math.min(want, gen.length)) picked.add(Math.floor(r2() * gen.length));
+      sample = [...picked].map((i) => gen[i]);
+      if (bDay > 0) sample = sample.sort((a, b) => portionCost(a, customFoods, diet) - portionCost(b, customFoods, diet)).slice(0, N);
+    }
+    const list = [...hand, ...sample];
     const scored = list
       .map((tpl) => {
         const items = solveMeal(tpl, t, diet, lib.lookup);
@@ -246,7 +293,7 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
   walk(0, []);
   if (!best) return null;
   return {
-    meals: meals.map((m, i) => ({ id: m.id, items: fromSolved(best.picked[i].items), recipe: recipeMeta(best.picked[i].tpl) })),
+    meals: meals.map((m, i) => ({ id: m.id, items: fromSolved(best.picked[i].items), recipe: recipeMeta(best.picked[i].tpl, diet, lib.lookup) })),
     score: best.score,
     rank,
     count: total,
@@ -256,7 +303,8 @@ export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [
 /* Recettes possibles pour UN repas (cuisines filtrées), pour le 🔄 du repas */
 export function mealRecipes(mealId, { diet = "omni", customFoods = [], overrides = {}, cuisines = [] } = {}) {
   const lib = buildLibrary(customFoods, overrides, diet);
-  return { lib, list: byCuisine(lib.templates[mealId] || [], cuisines) };
+  const okGen = (t) => !t.gen || !(t.P || []).length || allowedByDiet(lib.lookup(t.P[0]), diet);
+  return { lib, list: byCuisine((lib.templates[mealId] || []).filter(okGen), cuisines) };
 }
 
 /* Autre recette pour UN repas (la suivante dans la liste), mêmes cibles → { items, recipe } */
@@ -264,13 +312,13 @@ export function nextMealOption(targets, mealId, diet, idx, customFoods = [], ove
   const { lib, list } = mealRecipes(mealId, { diet, customFoods, overrides, cuisines });
   if (!list.length) return null;
   const tpl = list[((idx % list.length) + list.length) % list.length];
-  return { items: fromSolved(solveMeal(tpl, mealTarget(targets, mealId), diet, lib.lookup)), recipe: recipeMeta(tpl) };
+  return { items: fromSolved(solveMeal(tpl, mealTarget(targets, mealId), diet, lib.lookup)), recipe: recipeMeta(tpl, diet, lib.lookup) };
 }
 
 /* Une recette précise mise à l'échelle d'un repas → { items, recipe } */
 export function recipeForMeal(targets, mealId, tpl, diet, customFoods = [], overrides = {}) {
   const lib = buildLibrary(customFoods, overrides, diet);
-  return { items: fromSolved(solveMeal(tpl, mealTarget(targets, mealId), diet, lib.lookup)), recipe: recipeMeta(tpl) };
+  return { items: fromSolved(solveMeal(tpl, mealTarget(targets, mealId), diet, lib.lookup)), recipe: recipeMeta(tpl, diet, lib.lookup) };
 }
 
 /* Recalcule les quantités des aliments « leviers » (P, C, F) d'un repas pour coller à sa part des besoins.

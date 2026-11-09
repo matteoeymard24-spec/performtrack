@@ -2,9 +2,10 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { CARD_STYLE, FIELD_STYLE, Kpi, KpiGrid, TEXT, MUTED, ACCENT } from "./ui";
-import { FOOD_CATS, todayISO, shiftISO } from "./nutritionData";
-import { foodOf } from "./mealPlan";
-import { buyOf, costOf, priceInfo, fmtEur, budgetWeek, setBudget, setUserPrices } from "./prices";
+import { FOOD_CATS, todayISO, shiftISO, computeTargets } from "./nutritionData";
+import { foodOf, recommendDay, planCost, planTotal, dayCheck } from "./mealPlan";
+import { loadTrainingDays, autoDayType } from "./trainingDays";
+import { buyOf, costOf, priceInfo, fmtEur, budgetWeek, setBudget, setUserPrices, STORES, STORE_BY_ID, setStore, shopQuery } from "./prices";
 import { appConfirm } from "./appDialog";
 
 /* =====================================================================
@@ -13,6 +14,9 @@ import { appConfirm } from "./appDialog";
      à partir d'aujourd'hui par défaut (ce qui a déjà été mangé n'est plus à acheter).
    • Quantités additionnées par aliment et converties en quantité À ACHETER (cru / sec, nombre
      d'œufs…, voir prices.js), classées par rayon, avec un prix estimé.
+   • 💶 Budget : fixé ici (même réglage que dans Objectifs) ; « Adapter les menus » refait les menus
+     des jours à venir : pour chaque jour, plusieurs propositions sont calculées et la MOINS CHÈRE qui
+     reste dans les clous (énergie, protéines, glucides, lipides, vitamines) est gardée.
    • Cases à cocher pendant les courses : enregistrées (users/{uid}/nutrition/shop_<lundi>), donc
      retrouvées sur un autre appareil ; articles ajoutés à la main (lessive, café…) en plus.
    ===================================================================== */
@@ -71,10 +75,13 @@ function Check({ on, onClick, label }) {
   );
 }
 
-export default function ShoppingList({ uid, settings, onPrice, onGoPlanning }) {
+export default function ShoppingList({ uid, settings, onPrice, onGoPlanning, onBudget, onShopPrefs }) {
   const customFoods = settings?.customFoods || [];
-  setBudget(settings?.budgetWeek);
+  const people = Math.max(1, Number(settings?.shopPeople) || 1); // courses pour N personnes (menus × N)
+  setBudget(settings?.budgetWeek, people); // budget du foyer → part d'une personne pour les menus
   setUserPrices(settings?.prices);
+  setStore(settings?.store || "");
+  const store = STORE_BY_ID[settings?.store || ""] || STORES[0];
   const today = todayISO();
   const [weekStart, setWeekStart] = useState(() => mondayOf(today));
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => shiftISO(weekStart, i)), [weekStart]);
@@ -86,6 +93,9 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning }) {
   const [newItem, setNewItem] = useState("");
   const [editPrice, setEditPrice] = useState(null); // { id, v }
   const timer = useRef(null);
+  const [budgetIn, setBudgetIn] = useState(settings?.budgetWeek ? String(settings.budgetWeek) : "");
+  const [adapting, setAdapting] = useState(false);
+  const [adaptMsg, setAdaptMsg] = useState("");
 
   useEffect(() => {
     if (!uid) return;
@@ -133,8 +143,8 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning }) {
         })
       )
     );
-    return Object.values(by).map((l) => ({ ...l, buy: buyOf(l.food, l.g), cost: costOf(l.food, l.g), nDays: l.days.size }));
-  }, [plans, planned.join(","), customFoods]); // eslint-disable-line react-hooks/exhaustive-deps
+    return Object.values(by).map((l) => ({ ...l, buy: buyOf(l.food, l.g * people), cost: costOf(l.food, l.g * people), nDays: l.days.size }));
+  }, [plans, planned.join(","), customFoods, people, store.id, JSON.stringify(settings?.prices || {})]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const groups = useMemo(() => {
     const g = {};
@@ -153,11 +163,69 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning }) {
   const total = lines.reduce((s, l) => s + l.cost, 0);
   const left = lines.filter((l) => !isOn(l.key)).reduce((s, l) => s + l.cost, 0);
   const bw = budgetWeek();
-  const budgetPart = bw > 0 ? (bw / 7) * range.length : 0;
+  const budgetPart = bw > 0 ? (bw / 7) * range.length * people : 0; // budget du foyer sur ces jours
+
+  /* Refait les menus des jours à venir de la semaine pour coller au budget (sans lâcher les besoins) */
+  const adaptMenus = async () => {
+    const bw = Number(String(budgetIn).replace(",", "."));
+    const target = days.filter((d) => d >= today);
+    if (!target.length) return;
+    if (!(await appConfirm(`Refaire les menus du ${dayLabel(target[0], { weekday: "long", day: "numeric" })} au ${dayLabel(target[target.length - 1], { weekday: "long", day: "numeric" })} pour coller ${bw > 0 ? `à ${fmtEur(bw)} / semaine` : "aux besoins (sans budget)"} ? Les menus de ces jours dans le Planning seront remplacés.`, { ok: "Adapter", danger: false })))
+      return;
+    setAdapting(true);
+    setAdaptMsg("");
+    await new Promise((r) => setTimeout(r, 30)); // laisse l'écran afficher « Calcul… »
+    if (onBudget && bw !== Number(settings?.budgetWeek || 0)) await onBudget(bw > 0 ? bw : "");
+    setBudget(bw > 0 ? bw : 0, people);
+    const before = people * target.reduce((s0, d) => s0 + (plans?.[d] ? planCost(plans[d], customFoods) : 0), 0);
+    let train = {};
+    try {
+      train = await loadTrainingDays(uid, target[0], target[target.length - 1]);
+    } catch (e) {
+      train = {};
+    }
+    const diet = settings?.diet || "omni";
+    const used = days.filter((d) => d < today).flatMap((d) => (plans?.[d]?.meals || []).map((m) => m.recipe?.rid).filter(Boolean));
+    const next = { ...(plans || {}) };
+    const order = { ok: 0, close: 1, off: 2 };
+    for (let i = 0; i < target.length; i++) {
+      const d = target[i];
+      const dt = plans?.[d]?.dayTypeSource === "manuel" ? plans[d].dayType : autoDayType(train, d) || plans?.[d]?.dayType || "modere";
+      const t = computeTargets(settings, dt);
+      let best = null;
+      for (const rank of [0, i * 7 + 1, i * 7 + 2, i * 7 + 3]) {
+        const rec = recommendDay(t, { diet, rank, customFoods, overrides: settings?.foodOverrides, cuisines: settings?.cuisines || [], avoid: used });
+        if (!rec) continue;
+        const pl = { meals: rec.meals };
+        const st = dayCheck(planTotal(pl), t, diet)?.status || "off";
+        const cost = planCost(pl, customFoods);
+        // d'abord la qualité (dans les clous), puis le prix
+        if (!best || order[st] < order[best.st] || (order[st] === order[best.st] && cost < best.cost)) best = { rec, st, cost };
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      if (!best) continue;
+      best.rec.meals.forEach((m) => m.recipe?.rid && used.push(m.recipe.rid));
+      const plan = { dayType: dt, dayTypeSource: plans?.[d]?.dayTypeSource === "manuel" ? "manuel" : "auto", meals: best.rec.meals, date: d, updatedAt: new Date().toISOString() };
+      next[d] = plan;
+      try {
+        await setDoc(doc(db, "users", uid, "nutrition", `plan_${d}`), plan);
+      } catch (e) {
+        /* on garde l'affichage ; l'erreur réapparaîtra au prochain enregistrement */
+      }
+    }
+    const after = people * target.reduce((s0, d) => s0 + (next[d] ? planCost(next[d], customFoods) : 0), 0);
+    setPlans(next);
+    setAdapting(false);
+    const part = bw > 0 ? (bw / 7) * target.length : 0;
+    setAdaptMsg(
+      `✅ ${target.length} jour${target.length > 1 ? "s" : ""} replanifié${target.length > 1 ? "s" : ""} : ${before > 0 ? `${fmtEur(before)} → ` : ""}${fmtEur(after)}` +
+        (part > 0 ? (after <= part * 1.02 ? ` · dans le budget (${fmtEur(part)} pour ces jours)` : ` · encore ${fmtEur(after - part)} au-dessus : c'est le minimum pour couvrir tes besoins avec les recettes disponibles`) : "")
+    );
+  };
 
   const copyText = () => {
     const txt = [
-      `🛒 Courses · ${dayLabel(range[0] || days[0], { day: "numeric", month: "short" })} → ${dayLabel(days[6], { day: "numeric", month: "short" })}`,
+      `🛒 Courses${store.id ? ` ${store.label}` : ""}${people > 1 ? ` (${people} pers.)` : ""} · ${dayLabel(range[0] || days[0], { day: "numeric", month: "short" })} → ${dayLabel(days[6], { day: "numeric", month: "short" })}`,
       ...groups.flatMap((g) => [``, g.label, ...g.items.filter((l) => !isOn(l.key)).map((l) => `☐ ${l.food.name} — ${l.buy.count ? `${l.buy.count} (${l.buy.txt})` : l.buy.txt}`)]),
       ...(shop.extras.some((x) => !x.checked) ? ["", "➕ En plus", ...shop.extras.filter((x) => !x.checked).map((x) => `☐ ${x.name}`)] : []),
     ].join("\n");
@@ -202,6 +270,60 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning }) {
         <div style={{ fontSize: 12, color: MUTED, marginTop: 8 }}>
           Faite à partir des menus du Planning ({planned.length}/{range.length} jour{range.length > 1 ? "s" : ""} planifié{planned.length > 1 ? "s" : ""}). Quantités à acheter (cru / sec quand
           l'aliment est pesé cuit) ; prix moyens estimés, modifiables avec ✏️.
+        </div>
+        <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))", gap: 10 }}>
+          <label style={{ display: "block" }}>
+            <div style={{ fontSize: 11.5, color: MUTED, fontWeight: 800, letterSpacing: 0.4, marginBottom: 6 }}>🏪 MON MAGASIN</div>
+            <select value={store.id} onChange={(e) => onShopPrefs && onShopPrefs({ store: e.target.value })} style={{ ...FIELD_STYLE, width: "100%" }} aria-label="Magasin">
+              {STORES.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.label}
+                  {x.id ? ` · ${x.index === 1 ? "réf. la moins chère" : `${x.index > 1 ? "+" : ""}${Math.round((x.index - 1) * 100)} %`}${x.estimated ? " (estimé)" : ""}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div>
+            <div style={{ fontSize: 11.5, color: MUTED, fontWeight: 800, letterSpacing: 0.4, marginBottom: 6 }}>👥 COURSES POUR</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <button key={n} type="button" style={chip(people === n)} onClick={() => onShopPrefs && onShopPrefs({ shopPeople: n })} aria-label={`${n} personne${n > 1 ? "s" : ""}`}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: 11.5, color: "#6f6a62", marginTop: 6 }}>
+          {store.id
+            ? `Prix ajustés au niveau de ${store.label} (palmarès UFC-Que Choisir des drives, mai 2026${store.estimated ? " ; enseigne hors palmarès : niveau estimé" : ""}).${store.search ? " 🔎 ouvre le produit sur son site." : store.note ? ` ${store.note}.` : ""}`
+            : "Choisis ton magasin : les prix s'ajustent au niveau de l'enseigne et 🔎 ouvre chaque produit sur son site."}
+          {people > 1 ? ` Quantités pour ${people} personnes (menus × ${people}).` : ""}
+        </div>
+        <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: "#0d0c0a", border: `1px solid ${GREEN}55` }}>
+          <div style={{ fontSize: 11.5, color: MUTED, fontWeight: 800, letterSpacing: 0.4, marginBottom: 6 }}>💶 MON BUDGET COURSES</div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step={5}
+              value={budgetIn}
+              onChange={(e) => setBudgetIn(e.target.value)}
+              placeholder="ex : 50"
+              aria-label="Budget courses par semaine en euros"
+              style={{ ...FIELD_STYLE, width: 96, fontSize: 18, fontWeight: 800, color: GREEN, textAlign: "right" }}
+            />
+            <span style={{ fontSize: 13, color: TEXT }}>€ / semaine</span>
+            <button type="button" className="pt-btn pt-btn--primary" disabled={adapting || !isThisWeek && days[6] < today} onClick={adaptMenus} style={{ marginLeft: "auto" }}>
+              {adapting ? "Calcul des menus…" : "✨ Adapter les menus"}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>
+            Budget de toute la liste{people > 1 ? ` (${people} personnes)` : ""}. Refait les menus des jours à venir de cette semaine : pour chaque jour, plusieurs menus sont calculés et le
+            moins cher qui couvre tes besoins est gardé. Vide = pas de contrainte de prix.
+          </div>
+          {adaptMsg && <div style={{ fontSize: 12.5, color: adaptMsg.includes("au-dessus") ? ACCENT : GREEN, marginTop: 6, fontWeight: 700 }}>{adaptMsg}</div>}
         </div>
       </div>
 
@@ -276,6 +398,18 @@ export default function ShoppingList({ uid, settings, onPrice, onGoPlanning }) {
                             {l.buy.count ? ` · ${l.buy.txt}` : ""} · {l.nDays} jour{l.nDays > 1 ? "s" : ""}
                           </div>
                         </div>
+                        {store.search && (
+                          <a
+                            href={store.search(shopQuery(l.food))}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={`Chercher « ${shopQuery(l.food)} » chez ${store.label}`}
+                            aria-label={`Chercher ${l.food.name} chez ${store.label}`}
+                            style={{ width: 32, height: 32, borderRadius: 9, border: `1px solid ${BORDER}`, display: "inline-flex", alignItems: "center", justifyContent: "center", textDecoration: "none", flexShrink: 0, fontSize: 14 }}
+                          >
+                            🔎
+                          </a>
+                        )}
                         <div style={{ textAlign: "right", flexShrink: 0 }}>
                           <div style={{ fontSize: 13, fontWeight: 800, color: on ? "#6f6a62" : GREEN }}>{fmtEur(l.cost)}</div>
                           {onPrice && (

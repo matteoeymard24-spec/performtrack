@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from "react";
 import { FIELD_STYLE, TEXT, MUTED, ACCENT } from "./ui";
 import { FOODS, FOOD_BY_ID, FOOD_CATS, MEALS, allowedByDiet } from "./nutritionData";
-import { RECIPES, CUISINES, CUISINE_BY_ID } from "./recipes";
-import { recipeForMeal, foodOf, itemsCost } from "./mealPlan";
+import { ALL_RECIPES as RECIPES, CUISINES, CUISINE_BY_ID } from "./recipes";
+import { recipeForMeal, foodOf, itemsCost, portionCost } from "./mealPlan";
 import { bankRecipes, bankFoods, recipeFromIngredients, normName } from "./bankCore";
 import { fmtEur } from "./prices";
 import { appConfirm } from "./appDialog";
@@ -178,6 +178,9 @@ export default function RecipeBook({ diet = "omni", targetsFor, customFoods, ove
   const [q, setQ] = useState("");
   const [shown, setShown] = useState(PAGE);
   const [creating, setCreating] = useState(false);
+  const [maxTime, setMaxTime] = useState(0); // 0 = toutes durées
+  const [maxCost, setMaxCost] = useState(0); // € par portion, 0 = tous prix
+  const [sort, setSort] = useState(""); // "" pertinence · "cost" moins cher · "time" plus rapide
   const extra = bankRecipes();
   const ALL = useMemo(() => [...extra, ...RECIPES], [extra.length, extra.map((r) => r.id).join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   const fd = (id) => FOOD_BY_ID[id] || foodOf(id, customFoods);
@@ -185,15 +188,21 @@ export default function RecipeBook({ diet = "omni", targetsFor, customFoods, ove
   // aliment du levier réellement utilisé selon le régime (1re alternative compatible)
   const pick = (ids) => (ids || []).map((id) => fd(id)).find((f) => f && allowedByDiet(f, diet)) || fd((ids || [])[(ids || []).length - 1]);
 
+  const pc = (r) => portionCost({ ...r, rid: r.id }, customFoods, diet);
   const list = useMemo(() => {
     const nq = norm(q);
-    return ALL.filter((r) => (!cuisine || r.cuisine === cuisine) && (!meal || (meal === "_bank" ? r.bank !== false && (r.by || r.private) : r.meals.includes(meal))))
+    const l = ALL.filter((r) => (!cuisine || r.cuisine === cuisine) && (!meal || (meal === "_bank" ? r.bank !== false && (r.by || r.private) : r.meals.includes(meal))))
       .filter((r) => {
         if (!nq) return true;
         const ing = [...(r.fixed || []).map((x) => x[0]), ...(r.P || []), ...(r.C || []), ...(r.F || [])].map((id) => fd(id)?.name || "").join(" ");
         return norm(`${r.name} ${CUISINE_BY_ID[r.cuisine]?.label} ${ing} ${r.byName || ""}`).includes(nq);
-      });
-  }, [cuisine, meal, q, ALL]); // eslint-disable-line react-hooks/exhaustive-deps
+      })
+      .filter((r) => !(r.gen && diet !== "omni" && (r.P || []).length && !allowedByDiet(fd(r.P[0]), diet))) // catalogue : versions du régime seulement
+      .filter((r) => (!maxTime || (r.time || 25) <= maxTime) && (!maxCost || pc(r) <= maxCost));
+    if (sort === "cost") l.sort((a, b) => pc(a) - pc(b));
+    else if (sort === "time") l.sort((a, b) => (a.time || 25) - (b.time || 25));
+    return l;
+  }, [cuisine, meal, q, ALL, maxTime, maxCost, sort, diet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const counts = useMemo(() => {
     const c = {};
@@ -252,7 +261,39 @@ export default function RecipeBook({ diet = "omni", targetsFor, customFoods, ove
           </button>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+        {[
+          [0, "⏱️ Toutes durées"],
+          [15, "≤ 15 min"],
+          [20, "≤ 20 min"],
+          [30, "≤ 30 min"],
+        ].map(([v, l]) => (
+          <button key={`t${v}`} type="button" style={chip(maxTime === v)} onClick={() => (setMaxTime(v), setShown(PAGE))}>
+            {l}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+        {[
+          [0, "💶 Tous prix"],
+          [1.5, "≤ 1,50 € / portion"],
+          [2.5, "≤ 2,50 €"],
+          [4, "≤ 4 €"],
+        ].map(([v, l]) => (
+          <button key={`c${v}`} type="button" style={chip(maxCost === v)} onClick={() => (setMaxCost(v), setShown(PAGE))}>
+            {l}
+          </button>
+        ))}
+        <select value={sort} onChange={(e) => setSort(e.target.value)} style={{ ...FIELD_STYLE, width: "auto", padding: "6px 10px", fontSize: 12.5 }} aria-label="Trier les recettes">
+          <option value="">Trier : pertinence</option>
+          <option value="cost">Moins chères d'abord</option>
+          <option value="time">Plus rapides d'abord</option>
+        </select>
+      </div>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 6 }}>
+        {list.length.toLocaleString("fr-FR")} recette{list.length > 1 ? "s" : ""} · prix pour une portion moyenne, au niveau de prix de ton magasin
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "nowrap", overflowX: "auto", paddingBottom: 6, marginBottom: 10 }}>
         <button
           type="button"
           style={chip(!cuisine)}
@@ -306,6 +347,10 @@ export default function RecipeBook({ diet = "omni", targetsFor, customFoods, ove
                   {r.private ? " · 🔒 perso" : r.by ? ` · 🌍 ${r.byName || "membre"}` : ""}
                 </div>
                 <div style={{ fontWeight: 800, color: TEXT, fontSize: 14, lineHeight: 1.25 }}>{r.name}</div>
+                <div style={{ display: "flex", gap: 8, marginTop: 4, fontSize: 11.5 }}>
+                  <span style={{ color: MUTED }}>⏱️ {r.time || 25} min</span>
+                  <span style={{ color: "#4fae7d", fontWeight: 800 }}>💶 {fmtEur(pc(r))} / portion</span>
+                </div>
               </div>
               <div style={{ fontSize: 12, color: "#c9c1b5", lineHeight: 1.4 }}>
                 <b style={{ color: TEXT }}>{main.join(" · ")}</b>

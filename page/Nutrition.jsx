@@ -12,7 +12,7 @@ import { loadTrainingDays } from "../component/trainingDays";
 import MealPlanner from "../component/MealPlanner";
 import ShoppingList from "../component/ShoppingList";
 import { loadBank, publishFood, publishRecipe, deleteBankItem, setPrivateRecipes, recipeToDoc } from "../component/foodBank";
-import { setBudget, setUserPrices } from "../component/prices";
+import { setBudget, setUserPrices, setStore } from "../component/prices";
 import { useAuth } from "../auth/AuthProvider";
 import usePersonScope from "../component/usePersonScope";
 import { normSex } from "../component/cycling";
@@ -433,8 +433,9 @@ export default function Nutrition() {
 
   const targets = useMemo(() => (settings ? computeTargets(settings, day?.dayType || "modere") : null), [settings, day?.dayType]);
   // budget, prix corrigés et recettes privées de la personne affichée (utilisés par les menus et les courses)
-  setBudget(settings?.budgetWeek);
+  setBudget(settings?.budgetWeek, settings?.shopPeople);
   setUserPrices(settings?.prices);
+  setStore(settings?.store || "");
   setPrivateRecipes(settings?.myRecipes);
 
   /* Eau : nouvelle quantité totale (glisser / saisie) ; l'écart est noté dans l'historique du jour */
@@ -1349,7 +1350,7 @@ export default function Nutrition() {
           )}
 
           {/* ======================= COURSES ======================= */}
-          {tab === "courses" && <ShoppingList uid={uid} settings={settings} onPrice={savePrice} onGoPlanning={() => setTab("planning")} />}
+          {tab === "courses" && <ShoppingList uid={uid} settings={settings} onPrice={savePrice} onGoPlanning={() => setTab("planning")} onBudget={(bw) => saveSettings({ ...settings, budgetWeek: bw }, "✅ Budget enregistré")} onShopPrefs={(x) => saveSettings({ ...settings, ...x }, "✅ Enregistré")} />}
 
           {/* ======================= COMPLÉMENTS ======================= */}
           {tab === "supps" && (

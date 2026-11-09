@@ -97,14 +97,57 @@ const P = {
   sauce_bbq: [6, 1, ""], sauce_cacahuete: [12, 1, ""], sauce_nuoc_mam: [8, 1, ""], sauce_teriyaki: [10, 1, ""], sauce_tomate: [3.5, 1, ""], coulis_tomate: [2.5, 1, ""], tzatziki: [9, 1, ""],
 };
 
+/* ---- MAGASINS ----
+   Niveau de prix de l'enseigne : écart au moins cher d'après le palmarès UFC-Que Choisir des drives
+   (mai 2026 : E.Leclerc référence, Intermarché +3 à +5 %, Système U +3 à +6 %, Carrefour +6 à +7 %,
+   Auchan +8 à +14 %). Lidl, Aldi, Monoprix, Franprix et Casino ne sont pas dans ce palmarès : niveau
+   ESTIMÉ (hard discount un peu sous Leclerc, enseignes de centre-ville nettement au-dessus).
+   Les prix de base (P ci-dessus) correspondent à une grande surface « moyenne » ≈ indice 1,05.
+   search : page de recherche produit de l'enseigne (vérifiée en novembre 2026) ; Lidl et Aldi ne
+   vendent pas l'alimentaire en ligne. */
+export const STORES = [
+  { id: "", label: "Grande surface (moyenne)", index: 1.05, search: null },
+  { id: "leclerc", label: "E.Leclerc", index: 1.0, search: null, site: "https://www.leclercdrive.fr/", note: "drive : choisis ton magasin sur leclercdrive.fr" },
+  { id: "intermarche", label: "Intermarché", index: 1.04, search: (q) => `https://www.intermarche.com/recherche/${encodeURIComponent(q)}` },
+  { id: "systemeu", label: "Super U / Hyper U", index: 1.045, search: (q) => `https://www.coursesu.com/recherche?q=${encodeURIComponent(q)}` },
+  { id: "carrefour", label: "Carrefour", index: 1.07, search: (q) => `https://www.carrefour.fr/s?q=${encodeURIComponent(q)}` },
+  { id: "auchan", label: "Auchan", index: 1.11, search: (q) => `https://www.auchan.fr/recherche?text=${encodeURIComponent(q)}` },
+  { id: "lidl", label: "Lidl", index: 0.97, estimated: true, search: null, note: "pas de courses en ligne : liste à emporter en magasin" },
+  { id: "aldi", label: "Aldi", index: 0.97, estimated: true, search: null, note: "pas de courses en ligne : liste à emporter en magasin" },
+  { id: "casino", label: "Casino / Franprix", index: 1.2, estimated: true, search: null },
+  { id: "monoprix", label: "Monoprix", index: 1.25, estimated: true, search: (q) => `https://courses.monoprix.fr/search?q=${encodeURIComponent(q)}` },
+];
+export const STORE_BY_ID = Object.fromEntries(STORES.map((x) => [x.id, x]));
+let STORE = "";
+let VERSION = 0; // change à chaque réglage de prix (cache des prix par portion)
+export const priceVersion = () => VERSION;
+export const setStore = (id) => {
+  const nid = STORE_BY_ID[id] ? id : "";
+  if (nid !== STORE) VERSION++;
+  STORE = nid;
+};
+export const currentStore = () => STORE_BY_ID[STORE] || STORES[0];
+const storeFactor = () => (STORE_BY_ID[STORE]?.index || 1.05) / 1.05;
+/* Nom de recherche d'un aliment en magasin (« Blanc de poulet cuit » → « blanc de poulet ») */
+export const shopQuery = (food) =>
+  String(food?.name || "")
+    .replace(/\(.*?\)/g, "")
+    .replace(/\b(cuits?|cuites?|crus?|crues?|sec|sèches?|secs|égouttée?s?|préparée?s?|nature)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
 /* ---- Réglages de la personne (prix corrigés, budget) ---- */
 let USER_PRICES = {};
 let BUDGET_WEEK = 0;
 export const setUserPrices = (m) => {
-  USER_PRICES = m && typeof m === "object" ? m : {};
+  const next = m && typeof m === "object" ? m : {};
+  if (JSON.stringify(next) !== JSON.stringify(USER_PRICES)) VERSION++;
+  USER_PRICES = next;
 };
-export const setBudget = (weekly) => {
-  BUDGET_WEEK = Number(weekly) > 0 ? Number(weekly) : 0;
+/* Budget de la SEMAINE pour tout le foyer (people personnes) → part d'une personne pour ses menus */
+export const setBudget = (weekly, people = 1) => {
+  BUDGET_WEEK = Number(weekly) > 0 ? Number(weekly) / Math.max(1, Number(people) || 1) : 0;
 };
 export const budgetWeek = () => BUDGET_WEEK;
 export const budgetDay = () => (BUDGET_WEEK > 0 ? BUDGET_WEEK / 7 : 0);
@@ -116,10 +159,12 @@ export function priceInfo(food) {
   const yld = base ? base[1] : Number(food.yield) > 0 ? Number(food.yield) : 1;
   const buy = base ? base[2] : "";
   const user = Number(USER_PRICES[food.id]);
+  // prix saisi par la personne / sur l'aliment = prix réel, tel quel ; prix moyens × niveau de l'enseigne
   if (user > 0) return { kg: user, yield: yld, buy, src: "perso" };
   if (Number(food.price) > 0) return { kg: Number(food.price), yield: yld, buy, src: "aliment" };
-  if (base) return { kg: base[0], yield: yld, buy, src: "base" };
-  return { kg: CAT_PRICE[food.cat] || 6, yield: 1, buy: "", src: "cat" };
+  const k = storeFactor();
+  if (base) return { kg: Math.round(base[0] * k * 100) / 100, yield: yld, buy, src: "base" };
+  return { kg: Math.round((CAT_PRICE[food.cat] || 6) * k * 100) / 100, yield: 1, buy: "", src: "cat" };
 }
 /* Coût (€) de g grammes MANGÉS */
 export function costOf(food, g) {

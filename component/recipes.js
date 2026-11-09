@@ -7,6 +7,8 @@
    meals : pd = petit-déjeuner, dj = déjeuner, co = collation, se = autour de la séance, di = dîner
    ===================================================================== */
 
+import { GEN_RECIPES } from "./recipeGen";
+
 export const CUISINES = [
   { id: "fr", flag: "🇫🇷", label: "Française" },
   { id: "it", flag: "🇮🇹", label: "Italienne" },
@@ -230,4 +232,10 @@ export const RECIPES = [
   R("sp_fromage_blanc", "Fromage blanc, fruits rouges & noix", "sp", "co", [["fruits_rouges", 100]], ["fromage_blanc"], ["galette_riz"], ["noix"]),
   R("sp_skyr_dattes", "Skyr, pomme & dattes", "sp", "co", [["pomme", 150]], ["skyr"], ["dattes"], ["amandes"]),
 ];
-export const RECIPE_BY_ID = Object.fromEntries(RECIPES.map((r) => [r.id, r]));
+// durée de préparation par défaut des recettes écrites à la main (minutes)
+RECIPES.forEach((r) => {
+  if (!r.time) r.time = r.meals.includes("dejeuner") || r.meals.includes("diner") ? 25 : 10;
+});
+/* Catalogue complet : recettes écrites à la main + recettes générées (recipeGen.js, ≈ 6 800) */
+export const ALL_RECIPES = [...RECIPES, ...GEN_RECIPES];
+export const RECIPE_BY_ID = Object.fromEntries(ALL_RECIPES.map((r) => [r.id, r]));
