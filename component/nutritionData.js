@@ -198,11 +198,23 @@ export const MEALS = [
   { id: "seance", label: "Autour de la séance", icon: "🏃", share: 0 },
   { id: "diner", label: "Dîner", icon: "🌙", share: 0.3 },
 ];
-/* Répartition du menu type : au-delà de ~3 200 kcal, une 5e prise autour de la séance */
-export const menuShares = (kcal) =>
-  kcal > 3200
+/* Répartition du menu selon la journée :
+   • jour d'entraînement / match : une prise « autour de la séance » (avant ou après), plus grosse si les besoins sont élevés
+   • jour de repos : pas de prise autour de la séance (4 repas, ou 5 si les besoins sont très élevés → collation plus grosse)
+   dayId absent (anciens appels) : comportement d'avant (5e prise au-delà de ~3 200 kcal) */
+export const menuShares = (kcal, dayId) => {
+  if (dayId === "repos")
+    return kcal > 3200
+      ? { petitdej: 0.25, dejeuner: 0.32, collation: 0.15, seance: 0, diner: 0.28 }
+      : { petitdej: 0.25, dejeuner: 0.35, collation: 0.1, seance: 0, diner: 0.3 };
+  if (dayId)
+    return kcal > 3200
+      ? { petitdej: 0.22, dejeuner: 0.28, collation: 0.1, seance: 0.15, diner: 0.25 }
+      : { petitdej: 0.23, dejeuner: 0.32, collation: 0.08, seance: 0.1, diner: 0.27 };
+  return kcal > 3200
     ? { petitdej: 0.22, dejeuner: 0.28, collation: 0.12, seance: 0.13, diner: 0.25 }
     : { petitdej: 0.25, dejeuner: 0.35, collation: 0.1, seance: 0, diner: 0.3 };
+};
 
 /* ---- Objectifs ---- */
 export const GOALS = [
@@ -382,7 +394,7 @@ export function solveMeal(tpl, target, diet, lookup = (id) => FOOD_BY_ID[id]) {
 /* Menu d'une journée : variant = numéro de variante (tourne dans les modèles) */
 export function generateMenu(targets, { diet = "omni", variant = 0 } = {}) {
   if (!targets) return null;
-  const shares = menuShares(targets.kcal);
+  const shares = menuShares(targets.kcal, targets.day?.id);
   const meals = MEALS.filter((m) => shares[m.id] > 0).map((m, i) => {
     const list = MENU_TEMPLATES[m.id];
     const tpl = list[(variant + i) % list.length];

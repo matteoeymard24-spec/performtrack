@@ -1,4 +1,5 @@
 import { WELLBEING_PATHS } from "./WellbeingTabs";
+import { publishTrainingSummary } from "./trainingDays";
 import React, { useState } from "react";
 import { getViewMode, setViewMode } from "./viewMode";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
@@ -40,6 +41,13 @@ export default function Layout() {
       /* ignore */
     }
   }, [location.pathname]);
+  // Athlète : publie le résumé de ses entraînements à venir (lu par ses coachs pour adapter sa nutrition,
+  // y compris les séances créées par un autre coach) — au plus une écriture toutes les 5 min, et seulement si ça a changé
+  React.useEffect(() => {
+    if (!currentUser?.uid || userRole === "admin" || isSuperAdmin || previewAthlete) return;
+    const t = setTimeout(() => publishTrainingSummary(currentUser.uid), 4000);
+    return () => clearTimeout(t);
+  }, [currentUser?.uid, userRole, isSuperAdmin, previewAthlete, location.pathname]);
   // Choix de l'affichage (téléphone / ordinateur / auto) — voir component/viewMode.js
   const viewChoice = (big) => (
     <div style={{ display: "inline-flex", gap: 2, padding: 3, borderRadius: 10, border: `1px solid ${BORDER}`, background: "#0d0c0a", width: big ? "100%" : "auto" }}>

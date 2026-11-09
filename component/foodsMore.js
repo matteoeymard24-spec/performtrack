@@ -170,7 +170,7 @@ export const MORE_FOODS = [
   ["poivron_vert", "Poivron vert", "legume", 20, 0.9, 2.9, 0.2, 1.7, 0.3, 10, 10, 175, 3, 0.1, 80, 0, 0, 10, 0, ["poivron", 150]],
   ["poivron_grille", "Poivrons grillés", "legume", 35, 1, 5, 0.6, 2, 0.4, 8, 12, 200, 200, 0.2, 60, 0, 0, 30, 0],
   ["algues_nori", "Algue nori", "legume", 188, 41, 8, 1.5, 36, 12, 150, 300, 2800, 600, 3, 30, 0, 50, 350, 0, ["feuille", 3]],
-  ["algues_wakame", "Algue wakame réhydratée", "legume", 45, 3, 9, 0.6, 0.5, 2.2, 150, 107, 50, 870, 0.4, 3, 0, 0, 196, 0],
+  ["algues_wakame", "Algue wakame réhydratée", "legume", 45, 3, 9, 0.6, 0.5, 2.2, 150, 107, 50, 870, 0.4, 3, 0, 0, 196, 0, ["portion", 30]],
   ["kimchi", "Kimchi", "legume", 23, 1.7, 2.4, 0.5, 1.6, 0.5, 33, 14, 151, 500, 0.2, 18, 0, 0, 52, 0],
   ["gaspacho", "Gaspacho", "legume", 40, 0.9, 4.5, 2, 1.2, 0.4, 12, 9, 220, 300, 0.1, 15, 0, 0, 15, 0, ["bol", 250]],
   ["soupe_legumes", "Soupe de légumes", "legume", 35, 1.2, 5, 1, 1.5, 0.4, 20, 10, 200, 280, 0.2, 6, 0, 0, 15, 0, ["bol", 300]],

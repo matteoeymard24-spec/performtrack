@@ -3,6 +3,7 @@ import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { computeTargets, sumN, todayISO, shiftISO, DAY_BY_ID } from "./nutritionData";
 import { nightStats, sleepSummary, fmtDur, advisedBedtime, regularityLabel } from "./sleepCalc";
+import { loadTrainingDays } from "./trainingDays";
 
 /* =====================================================================
    DashWellbeingCards.jsx — résumés Nutrition et Sommeil pour le dashboard athlète
@@ -42,8 +43,15 @@ export function NutritionDashCard({ uid, onOpen }) {
     let alive = true;
     (async () => {
       try {
-        const [s, d] = await Promise.all([getDoc(doc(db, "users", uid, "nutrition", "settings")), getDoc(doc(db, "users", uid, "nutrition", `day_${todayISO()}`))]);
-        if (alive) setSt({ settings: s.exists() ? s.data() : null, day: d.exists() ? d.data() : null });
+        const [s, d, tr] = await Promise.all([
+          getDoc(doc(db, "users", uid, "nutrition", "settings")),
+          getDoc(doc(db, "users", uid, "nutrition", `day_${todayISO()}`)),
+          loadTrainingDays(uid, todayISO(), todayISO()).catch(() => ({})),
+        ]);
+        const day = d.exists() ? d.data() : null;
+        // type de journée : celui enregistré, sinon celui de l'entraînement prévu dans Workout
+        const auto = tr[todayISO()]?.dayType || "repos";
+        if (alive) setSt({ settings: s.exists() ? s.data() : null, day: { ...(day || {}), dayType: day?.dayType || auto } });
       } catch (e) {
         if (alive) setSt({ settings: null, day: null });
       }

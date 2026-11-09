@@ -127,10 +127,10 @@ const fromSolved = (items) => items.map((x) => makeItem(x.food, x.g, x.role));
 
 /* Part de l'objectif de chaque repas selon l'énergie du jour */
 export const mealTarget = (targets, mealId) => {
-  const sh = menuShares(targets.kcal)[mealId] || 0;
+  const sh = menuShares(targets.kcal, targets.day?.id)[mealId] || 0;
   return { share: sh, kcal: targets.kcal * sh, p: targets.p * sh, c: targets.c * sh, f: targets.f * sh };
 };
-export const planMeals = (targets) => MEALS.filter((m) => (menuShares(targets.kcal)[m.id] || 0) > 0);
+export const planMeals = (targets) => MEALS.filter((m) => (menuShares(targets.kcal, targets.day?.id)[m.id] || 0) > 0);
 
 /* Totaux d'un plan */
 export const mealTotal = (meal) => sumN((meal?.items || []).map((x) => x.n));
@@ -290,7 +290,7 @@ export function alternatives(item, diet = "omni", customFoods = []) {
 }
 
 /* « Dans les clous » ? status : ok | close | off ; issues = ce qui coince */
-export function dayCheck(T, t, diet = "omni") {
+export function dayCheck(T, t, diet = "omni") { // eslint-disable-line no-unused-vars
   if (!T || !t) return null;
   const r = (a, b) => (b > 0 ? a / b : 1);
   const checks = [];
@@ -302,8 +302,9 @@ export function dayCheck(T, t, diet = "omni") {
   checks.push({ k: "c", st: Math.abs(c - 1) <= 0.15 ? "ok" : Math.abs(c - 1) <= 0.25 ? "close" : "off", txt: `glucides ${Math.round(c * 100)} %` });
   const f = r(T.f, t.f);
   checks.push({ k: "f", st: Math.abs(f - 1) <= 0.2 ? "ok" : Math.abs(f - 1) <= 0.3 ? "close" : "off", txt: `lipides ${Math.round(f * 100)} %` });
-  // végétarien : EPA/DHA quasi absents de l'alimentation → couverts par un complément d'algues (conseil affiché), pas compté ici
-  const lowMicros = SCORED_MICROS.filter((m) => !(diet === "vege" && m.k === "o3") && (T[m.k] || 0) < 0.7 * (t.micro[m.k] || 0));
+  // oméga-3 EPA/DHA : repère moyen sur la SEMAINE (poisson 2 fois / semaine dont 1 gras) → jugé sur la semaine
+  // dans le Planning, pas jour par jour (en végétarien : complément d'algues, conseil affiché)
+  const lowMicros = SCORED_MICROS.filter((m) => m.k !== "o3" && (T[m.k] || 0) < 0.7 * (t.micro[m.k] || 0));
   const microSt = lowMicros.length === 0 ? "ok" : lowMicros.length <= 2 ? "close" : "off";
   const order = { ok: 0, close: 1, off: 2 };
   const worst = [...checks.map((x) => x.st), microSt].reduce((a, b) => (order[b] > order[a] ? b : a), "ok");

@@ -7,6 +7,7 @@ import { db } from "../firebase";
 import { Page, PageHeader, Kpi, KpiGrid, FoldCard, useFold, CARD_STYLE, FIELD_STYLE, SectionLabel, TEXT, MUTED, ACCENT } from "../component/ui";
 import PersonPicker from "../component/PersonPicker";
 import FoodPicker, { EntryEditor } from "../component/FoodPicker";
+import { loadTrainingDays } from "../component/trainingDays";
 import MealPlanner from "../component/MealPlanner";
 import usePersonScope from "../component/usePersonScope";
 import { normSex } from "../component/cycling";
@@ -29,6 +30,7 @@ import {
   SUPP_BY_ID,
   EVIDENCE,
   computeTargets,
+  menuShares,
   generateMenu,
   bestSources,
   scaleN,
@@ -58,6 +60,13 @@ const frDate = (iso) => {
 };
 const pctColor = (pct, limit) => (limit ? (pct > 150 ? RED : pct > 100 ? ACCENT : GREEN) : pct >= 100 ? GREEN : pct >= 70 ? ACCENT : RED);
 
+/* Pictogramme d'un aliment d'après sa catégorie (⭐ = aliment perso) */
+const foodEmoji = (id) => {
+  if (String(id || "").startsWith("perso")) return "⭐";
+  const f = FOOD_BY_ID[id];
+  return (f && FOOD_CATS[f.cat]?.split(" ")[0]) || "🍽️";
+};
+
 /* Anneau de progression (SVG) */
 function Ring({ value, target, color = ACCENT, size = 120, stroke = 12, label, sub }) {
   const r = (size - stroke) / 2;
@@ -82,6 +91,42 @@ function Ring({ value, target, color = ACCENT, size = 120, stroke = 12, label, s
       <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
         <div style={{ fontSize: size * 0.2, fontWeight: 900, color: TEXT, lineHeight: 1 }}>{label}</div>
         {sub && <div style={{ fontSize: 11, color: MUTED, marginTop: 3 }}>{sub}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* Petit anneau d'un macronutriment (valeur en g, % sous l'anneau) */
+function MacroRing({ name, value, target, color, hint }) {
+  const pct = target > 0 ? Math.round((value / target) * 100) : 0;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, flex: "1 1 0", minWidth: 0 }}>
+      <Ring value={value} target={target} color={color} size={82} stroke={8} label={Math.round(value)} sub={`/ ${Math.round(target)} g`} />
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: TEXT, textAlign: "center" }}>
+        {name} <span style={{ color: pct >= 90 && pct <= 110 ? GREEN : pct > 115 ? RED : color }}>{pct} %</span>
+      </div>
+      {hint && <div style={{ fontSize: 10.5, color: MUTED, marginTop: -3 }}>{hint}</div>}
+    </div>
+  );
+}
+
+/* Tuile vitamine / minéral : % en grand, mini-barre, valeur / repère */
+function MicroTile({ mi, value, target, supp }) {
+  const pct = target > 0 ? Math.round((value / target) * 100) : 0;
+  const col = pctColor(pct, mi.limit);
+  return (
+    <div style={{ padding: "9px 11px", borderRadius: 12, background: "#0d0c0a", border: `1px solid ${col}44`, minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#c9c1b5", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{mi.label}</span>
+        <span style={{ fontSize: 17, fontWeight: 900, color: col }}>{pct}%</span>
+      </div>
+      <div style={{ height: 5, borderRadius: 3, background: "#1a1815", margin: "6px 0 5px", overflow: "hidden" }}>
+        <div style={{ width: `${Math.min(100, pct)}%`, height: "100%", background: col, borderRadius: 3 }} />
+      </div>
+      <div style={{ fontSize: 11, color: MUTED }}>
+        {fmtN(mi.k, value)} / {fmtN(mi.k, target)} {mi.unit}
+        {mi.limit ? " · plafond" : ""}
+        {supp > 0 ? ` · dont ${fmtN(mi.k, supp)} en complément` : ""}
       </div>
     </div>
   );
@@ -279,6 +324,26 @@ export default function Nutrition() {
     setAdding(null);
     setEditEntry(null);
   }, [date, uid]);
+  // entraînement prévu ce jour-là (Workout + matchs) → type de journée par défaut des jours pas encore remplis
+  const [trainDay, setTrainDay] = useState(undefined); // undefined = en cours, null = rien de prévu
+  useEffect(() => {
+    if (!uid || loading) return;
+    let alive = true;
+    setTrainDay(undefined);
+    loadTrainingDays(uid, date, date)
+      .then((m) => {
+        if (!alive) return;
+        const info = m[date] || null;
+        setTrainDay(info);
+        const saved = history.some((d) => d.date === date && d.dayType);
+        const auto = info ? info.dayType : "repos";
+        if (!saved) setDay((d) => (d && d.date === date && !d.dayTypeManual ? { ...d, dayType: auto } : d));
+      })
+      .catch(() => alive && setTrainDay(null));
+    return () => {
+      alive = false;
+    };
+  }, [date, uid, loading]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const f = focusRef.current;
     if (!f || loading || !day || tab !== "journal") return;
@@ -431,6 +496,33 @@ export default function Nutrition() {
         />
       )}
 
+      {!loading && profileOk && day && targets && ["journal", "planning", "supps"].includes(tab) && (
+        <KpiGrid min={150}>
+          {(() => {
+            const pk = targets.kcal > 0 ? totalN.kcal / targets.kcal : 0;
+            const pp = targets.p > 0 ? totalN.p / targets.p : 0;
+            const pw = targets.water > 0 ? (day.water || 0) / targets.water : 0;
+            const c3 = (x, over = 1.1) => (x > over ? RED : x >= 0.9 ? GREEN : x >= 0.5 ? ACCENT : TEXT);
+            const SHORT = { repos: "Repos", leger: "Légère", modere: "Modérée", intense: "Intense", match: "Match" };
+            const dt = DAY_BY_ID[day.dayType] || DAY_BY_ID.modere;
+            return (
+              <>
+                <Kpi icon="🔥" label={isToday ? "Énergie du jour" : `Énergie · ${date.slice(8, 10)}/${date.slice(5, 7)}`} value={`${Math.round(totalN.kcal).toLocaleString("fr-FR")} kcal`} sub={`objectif ${targets.kcal.toLocaleString("fr-FR")} · ${Math.round(pk * 100)} %`} color={c3(pk)} />
+                <Kpi icon="🥩" label="Protéines" value={`${Math.round(totalN.p)} g`} sub={`objectif ${targets.p} g · ${targets.proteinPerKg} g/kg`} color={c3(pp, 1.5)} />
+                <Kpi icon="💧" label="Eau" value={`${((day.water || 0) / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} L`} sub={`objectif ${(targets.water / 1000).toLocaleString("fr-FR")} L`} color={pw >= 0.9 ? BLUE : c3(pw, 9)} />
+                <Kpi
+                  icon={dt.icon}
+                  label="Journée"
+                  value={SHORT[day.dayType] || dt.label}
+                  sub={trainDay === undefined ? "…" : trainDay?.match ? "match prévu" : trainDay?.sessions.length ? `${trainDay.sessions.length} séance${trainDay.sessions.length > 1 ? "s" : ""} · ~${trainDay.minutes} min` : "pas de séance prévue"}
+                  color={day.dayType === "repos" ? MUTED : day.dayType === "match" ? RED : ACCENT}
+                />
+              </>
+            );
+          })()}
+        </KpiGrid>
+      )}
+
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
         {tabs.map(([k, l]) => (
           <button key={k} type="button" onClick={() => setTab(k)} style={chip(tab === k)}>
@@ -456,77 +548,169 @@ export default function Nutrition() {
           {/* ======================= JOURNAL ======================= */}
           {tab === "journal" && day && targets && (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+              {/* ---- Date ---- */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                 <button className="pt-btn" onClick={() => setDate(shiftISO(date, -1))} aria-label="Jour précédent">
                   ←
                 </button>
-                <div style={{ fontWeight: 800, color: TEXT, textTransform: "capitalize", minWidth: 190, textAlign: "center" }}>{isToday ? "Aujourd'hui" : frDate(date)}</div>
+                <label
+                  style={{
+                    position: "relative",
+                    flex: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    padding: "9px 12px",
+                    borderRadius: 12,
+                    border: `1px solid ${isToday ? ACCENT + "88" : BORDER}`,
+                    background: isToday ? "rgba(224,161,61,0.08)" : "#0d0c0a",
+                    cursor: "pointer",
+                  }}
+                  title="Choisir une date"
+                >
+                  <span style={{ fontSize: 15 }}>📅</span>
+                  <span style={{ fontWeight: 800, color: TEXT, textTransform: "capitalize", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {isToday ? `Aujourd'hui · ${frDate(date).split(" ").slice(1).join(" ")}` : frDate(date)}
+                  </span>
+                  <input
+                    type="date"
+                    value={date}
+                    max={todayISO()}
+                    onChange={(e) => e.target.value && setDate(e.target.value)}
+                    style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer", width: "100%" }}
+                    aria-label="Date"
+                  />
+                </label>
                 <button className="pt-btn" onClick={() => setDate(shiftISO(date, 1))} disabled={isToday} aria-label="Jour suivant">
                   →
                 </button>
-                {!isToday && (
-                  <button className="pt-btn" onClick={() => setDate(todayISO())}>
-                    Aujourd'hui
-                  </button>
-                )}
-                <input type="date" value={date} max={todayISO()} onChange={(e) => e.target.value && setDate(e.target.value)} style={{ ...FIELD_STYLE, width: 160 }} />
               </div>
+              {!isToday && (
+                <button className="pt-btn" style={{ marginBottom: 10 }} onClick={() => setDate(todayISO())}>
+                  ↩ Revenir à aujourd'hui
+                </button>
+              )}
 
-              {/* Type de journée */}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
-                {DAY_TYPES.map((d) => (
-                  <button key={d.id} type="button" style={chip(day.dayType === d.id)} onClick={() => saveDay({ ...day, dayType: d.id })}>
-                    {d.icon} {d.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Résumé visuel */}
-              <div style={{ ...CARD_STYLE, display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
-                <Ring
-                  value={totalN.kcal}
-                  target={targets.kcal}
-                  size={140}
-                  stroke={14}
-                  label={Math.round(totalN.kcal).toLocaleString("fr-FR")}
-                  sub={`/ ${targets.kcal.toLocaleString("fr-FR")} kcal`}
-                />
-                <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-                  <div style={{ fontSize: 13, color: MUTED, marginBottom: 8 }}>
-                    {totalN.kcal < targets.kcal
-                      ? `Reste ${Math.round(targets.kcal - totalN.kcal).toLocaleString("fr-FR")} kcal`
-                      : `${Math.round(totalN.kcal - targets.kcal).toLocaleString("fr-FR")} kcal au-dessus de l'objectif`}
-                    {" · "}
-                    {DAY_BY_ID[day.dayType]?.icon} {DAY_BY_ID[day.dayType]?.label}
+              {/* ---- Journée : entraînement prévu (Workout) + type ---- */}
+              {(() => {
+                const auto = trainDay === undefined ? null : trainDay ? trainDay.dayType : "repos";
+                const col = trainDay?.match ? RED : trainDay?.sessions.length ? ACCENT : MUTED;
+                return (
+                  <div style={{ ...CARD_STYLE, padding: "12px 14px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, background: `${col}1f`, border: `1px solid ${col}66`, flexShrink: 0 }}>
+                        {trainDay?.match ? "🏉" : trainDay?.sessions.length ? "🏋️" : "😴"}
+                      </div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, color: TEXT, fontSize: 14 }}>
+                          {trainDay === undefined ? "Lecture des séances…" : trainDay?.match ? "Match" : trainDay?.sessions.length ? "Entraînement prévu" : "Pas de séance prévue"}
+                        </div>
+                        <div style={{ fontSize: 12, color: MUTED, overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {trainDay && (trainDay.match || trainDay.sessions.length) ? trainDay.why : "dans Workout"}
+                          {auto && day.dayType !== auto ? ` · tu as choisi « ${DAY_BY_ID[day.dayType]?.label} »` : ""}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {DAY_TYPES.map((d) => (
+                        <button key={d.id} type="button" style={{ ...chip(day.dayType === d.id), padding: "6px 11px", fontSize: 12.5, flexShrink: 0 }} onClick={() => saveDay({ ...day, dayType: d.id, dayTypeManual: true })}>
+                          {d.icon} {d.label}
+                          {auto === d.id ? <span style={{ fontSize: 10.5, color: GREEN, marginLeft: 4 }}>· Workout</span> : null}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <ProgressRow label="Protéines" value={totalN.p} target={targets.p} unit="g" color={MACRO_COLOR.p} hint={`${targets.proteinPerKg} g/kg`} />
-                  <ProgressRow label="Glucides" value={totalN.c} target={targets.c} unit="g" color={MACRO_COLOR.c} hint={`${targets.carbsPerKg} g/kg`} />
-                  <ProgressRow label="Lipides" value={totalN.f} target={targets.f} unit="g" color={MACRO_COLOR.f} />
-                  <ProgressRow label="Fibres" value={totalN.fib} target={targets.fib} unit="g" color={MACRO_COLOR.fib} />
+                );
+              })()}
+
+              {/* ---- Résumé visuel ---- */}
+              <div style={{ ...CARD_STYLE }}>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "center" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flex: "0 0 auto", margin: "0 auto" }}>
+                    <Ring value={totalN.kcal} target={targets.kcal} size={150} stroke={14} label={Math.round(totalN.kcal).toLocaleString("fr-FR")} sub={`/ ${targets.kcal.toLocaleString("fr-FR")} kcal`} />
+                    <div style={{ fontSize: 13, fontWeight: 800, color: totalN.kcal > targets.kcal * 1.1 ? RED : TEXT }}>
+                      {totalN.kcal <= targets.kcal
+                        ? `Reste ${Math.round(targets.kcal - totalN.kcal).toLocaleString("fr-FR")} kcal`
+                        : `+${Math.round(totalN.kcal - targets.kcal).toLocaleString("fr-FR")} kcal`}
+                    </div>
+                  </div>
+                  <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+                    <div style={{ display: "flex", gap: 8, justifyContent: "space-around", marginBottom: 12 }}>
+                      <MacroRing name="Protéines" value={totalN.p} target={targets.p} color={MACRO_COLOR.p} hint={`${targets.proteinPerKg} g/kg`} />
+                      <MacroRing name="Glucides" value={totalN.c} target={targets.c} color={MACRO_COLOR.c} hint={`${targets.carbsPerKg} g/kg`} />
+                      <MacroRing name="Lipides" value={totalN.f} target={targets.f} color={MACRO_COLOR.f} />
+                    </div>
+                    <ProgressRow label="Fibres" value={totalN.fib} target={targets.fib} unit="g" color={MACRO_COLOR.fib} />
+                  </div>
                 </div>
               </div>
 
-              {/* Repas */}
+              {/* ---- Repas (2 colonnes sur grand écran) ---- */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 400px), 1fr))", columnGap: 14, alignItems: "start" }}>
               {MEALS.map((m) => {
                 const items = (day.entries || []).filter((e) => (e.meal || "dejeuner") === m.id);
                 const t = sumN(items.map((e) => e.n));
+                const share = menuShares(targets.kcal, day.dayType)[m.id] || 0;
+                const goal = Math.round(targets.kcal * share);
+                // pas de séance ce jour-là et rien de noté : on n'affiche pas « Autour de la séance »
+                if (!share && !items.length && adding !== m.id) return null;
+                const pct = goal > 0 ? t.kcal / goal : 0;
+                const col = !items.length ? MUTED : pct > 1.2 ? RED : pct >= 0.8 ? GREEN : ACCENT;
                 return (
-                  <div key={m.id} id={`nutri-meal-${m.id}`} style={{ ...CARD_STYLE, scrollMarginTop: "calc(var(--pt-header-h, 60px) + 12px)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                      <div style={{ fontWeight: 800, color: TEXT, fontSize: 15.5 }}>
-                        {m.icon} {m.label}
+                  <div key={m.id} id={`nutri-meal-${m.id}`} style={{ ...CARD_STYLE, padding: "12px 14px", scrollMarginTop: "calc(var(--pt-header-h, 60px) + 12px)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, background: "#0d0c0a", border: `1px solid ${BORDER}`, flexShrink: 0 }}>{m.icon}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, color: TEXT, fontSize: 15 }}>{m.label}</div>
+                        <div style={{ fontSize: 12, color: MUTED }}>
+                          {items.length ? (
+                            <>
+                              <b style={{ color: col }}>{Math.round(t.kcal)}</b>
+                              {goal ? ` / ${goal}` : ""} kcal · P {Math.round(t.p)} · G {Math.round(t.c)} · L {Math.round(t.f)}
+                            </>
+                          ) : goal ? (
+                            `≈ ${goal} kcal conseillées`
+                          ) : (
+                            "hors répartition"
+                          )}
+                        </div>
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {items.length > 0 && (
-                          <span style={{ fontSize: 12.5, color: MUTED }}>
-                            <b style={{ color: ACCENT }}>{Math.round(t.kcal)} kcal</b> · P {Math.round(t.p)} g
-                          </span>
-                        )}
-                        <button type="button" className={adding === m.id ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setAdding(adding === m.id ? null : m.id)}>
-                          ＋
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        aria-label={`Ajouter au ${m.label.toLowerCase()}`}
+                        onClick={() => setAdding(adding === m.id ? null : m.id)}
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 12,
+                          border: `1px solid ${adding === m.id ? ACCENT : ACCENT + "66"}`,
+                          background: adding === m.id ? ACCENT : "rgba(224,161,61,0.1)",
+                          color: adding === m.id ? "#0d0c0a" : ACCENT,
+                          fontSize: 20,
+                          fontWeight: 900,
+                          cursor: "pointer",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {adding === m.id ? "−" : "＋"}
+                      </button>
                     </div>
+                    {goal > 0 && items.length > 0 && (
+                      <div style={{ height: 5, borderRadius: 3, background: "#0d0c0a", margin: "10px 0 4px", overflow: "hidden" }}>
+                        <div style={{ width: `${Math.min(100, pct * 100)}%`, height: "100%", background: col, borderRadius: 3 }} />
+                      </div>
+                    )}
+                    {!items.length && adding !== m.id && (
+                      <button
+                        type="button"
+                        onClick={() => setAdding(m.id)}
+                        style={{ width: "100%", marginTop: 10, padding: "9px 12px", borderRadius: 10, border: `1px dashed ${BORDER}`, background: "transparent", color: MUTED, fontSize: 13, cursor: "pointer", textAlign: "left" }}
+                      >
+                        Rien de noté · <span style={{ color: ACCENT, fontWeight: 700 }}>＋ ajouter un aliment</span>
+                      </button>
+                    )}
                     {items.map((e) =>
                       editEntry === e.id ? (
                         <EntryEditor
@@ -542,19 +726,22 @@ export default function Nutrition() {
                           }}
                         />
                       ) : (
-                      <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "7px 0", borderTop: `1px solid ${BORDER}`, fontSize: 13.5 }}>
+                      <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 0", borderTop: `1px solid ${BORDER}`, fontSize: 13.5 }}>
                         <button
                           type="button"
                           onClick={() => setEditEntry(e.id)}
                           title="Modifier la quantité ou les valeurs"
-                          style={{ color: TEXT, minWidth: 0, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", font: "inherit" }}
+                          style={{ display: "flex", alignItems: "center", gap: 9, color: TEXT, minWidth: 0, flex: 1, background: "none", border: "none", padding: 0, textAlign: "left", cursor: "pointer", font: "inherit" }}
                         >
-                          {e.name} <span style={{ color: MUTED }}>· {e.grams} g</span>
-                        </button>
-                        <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          <span style={{ color: MUTED, fontSize: 12.5 }}>
-                            {Math.round(e.n.kcal)} kcal · P {Math.round(e.n.p)}
+                          <span style={{ width: 30, height: 30, borderRadius: 9, background: "#0d0c0a", border: `1px solid ${BORDER}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>{foodEmoji(e.foodId)}</span>
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis" }}>{e.name}</span>
+                            <span style={{ color: MUTED, fontSize: 12 }}>
+                              {e.grams} g · <b style={{ color: "#c9c1b5" }}>{Math.round(e.n.kcal)} kcal</b> · P {Math.round(e.n.p)}
+                            </span>
                           </span>
+                        </button>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                           <button type="button" aria-label="Modifier" onClick={() => setEditEntry(e.id)} style={{ ...smallBtn(ACCENT), padding: "2px 8px" }}>
                             ✏️
                           </button>
@@ -585,6 +772,8 @@ export default function Nutrition() {
                   </div>
                 );
               })}
+
+              </div>
 
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
                 <button
@@ -662,18 +851,11 @@ export default function Nutrition() {
                   <div style={{ fontSize: 13, color: MUTED }}>Ajoute des aliments pour voir tes apports.</div>
                 ) : (
                   <>
-                    {MICROS.map((mi) => (
-                      <ProgressRow
-                        key={mi.k}
-                        label={mi.label}
-                        value={totalN[mi.k]}
-                        target={targets.micro[mi.k]}
-                        unit={mi.unit}
-                        limit={mi.limit}
-                        dec={mi.dec}
-                        hint={suppN[mi.k] > 0 ? `dont ${fmtN(mi.k, suppN[mi.k])} ${mi.unit} en complément` : null}
-                      />
-                    ))}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8 }}>
+                      {MICROS.map((mi) => (
+                        <MicroTile key={mi.k} mi={mi} value={totalN[mi.k]} target={targets.micro[mi.k]} supp={suppN[mi.k]} />
+                      ))}
+                    </div>
                     {(() => {
                       const low = MICROS.filter((mi) => !mi.limit && totalN[mi.k] < 0.7 * targets.micro[mi.k]);
                       if (!low.length) return <div style={{ fontSize: 13, color: GREEN, marginTop: 6 }}>✅ Toutes les vitamines et minéraux suivis sont couverts à plus de 70 %.</div>;
@@ -681,12 +863,23 @@ export default function Nutrition() {
                         <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(224,161,61,0.07)", borderLeft: `3px solid ${ACCENT}` }}>
                           <div style={{ fontWeight: 800, color: ACCENT, fontSize: 12.5, marginBottom: 6 }}>À COMPLÉTER — MEILLEURES SOURCES</div>
                           {low.slice(0, 5).map((mi) => (
-                            <div key={mi.k} style={{ fontSize: 13, color: TEXT, marginBottom: 4 }}>
-                              <b>{mi.label}</b> <span style={{ color: MUTED }}>({mi.why})</span> :{" "}
-                              {bestSources(mi.k, settings.diet)
-                                .map((x) => `${x.f.name.toLowerCase()} (${fmtN(mi.k, x.v)} ${mi.unit} pour ${x.g} g)`)
-                                .join(", ")}
-                              {mi.k === "vd" ? " — ou un complément de vitamine D en hiver." : ""}
+                            <div key={mi.k} style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: 13, color: TEXT, marginBottom: 5 }}>
+                                <b>{mi.label}</b> <span style={{ color: MUTED, fontSize: 12 }}>· {mi.why}</span>
+                              </div>
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                {bestSources(mi.k, settings.diet, 3).map((x) => (
+                                  <span key={x.f.id} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 999, background: "#0d0c0a", border: `1px solid ${BORDER}`, fontSize: 12 }}>
+                                    <span>{FOOD_CATS[x.f.cat]?.split(" ")[0]}</span>
+                                    <span style={{ color: TEXT }}>{x.f.name}</span>
+                                    <b style={{ color: ACCENT }}>
+                                      {fmtN(mi.k, x.v)} {mi.unit}
+                                    </b>
+                                    <span style={{ color: MUTED }}>/ {x.g} g</span>
+                                  </span>
+                                ))}
+                                {mi.k === "vd" && <span style={{ fontSize: 12, color: MUTED, alignSelf: "center" }}>ou un complément de vitamine D en hiver</span>}
+                              </div>
                             </div>
                           ))}
                         </div>

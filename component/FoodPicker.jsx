@@ -335,10 +335,14 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
                     fontSize: 13.5,
                   }}
                 >
-                  <span>
-                    {f.cat === "perso" ? "⭐ " : ""}
-                    {f.name}
-                    {f.edited ? " ✏️" : ""}
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span style={{ width: 26, height: 26, borderRadius: 8, background: "#0d0c0a", border: `1px solid ${BORDER}`, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 }}>
+                      {f.cat === "perso" ? "⭐" : FOOD_CATS[f.cat]?.split(" ")[0] || "🍽️"}
+                    </span>
+                    <span style={{ minWidth: 0 }}>
+                      {f.name}
+                      {f.edited ? " ✏️" : ""}
+                    </span>
                   </span>
                   <span style={{ color: MUTED, fontSize: 12, whiteSpace: "nowrap" }}>
                     {Math.round(f.n.kcal)} kcal · P {fmtN("p", f.n.p)} /100 g

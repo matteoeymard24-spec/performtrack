@@ -7,6 +7,7 @@ import { appConfirm, appAlert as alert } from "./appDialog";
 import { computeTargets, DAY_TYPES, DAY_BY_ID, MICROS, fmtN, todayISO, shiftISO, bestSources } from "./nutritionData";
 import { CUISINES, CUISINE_BY_ID } from "./recipes";
 import RecipeBook from "./RecipeBook";
+import { loadTrainingDays, autoDayType } from "./trainingDays";
 import {
   recommendDay,
   nextMealOption,
@@ -100,6 +101,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
   const cuisines = settings?.cuisines || []; // [] = toutes les cuisines
   const [showCuisines, setShowCuisines] = useState(false);
   const [showBook, setShowBook] = useState(false);
+  const [train, setTrain] = useState(null); // séances Workout / matchs de la semaine, par jour
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()));
   const [sel, setSel] = useState(todayISO());
   const [plans, setPlans] = useState({}); // date → plan
@@ -133,7 +135,34 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
     };
   }, [uid, weekStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const targetsOf = (d) => computeTargets(settings, plans[d]?.dayType || "modere");
+  // entraînement prévu dans Workout (+ matchs) → type de journée « auto »
+  useEffect(() => {
+    if (!uid) return;
+    let alive = true;
+    setTrain(null);
+    loadTrainingDays(uid, days[0], days[6])
+      .then((m) => alive && setTrain(m))
+      .catch(() => alive && setTrain({}));
+    return () => {
+      alive = false;
+    };
+  }, [uid, weekStart]); // eslint-disable-line react-hooks/exhaustive-deps
+  const autoDt = (d) => (train ? autoDayType(train, d) : "modere");
+  const dayTypeOf = (d) => plans[d]?.dayType || autoDt(d);
+  const targetsOf = (d) => computeTargets(settings, dayTypeOf(d));
+  /* Nouveau type de journée : quantités recalculées ; prise « autour de la séance » ajoutée / retirée */
+  const applyDayType = (date, dt, source) => {
+    const p = plans[date];
+    if (!p) return;
+    const nt = computeTargets(settings, dt);
+    const need = planMeals(nt).map((m) => m.id);
+    let meals = p.meals.filter((m) => need.includes(m.id) || (m.id === "seance" ? false : (m.items || []).length));
+    if (need.includes("seance") && !meals.some((m) => m.id === "seance")) {
+      const nx = nextMealOption(nt, "seance", diet, 0, customFoods, settings?.foodOverrides, cuisines);
+      if (nx) meals = [...meals, { id: "seance", items: nx.items, recipe: nx.recipe }];
+    }
+    setPlan(date, { ...p, dayType: dt, dayTypeSource: source, meals: meals.map((m) => (m.id === "seance" && !need.includes("seance") ? m : rebalanceMeal(m, nt, customFoods))) });
+  };
 
   /* enregistrement (différé : on peut taper des grammes sans écrire à chaque touche) */
   const persist = (date, plan) => {
@@ -155,14 +184,15 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
   useEffect(() => () => Object.values(saveTimers.current).forEach(clearTimeout), []);
 
   const recommend = (date, r = 0, dayType) => {
-    const dt = dayType || plans[date]?.dayType || "modere";
+    const dt = dayType || plans[date]?.dayType || autoDt(date);
+    const source = dayType ? "manuel" : plans[date]?.dayTypeSource || "auto";
     const t = computeTargets(settings, dt);
     // recettes déjà prévues les autres jours de la semaine → évitées si possible (variété)
     const avoid = days.filter((d) => d !== date).flatMap((d) => (plans[d]?.meals || []).map((m) => m.recipe?.rid).filter(Boolean));
     const rec = recommendDay(t, { diet, rank: r, customFoods, overrides: settings?.foodOverrides, cuisines, avoid });
     if (!rec) return;
     setRank((x) => ({ ...x, [date]: rec.rank }));
-    setPlan(date, { dayType: dt, meals: rec.meals });
+    setPlan(date, { dayType: dt, dayTypeSource: source, meals: rec.meals });
     return rec;
   };
   const fillWeek = async () => {
@@ -171,20 +201,20 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
     // un rang différent par jour + recettes déjà prévues évitées → des menus variés
     const used = days.flatMap((d) => (plans[d]?.meals || []).map((m) => m.recipe?.rid).filter(Boolean));
     empty.forEach((d, i) => {
-      const dt = plans[d]?.dayType || "modere";
+      const dt = autoDt(d); // type de journée d'après Workout (séance, match ou repos)
       const rec = recommendDay(computeTargets(settings, dt), { diet, rank: i * 7 + 1, customFoods, overrides: settings?.foodOverrides, cuisines, avoid: used });
       if (!rec) return;
       rec.meals.forEach((m) => m.recipe?.rid && used.push(m.recipe.rid));
       setRank((x) => ({ ...x, [d]: rec.rank }));
-      setPlan(d, { dayType: dt, meals: rec.meals });
+      setPlan(d, { dayType: dt, dayTypeSource: "auto", meals: rec.meals });
     });
   };
   /* Recette choisie dans le livre → mise à l'échelle du repas du jour sélectionné */
   const useRecipe = (tpl, mealId) => {
-    const dt = plans[sel]?.dayType || "modere";
+    const dt = dayTypeOf(sel);
     const tt = computeTargets(settings, dt);
     const { items, recipe } = recipeForMeal(tt, mealId, tpl, diet, customFoods, settings?.foodOverrides);
-    const cur = plans[sel] || { dayType: dt, meals: [] };
+    const cur = plans[sel] || { dayType: dt, dayTypeSource: "auto", meals: [] };
     const meals = cur.meals.some((m) => m.id === mealId) ? cur.meals.map((m) => (m.id === mealId ? { ...m, items, recipe } : m)) : [...cur.meals, { id: mealId, items, recipe }];
     setPlan(sel, { ...cur, meals });
     setShowBook(false);
@@ -249,6 +279,23 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
             📖 Livre de recettes
           </button>
         </div>
+        {(() => {
+          // ---- oméga-3 EPA/DHA : moyenne de la semaine planifiée (repère hebdomadaire) ----
+          const planned = days.filter((d) => plans[d]);
+          if (!planned.length) return null;
+          const avg = planned.reduce((sum, d) => sum + (planTotal(plans[d]).o3 || 0), 0) / planned.length;
+          const tgt = targetsOf(planned[0])?.micro?.o3 || 500;
+          const pct = Math.round((avg / tgt) * 100);
+          const fishDays = planned.filter((d) => plans[d].meals.some((m) => (m.items || []).some((x) => (x.n?.o3 || 0) >= 300))).length;
+          const ok = pct >= 70;
+          return (
+            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>
+              🐟 Oméga-3 EPA/DHA sur la semaine planifiée :{" "}
+              <b style={{ color: ok ? GREEN : ACCENT }}>{pct} %</b> du repère ({fishDays} jour{fishDays > 1 ? "s" : ""} avec du poisson)
+              {!ok && (diet === "vege" ? " · en végétarien : oméga-3 d'algues en complément" : " · vise 2 poissons par semaine dont 1 gras (saumon, maquereau, sardines…)")}
+            </div>
+          );
+        })()}
         {showCuisines && (
           <div style={{ padding: 10, borderRadius: 12, background: "#0d0c0a", border: `1px solid ${BORDER}`, marginBottom: 10 }}>
             <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 8 }}>Les menus proposés ne piochent que dans les cuisines choisies (aucune = toutes).</div>
@@ -270,7 +317,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
         {showBook && (
           <RecipeBook
             diet={diet}
-            targetsFor={(mealId) => ({ t: computeTargets(settings, plans[sel]?.dayType || "modere"), mealId })}
+            targetsFor={(mealId) => ({ t: computeTargets(settings, dayTypeOf(sel)), mealId })}
             customFoods={customFoods}
             overrides={settings?.foodOverrides}
             dayLabel={dayLabel(sel, { weekday: "long", day: "numeric", month: "short" })}
@@ -312,7 +359,18 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
                   <span style={{ fontSize: 12, fontWeight: 800, textTransform: "capitalize", color: d === today ? ACCENT : TEXT }}>{dayLabel(d, { weekday: "short" })}</span>
                   <span style={{ fontSize: 11, color: MUTED }}>{dayLabel(d, { day: "numeric" })}</span>
                 </div>
-                <div style={{ fontSize: 15, margin: "4px 0 2px" }}>{p ? DAY_BY_ID[p.dayType || "modere"]?.icon : "＋"}</div>
+                <div style={{ fontSize: 15, margin: "4px 0 2px", display: "flex", alignItems: "center", gap: 4 }}>
+                  {p ? DAY_BY_ID[p.dayType || "modere"]?.icon : "＋"}
+                  {train && (train[d]?.match ? (
+                    <span title={train[d].why} style={{ fontSize: 10, fontWeight: 800, color: RED }}>MATCH</span>
+                  ) : train[d]?.sessions.length ? (
+                    <span title={train[d].why} style={{ fontSize: 10, fontWeight: 800, color: ACCENT }}>
+                      {train[d].sessions.length > 1 ? `${train[d].sessions.length}×` : ""}séance
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 10, color: "#6f6a62" }}>repos</span>
+                  ))}
+                </div>
                 {p ? (
                   <>
                     <div style={{ fontSize: 11, color: MUTED, whiteSpace: "nowrap" }}>{Math.round(tot.kcal)} kcal</div>
@@ -368,27 +426,63 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
             </div>
           )}
         </div>
+        {(() => {
+          // ---- Entraînement prévu dans Workout ----
+          const info = train?.[sel];
+          const auto = autoDt(sel);
+          const cur = dayTypeOf(sel);
+          const differs = !!plan && train && cur !== auto;
+          const col = info?.match ? RED : info?.sessions.length ? ACCENT : MUTED;
+          return (
+            <div style={{ padding: "10px 12px", borderRadius: 12, background: "#0d0c0a", border: `1px solid ${differs ? ACCENT + "88" : BORDER}`, marginBottom: 10 }}>
+              {!train ? (
+                <div style={{ fontSize: 12.5, color: MUTED }}>Lecture des séances prévues…</div>
+              ) : (
+                <>
+                  <div style={{ fontSize: 13, color: TEXT }}>
+                    <b style={{ color: col }}>{info?.match ? "🏉 Match" : info?.sessions.length ? "🏋️ Entraînement" : "😴 Pas de séance prévue"}</b>
+                    {info && (info.match || info.sessions.length) ? <span style={{ color: "#c9c1b5" }}> · {info.why}</span> : <span style={{ color: MUTED }}> dans Workout</span>}
+                  </div>
+                  {info?.match && info.sessions.length > 0 && <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>+ {info.sessions.length} séance{info.sessions.length > 1 ? "s" : ""} prévue{info.sessions.length > 1 ? "s" : ""}</div>}
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+                    → journée « {DAY_BY_ID[auto]?.label} » : {auto === "repos" ? "pas de prise autour de la séance, glucides plus bas" : "glucides augmentés et une prise autour de la séance (avant / après)"}.
+                  </div>
+                  {differs && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                      <span style={{ fontSize: 12.5, color: ACCENT, fontWeight: 700 }}>
+                        ⚠️ Le menu est prévu pour « {DAY_BY_ID[cur]?.label} »{plan.dayTypeSource === "manuel" ? " (choisi à la main)" : ""}.
+                      </span>
+                      <button type="button" className="pt-btn pt-btn--primary" style={{ padding: "5px 10px", fontSize: 12.5 }} onClick={() => applyDayType(sel, auto, "auto")}>
+                        Adapter à l'entraînement
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          );
+        })()}
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
           {DAY_TYPES.map((d) => (
             <button
               key={d.id}
               type="button"
-              style={chip((plan?.dayType || "modere") === d.id)}
+              style={chip(dayTypeOf(sel) === d.id)}
               onClick={() => {
                 if (!plan) return recommend(sel, 0, d.id);
-                // nouveau type de journée = nouveaux besoins : on réajuste les quantités du menu
-                const nt = computeTargets(settings, d.id);
-                setPlan(sel, { ...plan, dayType: d.id, meals: plan.meals.map((m) => rebalanceMeal(m, nt, customFoods)) });
+                // nouveau type de journée = nouveaux besoins : quantités réajustées, prise « séance » ajoutée / retirée
+                applyDayType(sel, d.id, "manuel");
               }}
             >
               {d.icon} {d.label}
+              {train && autoDt(sel) === d.id ? <span style={{ fontSize: 10.5, color: GREEN, marginLeft: 4 }}>· Workout</span> : null}
             </button>
           ))}
         </div>
 
         {!plan ? (
           <div style={{ textAlign: "center", padding: "26px 10px", borderRadius: 12, border: `1px dashed ${BORDER}` }}>
-            <div style={{ fontSize: 14, color: MUTED, marginBottom: 12 }}>Pas encore de menu pour ce jour. Choisis le type de journée puis :</div>
+            <div style={{ fontSize: 14, color: MUTED, marginBottom: 12 }}>Pas encore de menu pour ce jour. Le type de journée vient de Workout (modifiable au-dessus), puis :</div>
             <button className="pt-btn pt-btn--primary" onClick={() => recommend(sel, 0)} disabled={loading}>
               ✨ Recommander un menu
             </button>
