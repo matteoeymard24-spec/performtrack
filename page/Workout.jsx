@@ -9889,9 +9889,20 @@ export default function Workout() {
               <button
                 type="button"
                 onClick={() => editSession(selectedSession)}
-                className="pt-btn"
-                style={{ flexShrink: 0, fontWeight: 800, background: "#e0a13d", color: "#1a1306", borderColor: "#e0a13d" }}
+                title="Modifier la séance"
                 aria-label="Modifier la séance"
+                style={{
+                  flexShrink: 0,
+                  padding: isMobileView() ? "8px 12px" : "8px 14px",
+                  background: "rgba(224,161,61,0.12)",
+                  color: "#e0a13d",
+                  border: "1px solid rgba(224,161,61,0.55)",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  whiteSpace: "nowrap",
+                }}
               >
                 ✏️{isMobileView() ? "" : " Modifier"}
               </button>
@@ -10058,20 +10069,6 @@ export default function Workout() {
               {isAdminLike && (
                 <>
                   <button
-                    onClick={() => editSession(selectedSession)}
-                    style={{
-                      padding: "8px 16px",
-                      background: "#e0a13d",
-                      color: "#1a1306",
-                      border: "none",
-                      borderRadius: 8,
-                      cursor: "pointer",
-                      fontSize: 14,
-                    }}
-                  >
-                    ✏️ Modifier
-                  </button>
-                  <button
                     onClick={() => {
                       setSessionToDuplicate(selectedSession);
                       setDuplicateTargetDate(selectedSession.date);
@@ -10080,14 +10077,16 @@ export default function Workout() {
                       setDuplicateTargetUser(selectedSession.targetUserId || "");
                       setShowDuplicateSessionModal(true);
                     }}
+                    title="Dupliquer cette séance (autre jour, autre groupe)"
                     style={{
-                      padding: "8px 16px",
-                      background: "#4fae7d",
-                      color: "white",
-                      border: "none",
+                      padding: "8px 14px",
+                      background: "rgba(79,174,125,0.12)",
+                      color: "#4fae7d",
+                      border: "1px solid rgba(79,174,125,0.55)",
                       borderRadius: 8,
                       cursor: "pointer",
                       fontSize: 14,
+                      fontWeight: 700,
                     }}
                   >
                     📋 Dupliquer
