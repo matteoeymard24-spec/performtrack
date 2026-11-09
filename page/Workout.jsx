@@ -9884,6 +9884,18 @@ export default function Workout() {
             <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 800, color: "#f3f0ea", fontSize: 15 }}>
               {selectedSession.title}
             </span>
+            {/* « Modifier » toujours à portée, comme « Retour » (coachs) */}
+            {isAdminLike && (
+              <button
+                type="button"
+                onClick={() => editSession(selectedSession)}
+                className="pt-btn"
+                style={{ flexShrink: 0, fontWeight: 800, background: "#e0a13d", color: "#1a1306", borderColor: "#e0a13d" }}
+                aria-label="Modifier la séance"
+              >
+                ✏️{isMobileView() ? "" : " Modifier"}
+              </button>
+            )}
           </div>
           {isAdminLike && (() => {
             // ---- Coach : RPE prévu vs ressenti de chaque athlète ----
