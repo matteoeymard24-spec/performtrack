@@ -320,12 +320,15 @@ export default function Nutrition() {
 
   /* Valeurs pour 100 g d'un aliment : aliment perso → modifié en place ; aliment de base → surcharge
      (settings.foodOverrides), per100 = null → retour aux valeurs d'origine */
-  const saveFoodValues = (food, per100) => {
+  const saveFoodValues = (food, per100, use) => {
     if (!food) return;
     const isCustom = (settings.customFoods || []).some((f) => f.id === food.id);
     if (isCustom) {
       return saveSettings(
-        { ...settings, customFoods: (settings.customFoods || []).map((f) => (f.id === food.id ? { ...f, n: { ...f.n, ...(per100 || {}) } } : f)) },
+        {
+          ...settings,
+          customFoods: (settings.customFoods || []).map((f) => (f.id === food.id ? { ...f, n: { ...f.n, ...(per100 || {}) }, ...(use ? { cat: use.cat, meals: use.meals } : {}) } : f)),
+        },
         "✅ Valeurs de l'aliment enregistrées"
       );
     }
@@ -968,6 +971,7 @@ export default function Nutrition() {
               onSaveCustom={(food) => saveSettings({ ...settings, customFoods: [...(settings.customFoods || []), food] }, "✅ Aliment enregistré")}
               onJournalAdd={addToJournal}
               onFoodValues={saveFoodValues}
+              onCuisines={(cuisines) => saveSettings({ ...settings, cuisines }, "✅ Cuisines enregistrées")}
             />
           )}
 

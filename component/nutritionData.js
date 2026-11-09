@@ -10,6 +10,9 @@
    ===================================================================== */
 
 /* ---- Nutriments suivis ---- */
+import { MORE_FOODS } from "./foodsMore";
+import { RECIPES } from "./recipes";
+
 export const MACROS = [
   { k: "kcal", label: "Énergie", unit: "kcal", dec: 0 },
   { k: "p", label: "Protéines", unit: "g", dec: 0 },
@@ -73,6 +76,7 @@ export const FOOD_CATS = {
   sucre: "🍯 Sucré",
   boisson: "🥤 Boissons",
   sport: "🏃 Produits du sport",
+  condiment: "🧂 Sauces & condiments",
 };
 export const FOODS = [
   // féculents (cuits sauf mention)
@@ -157,7 +161,14 @@ export const FOODS = [
   F("jus_orange", "Jus d'orange", "boisson", 45, 0.7, 10, 0.2, 0.2, 0.2, 11, 11, 200, 1, 0.1, 50, 0, 0, 30, 0, ["verre de 200 ml", 200]),
   F("boisson_sport", "Boisson de l'effort", "sport", 24, 0, 6, 0, 0, 0, 1, 1, 12, 41, 0, 0, 0, 0, 0, 0, ["gourde de 500 ml", 500]),
   F("whey_food", "Whey (poudre)", "sport", 380, 78, 8, 5, 0, 0.5, 500, 120, 600, 200, 2, 0, 0, 1, 10, 0, ["dose de 30 g", 30]),
+  // base étendue (foodsMore.js)
+  ...MORE_FOODS.map((r) => F(...r)),
 ];
+// origine animale cachée dans une autre catégorie (filtrage végétarien / pescétarien)
+const SRC = { sauce_nuoc_mam: "poisson", anchois: "poisson" };
+FOODS.forEach((f) => {
+  if (SRC[f.id]) f.src = SRC[f.id];
+});
 export const FOOD_BY_ID = Object.fromEntries(FOODS.map((f) => [f.id, f]));
 export const MEAT_CATS = ["viande"];
 export const FISH_CATS = ["poisson"];
@@ -166,8 +177,10 @@ export const DIETS = [
   { id: "pesce", label: "Pescétarien" },
   { id: "vege", label: "Végétarien" },
 ];
-export const allowedByDiet = (food, diet) =>
-  diet === "vege" ? !MEAT_CATS.includes(food.cat) && !FISH_CATS.includes(food.cat) : diet === "pesce" ? !MEAT_CATS.includes(food.cat) : true;
+export const allowedByDiet = (food, diet) => {
+  const c = food?.src || food?.cat;
+  return diet === "vege" ? !MEAT_CATS.includes(c) && !FISH_CATS.includes(c) : diet === "pesce" ? !MEAT_CATS.includes(c) : true;
+};
 
 /* Nutriments d'une quantité d'aliment (n = valeurs pour 100 g) */
 export const scaleN = (n, grams) => Object.fromEntries(NUTRIENT_KEYS.map((k) => [k, ((Number(n?.[k]) || 0) * (Number(grams) || 0)) / 100]));
@@ -288,70 +301,65 @@ export const EVIDENCE = {
   C: { label: "Si carence / besoin", color: "#a8a199" },
 };
 
-/* ---- Menus types ----
-   Chaque repas : aliments fixes (g) + 3 « leviers » (P = source de protéines, C = glucides, F = lipides)
+/* ---- Menus : recettes (recipes.js), classées par cuisine ----
+   Chaque recette : aliments fixes (g) + 3 « leviers » (P = source de protéines, C = glucides, F = lipides)
    dont on calcule les grammes pour coller à la part du repas (MEALS.share) de l'objectif. */
-const T = (fixed, P, C, Fat) => ({ fixed, P, C, F: Fat });
-export const MENU_TEMPLATES = {
-  petitdej: [
-    T([["lait", 250], ["banane", 120]], ["skyr"], ["avoine"], ["amandes"]),
-    T([["orange", 150], ["yaourt", 125]], ["oeuf"], ["pain_complet"], ["beurre"]),
-    T([["kiwi", 150], ["lait", 200]], ["fromage_blanc"], ["muesli"], ["noix"]),
-    T([["orange", 150], ["epinards", 60]], ["oeuf"], ["pain_complet"], ["avocat"]),
-  ],
-  dejeuner: [
-    T([["brocoli", 200], ["salade", 50]], ["poulet", "tofu"], ["riz_blanc"], ["huile_olive"]),
-    T([["tomate", 150], ["courgette", 150]], ["boeuf5", "tempeh"], ["pates_comp"], ["huile_olive"]),
-    T([["epinards", 150], ["poivron", 100]], ["saumon", "lentilles"], ["quinoa"], ["avocat"]),
-    T([["carotte", 120], ["salade", 50]], ["poulet", "pois_chiches"], ["semoule"], ["huile_olive"]),
-  ],
-  collation: [
-    T([["fruits_rouges", 100]], ["fromage_blanc"], ["galette_riz"], ["noix"]),
-    T([["pomme", 150]], ["skyr"], ["dattes"], ["amandes"]),
-  ],
-  seance: [
-    T([["banane", 120], ["lait", 300]], ["fromage_blanc"], ["muesli"], ["beurre_cacahuete"]),
-    T([["jus_orange", 200]], ["jambon", "oeuf"], ["baguette"], ["beurre"]),
-  ],
-  diner: [
-    T([["haricots_verts", 200]], ["cabillaud", "oeuf"], ["patate_douce"], ["huile_colza"]),
-    T([["champignons", 150], ["salade", 50]], ["dinde", "tofu"], ["pdt"], ["huile_colza"]),
-    T([["carotte", 100], ["epinards", 100]], ["sardines", "pois_chiches"], ["semoule"], ["huile_olive"]),
-    T([["brocoli", 200]], ["maquereau", "tofu"], ["riz_complet"], ["huile_colza"]),
-  ],
-};
+export const MENU_TEMPLATES = Object.fromEntries(
+  ["petitdej", "dejeuner", "collation", "seance", "diner"].map((mid) => [
+    mid,
+    RECIPES.filter((r) => r.meals.includes(mid)).map((r) => ({ rid: r.id, name: r.name, cuisine: r.cuisine, fixed: r.fixed, P: r.P, C: r.C, F: r.F })),
+  ])
+);
 
 /* Portions réalistes (g) d'un levier selon le type d'aliment */
 export function capsOf(food, role) {
   const id = food.id;
+  const n = food.n || {};
+  // aliment perso avec une portion déclarée : de ½ à 3 portions
+  if (food.custom && food.portion && food.portion[1] > 0 && role !== "F") return [Math.round(food.portion[1] * 0.5), Math.round(food.portion[1] * 3)];
+  if (food.custom && role === "C" && (food.cat === "sucre" || food.cat === "sport")) return [10, 120];
   if (role === "P") {
-    if (food.cat === "laitier") return [100, 500];
+    if (food.cat === "sport") return [20, 60]; // poudres
+    if (food.cat === "laitier" || food.cat === "vegprot" && n.kcal < 70) return n.kcal > 200 ? [20, 120] : [100, 500]; // laitages, boissons / yaourts soja
     if (food.cat === "oeuf") return [50, 250];
-    if (food.cat === "legumineuse") return [120, 400];
-    if (id === "jambon") return [40, 160];
-    return [90, 280]; // viande, poisson, tofu, tempeh
+    if (food.cat === "legumineuse") return n.kcal > 200 ? [50, 220] : [120, 400]; // houmous, falafels
+    if ((n.na || 0) > 700) return [30, 160]; // charcuterie, saumon fumé, surimi
+    return [90, 280]; // viande, poisson, tofu, tempeh, seitan
   }
   if (role === "C") {
-    if (id === "avoine" || id === "muesli") return [30, 160];
-    if (id === "pain_complet" || id === "baguette") return [35, 260];
+    if (food.cat === "laitier" || food.cat === "boisson") return [100, 500];
+    if (food.cat === "fruit") return n.kcal > 200 ? [16, 100] : [80, 300]; // fruits secs / frais
+    if (food.cat === "sucre" || food.cat === "sport") return [15, 90];
+    // portions « qu'on mange vraiment »
+    if (/^tortilla/.test(id)) return [25, 160]; // 1 à ~6 tortillas
+    if (id === "naan" || id === "pain_pita" || id === "bagel" || id === "muffin_anglais") return [50, 180];
+    if (id === "crepe" || id === "crepe_sarrasin" || id === "pancake") return [40, 240];
+    if (id === "biscottes" || id === "pain_suedois") return [10, 60];
+    if (id === "pain_mie") return [25, 150];
+    if (/pain|baguette/.test(id)) return [35, 200];
     if (id === "galette_riz") return [9, 60];
-    if (id === "dattes") return [16, 100];
-    return [60, 650]; // féculents cuits
+    if (n.kcal > 300) return [30, 160]; // flocons, muesli, céréales sèches
+    if (id === "frites_four" || id === "puree" || id === "gnocchis" || id === "tortellini") return [120, 400];
+    if (id === "banane_plantain" || id === "manioc" || id === "mais") return [100, 400];
+    return [60, 550]; // féculents cuits
   }
-  if (food.n.f > 90) return [5, 45]; // huiles, beurre
-  if (id === "avocat") return [0, 200];
+  if (n.f > 90) return [5, 45]; // huiles, beurre
+  if (id === "avocat" || id === "guacamole") return [0, 200];
+  if (id === "lait_coco" || id === "lait_coco_light") return [0, 200];
+  if (food.cat === "laitier") return [0, 100]; // fromages, crème
+  if (id === "pesto" || id === "mayonnaise" || id === "vinaigrette" || id === "tahini") return [0, 45];
   return [0, 70]; // oléagineux
 }
 
 /* Grammes des 3 leviers (P, C, F) : chaque levier corrige SON macro (Gauss-Seidel), dans des portions réalistes */
-export function solveMeal(tpl, target, diet) {
-  const pick = (ids) => ids.map((id) => FOOD_BY_ID[id]).find((f) => f && allowedByDiet(f, diet)) || FOOD_BY_ID[ids[ids.length - 1]];
+export function solveMeal(tpl, target, diet, lookup = (id) => FOOD_BY_ID[id]) {
+  const pick = (ids) => ids.map((id) => lookup(id)).find((f) => f && allowedByDiet(f, diet)) || lookup(ids[ids.length - 1]);
   const levers = [
     { food: pick(tpl.P), k: "p", role: "P" },
     { food: pick(tpl.C), k: "c", role: "C" },
     { food: pick(tpl.F), k: "f", role: "F" },
   ];
-  const fixed = tpl.fixed.map(([id, g]) => ({ food: FOOD_BY_ID[id], g })).filter((x) => x.food && allowedByDiet(x.food, diet));
+  const fixed = tpl.fixed.map(([id, g]) => ({ food: lookup(id), g })).filter((x) => x.food && allowedByDiet(x.food, diet));
   const base = sumN(fixed.map((x) => scaleN(x.food.n, x.g)));
   const caps = levers.map((l) => capsOf(l.food, l.role));
   const g = caps.map((c) => c[0]);
@@ -393,7 +401,7 @@ export const usualPortion = (f) => (f.portion ? f.portion[1] : PORTION_BY_CAT[f.
 /* Meilleures sources d'un nutriment, en quantité apportée par une PORTION habituelle (et non pour 100 g
    ou 100 kcal, qui favorisent des aliments qu'on ne mange pas en grande quantité) */
 export function bestSources(k, diet = "omni", n = 4) {
-  return FOODS.filter((f) => allowedByDiet(f, diet) && (f.n[k] || 0) > 0 && f.cat !== "sport" && f.cat !== "boisson")
+  return FOODS.filter((f) => allowedByDiet(f, diet) && (f.n[k] || 0) > 0 && f.cat !== "sport" && f.cat !== "boisson" && f.cat !== "condiment")
     .map((f) => ({ f, g: usualPortion(f), v: ((f.n[k] || 0) * usualPortion(f)) / 100 }))
     .sort((a, b) => b.v - a.v)
     .slice(0, n);

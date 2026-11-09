@@ -26,7 +26,100 @@ const MEAL_BY_ID = Object.fromEntries(MEALS.map((m) => [m.id, m]));
 const SCORED_MICROS = MICROS.filter((m) => !m.limit && m.k !== "vd"); // vit. D : rarement couverte par l'alimentation seule
 
 const round5 = (x) => Math.max(0, Math.round(x / 5) * 5);
-export const foodOf = (id, customFoods = []) => FOOD_BY_ID[id] || (customFoods || []).find((f) => f.id === id) || null;
+/* ---- Aliments perso dans les menus ----
+   Catégorie (choisie à la création, sinon devinée d'après les macros) → rôle dans un repas
+   (P = protéines, C = glucides, F = lipides, fixe = accompagnement) + repas où il a sa place. */
+export const guessCat = (f) => {
+  const n = f?.n || {};
+  const kcal = Number(n.kcal) || 1;
+  const pS = (4 * (Number(n.p) || 0)) / kcal;
+  const cS = (4 * (Number(n.c) || 0)) / kcal;
+  const fS = (9 * (Number(n.f) || 0)) / kcal;
+  if (fS >= 0.6) return "gras";
+  // protéines : « Viandes » par défaut (jamais proposé à un végétarien) ; à changer si c'est végétal
+  if (pS >= 0.3 && (Number(n.p) || 0) >= 8) return "viande";
+  if (kcal < 60) return "legume";
+  if (cS >= 0.5) return (Number(n.p) || 0) < 4 && (Number(n.fib) || 0) < 3 && kcal > 250 ? "sucre" : "feculent";
+  return "feculent";
+};
+export const roleOfCat = (cat, f) =>
+  ["viande", "poisson", "oeuf", "vegprot", "legumineuse"].includes(cat)
+    ? "P"
+    : cat === "laitier"
+    ? (Number(f?.n?.p) || 0) >= 7 ? "P" : "fixe"
+    : cat === "feculent" || cat === "sucre" || cat === "sport"
+    ? "C"
+    : cat === "gras"
+    ? "F"
+    : cat === "legume" || cat === "fruit"
+    ? "fixe"
+    : null;
+export const DEFAULT_MEALS_BY_CAT = {
+  feculent: ["petitdej", "dejeuner", "collation", "seance", "diner"],
+  legumineuse: ["dejeuner", "diner"],
+  viande: ["dejeuner", "diner"],
+  poisson: ["dejeuner", "diner"],
+  vegprot: ["dejeuner", "diner"],
+  oeuf: ["petitdej", "dejeuner", "seance", "diner"],
+  laitier: ["petitdej", "collation", "seance"],
+  legume: ["dejeuner", "diner"],
+  fruit: ["petitdej", "collation", "seance"],
+  gras: ["petitdej", "dejeuner", "collation", "seance", "diner"],
+  sucre: ["collation", "seance"],
+  sport: ["collation", "seance"],
+  boisson: [],
+};
+/* Repas par défaut, affinés : céréales / pain / barres (secs, > 300 kcal/100 g) le matin et autour des
+   séances, féculents cuits midi et soir ; huiles midi et soir, oléagineux le matin et en collation */
+export const defaultMeals = (cat, n) => {
+  const kcal = Number(n?.kcal) || 0;
+  if (cat === "feculent") return kcal > 300 ? ["petitdej", "collation", "seance"] : ["dejeuner", "diner"];
+  if (cat === "gras") return (Number(n?.f) || 0) > 90 ? ["dejeuner", "diner"] : ["petitdej", "collation", "seance"];
+  return DEFAULT_MEALS_BY_CAT[cat] || [];
+};
+export const prepCustom = (customFoods) =>
+  (customFoods || []).map((f) => {
+    const cat = f.cat && f.cat !== "perso" ? f.cat : guessCat(f);
+    return { ...f, cat, custom: true, meals: Array.isArray(f.meals) ? f.meals : defaultMeals(cat, f.n) };
+  });
+
+/* Bibliothèque de menus : aliments de base (avec tes valeurs corrigées) + tes aliments perso.
+   Chaque aliment perso est essayé dans chaque modèle de ses repas, à la place de l'aliment du même rôle
+   → plus tu crées d'aliments, plus il y a de menus possibles. */
+export function buildLibrary(customFoods = [], overrides = {}, diet = "omni") {
+  const customs = prepCustom(customFoods);
+  const byId = new Map(customs.map((f) => [f.id, f]));
+  const lookup = (id) => byId.get(id) || (FOOD_BY_ID[id] && overrides?.[id] ? { ...FOOD_BY_ID[id], n: { ...FOOD_BY_ID[id].n, ...overrides[id] } } : FOOD_BY_ID[id]) || null;
+  const templates = {};
+  Object.entries(MENU_TEMPLATES).forEach(([mid, list]) => {
+    const out = list.map((tpl) => ({ ...tpl, src: "base" }));
+    customs.forEach((f) => {
+      if (!f.meals.includes(mid) || !allowedByDiet(f, diet)) return;
+      const role = roleOfCat(f.cat, f);
+      if (!role) return;
+      const dry = (Number(f.n?.kcal) || 0) > 200;
+      list.forEach((tpl) => {
+        // un féculent remplace un féculent « du même genre » (cuit ↔ cuit, pain/céréales ↔ pain/céréales)
+        if (role === "C") {
+          const c0 = FOOD_BY_ID[tpl.C[0]];
+          if (c0 && (c0.n.kcal > 200) !== dry) return;
+        }
+        if (role === "fixe") {
+          const i = tpl.fixed.findIndex(([id]) => FOOD_BY_ID[id]?.cat === f.cat);
+          const g = f.portion?.[1] || (f.cat === "fruit" ? 120 : 150);
+          const fixed = i >= 0 ? tpl.fixed.map((x, j) => (j === i ? [f.id, g] : x)) : [...tpl.fixed, [f.id, g]];
+          out.push({ ...tpl, fixed, src: f.id, withFood: f.name });
+        } else {
+          out.push({ ...tpl, [role]: [f.id], src: f.id, withFood: f.name });
+        }
+      });
+    });
+    templates[mid] = out;
+  });
+  return { lookup, templates, customs };
+}
+
+export const foodOf = (id, customFoods = []) => FOOD_BY_ID[id] || prepCustom(customFoods).find((f) => f.id === id) || null;
 
 /* Item stockable (nutriments recalculés depuis l'aliment) */
 export const makeItem = (food, g, role = "fixe") => ({ foodId: food.id, name: food.name, g: round5(g) || Math.round(g), role, n: scaleN(food.n, g) });
@@ -57,24 +150,65 @@ function scoreTotals(T, t) {
   return macro + 1.5 * micro + 0.5 * fiber;
 }
 
-/* Propositions classées pour une journée. Retourne { meals, score, rank, count } */
-export function recommendDay(targets, { diet = "omni", rank = 0 } = {}) {
+/* Tirage pseudo-aléatoire reproductible (même rang → même proposition) */
+const rng = (seed) => {
+  let x = (seed * 2654435761) % 4294967296 || 1;
+  return () => {
+    x ^= x << 13;
+    x >>>= 0;
+    x ^= x >>> 17;
+    x ^= x << 5;
+    x >>>= 0;
+    return x / 4294967296;
+  };
+};
+const recipeMeta = (tpl) => (tpl?.rid ? { rid: tpl.rid, name: tpl.name, cuisine: tpl.cuisine, ...(tpl.withFood ? { withFood: tpl.withFood } : {}) } : null);
+const byCuisine = (list, cuisines) => {
+  if (!cuisines || !cuisines.length) return list;
+  const f = list.filter((t) => cuisines.includes(t.cuisine));
+  return f.length ? f : list; // aucune recette de ces cuisines pour ce repas → toutes
+};
+
+/* Propositions pour une journée. Retourne { meals, score, rank, count }
+   rank 0 = la meilleure ; rank > 0 = tirage parmi les meilleures recettes de chaque repas
+   (variété : « Autre proposition », remplissage de la semaine). cuisines = filtre facultatif. */
+export function recommendDay(targets, { diet = "omni", rank = 0, customFoods = [], overrides = {}, cuisines = [], avoid = [] } = {}) {
   if (!targets) return null;
+  const lib = buildLibrary(customFoods, overrides, diet);
   const meals = planMeals(targets);
-  // options résolues par repas (un modèle = une option)
+  const rand = rng(rank + 1);
+  const K = 4; // recettes retenues par repas → 4^5 combinaisons au plus
+  let total = 1;
   const options = meals.map((m) => {
     const t = mealTarget(targets, m.id);
-    return (MENU_TEMPLATES[m.id] || []).map((tpl) => {
-      const items = solveMeal(tpl, t, diet);
-      return { items, total: sumN(items.map((x) => x.n)) };
-    });
+    const tm = { ...t, fib: (targets.fib || 30) * t.share, micro: Object.fromEntries(Object.entries(targets.micro || {}).map(([key, v]) => [key, v * t.share])) };
+    const list = byCuisine(lib.templates[m.id] || [], cuisines);
+    total *= Math.max(1, list.length);
+    const scored = list
+      .map((tpl) => {
+        const items = solveMeal(tpl, t, diet, lib.lookup);
+        const tot = sumN(items.map((x) => x.n));
+        // recette déjà au menu cette semaine → légère pénalité (variété)
+        return { tpl, items, total: tot, sc: scoreTotals(tot, tm) + (avoid.includes(tpl.rid) ? 0.4 : 0) };
+      })
+      .sort((a, b) => a.sc - b.sc);
+    if (rank === 0) return scored.slice(0, K);
+    // tirage parmi la meilleure moitié (au moins 8) : on reste dans les clous tout en variant
+    const pool = scored.slice(0, Math.max(8, Math.ceil(scored.length / 2)));
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    return pool.slice(0, K);
   });
-  // produit cartésien des options (≈ 100 à 300 combinaisons)
-  const combos = [];
+  let best = null;
   const walk = (i, picked) => {
     if (i === options.length) {
       const T = sumN(picked.map((o) => o.total));
-      combos.push({ picked: picked.slice(), score: scoreTotals(T, targets) });
+      const rids = picked.map((o) => o.tpl.rid);
+      const dupPen = rids.length - new Set(rids).size; // même recette midi et soir
+      const sc = scoreTotals(T, targets) + 0.5 * dupPen;
+      if (!best || sc < best.score) best = { picked: picked.slice(), score: sc };
       return;
     }
     options[i].forEach((o) => {
@@ -84,23 +218,33 @@ export function recommendDay(targets, { diet = "omni", rank = 0 } = {}) {
     });
   };
   walk(0, []);
-  combos.sort((a, b) => a.score - b.score);
-  const k = ((rank % combos.length) + combos.length) % combos.length;
-  const best = combos[k];
+  if (!best) return null;
   return {
-    meals: meals.map((m, i) => ({ id: m.id, items: fromSolved(best.picked[i].items) })),
+    meals: meals.map((m, i) => ({ id: m.id, items: fromSolved(best.picked[i].items), recipe: recipeMeta(best.picked[i].tpl) })),
     score: best.score,
-    rank: k,
-    count: combos.length,
+    rank,
+    count: total,
   };
 }
 
-/* Autre proposition pour UN repas (modèle suivant), mêmes cibles */
-export function nextMealOption(targets, mealId, diet, idx) {
-  const list = MENU_TEMPLATES[mealId] || [];
+/* Recettes possibles pour UN repas (cuisines filtrées), pour le 🔄 du repas */
+export function mealRecipes(mealId, { diet = "omni", customFoods = [], overrides = {}, cuisines = [] } = {}) {
+  const lib = buildLibrary(customFoods, overrides, diet);
+  return { lib, list: byCuisine(lib.templates[mealId] || [], cuisines) };
+}
+
+/* Autre recette pour UN repas (la suivante dans la liste), mêmes cibles → { items, recipe } */
+export function nextMealOption(targets, mealId, diet, idx, customFoods = [], overrides = {}, cuisines = []) {
+  const { lib, list } = mealRecipes(mealId, { diet, customFoods, overrides, cuisines });
   if (!list.length) return null;
   const tpl = list[((idx % list.length) + list.length) % list.length];
-  return fromSolved(solveMeal(tpl, mealTarget(targets, mealId), diet));
+  return { items: fromSolved(solveMeal(tpl, mealTarget(targets, mealId), diet, lib.lookup)), recipe: recipeMeta(tpl) };
+}
+
+/* Une recette précise mise à l'échelle d'un repas → { items, recipe } */
+export function recipeForMeal(targets, mealId, tpl, diet, customFoods = [], overrides = {}) {
+  const lib = buildLibrary(customFoods, overrides, diet);
+  return { items: fromSolved(solveMeal(tpl, mealTarget(targets, mealId), diet, lib.lookup)), recipe: recipeMeta(tpl) };
 }
 
 /* Recalcule les quantités des aliments « leviers » (P, C, F) d'un repas pour coller à sa part des besoins.
@@ -140,13 +284,13 @@ export function alternatives(item, diet = "omni", customFoods = []) {
   const food = foodOf(item.foodId, customFoods);
   if (!food) return [];
   const cats = item.role === "P" ? PROT_CATS : item.role === "F" ? ["gras"] : item.role === "C" ? ["feculent", "legumineuse"] : [food.cat];
-  return [...FOODS, ...(customFoods || []).map((f) => ({ ...f, cat: f.cat || "perso" }))]
+  return [...FOODS, ...prepCustom(customFoods)]
     .filter((f) => f.id !== food.id && cats.includes(f.cat) && allowedByDiet(f, diet))
     .filter((f) => (item.role === "P" ? f.n.p >= 8 : true));
 }
 
 /* « Dans les clous » ? status : ok | close | off ; issues = ce qui coince */
-export function dayCheck(T, t) {
+export function dayCheck(T, t, diet = "omni") {
   if (!T || !t) return null;
   const r = (a, b) => (b > 0 ? a / b : 1);
   const checks = [];
@@ -158,7 +302,8 @@ export function dayCheck(T, t) {
   checks.push({ k: "c", st: Math.abs(c - 1) <= 0.15 ? "ok" : Math.abs(c - 1) <= 0.25 ? "close" : "off", txt: `glucides ${Math.round(c * 100)} %` });
   const f = r(T.f, t.f);
   checks.push({ k: "f", st: Math.abs(f - 1) <= 0.2 ? "ok" : Math.abs(f - 1) <= 0.3 ? "close" : "off", txt: `lipides ${Math.round(f * 100)} %` });
-  const lowMicros = SCORED_MICROS.filter((m) => (T[m.k] || 0) < 0.7 * (t.micro[m.k] || 0));
+  // végétarien : EPA/DHA quasi absents de l'alimentation → couverts par un complément d'algues (conseil affiché), pas compté ici
+  const lowMicros = SCORED_MICROS.filter((m) => !(diet === "vege" && m.k === "o3") && (T[m.k] || 0) < 0.7 * (t.micro[m.k] || 0));
   const microSt = lowMicros.length === 0 ? "ok" : lowMicros.length <= 2 ? "close" : "off";
   const order = { ok: 0, close: 1, off: 2 };
   const worst = [...checks.map((x) => x.st), microSt].reduce((a, b) => (order[b] > order[a] ? b : a), "ok");

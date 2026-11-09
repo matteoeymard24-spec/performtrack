@@ -5,9 +5,12 @@ import { CARD_STYLE, FIELD_STYLE, TEXT, MUTED, ACCENT } from "./ui";
 import FoodPicker from "./FoodPicker";
 import { appConfirm, appAlert as alert } from "./appDialog";
 import { computeTargets, DAY_TYPES, DAY_BY_ID, MICROS, fmtN, todayISO, shiftISO, bestSources } from "./nutritionData";
+import { CUISINES, CUISINE_BY_ID } from "./recipes";
+import RecipeBook from "./RecipeBook";
 import {
   recommendDay,
   nextMealOption,
+  recipeForMeal,
   rebalanceMeal,
   alternatives,
   makeItem,
@@ -91,9 +94,12 @@ function Gauge({ label, v, t, unit, color, tol = 0.1 }) {
   );
 }
 
-export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd, onFoodValues }) {
+export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd, onFoodValues, onCuisines }) {
   const diet = settings?.diet || "omni";
   const customFoods = settings?.customFoods || [];
+  const cuisines = settings?.cuisines || []; // [] = toutes les cuisines
+  const [showCuisines, setShowCuisines] = useState(false);
+  const [showBook, setShowBook] = useState(false);
   const [weekStart, setWeekStart] = useState(() => mondayOf(todayISO()));
   const [sel, setSel] = useState(todayISO());
   const [plans, setPlans] = useState({}); // date → plan
@@ -151,22 +157,43 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
   const recommend = (date, r = 0, dayType) => {
     const dt = dayType || plans[date]?.dayType || "modere";
     const t = computeTargets(settings, dt);
-    const rec = recommendDay(t, { diet, rank: r });
+    // recettes déjà prévues les autres jours de la semaine → évitées si possible (variété)
+    const avoid = days.filter((d) => d !== date).flatMap((d) => (plans[d]?.meals || []).map((m) => m.recipe?.rid).filter(Boolean));
+    const rec = recommendDay(t, { diet, rank: r, customFoods, overrides: settings?.foodOverrides, cuisines, avoid });
     if (!rec) return;
     setRank((x) => ({ ...x, [date]: rec.rank }));
     setPlan(date, { dayType: dt, meals: rec.meals });
+    return rec;
   };
   const fillWeek = async () => {
     const empty = days.filter((d) => !plans[d]);
     if (!empty.length) return alert("Tous les jours de la semaine ont déjà un menu.");
-    // un rang différent par jour → des menus variés
-    empty.forEach((d, i) => recommend(d, i * 7 + 1));
+    // un rang différent par jour + recettes déjà prévues évitées → des menus variés
+    const used = days.flatMap((d) => (plans[d]?.meals || []).map((m) => m.recipe?.rid).filter(Boolean));
+    empty.forEach((d, i) => {
+      const dt = plans[d]?.dayType || "modere";
+      const rec = recommendDay(computeTargets(settings, dt), { diet, rank: i * 7 + 1, customFoods, overrides: settings?.foodOverrides, cuisines, avoid: used });
+      if (!rec) return;
+      rec.meals.forEach((m) => m.recipe?.rid && used.push(m.recipe.rid));
+      setRank((x) => ({ ...x, [d]: rec.rank }));
+      setPlan(d, { dayType: dt, meals: rec.meals });
+    });
+  };
+  /* Recette choisie dans le livre → mise à l'échelle du repas du jour sélectionné */
+  const useRecipe = (tpl, mealId) => {
+    const dt = plans[sel]?.dayType || "modere";
+    const tt = computeTargets(settings, dt);
+    const { items, recipe } = recipeForMeal(tt, mealId, tpl, diet, customFoods, settings?.foodOverrides);
+    const cur = plans[sel] || { dayType: dt, meals: [] };
+    const meals = cur.meals.some((m) => m.id === mealId) ? cur.meals.map((m) => (m.id === mealId ? { ...m, items, recipe } : m)) : [...cur.meals, { id: mealId, items, recipe }];
+    setPlan(sel, { ...cur, meals });
+    setShowBook(false);
   };
 
   const plan = plans[sel];
   const t = targetsOf(sel);
   const T = plan ? planTotal(plan) : null;
-  const check = plan && t ? dayCheck(T, t) : null;
+  const check = plan && t ? dayCheck(T, t, diet) : null;
 
   const updateMeal = (mealId, fn) => {
     if (!plan) return;
@@ -214,12 +241,49 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
             ✨ Remplir les jours vides
           </button>
         </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+          <button type="button" style={chip(showCuisines)} onClick={() => setShowCuisines(!showCuisines)}>
+            🌍 Cuisines : {cuisines.length ? cuisines.map((c) => CUISINE_BY_ID[c]?.flag).join(" ") : "toutes"}
+          </button>
+          <button type="button" style={chip(showBook)} onClick={() => setShowBook(!showBook)}>
+            📖 Livre de recettes
+          </button>
+        </div>
+        {showCuisines && (
+          <div style={{ padding: 10, borderRadius: 12, background: "#0d0c0a", border: `1px solid ${BORDER}`, marginBottom: 10 }}>
+            <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 8 }}>Les menus proposés ne piochent que dans les cuisines choisies (aucune = toutes).</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" style={chip(!cuisines.length)} onClick={() => onCuisines && onCuisines([])}>
+                Toutes
+              </button>
+              {CUISINES.map((c) => {
+                const on = cuisines.includes(c.id);
+                return (
+                  <button key={c.id} type="button" style={chip(on)} onClick={() => onCuisines && onCuisines(on ? cuisines.filter((x) => x !== c.id) : [...cuisines, c.id])}>
+                    {c.flag} {c.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {showBook && (
+          <RecipeBook
+            diet={diet}
+            targetsFor={(mealId) => ({ t: computeTargets(settings, plans[sel]?.dayType || "modere"), mealId })}
+            customFoods={customFoods}
+            overrides={settings?.foodOverrides}
+            dayLabel={dayLabel(sel, { weekday: "long", day: "numeric", month: "short" })}
+            onUse={useRecipe}
+            onClose={() => setShowBook(false)}
+          />
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 6 }}>
           {days.map((d) => {
             const p = plans[d];
             const tt = targetsOf(d);
             const tot = p ? planTotal(p) : null;
-            const ck = p && tt ? dayCheck(tot, tt) : null;
+            const ck = p && tt ? dayCheck(tot, tt, diet) : null;
             const st = ck ? STATUS_UI[ck.status] : null;
             const on = d === sel;
             const pct = tot && tt ? Math.min(1.2, tot.kcal / tt.kcal) : 0;
@@ -391,13 +455,13 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
                         <div style={{ display: "flex", gap: 4 }}>
                           <button
                             type="button"
-                            title="Changer ce repas (autre idée, mêmes besoins)"
+                            title="Autre recette pour ce repas (mêmes besoins)"
                             style={iconBtn(ACCENT)}
                             onClick={() => {
                               const idx = (mealIdx[key] ?? 0) + 1;
                               setMealIdx((x) => ({ ...x, [key]: idx }));
-                              const items = nextMealOption(t, mid, diet, idx);
-                              if (items) updateMeal(mid, (m) => ({ ...m, items }));
+                              const nx = nextMealOption(t, mid, diet, idx, customFoods, settings?.foodOverrides, cuisines);
+                              if (nx) updateMeal(mid, (m) => ({ ...m, items: nx.items, recipe: nx.recipe }));
                             }}
                           >
                             🔄
@@ -407,6 +471,13 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
                           </button>
                         </div>
                       </div>
+                      {meal.recipe?.name && (
+                        <div style={{ fontSize: 12.5, color: "#c9c1b5", marginBottom: 6, display: "flex", gap: 6, alignItems: "baseline", flexWrap: "wrap" }}>
+                          <span>{CUISINE_BY_ID[meal.recipe.cuisine]?.flag || "🍽️"}</span>
+                          <b style={{ color: TEXT }}>{meal.recipe.name}</b>
+                          {meal.recipe.withFood && <span style={{ color: ACCENT, fontSize: 11.5 }}>· avec {meal.recipe.withFood}</span>}
+                        </div>
+                      )}
                       {(meal.items || []).map((it, i) => {
                         const sk = `${mid}_${i}`;
                         const alts = swap === sk ? alternatives(it, diet, customFoods) : [];
@@ -502,6 +573,7 @@ export default function MealPlanner({ uid, settings, onSaveCustom, onJournalAdd,
             </div>
             <div style={{ fontSize: 11.5, color: MUTED, marginTop: 10 }}>
               🔄 change un repas · 🔁 remplace un aliment (les quantités du repas sont recalculées) · ⚖️ réajuste toute la journée · les quantités restent modifiables à la main.
+              {" "}📖 Le livre de recettes (classé par cuisine) permet de choisir une recette précise. ⭐ Tes aliments créés entrent dans les menus proposés (catégorie et repas réglables via ✏️ Valeurs) : plus tu en crées, plus les menus varient.
             </div>
           </>
         )}

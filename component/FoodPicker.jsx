@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { FIELD_STYLE, TEXT, MUTED, ACCENT } from "./ui";
-import { FOODS, FOOD_BY_ID, FOOD_CATS, allowedByDiet, scaleN, fmtN } from "./nutritionData";
+import { FOODS, FOOD_BY_ID, FOOD_CATS, MEALS, allowedByDiet, scaleN, fmtN } from "./nutritionData";
+import { guessCat, roleOfCat, defaultMeals } from "./mealPlan";
 
 /* =====================================================================
    FoodPicker.jsx — recherche d'aliment + quantité (g ou portions) + création d'aliment perso.
@@ -94,10 +95,52 @@ export function EntryEditor({ entry, customFoods, foodOverrides, onSave, onCance
   );
 }
 
+/* ---------- Catégorie + repas d'un aliment perso (pour que le Planning s'en serve dans ses menus) ---------- */
+const ROLE_TXT = { P: "source de protéines", C: "source de glucides", F: "matière grasse", fixe: "accompagnement" };
+function MenuUse({ cat, meals, n, onChange }) {
+  const role = roleOfCat(cat, { n });
+  const list = meals || defaultMeals(cat, n);
+  return (
+    <div style={{ gridColumn: "1 / -1", padding: 10, borderRadius: 10, background: "#151310", border: `1px solid ${BORDER}` }}>
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: TEXT, marginBottom: 6 }}>🍽️ Dans les menus proposés</div>
+      <label style={lbl}>Catégorie</label>
+      <select value={cat} onChange={(e) => onChange(e.target.value, defaultMeals(e.target.value, n))} style={{ ...FIELD_STYLE, marginBottom: 6 }}>
+        {Object.entries(FOOD_CATS).map(([k, l]) => (
+          <option key={k} value={k}>
+            {l}
+          </option>
+        ))}
+      </select>
+      {role ? (
+        <>
+          <label style={lbl}>Utilisé comme {ROLE_TXT[role]} pour :</label>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {MEALS.map((m) => {
+              const on = list.includes(m.id);
+              return (
+                <button key={m.id} type="button" style={{ ...chip(on), padding: "5px 10px", fontSize: 12 }} onClick={() => onChange(cat, on ? list.filter((x) => x !== m.id) : [...list, m.id])}>
+                  {m.icon} {m.label}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div style={{ fontSize: 12, color: MUTED }}>Cette catégorie n'entre pas dans les menus proposés (tu peux toujours l'ajouter à la main).</div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Valeurs d'un aliment (pour 100 g) : modifier / revenir aux valeurs d'origine ---------- */
 function FoodValuesEditor({ food, onSave, onReset, onCancel }) {
   const r1 = (v) => String(Math.round((Number(v) || 0) * 10) / 10);
   const [vals, setVals] = useState(Object.fromEntries(MACRO_FIELDS.map(([k]) => [k, r1(food.n[k])])));
+  const isCustom = food.cat === "perso" || food.custom;
+  const [use, setUse] = useState(() => {
+    const cat = food.foodCat || guessCat(food);
+    return { cat, meals: Array.isArray(food.meals) ? food.meals : defaultMeals(cat, food.n) };
+  });
   const num = (v) => Number(String(v).replace(",", ".")) || 0;
   return (
     <div style={{ marginTop: 8, padding: 10, borderRadius: 10, background: "#0d0c0a", border: `1px dashed ${ACCENT}66` }}>
@@ -110,8 +153,13 @@ function FoodValuesEditor({ food, onSave, onReset, onCancel }) {
           </div>
         ))}
       </div>
+      {isCustom && (
+        <div style={{ display: "grid", marginTop: 8 }}>
+          <MenuUse cat={use.cat} meals={use.meals} n={food.n} onChange={(cat, meals) => setUse({ cat, meals })} />
+        </div>
+      )}
       <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-        <button type="button" className="pt-btn pt-btn--primary" onClick={() => onSave(Object.fromEntries(MACRO_FIELDS.map(([k]) => [k, num(vals[k])])))}>
+        <button type="button" className="pt-btn pt-btn--primary" onClick={() => onSave(Object.fromEntries(MACRO_FIELDS.map(([k]) => [k, num(vals[k])])), isCustom ? use : null)}>
           Enregistrer les valeurs
         </button>
         {food.edited && onReset && (
@@ -136,7 +184,8 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
   const [creating, setCreating] = useState(false);
   const [editVals, setEditVals] = useState(false);
   const [cf, setCf] = useState({ name: "", kcal: "", p: "", c: "", f: "", fib: "", portionLabel: "", portionG: "" });
-  const all = [...(customFoods || []).map((f) => ({ ...f, cat: "perso" })), ...FOODS.map((f) => withOverride(f, foodOverrides))];
+  const [cfUse, setCfUse] = useState(null); // { cat, meals } choisis ; null = deviné d'après les macros
+  const all = [...(customFoods || []).map((f) => ({ ...f, foodCat: f.cat && f.cat !== "perso" ? f.cat : undefined, cat: "perso" })), ...FOODS.map((f) => withOverride(f, foodOverrides))];
   const norm = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
   const list = all
     .filter((f) => (!cat || f.cat === cat) && (!q || norm(f.name).includes(norm(q))))
@@ -194,9 +243,9 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
                   key={sel.id}
                   food={sel}
                   onCancel={() => setEditVals(false)}
-                  onSave={(per100) => {
-                    onFoodValues(sel, per100);
-                    setSel({ ...sel, n: { ...sel.n, ...per100 }, edited: sel.cat !== "perso" });
+                  onSave={(per100, use) => {
+                    onFoodValues(sel, per100, use);
+                    setSel({ ...sel, n: { ...sel.n, ...per100 }, edited: sel.cat !== "perso", ...(use ? { foodCat: use.cat, meals: use.meals } : {}) });
                     setEditVals(false);
                   }}
                   onReset={
@@ -266,7 +315,7 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
             </div>
           ) : (
             <div style={{ maxHeight: 280, overflowY: "auto" }}>
-              {list.slice(0, 60).map((f) => (
+              {list.slice(0, 400).map((f) => (
                 <button
                   key={f.id}
                   type="button"
@@ -331,6 +380,12 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
               <label style={lbl}>Portion (g)</label>
               <input type="number" value={cf.portionG} onChange={(e) => setCf({ ...cf, portionG: e.target.value })} style={FIELD_STYLE} />
             </div>
+            {(() => {
+              const n0 = { kcal: num(cf.kcal), p: num(cf.p), c: num(cf.c), f: num(cf.f), fib: num(cf.fib) };
+              const gc = guessCat({ n: n0 });
+              const use = cfUse || { cat: gc, meals: defaultMeals(gc, n0) };
+              return <MenuUse cat={use.cat} meals={use.meals} n={n0} onChange={(cat, meals) => setCfUse({ cat, meals })} />;
+            })()}
           </div>
           <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
             <button
@@ -338,15 +393,21 @@ export default function FoodPicker({ customFoods, diet, meal, onAdd, onClose, on
               className="pt-btn pt-btn--primary"
               disabled={!cf.name.trim() || !(num(cf.kcal) > 0)}
               onClick={() => {
+                const n0 = { kcal: num(cf.kcal), p: num(cf.p), c: num(cf.c), f: num(cf.f), fib: num(cf.fib) };
+                const gc = guessCat({ n: n0 });
+                const use = cfUse || { cat: gc, meals: defaultMeals(gc, n0) };
                 const food = {
                   id: "perso_" + uidN(),
                   name: cf.name.trim(),
-                  n: { kcal: num(cf.kcal), p: num(cf.p), c: num(cf.c), f: num(cf.f), fib: num(cf.fib) },
+                  n: n0,
+                  cat: use.cat,
+                  meals: use.meals,
                   ...(cf.portionLabel && num(cf.portionG) > 0 ? { portion: [cf.portionLabel, num(cf.portionG)] } : {}),
                 };
                 onSaveCustom(food);
                 setCreating(false);
-                setSel({ ...food, cat: "perso" });
+                setCfUse(null);
+                setSel({ ...food, foodCat: food.cat, cat: "perso" });
               }}
             >
               Enregistrer l'aliment
