@@ -1,5 +1,5 @@
 import WellbeingTabs from "../component/WellbeingTabs";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useRef, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, ReferenceLine } from "recharts";
@@ -170,30 +170,81 @@ const smallBtn = (c = MUTED) => ({ padding: "5px 10px", borderRadius: 8, border:
 const lbl = { display: "block", fontSize: 11.5, color: MUTED, fontWeight: 700, marginBottom: 4 };
 
 /* ---------- Gourde (hydratation) ---------- */
-function Bottle({ ml, target, size = 120 }) {
+/* Gourde interactive : glisser le doigt / la souris de bas en haut pour la remplir (pleine = objectif).
+   onDrag(ml) pendant le geste, onCommit(ml) au lâcher. Pas de 50 ml. */
+function Bottle({ ml, target, size = 120, onDrag, onCommit }) {
   const pct = target > 0 ? Math.min(1, ml / target) : 0;
+  const w = size * 0.7;
   const h = size * 1.5;
-  const fillH = (h - 26) * pct;
+  const top = 22;
+  const inner = h - 26;
+  const fillH = inner * pct;
+  const dragging = useRef(false);
+  const mlAt = (e, el) => {
+    const r = el.getBoundingClientRect();
+    const y = ((e.clientY - r.top) / r.height) * h; // coordonnées SVG
+    const frac = Math.max(0, Math.min(1, (h - 4 - y) / inner));
+    return Math.round((frac * target) / 50) * 50;
+  };
+  const interactive = !!onCommit;
   return (
-    <svg width={size * 0.7} height={h} viewBox={`0 0 ${size * 0.7} ${h}`} aria-label={`${ml} ml sur ${target}`}>
+    <svg
+      width={w}
+      height={h}
+      viewBox={`0 0 ${w} ${h}`}
+      aria-label={`${ml} ml sur ${target}`}
+      style={{ touchAction: interactive ? "none" : undefined, cursor: interactive ? "ns-resize" : undefined, flexShrink: 0, userSelect: "none" }}
+      onPointerDown={
+        interactive
+          ? (e) => {
+              dragging.current = true;
+              e.currentTarget.setPointerCapture?.(e.pointerId);
+              onDrag && onDrag(mlAt(e, e.currentTarget));
+            }
+          : undefined
+      }
+      onPointerMove={interactive ? (e) => dragging.current && onDrag && onDrag(mlAt(e, e.currentTarget)) : undefined}
+      onPointerUp={
+        interactive
+          ? (e) => {
+              if (!dragging.current) return;
+              dragging.current = false;
+              onCommit(mlAt(e, e.currentTarget));
+            }
+          : undefined
+      }
+      onPointerCancel={
+        interactive
+          ? () => {
+              dragging.current = false;
+              onDrag && onDrag(null);
+            }
+          : undefined
+      }
+    >
       <defs>
         <clipPath id="btl">
-          <rect x={6} y={22} width={size * 0.7 - 12} height={h - 26} rx={16} />
+          <rect x={6} y={top} width={w - 12} height={inner} rx={16} />
         </clipPath>
         <linearGradient id="water" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#7cc0f0" />
           <stop offset="1" stopColor="#3a7fc0" />
         </linearGradient>
       </defs>
-      <rect x={size * 0.35 - 12} y={2} width={24} height={14} rx={4} fill="#3a342a" />
-      <rect x={6} y={22} width={size * 0.7 - 12} height={h - 26} rx={16} fill="#0d0c0a" stroke="#3a342a" strokeWidth={2} />
+      <rect x={w / 2 - 12} y={2} width={24} height={14} rx={4} fill="#3a342a" />
+      <rect x={6} y={top} width={w - 12} height={inner} rx={16} fill="#0d0c0a" stroke={interactive ? "#5b9bd588" : "#3a342a"} strokeWidth={2} />
       <g clipPath="url(#btl)">
-        <rect x={6} y={h - 4 - fillH} width={size * 0.7 - 12} height={fillH} fill="url(#water)" />
-        {pct > 0 && pct < 1 && <path d={`M6 ${h - 4 - fillH} q ${(size * 0.7 - 12) / 4} -6 ${(size * 0.7 - 12) / 2} 0 t ${(size * 0.7 - 12) / 2} 0`} fill="#7cc0f0" />}
+        <rect x={6} y={h - 4 - fillH} width={w - 12} height={fillH} fill="url(#water)" />
+        {pct > 0 && pct < 1 && <path d={`M6 ${h - 4 - fillH} q ${(w - 12) / 4} -6 ${(w - 12) / 2} 0 t ${(w - 12) / 2} 0`} fill="#7cc0f0" />}
       </g>
       {[0.25, 0.5, 0.75].map((t) => (
-        <line key={t} x1={size * 0.7 - 18} x2={size * 0.7 - 8} y1={h - 4 - (h - 26) * t} y2={h - 4 - (h - 26) * t} stroke="#6f6a62" strokeWidth={1.5} />
+        <line key={t} x1={w - 18} x2={w - 8} y1={h - 4 - inner * t} y2={h - 4 - inner * t} stroke="#6f6a62" strokeWidth={1.5} />
       ))}
+      {interactive && pct < 0.92 && (
+        <text x={w / 2} y={top + 18} textAnchor="middle" fontSize="10" fill="#6f6a62">
+          ⇕
+        </text>
+      )}
     </svg>
   );
 }
@@ -326,6 +377,8 @@ export default function Nutrition() {
   }, [date, uid]);
   // entraînement prévu ce jour-là (Workout + matchs) → type de journée par défaut des jours pas encore remplis
   const [trainDay, setTrainDay] = useState(undefined); // undefined = en cours, null = rien de prévu
+  const [waterDrag, setWaterDrag] = useState(null); // ml pendant le glisser dans la gourde
+  const [waterEdit, setWaterEdit] = useState(null); // saisie en cours dans le champ « ml »
   useEffect(() => {
     if (!uid || loading) return;
     let alive = true;
@@ -358,6 +411,15 @@ export default function Nutrition() {
   }, [loading, day, tab]);
 
   const targets = useMemo(() => (settings ? computeTargets(settings, day?.dayType || "modere") : null), [settings, day?.dayType]);
+
+  /* Eau : nouvelle quantité totale (glisser / saisie) ; l'écart est noté dans l'historique du jour */
+  const setWaterTo = (v) => {
+    setWaterDrag(null);
+    const cur = day?.water || 0;
+    const nv = Math.max(0, Math.round(v));
+    if (!day || nv === cur) return;
+    saveDay({ ...day, water: nv, waterLog: [...(day.waterLog || []), { t: new Date().toTimeString().slice(0, 5), ml: nv - cur }] });
+  };
 
   /* ---- enregistrement ---- */
   const saveDay = async (next) => {
@@ -514,7 +576,7 @@ export default function Nutrition() {
                   icon={dt.icon}
                   label="Journée"
                   value={SHORT[day.dayType] || dt.label}
-                  sub={trainDay === undefined ? "…" : trainDay?.match ? "match prévu" : trainDay?.sessions.length ? `${trainDay.sessions.length} séance${trainDay.sessions.length > 1 ? "s" : ""} · ~${trainDay.minutes} min` : "pas de séance prévue"}
+                  sub={trainDay === undefined ? "…" : trainDay?.match ? "match prévu" : trainDay?.sessions.length ? `${trainDay.sessions.length} séance${trainDay.sessions.length > 1 ? "s" : ""} · charge ${Math.round(trainDay.load)} UA` : "pas de séance prévue"}
                   color={day.dayType === "repos" ? MUTED : day.dayType === "match" ? RED : ACCENT}
                 />
               </>
@@ -893,12 +955,44 @@ export default function Nutrition() {
               <div id="nutri-eau" style={{ scrollMarginTop: "calc(var(--pt-header-h, 60px) + 12px)" }}>
               <FoldCard id="water_day" fold={fold} title="💧 Eau du jour">
                 <div style={{ display: "flex", gap: 18, alignItems: "center", flexWrap: "wrap" }}>
-                  <Bottle ml={day.water || 0} target={targets.water} />
+                  {(() => {
+                    const cur = day.water || 0;
+                    const shown = waterDrag != null ? waterDrag : cur;
+                    return (
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <Bottle ml={shown} target={targets.water} onDrag={setWaterDrag} onCommit={(v) => setWaterTo(v)} />
+                        <div>
+                          <div style={{ fontSize: 11.5, color: MUTED, fontWeight: 700, marginBottom: 4 }}>BU AUJOURD'HUI</div>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={0}
+                              step={50}
+                              value={waterDrag != null ? waterDrag : waterEdit ?? cur}
+                              onChange={(e) => setWaterEdit(e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onBlur={() => {
+                                if (waterEdit == null) return;
+                                const v = Math.max(0, Math.round(Number(String(waterEdit).replace(",", ".")) || 0));
+                                setWaterEdit(null);
+                                if (v !== cur) setWaterTo(v);
+                              }}
+                              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                              aria-label="Millilitres bus"
+                              style={{ width: 92, padding: "6px 8px", borderRadius: 10, border: `1px solid ${BLUE}88`, background: "#0d0c0a", color: BLUE, fontSize: 22, fontWeight: 900, textAlign: "right" }}
+                            />
+                            <span style={{ fontSize: 15, fontWeight: 800, color: BLUE }}>ml</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>
+                            {Math.round((shown / targets.water) * 100)} % de {(targets.water / 1000).toLocaleString("fr-FR")} L
+                          </div>
+                          <div style={{ fontSize: 11, color: "#6f6a62", marginTop: 6, maxWidth: 140 }}>Glisse dans la gourde ou tape la quantité</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                   <div style={{ flex: "1 1 220px" }}>
-                    <div style={{ fontSize: 30, fontWeight: 900, color: BLUE }}>
-                      {((day.water || 0) / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} L
-                      <span style={{ fontSize: 14, color: MUTED, fontWeight: 600 }}> / {(targets.water / 1000).toLocaleString("fr-FR")} L</span>
-                    </div>
                     <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>
                       Objectif : 35 ml/kg + ~0,6 L par heure d'entraînement ({DAY_BY_ID[day.dayType]?.label.toLowerCase()}).
                     </div>
@@ -929,7 +1023,7 @@ export default function Nutrition() {
                     </div>
                     {(day.waterLog || []).length > 0 && (
                       <div style={{ fontSize: 12, color: MUTED, marginTop: 8 }}>
-                        {(day.waterLog || []).map((w) => `${w.t} · ${w.ml} ml`).join("  —  ")}
+                        {(day.waterLog || []).map((w) => `${w.t} · ${w.ml > 0 ? "+" : ""}${w.ml} ml`).join("  —  ")}
                       </div>
                     )}
                   </div>

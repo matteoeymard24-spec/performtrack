@@ -779,7 +779,7 @@ export const FORM_LEVELS = {
   nodata: { label: "Données insuffisantes", color: "#a8a199", emoji: "❔", rank: 4 },
 };
 
-export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctChange, neural, sick = false }) {
+export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctChange, neural, sick = false, effort = null }) {
   const hasRedi = rediRatioValue !== null && rediRatioValue !== undefined;
   const hasZ = wellnessZ !== null && wellnessZ !== undefined;
   const hasScore = wellnessScore !== null && wellnessScore !== undefined;
@@ -808,6 +808,20 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
   } else if (hasScore) {
     if (wellnessScore < 5) { well = 2; reasons.push(`Wellness bas (${wellnessScore.toFixed(1)}/10)`); }
     else if (wellnessScore < 6.5) { well = 1; reasons.push(`Wellness moyen (${wellnessScore.toFixed(1)}/10)`); }
+  }
+
+  // Effort perçu de la dernière séance vs ses habitudes (effortZ.js) : signal SUBJECTIF, il s'ajoute
+  // au domaine bien-être (une séance seule « plus dure » = vigilance ; avec un wellness en baisse = alerte).
+  if (effort && effort.z != null) {
+    const when = effort.date ? ` (${effort.date.slice(8, 10)}/${effort.date.slice(5, 7)})` : "";
+    const fr1 = (v) => String(Math.round(v * 10) / 10).replace(".", ",");
+    const how = effort.kind === "delta" ? `RPE ${fr1(effort.felt)} pour ${effort.planned} prévu` : `RPE ${fr1(effort.felt)}`;
+    if (effort.z >= 1.5) {
+      well = Math.min(2, well + 1);
+      reasons.push(`Séance « ${effort.title} »${when} ressentie bien plus dure que d'habitude : ${how}, z = +${effort.z.toFixed(1).replace(".", ",")}`);
+    } else if (effort.z <= -1.5) {
+      reasons.push(`Séance « ${effort.title} »${when} ressentie plus facile que d'habitude (z = ${effort.z.toFixed(1).replace(".", ",")}) : bonne adaptation`);
+    }
   }
 
   // Les séries de force (RPE, e1RM) sont un signal bruité : seules, elles plafonnent à « vigilance ».

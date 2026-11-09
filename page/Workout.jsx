@@ -9,7 +9,9 @@ import { isDistanceMode, courseOf, targetTimeSec, distanceInTime, estimatedEffor
 import { targetRir, analyzeSets, rirTxt, fr as frNum, LOSS_WARN, LOSS_STOP } from "../component/loadAdjust";
 import { isLoadedBodyweight, totalLoad, lestText } from "../component/bodyweightLoad";
 import { BLOCK_TYPES, blockTypeOf, sessionBlockTypes, isMixedSession, hasBlockType, defaultExerciseFor, typeLabel, setDefaultEnduRef, defaultEnduRef } from "../component/blockType";
-import { FOSTER_CR10, doneDateOf } from "../component/sessionLoad";
+import { FOSTER_CR10, doneDateOf, sessionRpe } from "../component/sessionLoad";
+import { effortZ, effortZText } from "../component/effortZ";
+import { predictSessionRpe, baseRpe, expectedRpeFor } from "../component/rpePredict";
 import { buildSprintReps, summarizeSprint, sprintEntry, fmtTime, SPRINT_LOSS_WARN, SPRINT_LOSS_STOP } from "../component/sprintFeedback";
 import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, isCustomTarget, invalidateQueryCache } from "../component/workoutQueries";
 import { FoldBtn, useFold, PageHeader, stickyHead } from "../component/ui";
@@ -522,6 +524,7 @@ export default function Workout() {
   const [editOrig, setEditOrig] = useState(null); // { date, time, title } de la séance avant modification
   const [applyToCopies, setApplyToCopies] = useState(true);
   const [workoutType, setWorkoutType] = useState("muscu");
+  const [plannedRpe, setPlannedRpe] = useState(null); // RPE de séance prévu par le coach (CR-10), visible par le coach seulement
   // Type de la séance (= type par défaut des blocs) ; alias utilisé dans la boucle des blocs du
   // formulaire, où « workoutType » désigne le type du BLOC.
   const formSessionType = workoutType;
@@ -2569,6 +2572,7 @@ export default function Workout() {
           blocks: s.blocks,
           type: s.type || "muscu",
           estimatedDuration: plannedMinutes(s),
+          plannedRpe: s.plannedRpe ?? null,
           createdBy: currentUser.uid,
           createdAt: serverTimestamp(),
           duplicatedFrom: s.id,
@@ -2650,6 +2654,7 @@ export default function Workout() {
           blocks: s.blocks,
           type: s.type || "muscu",
           estimatedDuration: plannedMinutes(s),
+          plannedRpe: s.plannedRpe ?? null,
           createdBy: currentUser.uid,
           createdAt: serverTimestamp(),
           duplicatedFrom: s.id,
@@ -2837,6 +2842,7 @@ export default function Workout() {
           blocks: sessionToDuplicate.blocks,
           type: sessionToDuplicate.type || "muscu",
           estimatedDuration: plannedMinutes(sessionToDuplicate),
+          plannedRpe: sessionToDuplicate.plannedRpe ?? null,
           createdBy: currentUser.uid,
           createdAt: serverTimestamp(),
           duplicatedFrom: sessionToDuplicate.id,
@@ -2903,6 +2909,7 @@ export default function Workout() {
       blocks,
       type: workoutType,
       estimatedDuration: Math.round(dur / 60),
+      plannedRpe: plannedRpe ?? null,
       createdBy: currentUser.uid,
       createdAt: serverTimestamp(),
     };
@@ -2995,6 +3002,7 @@ export default function Workout() {
     setExtraGroups([]);
     setTargetUserId("");
     setWorkoutType("muscu");
+    setPlannedRpe(null);
     setBlocks([
       {
         name: "Bloc A",
@@ -3028,6 +3036,7 @@ export default function Workout() {
     setExtraGroups([]);
     setTargetUserId(session.targetUserId || "");
     setWorkoutType(session.type || "muscu");
+    setPlannedRpe(session.plannedRpe ?? null);
     // Copie PROFONDE : sinon modifier le formulaire (ajout d'exo, etc.) puis
     // annuler modifiait quand même la séance affichée en mémoire.
     setBlocks(JSON.parse(JSON.stringify(session.blocks || [])));
@@ -7504,6 +7513,55 @@ export default function Workout() {
               }}
             />
           </div>
+          {/* RPE de séance prévu (échelle CR-10 de Foster) : visible par le coach seulement */}
+          <div style={{ marginBottom: 18 }}>
+            <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: "bold" }}>
+              🎯 RPE prévu de la séance <span style={{ fontWeight: 400, fontSize: 12, color: "#a8a199" }}>· visible par toi seulement</span>
+            </label>
+            {(() => {
+              const auto = predictSessionRpe({ type: workoutType, blocks });
+              return (
+                <div style={{ fontSize: 12.5, color: "#c9c1b5", marginBottom: 6 }}>
+                  ⚙️ Automatique d'après la prescription (%RM, reps, RIR, intensité) :{" "}
+                  <b style={{ color: auto ? rirRpeColor(auto.rpe) : "#a8a199" }}>{auto ? `${String(auto.rpe).replace(".", ",")}/10` : "—"}</b>
+                  {plannedRpe ? (
+                    <button type="button" onClick={() => setPlannedRpe(null)} style={{ marginLeft: 8, padding: "2px 8px", borderRadius: 999, border: "1px solid #2a2620", background: "transparent", color: "#a8a199", fontSize: 11.5, cursor: "pointer" }}>
+                      revenir à l'automatique
+                    </button>
+                  ) : (
+                    <span style={{ color: "#4fae7d", fontWeight: 700 }}> · utilisé</span>
+                  )}
+                  <div style={{ fontSize: 11.5, color: "#8a8378", marginTop: 2 }}>Ensuite ajusté pour chaque athlète d'après ses séances passées. Choisis un chiffre pour l'imposer.</div>
+                </div>
+              );
+            })()}
+            <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => {
+                const on = Number(plannedRpe) === v;
+                const c = rirRpeColor(v);
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setPlannedRpe(on ? null : v)}
+                    title={FOSTER_CR10[v]}
+                    style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${on ? c : "#2a2620"}`, background: on ? `${c}33` : "#0d0c0a", color: on ? c : "#c9c1b5", fontWeight: 800, cursor: "pointer" }}
+                  >
+                    {v}
+                  </button>
+                );
+              })}
+            </div>
+            <div style={{ fontSize: 12, color: "#a8a199", marginTop: 6 }}>
+              {(() => {
+                const r = plannedRpe || predictSessionRpe({ type: workoutType, blocks })?.rpe;
+                const min = Math.round(estimateSessionDurationSeconds(workoutType, blocks) / 60);
+                return r
+                  ? `${FOSTER_CR10[Math.round(r)]}${plannedRpe ? " (imposé)" : " (automatique)"} · charge prévue ≈ ${String(r).replace(".", ",")} × ${min} min = ${Math.round(r * min)} UA. Comparé au ressenti de chaque athlète ; sert aussi à sa nutrition.`
+                  : "Ajoute des exercices pour obtenir le RPE automatique.";
+              })()}
+            </div>
+          </div>
           </FormSection>
 
           {/* 2. QUAND ? — repliable ; horaire en deux listes (fiable sur téléphone, contrairement au
@@ -9662,6 +9720,84 @@ export default function Workout() {
               {selectedSession.title}
             </span>
           </div>
+          {isAdminLike && (() => {
+            // ---- Coach : RPE prévu vs ressenti de chaque athlète ----
+            const b0 = baseRpe(selectedSession);
+            const planned = b0 ? b0.rpe : null;
+            const rows = Object.entries(selectedSession.userProgress || {})
+              .map(([uid, pr]) => ({ uid, pr, rpe: sessionRpe(selectedSession, uid) }))
+              .filter((x) => x.pr?.completedAt || x.rpe != null)
+              .map((x) => {
+                const a = athletes.find((u) => u.id === x.uid);
+                const name = a ? (a.firstName ? `${a.firstName} ${a.lastName || ""}`.trim() : a.displayName || a.email) : x.uid === currentUser?.uid ? "Moi" : "Athlète";
+                return { ...x, name };
+              })
+              .sort((a, b) => (b.rpe ?? -1) - (a.rpe ?? -1));
+            if (!planned && !rows.length) return null;
+            const verdict = (r, ref = planned) => {
+              if (r == null || !ref) return null;
+              const d = Math.round((r - ref) * 10) / 10;
+              if (d >= 2) return { t: `+${String(d).replace(".", ",")} · beaucoup plus dur`, c: "#d9695a" };
+              if (d >= 1) return { t: `+${String(d).replace(".", ",")} · plus dur`, c: "#e0a13d" };
+              if (d <= -2) return { t: `${String(d).replace(".", ",")} · beaucoup plus facile`, c: "#5b9bd5" };
+              if (d <= -1) return { t: `${String(d).replace(".", ",")} · plus facile`, c: "#7fb6e0" };
+              return { t: "≈ conforme", c: "#4fae7d" };
+            };
+            const withR = rows.filter((x) => x.rpe != null);
+            const avg = withR.length ? withR.reduce((a, x) => a + x.rpe, 0) / withR.length : null;
+            return (
+              <div style={{ marginBottom: 12, padding: "10px 12px", borderRadius: 12, background: "#0d0c0a", border: "1px solid #2a2620" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: rows.length ? 8 : 0 }}>
+                  <b style={{ color: "#f3f0ea", fontSize: 14 }}>🎯 RPE prévu vs ressenti</b>
+                  <span style={{ fontSize: 11.5, color: "#a8a199" }}>visible par toi seulement</span>
+                  {planned ? (
+                    <span style={{ marginLeft: "auto", fontSize: 12.5, color: rirRpeColor(planned), fontWeight: 800 }}>
+                      prévu {String(planned).replace(".", ",")}/10{b0?.auto ? " (auto)" : ""}{avg != null ? ` · moyenne ressentie ${frNum(Math.round(avg * 10) / 10)}` : ""}
+                    </span>
+                  ) : (
+                    <span style={{ marginLeft: "auto", fontSize: 12, color: "#a8a199" }}>pas de RPE prévu (✏️ Modifier pour l'ajouter)</span>
+                  )}
+                </div>
+                {!rows.length ? (
+                  <div style={{ fontSize: 12.5, color: "#a8a199" }}>Aucun athlète n'a encore terminé cette séance.</div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 240px), 1fr))", gap: 6 }}>
+                    {rows.map((x) => {
+                      // RPE attendu POUR LUI : prévu + son biais habituel (ressenti − prévu de ses séances passées)
+                      const exp = expectedRpeFor(events, x.uid, selectedSession);
+                      const v = verdict(x.rpe, exp ? exp.rpe : planned);
+                      // vs SES habitudes sur ce type de séance (z-score individuel)
+                      const ez = effortZText(effortZ(events, x.uid, selectedSession));
+                      return (
+                        <div key={x.uid} style={{ padding: "6px 10px", borderRadius: 9, background: "#151310", border: `1px solid ${(ez || v) ? (ez || v).c + "55" : "#2a2620"}` }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "#f3f0ea", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{x.name}</span>
+                            <b style={{ color: x.rpe != null ? rirRpeColor(x.rpe) : "#6d675f", fontSize: 14 }}>{x.rpe != null ? frNum(Math.round(x.rpe * 10) / 10) : "—"}</b>
+                            {v && <span style={{ fontSize: 11.5, color: v.c, fontWeight: 700, whiteSpace: "nowrap" }}>{v.t}</span>}
+                          </div>
+                          {exp && exp.n > 0 && exp.bias !== 0 && (
+                            <div style={{ fontSize: 11, color: "#a8a199", marginTop: 2 }}>
+                              attendu pour lui {String(exp.rpe).replace(".", ",")} (note d'habitude {exp.bias > 0 ? "+" : ""}
+                              {String(exp.bias).replace(".", ",")} vs prévu, sur {exp.n} séance{exp.n > 1 ? "s" : ""})
+                            </div>
+                          )}
+                          <div style={{ fontSize: 11, color: ez ? ez.c : "#6d675f", marginTop: 2 }}>
+                            {ez ? (
+                              <>
+                                <b>{ez.t}</b> <span style={{ color: "#8a8378" }}>({ez.vs})</span>
+                              </>
+                            ) : (
+                              "z-score : il faut au moins 5 séances notées de cet athlète"
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", justifyContent: isMobileView() ? "flex-start" : "flex-end", marginBottom: 10 }}>
             <button
             onClick={() => setShowAthleteRefs(true)}
@@ -9729,6 +9865,16 @@ export default function Workout() {
                   📅 {new Date(selectedSession.date + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
                 </span>
                 <span>· ⏱️ {plannedMinutes(selectedSession) || "?"} min</span>
+                {isAdminLike && (() => {
+                  const b = baseRpe(selectedSession);
+                  if (!b) return null;
+                  const c = rirRpeColor(b.rpe);
+                  return (
+                    <span title="RPE prévu (visible par le coach seulement)" style={{ padding: "3px 10px", borderRadius: 999, background: `${c}22`, border: `1px solid ${c}`, color: c, fontWeight: 800, fontSize: 12.5 }}>
+                      🎯 RPE prévu {String(b.rpe).replace(".", ",")}/10{b.auto ? " · auto" : ""}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>

@@ -65,6 +65,8 @@ import { rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { blockTypeOf } from "../component/blockType";
 import { isLoadedBodyweight } from "../component/bodyweightLoad";
 import { sessionLoad, sessionRpe, doneDateOf } from "../component/sessionLoad";
+import { recentEffortSignal, effortZ, effortZText } from "../component/effortZ";
+import { expectedRpeFor } from "../component/rpePredict";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 /* ===== Charte graphique du dashboard athlète (une seule pour toutes les cartes) ===== */
@@ -948,6 +950,7 @@ export default function Dashboard() {
           cmjPctChange: myCmjStatus.pctChange,
           neural: myNeural,
           sick: !!(todayW && todayW.sick),
+          effort: recentEffortSignal(userWorkouts, currentUser.uid, today),
         });
         setSelfForm({
           id: currentUser.uid,
@@ -1185,6 +1188,7 @@ export default function Dashboard() {
             cmjPctChange: uCmjStatus.pctChange,
             neural,
             sick: !!(todayW && todayW.sick),
+            effort: recentEffortSignal(uWorkouts, u.id, today),
           });
 
           const totalSessions = uWorkouts.length;
@@ -3924,7 +3928,24 @@ export default function Dashboard() {
                             </span>
                             <span style={{ fontSize: 12, color: status.c, whiteSpace: "nowrap" }}>
                               {status.t}
-                              {avg !== null && ` · RPE moy. ${avg.toFixed(1)}`}{" "}
+                              {avg !== null && ` · RPE ${avg.toFixed(1)}`}
+                              {(() => {
+                                // RPE attendu pour CET athlète (prévu ou automatique + son biais habituel)
+                                const exp = expectedRpeFor(all, uid, w);
+                                if (!exp) return null;
+                                const d = avg == null ? null : avg - exp.rpe;
+                                return (
+                                  <span style={{ color: d == null ? "#a8a199" : d >= 1 ? "#d9695a" : d <= -1 ? "#5b9bd5" : "#4fae7d", fontWeight: 700 }}>
+                                    {" "}
+                                    · attendu {String(exp.rpe).replace(".", ",")}
+                                    {d == null ? "" : d >= 1 ? " ↑ plus dur" : d <= -1 ? " ↓ plus facile" : " ✓"}
+                                  </span>
+                                );
+                              })()}
+                              {done && (() => {
+                                const ez = effortZText(effortZ(all, uid, w));
+                                return ez ? <span style={{ color: ez.c, fontWeight: 700 }} title={ez.vs}> · {ez.t.split(" · ")[0]}</span> : null;
+                              })()}{" "}
                               {open ? "▾" : "▸"}
                             </span>
                           </button>

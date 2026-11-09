@@ -2,6 +2,8 @@ import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getWorkoutDocs, getScopedDocs, getMyAccess } from "./workoutQueries";
 import { groupTargetMatches, hasProgress } from "./groupHistory";
+import { sessionRpe } from "./sessionLoad";
+import { expectedRpeFor, athleteLoadRef } from "./rpePredict";
 
 /* =====================================================================
    trainingDays.js — entraînement prévu (Workout) et matchs (Planification) d'une personne,
@@ -25,25 +27,47 @@ const durationOf = (w, uid) => {
   return Number(w?.estimatedDuration) || 60;
 };
 
-/* Type de journée d'après les séances du jour (et un éventuel match) */
+/* Charge d'une journée = somme des charges de séance (méthode sRPE de Foster : RPE × minutes, en UA).
+   RPE : ressenti de l'athlète si la séance est faite ; sinon RPE ATTENDU POUR LUI (RPE prévu par le coach,
+   ou calculé d'après la prescription %RM / RIR / intensité, + son biais personnel — rpePredict.js).
+   Type de journée : comparé à SA charge habituelle (moyenne ± écart-type de ses journées d'entraînement
+   sur 90 jours) → légère si z < −0,6, intense si z > 0,8 (ou 2 séances et z > 0,3), sinon modérée.
+   Moins de 8 jours d'historique : repères fixes < 300 légère · 300-599 modérée · ≥ 600 intense. */
+export const LOAD_LIGHT = 300;
+export const LOAD_HARD = 600;
+export const DEFAULT_RPE = 5;
+const loadOf = (x) => (Number(x.rpe) > 0 ? Number(x.rpe) : DEFAULT_RPE) * (Number(x.min) || 0);
 export function dayTypeOf(info) {
   if (!info) return "repos";
   if (info.match) return "match";
   const n = info.sessions.length;
   if (!n) return "repos";
-  const min = info.minutes;
-  if (n >= 2 || min >= 100) return "intense";
-  if (min <= 40) return "leger";
-  return "modere";
+  const L = info.load;
+  const ref = info.ref;
+  if (ref && ref.sd > 0) {
+    const z = (L - ref.mean) / ref.sd;
+    info.z = Math.round(z * 10) / 10;
+    if (z > 0.8 || (n >= 2 && z > 0.3)) return "intense";
+    if (z < -0.6) return "leger";
+    return "modere";
+  }
+  if (L >= LOAD_HARD || (n >= 2 && L >= 450)) return "intense";
+  if (L >= LOAD_LIGHT) return "modere";
+  return "leger";
 }
+const SRC_TXT = { ressenti: "ressenti", prevu: "prévu", auto: "attendu pour lui", estime: "estimé" };
 export function whyOf(info) {
   if (!info) return "pas de séance prévue";
   if (info.match) return `${info.match.name}`;
   if (!info.sessions.length) return "pas de séance prévue";
   const s = info.sessions;
-  return s.length === 1
-    ? `${s[0].title || TYPE_LABEL[s[0].type] || "Séance"} · ~${s[0].min} min${s[0].time ? ` à ${s[0].time}` : ""}`
-    : `${s.length} séances · ~${info.minutes} min au total`;
+  const vs = info.ref ? ` · sa moyenne ${info.ref.mean} UA (z ${info.z > 0 ? "+" : ""}${String(info.z ?? 0).replace(".", ",")})` : "";
+  if (s.length === 1) {
+    const x = s[0];
+    const r = Number(x.rpe) > 0 ? String(Math.round(x.rpe * 10) / 10).replace(".", ",") : DEFAULT_RPE;
+    return `${x.title || TYPE_LABEL[x.type] || "Séance"} · ${x.min} min × RPE ${r} (${SRC_TXT[x.rpeSrc] || "estimé"}) = ${Math.round(info.load)} UA${vs}${x.time ? ` · ${x.time}` : ""}`;
+  }
+  return `${s.length} séances · ${info.minutes} min · charge ${Math.round(info.load)} UA${vs}`;
 }
 
 async function computeTrainingDays(uid, from, to) {
@@ -68,12 +92,15 @@ async function computeTrainingDays(uid, from, to) {
   const out = {};
   const slot = (d) => (out[d] = out[d] || { sessions: [], match: null, minutes: 0 });
 
-  // ---- séances ----
+  // ---- séances (+ 90 jours d'historique pour l'individualisation : biais RPE et charge habituelle) ----
+  let ref = null;
   try {
-    const snap = await getWorkoutDocs({ since: from });
+    const histFrom = shiftIso(from < todayIso() ? from : todayIso(), -90);
+    const snap = await getWorkoutDocs({ since: histFrom });
+    const mineList = [];
     snap.docs.forEach((d) => {
       const w = { id: d.id, ...d.data() };
-      if (!w.date || w.date < from || w.date > to) return;
+      if (!w.date) return;
       const mine =
         hasProgress(w, uid) ||
         w.targetUserId === uid ||
@@ -84,9 +111,19 @@ async function computeTrainingDays(uid, from, to) {
             myGroupIds.includes(w.group) ||
             groupTargetMatches(w, uid, groups)));
       if (!mine) return;
+      mineList.push(w);
+    });
+    ref = athleteLoadRef(mineList, uid, todayIso());
+    mineList.forEach((w) => {
+      if (w.date < from || w.date > to) return;
       const min = durationOf(w, uid);
       const s = slot(w.date);
-      s.sessions.push({ id: w.id, title: w.title || "", type: w.type || "muscu", min, time: w.time || "", done: !!w.userProgress?.[uid]?.completedAt });
+      const done = !!w.userProgress?.[uid]?.completedAt;
+      const felt = done ? sessionRpe(w, uid) : null;
+      const exp = felt == null ? expectedRpeFor(mineList, uid, w) : null;
+      const rpe = felt != null ? felt : exp ? exp.rpe : null;
+      const rpeSrc = felt != null ? "ressenti" : !exp ? "estime" : exp.auto || exp.bias ? "auto" : "prevu";
+      s.sessions.push({ id: w.id, title: w.title || "", type: w.type || "muscu", min, time: w.time || "", done, rpe, rpeSrc });
       s.minutes += min;
     });
   } catch (e) {
@@ -112,7 +149,17 @@ async function computeTrainingDays(uid, from, to) {
     console.warn("trainingDays: matchs", e);
   }
 
-  return finalize(out);
+  return finalize(out, ref);
+}
+
+function todayIso() {
+  const x = new Date();
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+}
+function shiftIso(iso, n) {
+  const [y, m, d] = iso.split("-").map(Number);
+  const x = new Date(y, m - 1, d + n);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
 }
 
 function nextDay(iso) {
@@ -121,9 +168,13 @@ function nextDay(iso) {
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
 }
 
-const finalize = (out) => {
+const finalize = (out, ref = null) => {
+  // référence de charge individuelle : propriété non énumérable (la carte reste « date → jour »)
+  Object.defineProperty(out, "ref", { value: ref, enumerable: false, configurable: true, writable: true });
   Object.values(out).forEach((v) => {
+    v.ref = ref;
     v.minutes = v.sessions.reduce((a, x) => a + (Number(x.min) || 0), 0);
+    v.load = v.sessions.reduce((a, x) => a + loadOf(x), 0);
     v.dayType = dayTypeOf(v);
     v.why = whyOf(v);
   });
@@ -148,12 +199,12 @@ export async function publishTrainingSummary(uid, { force = false } = {}) {
     const map = await computeTrainingDays(uid, from, to);
     const days = {};
     Object.entries(map).forEach(([d, v]) => {
-      days[d] = { sessions: v.sessions.map(({ id, title, type, min, time, done }) => ({ id, title, type, min, time, done })), match: v.match || null };
+      days[d] = { sessions: v.sessions.map(({ id, title, type, min, time, done, rpe, rpeSrc }) => ({ id, title, type, min, time, done, rpe: rpe ?? null, rpeSrc: rpeSrc || "estime" })), match: v.match || null };
     });
-    const json = JSON.stringify(days);
+    const json = JSON.stringify({ days, ref: map.ref || null });
     lastPublished = { uid, at: Date.now(), json: lastPublished.uid === uid ? lastPublished.json : "" };
     if (json === lastPublished.json) return; // rien de changé : pas d'écriture
-    await setDoc(doc(db, "users", uid, "nutrition", "training"), { from, to, days, updatedAt: new Date().toISOString() });
+    await setDoc(doc(db, "users", uid, "nutrition", "training"), { from, to, days, ref: map.ref || null, updatedAt: new Date().toISOString() });
     lastPublished.json = json;
   } catch (e) {
     console.warn("trainingDays: publication du résumé", e);
@@ -171,7 +222,9 @@ export async function loadTrainingDays(uid, from, to) {
   // coach (ou superadmin) qui regarde un athlète : + séances des autres coachs, via le résumé de l'athlète
   try {
     const snap = await getDoc(doc(db, "users", uid, "nutrition", "training"));
-    const pub = snap.exists() ? snap.data().days || {} : {};
+    const data = snap.exists() ? snap.data() : {};
+    const pub = data.days || {};
+    if (data.ref) live.ref = data.ref; // charge habituelle calculée chez l'athlète (toutes ses séances)
     Object.entries(pub).forEach(([d, v]) => {
       if (d < from || d > to) return;
       const slot = (live[d] = live[d] || { sessions: [], match: null, minutes: 0 });
@@ -182,7 +235,7 @@ export async function loadTrainingDays(uid, from, to) {
   } catch (e) {
     /* pas de résumé ou lecture refusée : on garde ce que le coach voit */
   }
-  return finalize(live);
+  return finalize(live, live.ref || null);
 }
 
 /* Type « auto » d'un jour : séance(s) / match, sinon repos */
