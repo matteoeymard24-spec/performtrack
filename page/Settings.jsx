@@ -6,6 +6,8 @@ import { Page, PageHeader, Kpi, KpiGrid, FoldCard, useFold, CARD_STYLE, TEXT, MU
 import { getScopedUserDocs } from "../component/workoutQueries";
 import { THRESHOLD_SECTIONS, DEFAULTS, saveThresholds } from "../component/thresholds";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
+import { useSearchParams } from "react-router-dom";
+import Reference from "./Reference";
 
 /* =====================================================================
    Settings.jsx — ⚙️ Paramètres : seuils et normes de l'app (coach).
@@ -78,6 +80,27 @@ export default function Settings() {
   const { currentUser, isSuperAdmin, coachScope } = useAuth();
   const isCoach = !!isSuperAdmin; // réservé au superadmin
   const fold = useFold("settings", []);
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === "ref" ? "ref" : "seuils";
+  const tabs = (
+    <div role="tablist" style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+      {[
+        ["seuils", "🎛️ Seuils"],
+        ["ref", "📚 Référence"],
+      ].map(([id, label]) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={tab === id}
+          className={tab === id ? "pt-btn pt-btn--accent" : "pt-btn"}
+          onClick={() => setParams(id === "ref" ? { tab: "ref" } : {}, { replace: true })}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
   const [draft, setDraft] = useState(null);
   const [saved, setSaved] = useState(null); // valeurs enregistrées (pour savoir s'il y a des changements)
   const [meta, setMeta] = useState(null);
@@ -133,10 +156,19 @@ export default function Settings() {
         <PageHeader title="⚙️ Paramètres" subtitle="Réservé au superadmin : les seuils sont réglés par lui." />
       </Page>
     );
+  if (tab === "ref")
+    return (
+      <Page>
+        <PageHeader title="⚙️ Paramètres" subtitle="Tous les calculs de l'app, modalité par modalité, avec leurs sources (lus directement dans le code de calcul)." />
+        {tabs}
+        <Reference embedded />
+      </Page>
+    );
   if (!draft)
     return (
       <Page>
         <PageHeader title="⚙️ Paramètres" />
+        {tabs}
         <div style={{ color: MUTED }}>Chargement…</div>
       </Page>
     );
@@ -161,6 +193,7 @@ export default function Settings() {
   return (
     <Page>
       <PageHeader title="⚙️ Paramètres" subtitle="Seuils et normes utilisés par l'app : état de forme, RPE prévu, charge de la journée, nutrition." />
+      {tabs}
 
       <KpiGrid min={150}>
         <Kpi icon="🎛️" label="Réglages modifiés" value={nChanged} sub={`sur ${Object.keys(DEFAULTS).length}`} color={nChanged ? ACCENT : TEXT} />

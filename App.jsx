@@ -1,5 +1,5 @@
 import React from "react";
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 
 import Layout from "./component/Layout";
 import ProtectedRoute from "./auth/ProtectedRoute";
@@ -14,7 +14,6 @@ import Profile from "./page/MyProfile";
 import MyRM from "./page/MyRM";
 import ACWRMonitoring from "./page/ACWRMonitoring";
 import Tests from "./page/Tests";
-import Reference from "./page/Reference";
 import Nutrition from "./page/Nutrition";
 import Sleep from "./page/Sleep";
 import Settings from "./page/Settings";
@@ -41,7 +40,7 @@ export default function App() {
           <Route path="/MyProfile" element={<Profile />} />
           <Route path="/myrm" element={<MyRM />} />
           <Route path="/tests" element={<Tests />} />
-          <Route path="/reference" element={<Reference />} />
+          <Route path="/reference" element={<Navigate to="/parametres?tab=ref" replace />} />
           <Route path="/nutrition" element={<Nutrition />} />
           <Route path="/sommeil" element={<Sleep />} />
           <Route path="/parametres" element={<Settings />} />

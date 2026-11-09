@@ -121,7 +121,6 @@ export default function Layout() {
     { path: "/acwr", label: "REDI", icon: "📈", roles: ["superadmin", "admin"] },
     { path: "/athletes", label: "Athlètes", icon: "👥", roles: ["superadmin", "admin"] },
     { path: "/parametres", label: "Paramètres", icon: "⚙️", roles: ["superadmin"] }, // superadmin uniquement
-    { path: "/reference", label: "Référence", icon: "📚", roles: ["superadmin"] }, // superadmin uniquement
   ];
 
   const visibleMenuItems = menuItems.filter((item) => {
@@ -214,7 +213,7 @@ export default function Layout() {
           >
             {/* centré ; passe sur une 2e ligne (navWrap) quand tous les onglets ne tiennent pas à côté des actions */}
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 2, margin: "0 auto" }}>
-            {visibleMenuItems.map((item) => {
+            {visibleMenuItems.filter((item) => item.path !== "/parametres").map((item) => {
               const active = location.pathname === item.path || (item.path === "/wellness" && WELLBEING_PATHS.includes(location.pathname));
               return (
                 <button
@@ -280,6 +279,24 @@ export default function Layout() {
                 }}
               >
                 {previewAthlete ? "↩ Vue coach" : "👁 Mode athlète"}
+              </button>
+            )}
+            {visibleMenuItems.some((i) => i.path === "/parametres") && (
+              <button
+                onClick={() => navigate("/parametres")}
+                style={{
+                  padding: "9px 16px",
+                  background: location.pathname === "/parametres" ? "rgba(224,161,61,0.12)" : "transparent",
+                  color: location.pathname === "/parametres" ? ACCENT : TEXT_MUTED,
+                  border: `1px solid ${location.pathname === "/parametres" ? ACCENT : BORDER}`,
+                  borderRadius: 8,
+                  fontSize: 14,
+                  fontWeight: 500,
+                  transition: "all 0.15s ease",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ⚙️ Paramètres
               </button>
             )}
             <button

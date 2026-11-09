@@ -72,7 +72,7 @@ const T = ({ head, rows }) => (
   </div>
 );
 
-export default function Reference() {
+export default function Reference({ embedded = false }) {
   const { isSuperAdmin } = useAuth();
   const fold = useFold("reference", ["charge", "muscu", "sprint", "endurance", "forme", "normes", "morpho", "biblio"]);
   if (!isSuperAdmin) return <Navigate to="/" replace />;
@@ -86,13 +86,17 @@ export default function Reference() {
     return t.impossible ? "✗" : t.rir >= 5 ? "5+" : String(t.rir);
   };
 
+  // embedded : affichée dans Paramètres › 📚 Référence (sans son propre cadre de page)
+  const Wrap = embedded ? React.Fragment : Page;
   return (
-    <Page>
-      <PageHeader
-        eyebrow="Superadmin"
-        title="📚 Référence"
-        subtitle="Tous les calculs de l'app, modalité par modalité, avec leurs sources. Les chiffres sont lus directement dans le code de calcul : ils se mettent à jour tout seuls."
-      />
+    <Wrap>
+      {!embedded && (
+        <PageHeader
+          eyebrow="Superadmin"
+          title="📚 Référence"
+          subtitle="Tous les calculs de l'app, modalité par modalité, avec leurs sources. Les chiffres sont lus directement dans le code de calcul : ils se mettent à jour tout seuls."
+        />
+      )}
 
       {/* ============ CHARGE ============ */}
       <FoldCard id="charge" fold={fold} title="⚖️ Charge d'entraînement (sRPE, REDI, monotonie)">
@@ -450,6 +454,6 @@ historique utilisé : 6 mois (lu à l'ouverture de la planification)`}</F>
           ))}
         </ul>
       </FoldCard>
-    </Page>
+    </Wrap>
   );
 }
