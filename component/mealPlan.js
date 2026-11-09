@@ -8,6 +8,7 @@
    • alternatives / rebalanceMeal : remplacer un aliment, puis recalculer les quantités du repas.
    Firestore : users/{uid}/nutrition/plan_AAAA-MM-JJ = { date, dayType, meals: [{ id, items: [{ foodId, name, g, role, n }] }] }
    ===================================================================== */
+import { TH } from "./thresholdsCore";
 import {
   FOODS,
   FOOD_BY_ID,
@@ -295,16 +296,18 @@ export function dayCheck(T, t, diet = "omni") { // eslint-disable-line no-unused
   const r = (a, b) => (b > 0 ? a / b : 1);
   const checks = [];
   const kc = r(T.kcal, t.kcal);
-  checks.push({ k: "kcal", st: Math.abs(kc - 1) <= 0.1 ? "ok" : Math.abs(kc - 1) <= 0.15 ? "close" : "off", txt: `${kc > 1 ? "+" : "−"}${Math.abs(Math.round(T.kcal - t.kcal))} kcal` });
+  const tol = TH("kcalTol") / 100;
+  checks.push({ k: "kcal", st: Math.abs(kc - 1) <= tol ? "ok" : Math.abs(kc - 1) <= tol * 1.5 ? "close" : "off", txt: `${kc > 1 ? "+" : "−"}${Math.abs(Math.round(T.kcal - t.kcal))} kcal` });
   const p = r(T.p, t.p);
-  checks.push({ k: "p", st: p >= 0.9 ? "ok" : p >= 0.8 ? "close" : "off", txt: `protéines ${Math.round(p * 100)} %` });
+  const pm = TH("protMin") / 100;
+  checks.push({ k: "p", st: p >= pm ? "ok" : p >= pm - 0.1 ? "close" : "off", txt: `protéines ${Math.round(p * 100)} %` });
   const c = r(T.c, t.c);
   checks.push({ k: "c", st: Math.abs(c - 1) <= 0.15 ? "ok" : Math.abs(c - 1) <= 0.25 ? "close" : "off", txt: `glucides ${Math.round(c * 100)} %` });
   const f = r(T.f, t.f);
   checks.push({ k: "f", st: Math.abs(f - 1) <= 0.2 ? "ok" : Math.abs(f - 1) <= 0.3 ? "close" : "off", txt: `lipides ${Math.round(f * 100)} %` });
   // oméga-3 EPA/DHA : repère moyen sur la SEMAINE (poisson 2 fois / semaine dont 1 gras) → jugé sur la semaine
   // dans le Planning, pas jour par jour (en végétarien : complément d'algues, conseil affiché)
-  const lowMicros = SCORED_MICROS.filter((m) => m.k !== "o3" && (T[m.k] || 0) < 0.7 * (t.micro[m.k] || 0));
+  const lowMicros = SCORED_MICROS.filter((m) => m.k !== "o3" && (T[m.k] || 0) < (TH("microMin") / 100) * (t.micro[m.k] || 0));
   const microSt = lowMicros.length === 0 ? "ok" : lowMicros.length <= 2 ? "close" : "off";
   const order = { ok: 0, close: 1, off: 2 };
   const worst = [...checks.map((x) => x.st), microSt].reduce((a, b) => (order[b] > order[a] ? b : a), "ok");
@@ -312,7 +315,7 @@ export function dayCheck(T, t, diet = "omni") { // eslint-disable-line no-unused
     status: worst,
     checks,
     lowMicros,
-    issues: [...checks.filter((x) => x.st !== "ok").map((x) => x.txt), ...(lowMicros.length ? [`${lowMicros.map((m) => m.label.toLowerCase()).join(", ")} < 70 %`] : [])],
+    issues: [...checks.filter((x) => x.st !== "ok").map((x) => x.txt), ...(lowMicros.length ? [`${lowMicros.map((m) => m.label.toLowerCase()).join(", ")} < ${TH("microMin")} %`] : [])],
   };
 }
 export const STATUS_UI = {

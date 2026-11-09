@@ -40,6 +40,7 @@ import {
   BarChart,
   Bar,
   Cell,
+  ReferenceLine,
 } from "recharts";
 import BodyScan from "../component/BodyScan";
 import { FeedbackList, extractFeedbackExercises } from "../component/ExerciseFeedbackList";
@@ -66,7 +67,9 @@ import { blockTypeOf } from "../component/blockType";
 import { isLoadedBodyweight } from "../component/bodyweightLoad";
 import { sessionLoad, sessionRpe, doneDateOf } from "../component/sessionLoad";
 import { recentEffortSignal, effortZ, effortZText } from "../component/effortZ";
-import { expectedRpeFor } from "../component/rpePredict";
+import { expectedRpeFor, athleteLoadRef } from "../component/rpePredict";
+import { TH } from "../component/thresholdsCore";
+import { ensureThresholds } from "../component/thresholds";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 
 /* ===== Charte graphique du dashboard athlète (une seule pour toutes les cartes) ===== */
@@ -692,6 +695,7 @@ export default function Dashboard() {
     // isolée, pour ne plus jamais dépendre du succès des autres sections.
     const load = async () => {
       const today = getLocalDateStr(new Date());
+      await ensureThresholds(); // seuils du coach avant les calculs d'état de forme
 
       // --- Séances (séance du jour + stats globales) ---
       let userWorkouts = [];
@@ -1070,6 +1074,7 @@ export default function Dashboard() {
     }
 
     const load = async () => {
+      await ensureThresholds(); // seuils du coach avant les calculs d'état de forme
       try {
         const usersSnap = await getScopedUserDocs();
         const allUsers = usersSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -1791,12 +1796,27 @@ export default function Dashboard() {
         range: `${fmt(days[0].date)} → ${fmt(days[days.length - 1].date)}`,
       };
     });
-    const weekDelta =
-      weekInfo[1].total > 0
-        ? Math.round(((weekInfo[2].total - weekInfo[1].total) / weekInfo[1].total) * 100)
-        : null;
-    const WEEK_OPACITY = [0.4, 0.68, 1];
     const WEEK_NAMES = ["Il y a 2 sem.", "Sem. dernière", "7 derniers jours"];
+    // Charge habituelle de l'athlète (moyenne ± écart-type de ses journées d'entraînement, ⚙️ Paramètres)
+    // → chaque jour coloré légère / modérée / intense PAR RAPPORT À LUI.
+    const loadRef = athleteLoadRef(athleteWorkouts, currentUser?.uid, getLocalDateStr(new Date()));
+    const LOAD_CAT = {
+      leger: { label: "Légère", color: "#6aa7c9" },
+      modere: { label: "Modérée", color: "#e0a13d" },
+      intense: { label: "Intense", color: "#d9695a" },
+    };
+    const catOf = (load) => {
+      if (!(load > 0)) return null;
+      if (loadRef && loadRef.sd > 0) {
+        const z = (load - loadRef.mean) / loadRef.sd;
+        return z > TH("dayZHard") ? "intense" : z < TH("dayZLight") ? "leger" : "modere";
+      }
+      return load >= TH("loadHard") ? "intense" : load >= TH("loadLight") ? "modere" : "leger";
+    };
+    sparklineData.forEach((d) => {
+      d.cat = catOf(d.load);
+    });
+    const maxWeek = Math.max(1, ...weekInfo.map((w) => w.total));
 
     return (
       <div
@@ -2528,50 +2548,75 @@ export default function Dashboard() {
               <>
             {hasSparklineData ? (
               <>
+                {/* ---- 3 semaines : total, jauge relative, écart à la semaine précédente ---- */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 14 }}>
-                  {weekInfo.map((w, i) => (
-                    <div
-                      key={i}
-                      style={{
-                        background: "#0d0c0a",
-                        padding: "10px 8px",
-                        borderRadius: 10,
-                        textAlign: "center",
-                        border: i === 2 ? "1px solid rgba(224,161,61,0.4)" : "1px solid transparent",
-                      }}
-                    >
-                      <div style={{ fontSize: 10, color: "#a8a199", textTransform: "uppercase", letterSpacing: 0.4 }}>
-                        {WEEK_NAMES[i]}
+                  {weekInfo.map((w, i) => {
+                    const prev = i > 0 ? weekInfo[i - 1].total : null;
+                    const dlt = prev ? Math.round(((w.total - prev) / prev) * 100) : null;
+                    const cur = i === 2;
+                    const dCol = dlt == null ? "#a8a199" : dlt > 15 ? "#d9695a" : dlt < -15 ? "#5b9bd5" : "#4fae7d";
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          background: cur ? "rgba(224,161,61,0.08)" : "#0d0c0a",
+                          padding: "10px 10px 9px",
+                          borderRadius: 12,
+                          border: cur ? "1px solid rgba(224,161,61,0.55)" : "1px solid #2a2620",
+                          minWidth: 0,
+                        }}
+                      >
+                        <div style={{ fontSize: 10, color: cur ? "#e0a13d" : "#a8a199", textTransform: "uppercase", letterSpacing: 0.4, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {WEEK_NAMES[i]}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 4, margin: "4px 0 6px" }}>
+                          <span style={{ fontSize: 22, fontWeight: 900, color: cur ? "#e0a13d" : "#f3f0ea", lineHeight: 1 }}>{w.total.toLocaleString("fr-FR")}</span>
+                          <span style={{ fontSize: 10.5, color: "#a8a199", fontWeight: 700 }}>UA</span>
+                        </div>
+                        <div style={{ height: 5, borderRadius: 3, background: "#1a1815", overflow: "hidden", marginBottom: 6 }}>
+                          <div style={{ width: `${(w.total / maxWeek) * 100}%`, height: "100%", borderRadius: 3, background: cur ? "#e0a13d" : "#8a7a5c" }} />
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 4, fontSize: 10.5, flexWrap: "wrap" }}>
+                          <span style={{ color: "#8a8378", whiteSpace: "nowrap" }}>
+                            {w.sessions} j d'effort
+                          </span>
+                          {dlt != null && (
+                            <span style={{ color: dCol, fontWeight: 800, whiteSpace: "nowrap" }}>
+                              {dlt > 0 ? "▲" : dlt < 0 ? "▼" : "▬"} {dlt > 0 ? "+" : ""}
+                              {dlt} %
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: i === 2 ? "#e0a13d" : "#f3f0ea", margin: "4px 0 2px" }}>
-                        {w.total}
-                      </div>
-                      <div style={{ fontSize: 10, color: "#6f685f" }}>
-                        {w.sessions} jour{w.sessions > 1 ? "s" : ""} d'effort
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-                {weekDelta !== null && (
-                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10 }}>
-                    {weekDelta === 0 ? "▬" : weekDelta > 0 ? "▲" : "▼"}{" "}
-                    <strong style={{ color: "#f3f0ea" }}>
-                      {weekDelta > 0 ? "+" : ""}
-                      {weekDelta} %
-                    </strong>{" "}
-                    par rapport à la semaine dernière
-                  </div>
-                )}
-                <ResponsiveContainer width="100%" height={170}>
-                  <BarChart data={sparklineData} margin={{ top: 6, right: 4, left: -16, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.08)" strokeDasharray="3 3" />
-                    <XAxis dataKey="tick" interval={0} axisLine={false} tickLine={false} stroke="#a8a199" fontSize={10} />
-                    <YAxis axisLine={false} tickLine={false} stroke="#a8a199" fontSize={10} width={40} tickCount={4} allowDecimals={false} />
+
+                {/* ---- jours : couleur = intensité par rapport à SA charge habituelle ---- */}
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={sparklineData} margin={{ top: 14, right: 6, left: -4, bottom: 0 }} barCategoryGap="18%">
+                    {[1, 2].map((wk) => {
+                      const first = sparklineData.findIndex((d) => d.wk === wk);
+                      return first > 0 ? <ReferenceLine key={wk} x={first - 0.5} stroke="#2a2620" strokeWidth={1} /> : null;
+                    })}
+                    <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
+                    <XAxis dataKey="tick" interval={0} axisLine={false} tickLine={false} stroke="#6f6a62" fontSize={10} />
+                    <YAxis axisLine={false} tickLine={false} stroke="#6f6a62" fontSize={10} width={40} tickCount={4} allowDecimals={false} />
+                    {loadRef && (
+                      <ReferenceLine
+                        y={loadRef.mean}
+                        stroke="#f3f0ea"
+                        strokeOpacity={0.55}
+                        strokeDasharray="4 4"
+                        label={{ value: `ta moyenne ${loadRef.mean}`, position: "insideTopRight", fill: "#c9c1b5", fontSize: 10 }}
+                      />
+                    )}
                     <Tooltip
                       cursor={{ fill: "rgba(255,255,255,0.04)" }}
                       content={({ active, payload }) => {
                         if (!active || !payload || !payload.length) return null;
                         const d = payload[0].payload;
+                        const c = d.cat ? LOAD_CAT[d.cat] : null;
                         return (
                           <div style={{ ...CHART_TOOLTIP, padding: "8px 10px" }}>
                             <div style={{ color: "#f3f0ea", textTransform: "capitalize" }}>
@@ -2580,7 +2625,14 @@ export default function Dashboard() {
                             <div style={{ color: "#a8a199", marginTop: 2 }}>
                               {d.load > 0 ? (
                                 <>
-                                  Charge : <strong style={{ color: "#e0a13d" }}>{d.load} UA</strong>
+                                  Charge : <strong style={{ color: c ? c.color : "#e0a13d" }}>{d.load} UA</strong>
+                                  {c ? ` · ${c.label.toLowerCase()}` : ""}
+                                  {loadRef ? (
+                                    <div style={{ fontSize: 11, marginTop: 2 }}>
+                                      {d.load >= loadRef.mean ? "+" : ""}
+                                      {Math.round(((d.load - loadRef.mean) / loadRef.mean) * 100)} % vs ta moyenne ({loadRef.mean} UA)
+                                    </div>
+                                  ) : null}
                                 </>
                               ) : (
                                 "Pas de séance"
@@ -2590,12 +2642,12 @@ export default function Dashboard() {
                         );
                       }}
                     />
-                    <Bar dataKey="load" radius={[4, 4, 0, 0]} maxBarSize={18} minPointSize={2}>
+                    <Bar dataKey="load" radius={[5, 5, 2, 2]} maxBarSize={20} minPointSize={3}>
                       {sparklineData.map((d, i) => (
                         <Cell
                           key={i}
-                          fill={d.load > 0 ? "#e0a13d" : "#2a2620"}
-                          fillOpacity={d.load > 0 ? WEEK_OPACITY[d.wk] : 1}
+                          fill={d.cat ? LOAD_CAT[d.cat].color : "#2a2620"}
+                          fillOpacity={d.cat ? (d.wk === 2 ? 1 : 0.7) : 1}
                           stroke={d.isToday ? "#f3f0ea" : "none"}
                           strokeWidth={d.isToday ? 1.5 : 0}
                         />
@@ -2603,13 +2655,23 @@ export default function Dashboard() {
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", justifyContent: "space-around", fontSize: 10.5, color: "#6f6a62", marginTop: 2 }}>
                   {weekInfo.map((w, i) => (
-                    <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "#a8a199" }}>
-                      <span style={{ width: 10, height: 10, borderRadius: 3, background: "#e0a13d", opacity: WEEK_OPACITY[i], display: "inline-block" }} />
+                    <span key={i} style={{ color: i === 2 ? "#e0a13d" : "#6f6a62", fontWeight: i === 2 ? 700 : 400 }}>
                       {w.range}
                     </span>
                   ))}
+                </div>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginTop: 10, fontSize: 11.5, color: "#a8a199" }}>
+                  {Object.values(LOAD_CAT).map((c) => (
+                    <span key={c.label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: c.color, display: "inline-block" }} />
+                      {c.label}
+                    </span>
+                  ))}
+                  <span style={{ marginLeft: "auto", fontSize: 11, color: "#6f6a62" }}>
+                    {loadRef ? `par rapport à ta charge habituelle (${loadRef.n} jours)` : `repères fixes (${TH("loadLight")} / ${TH("loadHard")} UA) en attendant ton historique`}
+                  </span>
                 </div>
               </>
             ) : (

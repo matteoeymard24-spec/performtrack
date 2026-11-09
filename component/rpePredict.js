@@ -1,3 +1,4 @@
+import { TH } from "./thresholdsCore";
 import { targetRir } from "./loadAdjust";
 import { blockTypeOf } from "./blockType";
 import { sessionRpe, sessionDurationMin, doneDateOf } from "./sessionLoad";
@@ -43,7 +44,7 @@ function exerciseRpe(ex, bt) {
     if (t) return t.rpe;
   }
   if (ex.rir !== undefined && ex.rir !== null && ex.rir !== "") return clamp(10 - Number(ex.rir), 1, 10);
-  return 6.5;
+  return TH("rpeNoRm");
 }
 const weightOf = (ex, bt) => {
   if (bt === "sprint") return Math.max(1, (Number(ex.sets) || 1) * (Number(ex.reps) || 1));
@@ -71,9 +72,10 @@ export function predictSessionRpe(w) {
     });
   });
   if (!wsum) return null;
-  let rpe = 0.75 * (sum / wsum) + 0.25 * max;
-  if (muscuSets > 24) rpe += 0.5;
-  else if (muscuSets > 0 && muscuSets < 8) rpe -= 0.5;
+  const wm = Math.max(0, Math.min(100, TH("rpeMeanWeight"))) / 100;
+  let rpe = wm * (sum / wsum) + (1 - wm) * max;
+  if (muscuSets > TH("rpeVolHigh")) rpe += 0.5;
+  else if (muscuSets > 0 && muscuSets < TH("rpeVolLow")) rpe -= 0.5;
   return { rpe: r05(clamp(rpe, 1, 10)), sets: muscuSets };
 }
 
@@ -92,10 +94,12 @@ export function athleteRpeBias(workouts, uid, type, beforeDate, excludeId) {
     .filter((o) => o.felt != null && o.base && (!beforeDate || o.d < beforeDate))
     .sort((a, b) => b.d.localeCompare(a.d));
   const same = hist.filter((o) => (o.x.type || "muscu") === (type || "muscu"));
-  const pool = (same.length >= 3 ? same : hist).slice(0, 12);
+  const win = Math.max(1, Math.round(TH("biasWindow")));
+  const pool = (same.length >= 3 ? same : hist).slice(0, win);
   if (!pool.length) return { bias: 0, n: 0 };
   const mean = pool.reduce((a, o) => a + (o.felt - o.base.rpe), 0) / pool.length;
-  return { bias: Math.round(mean * (pool.length / (pool.length + 3)) * 10) / 10, n: pool.length, scope: pool === same.slice(0, 12) ? type : "tout" };
+  const k = Math.max(0, TH("biasShrink"));
+  return { bias: Math.round(mean * (pool.length / (pool.length + k)) * 10) / 10, n: pool.length, scope: same.length >= 3 ? type : "tout" };
 }
 
 /* RPE attendu pour CET athlète sur la séance w */
@@ -109,7 +113,7 @@ export function expectedRpeFor(workouts, uid, w) {
 /* Charge de référence individuelle (UA par jour d'entraînement, 90 jours avant `today`) */
 export function athleteLoadRef(workouts, uid, today) {
   const [y, m, d] = today.split("-").map(Number);
-  const from = new Date(y, m - 1, d - 90);
+  const from = new Date(y, m - 1, d - TH("loadRefDays"));
   const fromIso = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}-${String(from.getDate()).padStart(2, "0")}`;
   const byDay = {};
   (workouts || []).forEach((w) => {
@@ -121,7 +125,7 @@ export function athleteLoadRef(workouts, uid, today) {
     byDay[dd] = (byDay[dd] || 0) + felt * sessionDurationMin(w, uid);
   });
   const vals = Object.values(byDay);
-  if (vals.length < 8) return null;
+  if (vals.length < TH("loadRefMinDays")) return null;
   const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
   const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length - 1));
   return { mean: Math.round(mean), sd: Math.round(Math.max(sd, mean * 0.15)), n: vals.length };

@@ -5,6 +5,7 @@
    modules de calcul : si un réglage change dans le code, la page change avec.
    À tenir à jour à chaque nouvelle méthode ajoutée dans l'app.
    ===================================================================== */
+import { TH } from "../component/thresholdsCore";
 import { SUPRA_MAX_PCT } from "../component/contraction";
 import React from "react";
 import { Navigate } from "react-router-dom";
@@ -16,8 +17,6 @@ import {
   REDI_CHRONIC_N,
   REDI_CHRONIC_LAMBDA,
   maxRepsAtPct,
-  NEURAL_DROP_THRESHOLD,
-  NEURAL_RM_FLOOR,
   NEURAL_WINDOW_DAYS,
   NEURAL_PREV_LOOKBACK_DAYS,
   NEURAL_MIN_SETS_PREV,
@@ -277,7 +276,7 @@ z-score vs historique propre (28 j) : ≤ −0,5 en baisse · ≤ −1,5 très d
         <H>Fatigue nerveuse (force)</H>
         <P>
           e1RM médian par exercice sur la dernière séance (≤ {NEURAL_WINDOW_DAYS} j) comparé à la séance précédente (≤ {NEURAL_PREV_LOOKBACK_DAYS} j,
-          ≥ {NEURAL_MIN_SETS_PREV} séries) : baisse ≥ {fr(NEURAL_DROP_THRESHOLD * 100, 0)} % ou e1RM &lt; {fr(NEURAL_RM_FLOOR * 100, 0)} % du RM = signal.
+          ≥ {NEURAL_MIN_SETS_PREV} séries) : baisse ≥ {fr(TH("neuralDrop"), 0)} % ou e1RM &lt; {fr(TH("neuralRmFloor"), 0)} % du RM = signal (seuils réglables dans ⚙️ Paramètres).
           Alerte si au moins la moitié des exercices sont concernés.
         </P>
         <H>Classification</H>

@@ -17,6 +17,7 @@ import Tests from "./page/Tests";
 import Reference from "./page/Reference";
 import Nutrition from "./page/Nutrition";
 import Sleep from "./page/Sleep";
+import Settings from "./page/Settings";
 import { DialogHost } from "./component/appDialog";
 
 export default function App() {
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/reference" element={<Reference />} />
           <Route path="/nutrition" element={<Nutrition />} />
           <Route path="/sommeil" element={<Sleep />} />
+          <Route path="/parametres" element={<Settings />} />
         </Route>
       </Route>
     </Routes>

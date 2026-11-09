@@ -521,6 +521,14 @@ export default function Workout() {
     setWhenOpenState(v);
     try { localStorage.setItem("pt_form_when_open", v ? "1" : "0"); } catch (e) { /* ignore */ }
   };
+  // Section « Pour qui ? » repliable (mémorisé), comme « Quand ? »
+  const [whoOpen, setWhoOpenState] = useState(() => {
+    try { return localStorage.getItem("pt_form_who_open") !== "0"; } catch (e) { return true; }
+  });
+  const setWhoOpen = (v) => {
+    setWhoOpenState(v);
+    try { localStorage.setItem("pt_form_who_open", v ? "1" : "0"); } catch (e) { /* ignore */ }
+  };
   const [editOrig, setEditOrig] = useState(null); // { date, time, title } de la séance avant modification
   const [applyToCopies, setApplyToCopies] = useState(true);
   const [workoutType, setWorkoutType] = useState("muscu");
@@ -7667,8 +7675,41 @@ export default function Workout() {
             );
           })()}
 
-          <FormSection n={3} title="Pour qui ?">
-
+          {(() => {
+            // Résumé lisible des cibles choisies (affiché quand la section est masquée)
+            const nameOfTarget = (g) => {
+              if (!g || g === "total") return "Tous les athlètes";
+              if (g === "moi") return "Moi (privé)";
+              if (g === "individuel") {
+                const a = athletes.find((x) => x.id === targetUserId) || adminUsers.find((x) => x.id === targetUserId);
+                return a ? `👤 ${getAthleteDisplayName(a)}` : "👤 Individuel";
+              }
+              if (String(g).startsWith("sg:")) {
+                const [, gid, sid] = String(g).split(":");
+                const cg = customGroups.find((x) => x.id === gid);
+                const sg = (cg?.subGroups || []).find((x) => x.id === sid);
+                return `${cg?.name || "Groupe"} › ${sg?.name || "sous-groupe"}`;
+              }
+              return customGroups.find((x) => x.id === g)?.name || g;
+            };
+            const list = [group, ...extraGroups].filter(Boolean);
+            const sum = list.map(nameOfTarget).join(" · ");
+            return (
+          <FormSection
+            n={3}
+            title="Pour qui ?"
+            summary={`👥 ${sum || "—"}`}
+            right={
+              <button
+                type="button"
+                onClick={() => setWhoOpen(!whoOpen)}
+                style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #2a2620", background: "#151310", color: "#f3f0ea", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
+              >
+                {whoOpen ? "Masquer" : "✏️ Modifier"}
+              </button>
+            }
+          >
+          {whoOpen && (
           <div style={{ marginBottom: 12 }}>
             {isEdit && (
               <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8, lineHeight: 1.5 }}>
@@ -7691,9 +7732,10 @@ export default function Workout() {
               currentUid={currentUser?.uid}
             />
           </div>
-
-
+          )}
           </FormSection>
+            );
+          })()}
 
           {/* 4. CONTENU */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "4px 0 12px" }}>

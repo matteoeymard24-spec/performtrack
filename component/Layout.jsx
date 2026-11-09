@@ -1,5 +1,6 @@
 import { WELLBEING_PATHS } from "./WellbeingTabs";
 import { publishTrainingSummary } from "./trainingDays";
+import { ensureThresholds } from "./thresholds";
 import React, { useState } from "react";
 import { getViewMode, setViewMode } from "./viewMode";
 import { Outlet, useNavigate, useLocation } from "react-router-dom";
@@ -41,6 +42,10 @@ export default function Layout() {
       /* ignore */
     }
   }, [location.pathname]);
+  // Seuils et normes (⚙️ Paramètres) : chargés dès la connexion
+  React.useEffect(() => {
+    if (currentUser?.uid) ensureThresholds();
+  }, [currentUser?.uid]);
   // Athlète : publie le résumé de ses entraînements à venir (lu par ses coachs pour adapter sa nutrition,
   // y compris les séances créées par un autre coach) — au plus une écriture toutes les 5 min, et seulement si ça a changé
   React.useEffect(() => {
@@ -94,6 +99,7 @@ export default function Layout() {
     { path: "/tests", label: "Tests", icon: "🧪", roles: ["superadmin", "admin", "athlete"] },
     { path: "/acwr", label: "REDI", icon: "📈", roles: ["superadmin", "admin"] },
     { path: "/athletes", label: "Athlètes", icon: "👥", roles: ["superadmin", "admin"] },
+    { path: "/parametres", label: "Paramètres", icon: "⚙️", roles: ["superadmin"] }, // superadmin uniquement
     { path: "/reference", label: "Référence", icon: "📚", roles: ["superadmin"] }, // superadmin uniquement
   ];
 

@@ -1,3 +1,4 @@
+import { TH } from "../component/thresholdsCore";
 import WellbeingTabs from "../component/WellbeingTabs";
 import React, { useRef, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -919,8 +920,8 @@ export default function Nutrition() {
                       ))}
                     </div>
                     {(() => {
-                      const low = MICROS.filter((mi) => !mi.limit && totalN[mi.k] < 0.7 * targets.micro[mi.k]);
-                      if (!low.length) return <div style={{ fontSize: 13, color: GREEN, marginTop: 6 }}>✅ Toutes les vitamines et minéraux suivis sont couverts à plus de 70 %.</div>;
+                      const low = MICROS.filter((mi) => !mi.limit && totalN[mi.k] < (TH("microMin") / 100) * targets.micro[mi.k]);
+                      if (!low.length) return <div style={{ fontSize: 13, color: GREEN, marginTop: 6 }}>✅ Toutes les vitamines et minéraux suivis sont couverts à plus de {TH("microMin")} %.</div>;
                       return (
                         <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, background: "rgba(224,161,61,0.07)", borderLeft: `3px solid ${ACCENT}` }}>
                           <div style={{ fontWeight: 800, color: ACCENT, fontSize: 12.5, marginBottom: 6 }}>À COMPLÉTER — MEILLEURES SOURCES</div>
@@ -994,7 +995,7 @@ export default function Nutrition() {
                   })()}
                   <div style={{ flex: "1 1 220px" }}>
                     <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 10 }}>
-                      Objectif : 35 ml/kg + ~0,6 L par heure d'entraînement ({DAY_BY_ID[day.dayType]?.label.toLowerCase()}).
+                      Objectif : {TH("waterPerKg")} ml/kg + ~{String(TH("waterPerHour") / 1000).replace(".", ",")} L par heure d'entraînement ({DAY_BY_ID[day.dayType]?.label.toLowerCase()}).
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {[150, 250, 330, 500, 750].map((v) => (

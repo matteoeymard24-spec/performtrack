@@ -10,6 +10,7 @@
    ===================================================================== */
 
 /* ---- Nutriments suivis ---- */
+import { TH } from "./thresholdsCore";
 import { MORE_FOODS } from "./foodsMore";
 import { RECIPES } from "./recipes";
 
@@ -270,7 +271,7 @@ export function computeTargets(s, dayType = "modere") {
   const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
   const micro = microTargets({ sex: s.sex, age: Number(s.age) || 25, ironHigh: !!s.ironHigh });
   // eau : ~35 ml/kg + ~600 ml par heure d'entraînement (à ajuster selon la sueur)
-  const water = Math.round((35 * w + (day.trainMin / 60) * 600) / 50) * 50;
+  const water = Math.round((TH("waterPerKg") * w + (day.trainMin / 60) * TH("waterPerHour")) / 50) * 50;
   return {
     kcal,
     p: protein,

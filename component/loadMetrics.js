@@ -1,3 +1,4 @@
+import { TH } from "./thresholdsCore"; // seuils réglables (⚙️ Paramètres)
 // Fonctions pures de calcul de charge (REDI) et de wellness (z-score).
 // Aucune dépendance React/Firebase : réutilisable par ACWRMonitoring.jsx
 // et Dashboard.jsx sans dupliquer les formules.
@@ -83,9 +84,9 @@ export function rediRatioHistory(dailyLoads, days = 60) {
 export function getREDIStatus(ratio) {
   if (ratio === null || ratio === undefined) return { label: "Données insuffisantes", color: "#a8a199" };
   const v = Number(ratio);
-  if (v < 0.8) return { label: "Sous-chargé", color: "#3498db" };
-  if (v <= 1.3) return { label: "Zone optimale", color: "#4fae7d" };
-  if (v <= 1.5) return { label: "Attention", color: "#d9a441" };
+  if (v < TH("rediUnder")) return { label: "Sous-chargé", color: "#3498db" };
+  if (v <= TH("rediHigh")) return { label: "Zone optimale", color: "#4fae7d" };
+  if (v <= TH("rediVeryHigh")) return { label: "Attention", color: "#d9a441" };
   return { label: "Surcharge", color: "#d9695a" };
 }
 
@@ -191,8 +192,8 @@ export function wellnessZScoreHistory(wellnessEntries, targetDateStr, lookbackDa
 
 export function getWellnessZScoreStatus(z) {
   if (z === null || z === undefined) return { label: "Pas assez d'historique", color: "#a8a199" };
-  if (z <= -1.5) return { label: "Wellness très dégradé", color: "#d9695a" };
-  if (z <= -0.5) return { label: "Wellness en baisse", color: "#d9a441" };
+  if (z <= TH("wellZVeryLow")) return { label: "Wellness très dégradé", color: "#d9695a" };
+  if (z <= TH("wellZLow")) return { label: "Wellness en baisse", color: "#d9a441" };
   if (z < 0.5) return { label: "Wellness stable", color: "#4fae7d" };
   return { label: "Wellness au-dessus de la norme", color: "#4fae7d" };
 }
@@ -210,12 +211,12 @@ export function crossRiskStatus(rediRatioValue, wellnessZ) {
     return { label: "Données insuffisantes", color: "#a8a199", detail: "Pas assez d'historique REDI ni wellness." };
   }
 
-  const overload = hasRedi && rediRatioValue > 1.3;
-  const highOverload = hasRedi && rediRatioValue > 1.5;
-  const underload = hasRedi && rediRatioValue < 0.8;
-  const wellnessBad = hasWellness && wellnessZ <= -1.5;
-  const wellnessLow = hasWellness && wellnessZ <= -0.5;
-  const wellnessGood = hasWellness && wellnessZ > -0.5;
+  const overload = hasRedi && rediRatioValue > TH("rediHigh");
+  const highOverload = hasRedi && rediRatioValue > TH("rediVeryHigh");
+  const underload = hasRedi && rediRatioValue < TH("rediUnder");
+  const wellnessBad = hasWellness && wellnessZ <= TH("wellZVeryLow");
+  const wellnessLow = hasWellness && wellnessZ <= TH("wellZLow");
+  const wellnessGood = hasWellness && wellnessZ > TH("wellZLow");
 
   if (highOverload && wellnessBad) {
     return {
@@ -434,11 +435,11 @@ export function cmjStatus(todayHeight, cmjEntries, targetDateStr) {
     return { label: "Pas de test CMJ aujourd'hui", color: "#a8a199", pctChange: null };
   }
   const { mean, n } = cmjBaseline(cmjEntries, targetDateStr);
-  if (mean === null || n < 3) {
-    return { label: "Baseline CMJ insuffisante (min. 3 tests)", color: "#a8a199", pctChange: null };
+  if (mean === null || n < TH("cmjMinTests")) {
+    return { label: `Baseline CMJ insuffisante (min. ${TH("cmjMinTests")} tests)`, color: "#a8a199", pctChange: null };
   }
   const pctChange = ((todayHeight - mean) / mean) * 100;
-  if (pctChange <= -10) {
+  if (pctChange <= -TH("cmjBigDrop")) {
     return {
       label: "Chute CMJ significative",
       color: "#d9695a",
@@ -446,7 +447,7 @@ export function cmjStatus(todayHeight, cmjEntries, targetDateStr) {
       detail: `Saut ${Math.abs(pctChange).toFixed(1)}% en dessous de la baseline propre (${mean.toFixed(1)} cm) : fatigue neuromusculaire probable.`,
     };
   }
-  if (pctChange <= -5) {
+  if (pctChange <= -TH("cmjDrop")) {
     return {
       label: "Baisse CMJ modérée",
       color: "#d9a441",
@@ -471,8 +472,8 @@ export function cmjStatus(todayHeight, cmjEntries, targetDateStr) {
 export function crossRiskStatusFull({ rediRatioValue, wellnessZ, cmjPctChange, rpeReliability }) {
   const base = crossRiskStatus(rediRatioValue, wellnessZ);
   const hasCmj = cmjPctChange !== null && cmjPctChange !== undefined;
-  const cmjAlert = hasCmj && cmjPctChange <= -10;
-  const cmjWarn = hasCmj && cmjPctChange <= -5 && cmjPctChange > -10;
+  const cmjAlert = hasCmj && cmjPctChange <= -TH("cmjBigDrop");
+  const cmjWarn = hasCmj && cmjPctChange <= -TH("cmjDrop") && cmjPctChange > -TH("cmjBigDrop");
   const rpeFlag = !!(rpeReliability && rpeReliability.flag);
 
   const flags = [];
@@ -731,9 +732,9 @@ export function neuralFatigueAnalysis(sessions, rmByKey, targetDateStr) {
       const sdEff = Math.max(sd, mean * 0.03);
       zE1rm = (cur.e1rm - mean) / sdEff;
     }
-    if (dropPct !== null && dropPct > NEURAL_DROP_THRESHOLD && (zE1rm === null || zE1rm <= -1.5)) reasons.push("drop");
+    if (dropPct !== null && dropPct > TH("neuralDrop") / 100 && (zE1rm === null || zE1rm <= -1.5)) reasons.push("drop");
     if (presc) presc.reasons.forEach((r) => reasons.push(r));
-    else if (rmRatio !== null && rmRatio < NEURAL_RM_FLOOR) reasons.push("rm");
+    else if (rmRatio !== null && rmRatio < TH("neuralRmFloor") / 100) reasons.push("rm");
     return {
       key,
       name: cur.name,
@@ -797,17 +798,17 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
   if (sick) reasons.push("🤒 Malade (déclaré dans le wellness) : une baisse de performance peut venir de la maladie, pas seulement de la fatigue");
   let load = 0;
   if (hasRedi) {
-    if (rediRatioValue > 1.5) { load = 2; reasons.push(`Charge très élevée (REDI ${rediRatioValue.toFixed(2)})`); }
-    else if (rediRatioValue > 1.3) { load = 1; reasons.push(`Charge élevée (REDI ${rediRatioValue.toFixed(2)})`); }
+    if (rediRatioValue > TH("rediVeryHigh")) { load = 2; reasons.push(`Charge très élevée (REDI ${rediRatioValue.toFixed(2)})`); }
+    else if (rediRatioValue > TH("rediHigh")) { load = 1; reasons.push(`Charge élevée (REDI ${rediRatioValue.toFixed(2)})`); }
   }
 
   let well = 0;
   if (hasZ) {
-    if (wellnessZ <= -1.5) { well = 2; reasons.push(`Wellness très en dessous de sa norme (z = ${wellnessZ.toFixed(1)})`); }
-    else if (wellnessZ <= -0.5) { well = 1; reasons.push(`Wellness en baisse (z = ${wellnessZ.toFixed(1)})`); }
+    if (wellnessZ <= TH("wellZVeryLow")) { well = 2; reasons.push(`Wellness très en dessous de sa norme (z = ${wellnessZ.toFixed(1)})`); }
+    else if (wellnessZ <= TH("wellZLow")) { well = 1; reasons.push(`Wellness en baisse (z = ${wellnessZ.toFixed(1)})`); }
   } else if (hasScore) {
-    if (wellnessScore < 5) { well = 2; reasons.push(`Wellness bas (${wellnessScore.toFixed(1)}/10)`); }
-    else if (wellnessScore < 6.5) { well = 1; reasons.push(`Wellness moyen (${wellnessScore.toFixed(1)}/10)`); }
+    if (wellnessScore < TH("wellScoreLow")) { well = 2; reasons.push(`Wellness bas (${wellnessScore.toFixed(1)}/10)`); }
+    else if (wellnessScore < TH("wellScoreMid")) { well = 1; reasons.push(`Wellness moyen (${wellnessScore.toFixed(1)}/10)`); }
   }
 
   // Effort perçu de la dernière séance vs ses habitudes (effortZ.js) : signal SUBJECTIF, il s'ajoute
@@ -816,10 +817,10 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
     const when = effort.date ? ` (${effort.date.slice(8, 10)}/${effort.date.slice(5, 7)})` : "";
     const fr1 = (v) => String(Math.round(v * 10) / 10).replace(".", ",");
     const how = effort.kind === "delta" ? `RPE ${fr1(effort.felt)} pour ${effort.planned} prévu` : `RPE ${fr1(effort.felt)}`;
-    if (effort.z >= 1.5) {
+    if (effort.z >= TH("effortZHard")) {
       well = Math.min(2, well + 1);
       reasons.push(`Séance « ${effort.title} »${when} ressentie bien plus dure que d'habitude : ${how}, z = +${effort.z.toFixed(1).replace(".", ",")}`);
-    } else if (effort.z <= -1.5) {
+    } else if (effort.z <= -TH("effortZHard")) {
       reasons.push(`Séance « ${effort.title} »${when} ressentie plus facile que d'habitude (z = ${effort.z.toFixed(1).replace(".", ",")}) : bonne adaptation`);
     }
   }
@@ -841,11 +842,11 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
     });
   }
   if (hasCmj) {
-    if (cmjPctChange <= -10) { neu = 2; reasons.push(`CMJ en chute de ${Math.abs(cmjPctChange)}%`); }
-    else if (cmjPctChange <= -5) { neu = Math.max(neu, 1); reasons.push(`CMJ en baisse de ${Math.abs(cmjPctChange)}%`); }
+    if (cmjPctChange <= -TH("cmjBigDrop")) { neu = 2; reasons.push(`CMJ en chute de ${Math.abs(cmjPctChange)}%`); }
+    else if (cmjPctChange <= -TH("cmjDrop")) { neu = Math.max(neu, 1); reasons.push(`CMJ en baisse de ${Math.abs(cmjPctChange)}%`); }
   }
 
-  const cmjSignal = hasCmj && cmjPctChange <= -5;
+  const cmjSignal = hasCmj && cmjPctChange <= -TH("cmjDrop");
   if (neuForce === 2 && !(cmjSignal || load >= 1 || well >= 1)) {
     neu = 1;
     reasons.push("Signal de force isolé (non confirmé par charge, bien-être ou CMJ) : vigilance seulement");
@@ -864,7 +865,7 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
   const base = FORM_LEVELS[level];
   let label = base.label;
   if (level === "fatigue" && neu === 2 && load < 2 && well < 2) label = "Fatigue nerveuse";
-  if (level === "fit" && hasRedi && rediRatioValue < 0.8) label = "En forme (sous-charge)";
+  if (level === "fit" && hasRedi && rediRatioValue < TH("rediUnder")) label = "En forme (sous-charge)";
 
   const detail =
     reasons.length > 0

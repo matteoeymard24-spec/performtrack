@@ -1,3 +1,5 @@
+import { TH } from "./thresholdsCore";
+import { ensureThresholds } from "./thresholds";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getWorkoutDocs, getScopedDocs, getMyAccess } from "./workoutQueries";
@@ -33,10 +35,8 @@ const durationOf = (w, uid) => {
    Type de journée : comparé à SA charge habituelle (moyenne ± écart-type de ses journées d'entraînement
    sur 90 jours) → légère si z < −0,6, intense si z > 0,8 (ou 2 séances et z > 0,3), sinon modérée.
    Moins de 8 jours d'historique : repères fixes < 300 légère · 300-599 modérée · ≥ 600 intense. */
-export const LOAD_LIGHT = 300;
-export const LOAD_HARD = 600;
-export const DEFAULT_RPE = 5;
-const loadOf = (x) => (Number(x.rpe) > 0 ? Number(x.rpe) : DEFAULT_RPE) * (Number(x.min) || 0);
+const DEFAULT_RPE = () => TH("defaultRpe");
+const loadOf = (x) => (Number(x.rpe) > 0 ? Number(x.rpe) : DEFAULT_RPE()) * (Number(x.min) || 0);
 export function dayTypeOf(info) {
   if (!info) return "repos";
   if (info.match) return "match";
@@ -47,12 +47,12 @@ export function dayTypeOf(info) {
   if (ref && ref.sd > 0) {
     const z = (L - ref.mean) / ref.sd;
     info.z = Math.round(z * 10) / 10;
-    if (z > 0.8 || (n >= 2 && z > 0.3)) return "intense";
-    if (z < -0.6) return "leger";
+    if (z > TH("dayZHard") || (n >= 2 && z > TH("dayZTwo"))) return "intense";
+    if (z < TH("dayZLight")) return "leger";
     return "modere";
   }
-  if (L >= LOAD_HARD || (n >= 2 && L >= 450)) return "intense";
-  if (L >= LOAD_LIGHT) return "modere";
+  if (L >= TH("loadHard") || (n >= 2 && L >= 0.75 * TH("loadHard"))) return "intense";
+  if (L >= TH("loadLight")) return "modere";
   return "leger";
 }
 const SRC_TXT = { ressenti: "ressenti", prevu: "prévu", auto: "attendu pour lui", estime: "estimé" };
@@ -64,7 +64,7 @@ export function whyOf(info) {
   const vs = info.ref ? ` · sa moyenne ${info.ref.mean} UA (z ${info.z > 0 ? "+" : ""}${String(info.z ?? 0).replace(".", ",")})` : "";
   if (s.length === 1) {
     const x = s[0];
-    const r = Number(x.rpe) > 0 ? String(Math.round(x.rpe * 10) / 10).replace(".", ",") : DEFAULT_RPE;
+    const r = Number(x.rpe) > 0 ? String(Math.round(x.rpe * 10) / 10).replace(".", ",") : DEFAULT_RPE();
     return `${x.title || TYPE_LABEL[x.type] || "Séance"} · ${x.min} min × RPE ${r} (${SRC_TXT[x.rpeSrc] || "estimé"}) = ${Math.round(info.load)} UA${vs}${x.time ? ` · ${x.time}` : ""}`;
   }
   return `${s.length} séances · ${info.minutes} min · charge ${Math.round(info.load)} UA${vs}`;
@@ -72,6 +72,7 @@ export function whyOf(info) {
 
 async function computeTrainingDays(uid, from, to) {
   if (!uid) return {};
+  await ensureThresholds(); // seuils du coach (⚙️ Paramètres)
   // profil de la personne (groupe, rôle) + groupes personnalisés
   let profile = {};
   let groups = [];

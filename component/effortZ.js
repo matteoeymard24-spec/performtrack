@@ -1,3 +1,4 @@
+import { TH } from "./thresholdsCore";
 import { sessionRpe, doneDateOf } from "./sessionLoad";
 import { baseRpe } from "./rpePredict";
 
@@ -15,8 +16,6 @@ import { baseRpe } from "./rpePredict";
    athlète qui note toujours « 8 » à un autre qui note toujours « 5 ».
    ===================================================================== */
 
-const MIN_N = 5;
-const WINDOW_DAYS = 120;
 
 const metricOf = (w, uid) => {
   const felt = sessionRpe(w, uid);
@@ -43,12 +42,13 @@ export function effortZ(workouts, uid, w) {
   const cur = metricOf(w, uid);
   if (!cur) return null;
   const date = doneDateOf(w, uid);
-  const from = shiftIso(date, -WINDOW_DAYS);
+  const from = shiftIso(date, -TH("effortWindow"));
   const past = (workouts || [])
     .filter((x) => x.id !== w.id && x.userProgress?.[uid]?.completedAt)
     .map((x) => ({ x, d: doneDateOf(x, uid), m: metricOf(x, uid) }))
     .filter((o) => o.m && o.d < date && o.d >= from);
   // écart au RPE prévu si cette séance en a un et l'historique aussi, sinon RPE ressenti brut
+  const MIN_N = TH("effortMinN");
   const useDelta = cur.delta != null && past.filter((o) => o.m.delta != null).length >= MIN_N;
   const val = (o) => (useDelta ? o.m.delta : o.m.felt);
   const pool = past.filter((o) => (useDelta ? o.m.delta != null : true));
@@ -74,16 +74,18 @@ export const effortZText = (r) => {
   if (!r || r.z == null) return null;
   const s = `z ${r.z > 0 ? "+" : ""}${String(r.z).replace(".", ",")}`;
   const vs = `vs ses ${r.n} séances ${TYPE_TXT[r.scope] || ""}`.trim();
-  if (r.z >= 1.5) return { t: `${s} · bien plus dur que d'habitude`, vs, c: "#d9695a" };
-  if (r.z >= 0.75) return { t: `${s} · plus dur que d'habitude`, vs, c: "#e0a13d" };
-  if (r.z <= -1.5) return { t: `${s} · bien plus facile que d'habitude`, vs, c: "#5b9bd5" };
-  if (r.z <= -0.75) return { t: `${s} · plus facile que d'habitude`, vs, c: "#7fb6e0" };
+  const hard = TH("effortZHard");
+  const soft = TH("effortZSoft");
+  if (r.z >= hard) return { t: `${s} · bien plus dur que d'habitude`, vs, c: "#d9695a" };
+  if (r.z >= soft) return { t: `${s} · plus dur que d'habitude`, vs, c: "#e0a13d" };
+  if (r.z <= -hard) return { t: `${s} · bien plus facile que d'habitude`, vs, c: "#5b9bd5" };
+  if (r.z <= -soft) return { t: `${s} · plus facile que d'habitude`, vs, c: "#7fb6e0" };
   return { t: `${s} · dans ses habitudes`, vs, c: "#4fae7d" };
 };
 
 /* Signal pour l'état de forme : dernière séance terminée dans les 4 derniers jours */
 export function recentEffortSignal(workouts, uid, today) {
-  const from = shiftIso(today, -4);
+  const from = shiftIso(today, -TH("effortSignalDays"));
   const done = (workouts || [])
     .filter((w) => w.userProgress?.[uid]?.completedAt)
     .map((w) => ({ w, d: doneDateOf(w, uid) }))
