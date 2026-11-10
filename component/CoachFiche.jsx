@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { SYNTH_LEVELS, RTP_N, RTP_PHASES, normalizeRtp } from "./coachSynthesis";
-import { fmtDateFr } from "./InjuryHistory";
+import { SYNTH_LEVELS, RTP_N, RTP_PHASES, RTP_TESTS, normalizeRtp } from "./coachSynthesis";
+import { fmtDateFr, InjuryForm, injuryRecurrences } from "./InjuryHistory";
 
 /* =====================================================================
    CoachFiche.jsx — cartes de la fiche athlète (vue coach), affichage seulement.
@@ -373,8 +373,10 @@ export function RtpAthleteCard({ injury, status, state, pain, painHistory, monit
 }
 
 /* Carte du coach : frise + douleur de la zone + validation des critères étape par étape */
-export function RtpCard({ injury, status, state, onSave, saving, pain, painHistory, monitor, injuredGroup }) {
+export function RtpCard({ injury, status, state, onSave, saving, pain, painHistory, monitor, injuredGroup, onSaveTests, injuries }) {
   const [open, setOpen] = useState(state.cleared ? 0 : state.stage);
+  const [testsOpen, setTestsOpen] = useState(false);
+  const rec = injuries ? injuryRecurrences(injuries)[injury?.id] : null;
   if (!injury) return null;
   const checks = normalizeRtp(injury.rtp)?.checks || {};
   const toggle = (id) => onSave({ stage: state.stage, checks: { ...checks, [id]: !checks[id] } });
@@ -392,6 +394,12 @@ export function RtpCard({ injury, status, state, onSave, saving, pain, painHisto
         </span>
       </div>
       <div style={{ fontSize: 12, color: MUTED }}>On passe à l'étape suivante quand les critères sont remplis, pas quand le délai est écoulé.</div>
+      {rec && (
+        <div style={{ fontSize: 12.5, color: rec.kind === "early" ? "#f0c2b8" : "#f0d9ae", marginTop: 6, lineHeight: 1.45 }}>
+          ↻ <b>{rec.label}</b> : même zone que « {rec.prevName} », {rec.days} jours après le retour. Le risque de rechute est plus élevé : ne pas
+          brûler d'étape, valider les tests de force avant le terrain.
+        </div>
+      )}
       {injuredGroup && (
         <div style={{ fontSize: 12, color: "#c9c1b5", marginTop: 6 }}>
           {state.stage < 5 && !state.cleared
@@ -466,6 +474,22 @@ export function RtpCard({ injury, status, state, onSave, saving, pain, painHisto
           </div>
         );
       })}
+      {onSaveTests && (
+        <div style={{ borderTop: `1px solid ${BORDER}`, padding: "8px 0" }}>
+          <button
+            type="button"
+            onClick={() => setTestsOpen((x) => !x)}
+            aria-expanded={testsOpen}
+            style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", background: "none", border: "none", padding: 0, cursor: "pointer", color: TEXT, textAlign: "left" }}
+          >
+            <span style={{ fontSize: 14, fontWeight: 700 }}>📏 Tests de retour (LSI)</span>
+            <span style={{ fontSize: 12, color: MUTED }}>
+              {Object.keys(state.tests || {}).length} saisi{Object.keys(state.tests || {}).length > 1 ? "s" : ""} {testsOpen ? "▾" : "▸"}
+            </span>
+          </button>
+          {testsOpen && <RtpTestsForm tests={state.tests} saving={saving} onSave={onSaveTests} />}
+        </div>
+      )}
       {state.cleared && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
           <span style={{ fontSize: 13, color: GREEN, fontWeight: 700 }}>✓ Retour à la performance validé</span>
@@ -477,6 +501,110 @@ export function RtpCard({ injury, status, state, onSave, saving, pain, painHisto
       <div style={{ fontSize: 11, color: "#6f6a62", marginTop: 10 }}>
         Trame de réathlétisation (Ardern 2016, Taberner 2019, Silbernagel 2007) : elle ne remplace pas l'avis du médecin ou du kiné, qui décident du retour.
       </div>
+    </div>
+  );
+}
+
+/* Tests de retour (LSI) : blessé / référence → % ; enregistrés sur la blessure (rtp.tests), cochent les critères */
+export function RtpTestsForm({ tests = {}, onSave, saving, compact = false }) {
+  const init = () => Object.fromEntries(RTP_TESTS.map((t) => [t.id, { inj: tests[t.id]?.inj ?? "", ref: tests[t.id]?.ref ?? "" }]));
+  const [v, setV] = useState(init);
+  const [msg, setMsg] = useState("");
+  const num = (x) => {
+    const n = parseFloat(String(x).replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const changed = RTP_TESTS.filter((t) => {
+    const a = num(v[t.id].inj);
+    const b = num(v[t.id].ref);
+    return a && b && (a !== Number(tests[t.id]?.inj) || b !== Number(tests[t.id]?.ref));
+  });
+  const save = async () => {
+    const today = new Date();
+    const d = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const patch = Object.fromEntries(changed.map((t) => [t.id, { inj: num(v[t.id].inj), ref: num(v[t.id].ref), date: d }]));
+    try {
+      await onSave(patch);
+      setMsg("✓ Tests enregistrés");
+    } catch (e) {
+      setMsg("❌ " + e.message);
+    }
+  };
+  const inp = { width: "100%", boxSizing: "border-box", padding: "8px 9px", borderRadius: 8, border: "1px solid #3a342a", background: "#0d0c0a", color: TEXT, fontSize: 14 };
+  return (
+    <div style={{ marginTop: compact ? 0 : 6 }}>
+      {!compact && <div style={{ fontSize: 12, color: MUTED, marginBottom: 8 }}>LSI = côté blessé ÷ côté sain (ou actuel ÷ avant blessure). Les critères de force, sauts, équilibre et vitesse se cochent tout seuls.</div>}
+      {RTP_TESTS.map((t) => {
+        const a = num(v[t.id].inj);
+        const b = num(v[t.id].ref);
+        const lsi = a && b ? Math.round((a / b) * 100) : null;
+        const col = lsi == null ? MUTED : lsi >= 90 ? GREEN : lsi >= 80 ? "#d9a441" : RED;
+        return (
+          <div key={t.id} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.4fr) minmax(64px, 0.7fr) minmax(64px, 0.7fr) 52px", gap: 8, alignItems: "center", padding: "6px 0", borderTop: `1px solid ${BORDER}` }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{t.label}</div>
+              <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.3 }}>{t.hint}</div>
+            </div>
+            <input aria-label={`${t.label} : côté blessé ou actuel`} inputMode="decimal" placeholder="blessé" value={v[t.id].inj} onChange={(e) => setV((p) => ({ ...p, [t.id]: { ...p[t.id], inj: e.target.value } }))} style={inp} />
+            <input aria-label={`${t.label} : côté sain ou avant blessure`} inputMode="decimal" placeholder="sain" value={v[t.id].ref} onChange={(e) => setV((p) => ({ ...p, [t.id]: { ...p[t.id], ref: e.target.value } }))} style={inp} />
+            <div style={{ textAlign: "right", fontSize: 15, fontWeight: 800, color: col }}>{lsi == null ? "—" : `${lsi} %`}</div>
+          </div>
+        );
+      })}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+        <button type="button" className="pt-btn pt-btn--primary" disabled={!changed.length || saving} onClick={save}>
+          Enregistrer les tests
+        </button>
+        {msg && <span style={{ fontSize: 12.5, color: msg.startsWith("✓") ? GREEN : RED }}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
+/* Douleur forte sans blessure enregistrée : proposer de la déclarer (formulaire prérempli) */
+const TYPE_TISSUE = { aigue: "muscle", brulure: "muscle", contracture: "muscle", courbature: "muscle", articulaire: "ligament", nerveuse: "autre" };
+export function DeclareInjuryCard({ pain, onSave, you = false }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  if (!pain || !pain.top) return null;
+  const top = pain.top;
+  const today = new Date();
+  const d = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const initial = { name: "", date: d, zone: top.label, tissueType: TYPE_TISSUE[top.type] || "muscle", mechanism: "autre", notes: `Douleur ${top.v}/10${pain.typeLabel ? ` (${pain.typeLabel})` : ""} déclarée dans le wellness du ${d.split("-").reverse().join("/")}.` };
+  return (
+    <div style={{ ...CARD, border: `1px solid ${RED}88`, background: "rgba(217,105,90,0.07)" }}>
+      <h3 style={{ ...H3, marginBottom: 4 }}>🚑 {you ? "Déclarer une blessure ?" : "Douleur forte sans blessure enregistrée"}</h3>
+      <div style={{ fontSize: 13, color: "#d8cfbd", lineHeight: 1.45, marginBottom: 10 }}>
+        {top.label} : {top.v}/10{pain.typeLabel ? ` (${pain.typeLabel})` : ""} aujourd'hui.{" "}
+        {you
+          ? "Si c'est une blessure (et pas une simple courbature), déclare-la : ton coach pourra suivre ton retour et adapter tes séances."
+          : "Si c'est une blessure, l'enregistrer lance le suivi du retour au jeu et le passage dans le groupe Blessés."}
+      </div>
+      {!open ? (
+        <button type="button" className="pt-btn pt-btn--danger" onClick={() => setOpen(true)}>
+          {you ? "Déclarer une blessure" : "Enregistrer une blessure"}
+        </button>
+      ) : (
+        <InjuryForm
+          initial={initial}
+          saving={saving}
+          message={message}
+          onCancel={() => setOpen(false)}
+          onSave={async (payload) => {
+            setSaving(true);
+            setMessage("");
+            try {
+              await onSave(payload);
+              setOpen(false);
+            } catch (e) {
+              setMessage("❌ " + e.message);
+            } finally {
+              setSaving(false);
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

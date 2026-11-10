@@ -3,9 +3,9 @@ import { isMobileView } from "../component/viewMode";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { stickyHead } from "../component/ui";
 import DashColumns, { colOfFn } from "../component/DashColumns";
-import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, rtpPatch, zonePainHistory, painMonitor, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
-import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard } from "../component/CoachFiche";
-import { syncInjuredGroup, injuredGroupOf } from "../component/injuredGroup";
+import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, rtpPatch, rtpTestsPatch, needsInjuredGroup, zonePainHistory, painMonitor, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
+import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard, DeclareInjuryCard } from "../component/CoachFiche";
+import { syncInjuredGroup, injuredGroupOf, setInjuredManual } from "../component/injuredGroup";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
 import { NutritionDashCard, SleepDashCard } from "../component/DashWellbeingCards";
 import WellnessLinks from "../component/WellnessLinks";
@@ -387,6 +387,34 @@ export default function Dashboard() {
       alert("Retour au jeu non enregistré : " + e.message);
     } finally {
       setRtpSaving(false);
+    }
+  };
+  // Tests de retour (LSI) saisis dans la fiche : enregistrés sur la blessure, cochent les critères
+  const saveRtpTests = async (inj, tests) => {
+    const payload = { rtp: rtpTestsPatch(inj, tests) };
+    const patch = (list) => (list || []).map((i) => (i.id === inj.id ? { ...i, ...payload } : i));
+    await updateDoc(doc(db, "injuries", inj.id), payload);
+    setShowAthleteDetail((prev) => (prev ? { ...prev, injuries: patch(prev.injuries) } : prev));
+    setAthletes((prev) => prev.map((a) => (a.id === inj.userId ? { ...a, injuries: patch(a.injuries) } : a)));
+  };
+  // Blessure créée depuis le Dashboard (douleur forte) : pour un athlète (coach) ou pour soi
+  const createInjury = async (uid, payload) => {
+    const id = `${uid}_${Date.now()}`;
+    const data = { ...payload, userId: uid, createdAt: Timestamp.now() };
+    await setDoc(doc(db, "injuries", id), data);
+    return { id, ...data };
+  };
+  // Bascule manuelle dans / hors du groupe « Blessés » (bouton du Dashboard), pour un athlète ou pour soi
+  const [injuredBusy, setInjuredBusy] = useState(false);
+  const toggleInjured = async (uid, on, injuries) => {
+    setInjuredBusy(true);
+    try {
+      const g = await setInjuredManual({ db, coachUid: currentUser.uid, uid, on, needs: needsInjuredGroup(injuries, getLocalDateStr(new Date())), today: getLocalDateStr(new Date()) });
+      if (g) setCustomGroups((prev) => [...prev.filter((x) => x.id !== g.id), g]);
+    } catch (e) {
+      alert("Groupe Blessés non modifié : " + e.message);
+    } finally {
+      setInjuredBusy(false);
     }
   };
   const detailScrollRef = useRef(null);
@@ -2051,6 +2079,21 @@ export default function Dashboard() {
             <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>Ta charge, ta récupération et ton entraînement · attrape la barre en haut d'une carte pour la déplacer</p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {userRole === "admin" &&
+              (() => {
+                // le coach lui-même (son dashboard « Moi ») : se mettre dans son groupe Blessés
+                const inG = !!injuredGroupOf(customGroups, currentUser.uid)?.athleteIds?.includes(currentUser.uid);
+                return (
+                  <button
+                    className={inG ? "pt-btn pt-btn--danger" : "pt-btn"}
+                    disabled={injuredBusy}
+                    onClick={() => toggleInjured(currentUser.uid, !inG, selfInjuries)}
+                    title={inG ? "Revenir à mes séances habituelles" : "Me mettre dans le groupe Blessés : ma vue « Moi » affiche les séances et la planification de ce groupe"}
+                  >
+                    {inG ? "↩ Je ne suis plus blessé" : "🏥 Je suis blessé"}
+                  </button>
+                );
+              })()}
             <button className={cardsPanel ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setCardsPanel((v) => !v)} title="Choisir les cartes affichées">
               👁 Cartes
             </button>
@@ -2682,7 +2725,16 @@ export default function Dashboard() {
               </>
               </>
             ) },
-            { key: "rtp", pole: "recup", label: "🏥 Mon retour au jeu", node: aInjury ? <RtpAthleteCard injury={aInjury.inj} status={aInjury.st} state={aRtp} pain={aPain} painHistory={aPainHist} monitor={painMonitor(aPainHist)} inGroup={aInGroup} /> : null },
+            { key: "rtp", pole: "recup", label: "🏥 Mon retour au jeu", node: !aInjury && aPain.level === "alert" ? (
+              <DeclareInjuryCard
+                you
+                pain={aPain}
+                onSave={async (payload) => {
+                  const inj = await createInjury(aUid, payload);
+                  setSelfInjuries((prev) => [inj, ...(prev || [])]);
+                }}
+              />
+            ) : aInjury ? <RtpAthleteCard injury={aInjury.inj} status={aInjury.st} state={aRtp} pain={aPain} painHistory={aPainHist} monitor={painMonitor(aPainHist)} inGroup={aInGroup} /> : null },
             { key: "sleep", pole: "recup", label: "😴 Sommeil", node: (
               <>
               <div style={CARD_STYLE}>
@@ -3615,6 +3667,19 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {(() => {
+                    const inG = !!injuredGroupOf(customGroups, currentUser.uid)?.athleteIds?.includes(showAthleteDetail.id);
+                    return (
+                      <button
+                        className={inG ? "pt-btn pt-btn--danger" : "pt-btn"}
+                        disabled={injuredBusy}
+                        onClick={() => toggleInjured(showAthleteDetail.id, !inG, showAthleteDetail.injuries)}
+                        title={inG ? "Le remettre avec son groupe : il revoit les séances et la planification de son équipe" : "Le passer dans le groupe Blessés : il ne voit plus que les séances et la planification de ce groupe"}
+                      >
+                        {inG ? "↩ Sortir des blessés" : "🏥 Passer en blessé"}
+                      </button>
+                    );
+                  })()}
                   <button className={coachToolsPanel ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setCoachToolsPanel((v) => !v)} title="Choisir et classer les outils de la fiche">
                     👁 Outils
                   </button>
@@ -4319,8 +4384,22 @@ export default function Dashboard() {
             </div>
                 </>
               ) },
-              { key: "rtp", pole: "recup", label: "🏥 Retour au jeu", node: fInjury ? (
-                <RtpCard key={fInjury.inj.id} injury={fInjury.inj} status={fInjury.st} state={fRtp} pain={fPain} painHistory={fPainHist} monitor={painMonitor(fPainHist)} injuredGroup={fInGroup || !!fInjury} saving={rtpSaving} onSave={(rtp) => saveRtp(fInjury.inj, rtp)} />
+              { key: "rtp", pole: "recup", label: "🏥 Retour au jeu", node: !fInjury && fPain.level === "alert" ? (
+                <DeclareInjuryCard
+                  pain={fPain}
+                  onSave={async (payload) => {
+                    const inj = await createInjury(fa.id, payload);
+                    const add = (list) => [inj, ...(list || [])];
+                    setShowAthleteDetail((prev) => (prev ? { ...prev, injuries: add(prev.injuries) } : prev));
+                    const nextAthletes = athletes.map((a) => (a.id === fa.id ? { ...a, injuries: add(a.injuries) } : a));
+                    setAthletes(nextAthletes);
+                    syncInjuredGroup({ db, coachUid: currentUser.uid, isSuperAdmin, athletes: nextAthletes, today: fToday }).then((g) => {
+                      if (g) setCustomGroups((prev) => [...prev.filter((x) => x.id !== g.id), g]);
+                    });
+                  }}
+                />
+              ) : fInjury ? (
+                <RtpCard key={fInjury.inj.id} injury={fInjury.inj} status={fInjury.st} state={fRtp} pain={fPain} painHistory={fPainHist} monitor={painMonitor(fPainHist)} injuredGroup={fInGroup || !!fInjury} injuries={fa.injuries} onSaveTests={(t) => saveRtpTests(fInjury.inj, t)} saving={rtpSaving} onSave={(rtp) => saveRtp(fInjury.inj, rtp)} />
               ) : null },
               { key: "cmjSessions", pole: "recup", label: "🦘 Évolution CMJ (fatigue)", node: (
                 <>

@@ -178,7 +178,7 @@ const TISSUE_CRITERIA = {
   muscle: {
     2: [{ id: "m2", t: "Contraction isométrique forte (≈ 90 %) du muscle sans douleur" }],
     3: [{ id: "m3", t: "Étirement actif / allongement indolore (ex. test H d'Askling négatif pour les ischios)" }],
-    4: [{ id: "m4", t: "Course à haute vitesse (≥ 90-95 % de sa vitesse max) sans douleur ni appréhension" }],
+    4: [{ id: "m4", t: "Course à haute vitesse (≥ 90 % de sa vitesse max d'avant blessure) sans douleur ni appréhension", auto: "speed90" }],
   },
   tendon: {
     2: [{ id: "t2", t: "Exercices isométriques tolérés (douleur ≤ 3/10, effet antalgique)" }],
@@ -187,8 +187,8 @@ const TISSUE_CRITERIA = {
   },
   ligament: {
     2: [{ id: "l2", t: "Appui unipodal stable 30 s, yeux ouverts, sans douleur" }],
-    3: [{ id: "l3", t: "Équilibre dynamique (Y-balance ou équivalent) ≥ 90 % du côté sain" }],
-    4: [{ id: "l4", t: "Sauts unipodaux (distance, triple saut) ≥ 90 % du côté sain" }],
+    3: [{ id: "l3", t: "Équilibre dynamique (Y-balance ou équivalent) ≥ 90 % du côté sain", auto: "ybal90" }],
+    4: [{ id: "l4", t: "Sauts unipodaux (distance, triple saut) ≥ 90 % du côté sain", auto: "hop90" }],
   },
   os: {
     2: [{ id: "o2", t: "Marche et appui complets sans douleur, consolidation confirmée par le médecin" }],
@@ -231,7 +231,7 @@ const BASE_STAGES = [
     content: "Musculation progressive (excentrique compris), course linéaire à allure modérée, sauts bilatéraux.",
     criteria: [
       { id: "s3a", t: "Course en ligne à allure modérée sans douleur, pendant et le lendemain" },
-      { id: "s3b", t: "Force de la zone ≥ 80 % du côté sain (ou du RM d'avant blessure)" },
+      { id: "s3b", t: "Force de la zone ≥ 80 % du côté sain (ou du RM d'avant blessure)", auto: "force80" },
     ],
   },
   {
@@ -243,7 +243,7 @@ const BASE_STAGES = [
     content: "Sprints, appuis et changements de direction prévus puis réactifs, exercices du poste, jeu sans contact.",
     criteria: [
       { id: "s4a", t: "Changements de direction prévus PUIS réactifs (non annoncés) à pleine vitesse, sans douleur" },
-      { id: "s4b", t: "Force de la zone ≥ 90 % du côté sain (ou du RM d'avant blessure)" },
+      { id: "s4b", t: "Force de la zone ≥ 90 % du côté sain (ou du RM d'avant blessure)", auto: "force90" },
       { id: "s4c", t: "Charge des 7 derniers jours ≥ {loadPartial} % de sa charge habituelle", auto: "loadPartial" },
     ],
   },
@@ -270,7 +270,7 @@ const BASE_STAGES = [
     criteria: [
       { id: "s6a", t: "Premier match joué (temps de jeu progressif) sans réaction de la zone" },
       { id: "s6b", t: "Charge des 4 dernières semaines ≥ {loadFull} % de celle d'avant blessure", auto: "chronic" },
-      { id: "s6c", t: "Tests de performance (sprint, sauts, force) revenus à ≥ 95 % d'avant blessure" },
+      { id: "s6c", t: "Tests de performance (sprint, sauts, force) revenus à ≥ 95 % d'avant blessure", auto: "perf95" },
     ],
   },
 ];
@@ -286,6 +286,18 @@ export function rtpStagesFor(tissue) {
     return { ...s, criteria };
   });
 }
+/* Tests de retour : valeur côté blessé (ou actuelle) et valeur de référence (côté sain ou d'avant blessure).
+   LSI = blessé ÷ référence × 100 (indice de symétrie). Saisis dans la fiche (coach) ou Tests › Bilan. */
+export const RTP_TESTS = [
+  { id: "force", label: "Force de la zone", hint: "côté blessé / côté sain (isométrie, dynamomètre) ou RM actuel / RM d'avant blessure", unit: "" },
+  { id: "hop", label: "Sauts unipodaux", hint: "distance ou triple saut : jambe blessée / jambe saine (cm)", unit: "cm" },
+  { id: "ybal", label: "Y-balance", hint: "portée composite : côté blessé / côté sain (% ou cm)", unit: "" },
+  { id: "speed", label: "Vitesse max", hint: "actuelle / d'avant blessure (km/h)", unit: "km/h" },
+  { id: "perf", label: "Tests de performance", hint: "moyenne sprint, CMJ, force : actuel / d'avant blessure (même unité)", unit: "" },
+];
+export const lsiOf = (t) => (t && Number(t.inj) > 0 && Number(t.ref) > 0 ? Math.round((Number(t.inj) / Number(t.ref)) * 100) : null);
+const TEST_RULES = { force80: ["force", 80], force90: ["force", 90], hop90: ["hop", 90], ybal90: ["ybal", 90], speed90: ["speed", 90], perf95: ["perf", 95] };
+
 /* Étapes sans critère de tissu (page Référence, libellés) */
 export const RTP_STAGES = BASE_STAGES;
 export const RTP_TISSUE_CRITERIA = TISSUE_CRITERIA;
@@ -295,7 +307,7 @@ export function normalizeRtp(rtp) {
   if (!rtp) return null;
   if (rtp.v === 2) return rtp;
   const old = Number(rtp.stage) || 1;
-  return { v: 2, stage: old >= 6 ? 7 : old, checks: {}, history: [], updatedAt: rtp.updatedAt || null };
+  return { v: 2, stage: old >= 6 ? 7 : old, checks: {}, history: [], tests: rtp.tests || {}, updatedAt: rtp.updatedAt || null };
 }
 export const rtpStageOf = (inj) => (inj?.rtp ? normalizeRtp(inj.rtp).stage : 1);
 
@@ -363,6 +375,7 @@ export function painMonitor(history) {
 export function rtpState(inj, dailyLoads, today, opts = {}) {
   const rtp = normalizeRtp(inj?.rtp) || { v: 2, stage: 1, checks: {}, history: [] };
   const checks = rtp.checks || {};
+  const tests = rtp.tests || {};
   const load = rtpLoadCheck(dailyLoads, inj?.date, today);
   const painToday = opts.wellnessToday !== undefined ? zonePainOf(opts.wellnessToday, inj) : null;
   const p = { loadPartial: TH("rtpLoadPartial"), loadFull: TH("rtpLoadFull") };
@@ -372,11 +385,21 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     if (kind === "loadPartial") return load.pct == null ? null : load.pct >= p.loadPartial;
     if (kind === "loadFull") return load.pct == null ? null : load.pct >= p.loadFull;
     if (kind === "chronic") return load.chronicPct == null ? null : load.chronicPct >= p.loadFull;
+    if (TEST_RULES[kind]) {
+      const [tid, min] = TEST_RULES[kind];
+      const v = lsiOf(tests[tid]);
+      return v == null ? null : v >= min;
+    }
     return null;
   };
   const autoNote = (kind) => {
     if (kind === "painRest" || kind === "painLoad") return `Douleur saisie aujourd'hui sur la zone : ${painToday}/10`;
     if (kind === "chronic") return `${load.chronic} UA par semaine sur 28 jours, soit ${load.chronicPct} % de ses ${load.usual} UA habituels`;
+    if (TEST_RULES[kind]) {
+      const [tid] = TEST_RULES[kind];
+      const t = tests[tid];
+      return `test « ${RTP_TESTS.find((x) => x.id === tid).label} » : ${lsiOf(t)} %${t.date ? ` (${t.date.slice(8, 10)}/${t.date.slice(5, 7)})` : ""}`;
+    }
     return `${load.current} UA sur 7 jours, soit ${load.pct} % de ses ${load.usual} UA habituels`;
   };
   const stages = rtpStagesFor(inj?.tissueType).map((st) => {
@@ -428,6 +451,7 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     sinceInjury,
     started: !!inj?.rtp,
     tissue: inj?.tissueType || null,
+    tests,
     updatedAt: rtp.updatedAt || null,
   };
 }
@@ -440,14 +464,30 @@ export function rtpPatch(inj, { stage, checks }, today) {
     history = history.filter((h) => h.stage < stage); // revenir en arrière efface les entrées suivantes
     if (stage > 1) history.push({ stage, date: today });
   }
-  return { v: 2, stage, checks: checks || cur.checks || {}, history: history.slice(-12), updatedAt: new Date().toISOString() };
+  return { v: 2, stage, checks: checks || cur.checks || {}, history: history.slice(-12), tests: cur.tests || {}, updatedAt: new Date().toISOString() };
 }
+
+/* Patch « rtp » après saisie des tests de retour (garde l'étape et les critères) */
+export function rtpTestsPatch(inj, tests) {
+  const cur = normalizeRtp(inj?.rtp) || { v: 2, stage: 1, checks: {}, history: [] };
+  return { ...cur, v: 2, tests: { ...(cur.tests || {}), ...tests }, updatedAt: new Date().toISOString() };
+}
+
+/* Récidives : voir injuryRecurrences dans InjuryHistory.jsx (affichées dans l'historique) */
+export { injuryRecurrences } from "./InjuryHistory";
 
 /* Blessure qui demande un suivi : en cours, ou reprise récente dont le protocole n'est pas terminé */
 export function activeInjury(injuries, today) {
   const list = (injuries || [])
     .map((inj) => ({ inj, st: injuryStatus(inj, today), stage: rtpStageOf(inj) }))
-    .filter(({ inj, st, stage }) => st.key === "ongoing" || (inj.rtp && stage <= RTP_N && st.key !== "healed") || (st.key === "recent" && !(inj.rtp && stage > RTP_N)));
+    .filter(
+      ({ inj, st, stage }) =>
+        st.key === "ongoing" ||
+        (inj.rtp && stage <= RTP_N && st.key !== "healed") ||
+        (st.key === "recent" && !(inj.rtp && stage > RTP_N)) ||
+        // durée d'arrêt pas encore connue (blessure déclarée depuis une douleur) : suivie pendant 60 jours
+        (st.key === "na" && inj.date && inj.date >= addDays(today, -60) && !(inj.rtp && stage > RTP_N))
+    );
   list.sort((a, b) => (b.inj.date || "").localeCompare(a.inj.date || ""));
   return list[0] || null;
 }

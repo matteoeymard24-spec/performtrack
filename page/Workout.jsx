@@ -4974,7 +4974,9 @@ export default function Workout() {
     if (viewMode === "moi")
       return (
         (evt.group === "moi" && evt.createdBy === currentUser?.uid) ||
-        evt.targetUserId === currentUser?.uid
+        evt.targetUserId === currentUser?.uid ||
+        // coach lui-même dans son groupe « Blessés » : ses séances réathlé apparaissent dans « Moi »
+        (!!injuredScopes(currentUser?.uid, customGroups) && injuredScopes(currentUser?.uid, customGroups).includes(evt.group))
       );
     if (viewMode === "admins") {
       if (adminFilterId)
@@ -5012,7 +5014,7 @@ export default function Workout() {
   const cycleScopes = (() => {
     const groupsOf = (uid) =>
       customGroups.filter((g) => (g.athleteIds || []).includes(uid)).map((g) => g.id);
-    if (viewMode === "moi") return [userScope(currentUser.uid)];
+    if (viewMode === "moi") return [...(injuredScopes(currentUser.uid, customGroups) || []), userScope(currentUser.uid)];
     if (viewMode === "admins" && adminFilterId) return isSuperAdmin ? [userScope(adminFilterId)] : [];
     if (viewMode === "admins")
       return adminUsers.filter((a) => a.id !== currentUser.uid && (isSuperAdmin)).map((a) => userScope(a.id));

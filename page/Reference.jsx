@@ -273,6 +273,30 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
           qu'il avait déjà commencées. Sa planification affichée est celle du groupe Blessés et la sienne, et sa charge prévue suit ces
           séances. Le groupe est mis à jour par le coach (Dashboard, changement d'étape, blessure saisie dans Tests › Bilan).
         </P>
+        <P>
+          Bascule manuelle : le bouton « 🏥 Passer en blessé » de la fiche athlète (et « 🏥 Je suis blessé » sur le dashboard du coach
+          lui-même) met dans le groupe ou en sort, même sans blessure enregistrée ; ce choix reste prioritaire sur la règle automatique
+          tant que la blessure est suivie.
+        </P>
+        <H>Tests de retour (LSI)</H>
+        <F>LSI (%) = côté blessé ÷ côté sain × 100   (ou valeur actuelle ÷ valeur d'avant blessure)</F>
+        <P>
+          Saisis dans la fiche (coach) ou Tests › Bilan (coach et athlète) : force de la zone, sauts unipodaux, Y-balance, vitesse max,
+          tests de performance. Ils cochent tout seuls les critères correspondants : force ≥ 80 % (étape 3) puis ≥ 90 % (étape 4), sauts
+          et Y-balance ≥ 90 % (ligament), vitesse ≥ 90 % (muscle), performance ≥ 95 % (étape 6).
+        </P>
+        <H>Récidives</H>
+        <P>
+          Nouvelle blessure du même site (mot commun dans le nom ou la zone) et du même tissu, survenue après le retour de la précédente
+          (clôture du retour au jeu, sinon date + jours d'arrêt). Précoce si moins de 2 mois après le retour, tardive entre 2 et 12 mois,
+          différée au-delà. Affichée dans l'historique des blessures et dans le retour au jeu.
+        </P>
+        <H>Déclarer une blessure depuis une douleur</H>
+        <P>
+          Douleur du jour en alerte (≥ {TH("synthPainAlert")}/10, ou aiguë, nerveuse ou articulaire au-dessus de {TH("synthPainWatch")}/10)
+          sans blessure suivie : l'athlète (son dashboard) et le coach (la fiche) voient une carte pour l'enregistrer, préremplie avec la
+          zone et le type de douleur. Une blessure sans durée d'arrêt reste suivie 60 jours.
+        </P>
         <P>Trame générale : elle ne remplace pas l'avis du médecin ou du kiné, qui décident du retour.</P>
         <H>Force relative</H>
         <F>force relative = meilleur RM du mouvement / poids de corps (dernière pesée)</F>
@@ -281,7 +305,7 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
           note /20 est celle du barème du poste et du niveau (voir « Normes rugby ») ; sans sport, poste ou niveau dans le profil, seule la
           force relative est affichée.
         </P>
-        <Ref>Foster 1998, Med Sci Sports Exerc 30:1164 (monotonie / contrainte) · Foster et al. 2001, J Strength Cond Res 15:109 (sRPE) · Ardern et al. 2016, Br J Sports Med 50:853 (consensus sur le retour au sport : continuum participation → sport → performance) · Taberner et al. 2019, Br J Sports Med 53:1132 (continuum contrôle → chaos) · Silbernagel et al. 2007, Am J Sports Med 35:897 (modèle de surveillance de la douleur) · Impellizzeri et al. 2020, Int J Sports Physiol Perform 15:907 (limites du ratio aigu / chronique).</Ref>
+        <Ref>Foster 1998, Med Sci Sports Exerc 30:1164 (monotonie / contrainte) · Foster et al. 2001, J Strength Cond Res 15:109 (sRPE) · Ardern et al. 2016, Br J Sports Med 50:853 (consensus sur le retour au sport : continuum participation → sport → performance) · Taberner et al. 2019, Br J Sports Med 53:1132 (continuum contrôle → chaos) · Silbernagel et al. 2007, Am J Sports Med 35:897 (modèle de surveillance de la douleur) · Fuller et al. 2007, Br J Sports Med 41:328 (définitions des blessures au rugby, récidives) · Impellizzeri et al. 2020, Int J Sports Physiol Perform 15:907 (limites du ratio aigu / chronique).</Ref>
       </FoldCard>
 
       {/* ============ MUSCU ============ */}
@@ -564,6 +588,7 @@ historique utilisé : 6 mois (lu à l'ouverture de la planification)`}</F>
             "Hollander DB et al. 2007 — Maximal eccentric and concentric strength discrepancies between young men and women for dynamic resistance exercise. J Strength Cond Res 21:34-40.",
             "Silbernagel KG et al. 2007 — Continued sports activity, using a pain-monitoring model, during rehabilitation in patients with Achilles tendinopathy. Am J Sports Med 35:897-906.",
             "Taberner M, Allen T, Cohen DD 2019 — Progressing rehabilitation after injury: consider the 'control-chaos continuum'. Br J Sports Med 53:1132-1136.",
+            "Fuller CW et al. 2007 — Consensus statement on injury definitions and data collection procedures for studies of injuries in rugby union. Br J Sports Med 41:328-331.",
             "Impellizzeri FM et al. 2020 — Acute:Chronic Workload Ratio: Conceptual Issues and Fundamental Pitfalls. Int J Sports Physiol Perform 15:907-913.",
             "Wang C et al. 2020 — Analyzing Activity and Injury: Lessons Learned from the Acute:Chronic Workload Ratio. Sports Med 50:1243-1254.",
             "Oranchuk DJ et al. 2019 — Isometric training and long-term adaptations: effects of muscle length, intensity, and intent. Scand J Med Sci Sports 29:484-503.",

@@ -1,5 +1,7 @@
 import { InjuryForm, InjuryTimeline, todayLocal } from "../component/InjuryHistory";
 import { syncInjuredGroup } from "../component/injuredGroup";
+import { activeInjury, normalizeRtp, rtpTestsPatch } from "../component/coachSynthesis";
+import { RtpTestsForm } from "../component/CoachFiche";
 import TestProgress from "../component/TestProgress";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -1837,6 +1839,26 @@ export default function Tests() {
                     emptyText={isCoach ? "Aucune blessure enregistrée pour cet athlète." : "Aucune blessure enregistrée pour le moment."}
                   />
                 )}
+                {uid &&
+                  (() => {
+                    // Tests de retour (LSI) de la blessure suivie : cochent tout seuls les critères du retour au jeu
+                    const act = activeInjury(injuries, todayLocal());
+                    if (!act) return null;
+                    return (
+                      <div style={{ marginTop: 12, padding: 14, borderRadius: 12, background: "#151310", border: "1px solid rgba(217,105,90,0.35)" }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 2 }}>📏 Tests de retour : {act.inj.name || act.inj.zone || "blessure en cours"}</div>
+                        <RtpTestsForm
+                          key={act.inj.id}
+                          tests={normalizeRtp(act.inj.rtp)?.tests || {}}
+                          onSave={async (t) => {
+                            const rtp = rtpTestsPatch(act.inj, t);
+                            await updateDoc(doc(db, "injuries", act.inj.id), { rtp });
+                            setInjuries((prev) => prev.map((i) => (i.id === act.inj.id ? { ...i, rtp } : i)));
+                          }}
+                        />
+                      </div>
+                    );
+                  })()}
               </>)}
               </div>
 

@@ -76,6 +76,49 @@ export function injuryStatus(inj, today = todayLocal()) {
   return { key: "healed", label: "Guérie", color: GREEN, back };
 }
 
+/* ---------------------------------------------------------------------
+   Récidives (Fuller et al. 2007, consensus sur les définitions des blessures au rugby) : nouvelle blessure du
+   même site et du même type après le retour complet. Précoce ≤ 2 mois après le retour, tardive 2-12 mois,
+   différée > 12 mois. Retour = clôture du retour au jeu si elle existe, sinon date + jours d'arrêt.
+   Même site = un mot du nom / de la zone en commun ; même type = même tissu (si renseigné des deux côtés).
+   Retour : { idBlessure: { prevId, kind: "early" | "late" | "delayed", label, days } }
+   --------------------------------------------------------------------- */
+const recNorm = (t) =>
+  String(t || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ");
+const injuryWords = (inj) => recNorm(`${inj?.name || ""} ${inj?.zone || ""}`).split(" ").filter((w) => w.length >= 4);
+const returnDateOf = (inj) => {
+  // retour au jeu clôturé (v2 : étape 7, enregistrée dans history) : c'est la vraie date de retour
+  const h = inj?.rtp?.v === 2 ? inj.rtp.history || [] : [];
+  const cleared = h.find((x) => x.stage > 6);
+  if (cleared?.date) return cleared.date;
+  const n = Number(inj?.daysLost);
+  return inj?.date && Number.isFinite(n) ? addDays(inj.date, n) : null;
+};
+export function injuryRecurrences(injuries) {
+  const list = (injuries || []).filter((i) => i && i.date).slice().sort((a, b) => a.date.localeCompare(b.date));
+  const out = {};
+  list.forEach((inj, k) => {
+    const words = injuryWords(inj);
+    for (let j = k - 1; j >= 0; j--) {
+      const prev = list[j];
+      const back = returnDateOf(prev);
+      if (!back || back > inj.date) continue; // pas encore revenu : c'est une aggravation, pas une récidive
+      if (inj.tissueType && prev.tissueType && inj.tissueType !== prev.tissueType) continue;
+      const pw = injuryWords(prev);
+      if (!words.some((w) => pw.some((x) => x.slice(0, 5) === w.slice(0, 5)))) continue;
+      const days = Math.round((new Date(inj.date + "T12:00:00") - new Date(back + "T12:00:00")) / 86400000);
+      const kind = days <= 61 ? "early" : days <= 365 ? "late" : "delayed";
+      out[inj.id] = { prevId: prev.id, prevName: prev.name || prev.zone || "blessure", kind, days, label: kind === "early" ? "Récidive précoce" : kind === "late" ? "Récidive tardive" : "Récidive différée" };
+      break;
+    }
+  });
+  return out;
+}
+
 const inputStyle = {
   width: "100%",
   boxSizing: "border-box",
@@ -188,7 +231,7 @@ export function InjuryForm({ initial, onSave, onCancel, saving, message }) {
           disabled={saving}
           style={{ flex: 1, padding: 12, background: saving ? MUTED : RED, color: "white", border: "none", borderRadius: 10, fontSize: 15, fontWeight: 800, cursor: saving ? "not-allowed" : "pointer" }}
         >
-          {saving ? "Enregistrement…" : initial ? "Mettre à jour" : "Enregistrer la blessure"}
+          {saving ? "Enregistrement…" : initial && initial.id ? "Mettre à jour" : "Enregistrer la blessure"}
         </button>
         {onCancel && (
           <button type="button" onClick={onCancel} style={{ padding: "12px 16px", background: "transparent", color: MUTED, border: "1px solid #3a342a", borderRadius: 10, fontSize: 14, cursor: "pointer" }}>
@@ -229,6 +272,8 @@ export function InjuryTimeline({ injuries = [], onEdit, onDelete, editingId, ren
     .slice()
     .sort((a, b) => (a.date || "").localeCompare(b.date || "") * (order === "asc" ? 1 : -1));
   const ongoing = injuries.filter((i) => injuryStatus(i, today).key === "ongoing").length;
+  const recurrences = injuryRecurrences(injuries);
+  const nRec = Object.keys(recurrences).length;
   const totalDays = injuries.reduce((s, i) => s + (Number(i.daysLost) || 0), 0);
 
   if (!injuries.length) return <div style={{ fontSize: 13, color: MUTED }}>{emptyText}</div>;
@@ -240,6 +285,7 @@ export function InjuryTimeline({ injuries = [], onEdit, onDelete, editingId, ren
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <span style={statChip(RED)}>{injuries.length} blessure{injuries.length > 1 ? "s" : ""}</span>
           {ongoing > 0 && <span style={statChip(RED, true)}>● {ongoing} en cours</span>}
+          {nRec > 0 && <span style={statChip(AMBER)}>↻ {nRec} récidive{nRec > 1 ? "s" : ""}</span>}
           {totalDays > 0 && !compact && <span style={statChip(MUTED)}>⏱ {totalDays} j d'arrêt au total</span>}
         </div>
         <button
@@ -300,6 +346,11 @@ export function InjuryTimeline({ injuries = [], onEdit, onDelete, editingId, ren
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                       {inj.tissueType && <span style={tag}>{TISSUE_ICON[inj.tissueType] || "•"} {TISSUE_LABELS[inj.tissueType] || inj.tissueType}</span>}
                       {inj.mechanism && <span style={tag}>{MECHANISM_LABELS[inj.mechanism] || inj.mechanism}</span>}
+                      {recurrences[inj.id] && (
+                        <span style={{ ...tag, color: recurrences[inj.id].kind === "early" ? RED : AMBER, borderColor: recurrences[inj.id].kind === "early" ? `${RED}88` : `${AMBER}88` }} title={`Même zone que « ${recurrences[inj.id].prevName} », ${recurrences[inj.id].days} jours après le retour`}>
+                          ↻ {recurrences[inj.id].label} ({recurrences[inj.id].days} j après le retour)
+                        </span>
+                      )}
                       {inj.rtp && (() => {
                         // v2 : 6 étapes, 7 = performance retrouvée ; ancien format : 5 étapes, 6 = validé
                         const n = inj.rtp.v === 2 ? 6 : 5;

@@ -11,8 +11,11 @@
    • La synchro est faite par le COACH (seul un admin peut écrire un groupe) : à l'ouverture du Dashboard
      et à chaque changement d'étape du retour au jeu. Une blessure déclarée par l'athlète lui-même compte
      donc à la prochaine ouverture du Dashboard par son coach : c'est voulu (le coach valide).
+   • Bascule MANUELLE par le coach (bouton du Dashboard, pour un athlète ou pour lui-même) :
+       forcedIn  = dedans même sans blessure suivie ; forcedOut = dehors même avec une blessure suivie.
+     Un forcedOut devenu inutile (blessure terminée) est nettoyé à la synchro suivante.
    Document : groups/{id auto} = { name, system: "injured", hideOthers, color, createdBy, athleteIds,
-              memberSince, formerMembers, subGroups, createdAt }
+              memberSince, formerMembers, subGroups, forcedIn, forcedOut, createdAt }
    ===================================================================== */
 import { collection, addDoc, doc, updateDoc, getDocs, query, where, serverTimestamp } from "firebase/firestore";
 import { withMembershipHistory } from "./groupHistory";
@@ -41,29 +44,42 @@ export function syncInjuredGroup(args) {
   running = next;
   return next;
 }
-async function doSync({ db, coachUid, isSuperAdmin, athletes, today }) {
-  if (!db || !coachUid) return null;
+const readGroup = async (db, coachUid) => {
   const snap = await getDocs(query(collection(db, "groups"), where("createdBy", "==", coachUid)));
-  const g = injuredGroupOf(
+  return injuredGroupOf(
     snap.docs.map((d) => ({ id: d.id, ...d.data() })),
     coachUid
   );
+};
+const newGroupData = (coachUid, ids, today, extra = {}) => ({
+  name: "🏥 Blessés",
+  system: INJURED,
+  hideOthers: true,
+  color: "#d9695a",
+  createdBy: coachUid,
+  athleteIds: ids,
+  subGroups: [],
+  memberSince: Object.fromEntries(ids.map((u) => [u, today])),
+  formerMembers: {},
+  forcedIn: [],
+  forcedOut: [],
+  createdAt: serverTimestamp(),
+  ...extra,
+});
+
+async function doSync({ db, coachUid, isSuperAdmin, athletes, today }) {
+  if (!db || !coachUid) return null;
+  const g = await readGroup(db, coachUid);
   const mine = (athletes || []).filter((a) => a && a.id && managedBy(a, coachUid, isSuperAdmin));
-  const want = mine.filter((a) => needsInjuredGroup(a.injuries, today)).map((a) => a.id);
+  const forcedIn = g?.forcedIn || [];
+  const forcedOut0 = g?.forcedOut || [];
+  const needs = Object.fromEntries(mine.map((a) => [a.id, needsInjuredGroup(a.injuries, today)]));
+  // forcedOut d'un athlète géré qui n'a plus de blessure suivie : inutile, on le retire
+  const forcedOut = forcedOut0.filter((u) => !(u in needs) || needs[u]);
+  const want = mine.filter((a) => (needs[a.id] && !forcedOut.includes(a.id)) || forcedIn.includes(a.id)).map((a) => a.id);
   if (!g) {
     if (!want.length) return null;
-    const data = {
-      name: "🏥 Blessés",
-      system: INJURED,
-      hideOthers: true,
-      color: "#d9695a",
-      createdBy: coachUid,
-      athleteIds: want,
-      subGroups: [],
-      memberSince: Object.fromEntries(want.map((u) => [u, today])),
-      formerMembers: {},
-      createdAt: serverTimestamp(),
-    };
+    const data = newGroupData(coachUid, want, today);
     const ref = await addDoc(collection(db, "groups"), data);
     return { id: ref.id, ...data };
   }
@@ -72,8 +88,42 @@ async function doSync({ db, coachUid, isSuperAdmin, athletes, today }) {
   const keep = (g.athleteIds || []).filter((u) => !mineIds.has(u));
   const next = [...new Set([...keep, ...want])];
   const same = next.length === (g.athleteIds || []).length && next.every((u) => (g.athleteIds || []).includes(u));
-  if (same) return null;
-  const patch = withMembershipHistory(g, { athleteIds: next });
+  const outChanged = forcedOut.length !== forcedOut0.length;
+  if (same && !outChanged) return null;
+  const patch = same ? { forcedOut } : { ...withMembershipHistory(g, { athleteIds: next }), forcedOut };
+  await updateDoc(doc(db, "groups", g.id), patch);
+  return { ...g, ...patch };
+}
+
+/* Bascule manuelle (bouton du Dashboard). uid = athlète ou le coach lui-même ; on = le mettre dans le groupe.
+   needs = a-t-il une blessure suivie (sert à choisir forcedOut ou simple retrait). Retourne le groupe à jour. */
+export function setInjuredManual(args) {
+  const next = running.then(() => doManual(args)).catch((e) => {
+    console.warn("Groupe Blessés : bascule impossible", e);
+    throw e;
+  });
+  running = next.catch(() => null);
+  return next;
+}
+async function doManual({ db, coachUid, uid, on, needs, today }) {
+  const g = await readGroup(db, coachUid);
+  if (!g) {
+    if (!on) return null;
+    const data = newGroupData(coachUid, [uid], today, { forcedIn: needs ? [] : [uid] });
+    const ref = await addDoc(collection(db, "groups"), data);
+    return { id: ref.id, ...data };
+  }
+  const ids = new Set(g.athleteIds || []);
+  let forcedIn = (g.forcedIn || []).filter((u) => u !== uid);
+  let forcedOut = (g.forcedOut || []).filter((u) => u !== uid);
+  if (on) {
+    ids.add(uid);
+    if (!needs) forcedIn = [...forcedIn, uid];
+  } else {
+    ids.delete(uid);
+    if (needs) forcedOut = [...forcedOut, uid];
+  }
+  const patch = { ...withMembershipHistory(g, { athleteIds: [...ids] }), forcedIn, forcedOut };
   await updateDoc(doc(db, "groups", g.id), patch);
   return { ...g, ...patch };
 }
