@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { SYNTH_LEVELS, RTP_STAGES } from "./coachSynthesis";
+import { SYNTH_LEVELS, RTP_N, RTP_PHASES, normalizeRtp } from "./coachSynthesis";
 import { fmtDateFr } from "./InjuryHistory";
 
 /* =====================================================================
@@ -7,7 +7,7 @@ import { fmtDateFr } from "./InjuryHistory";
    Les calculs sont dans coachSynthesis.js ; les seuils dans ⚙️ Paramètres.
      • SynthesisBanner  : un feu par pôle + la décision proposée
      • WeekLoadCard     : charge prévue / réalisée par semaine + dynamique (variation, monotonie, contrainte)
-     • RtpCard          : retour au jeu par étapes à critères
+     • RtpCard / RtpAthleteCard / RtpContinuum / ZonePainStrip : retour au jeu (continuum, douleur de la zone, critères)
      • RelStrengthCard  : force relative (RM ÷ poids de corps) et note du barème
    ===================================================================== */
 const TEXT = "#f3f0ea";
@@ -183,30 +183,69 @@ export function WeekLoadCard({ weeks, dyn, thresholds, athlete = false }) {
   );
 }
 
-/* Frise du retour au jeu : 5 étapes + l'arrivée (compétition). Le trait plein va jusqu'à la position actuelle,
-   avec l'avancement DANS l'étape en cours (critères remplis). */
+/* =====================================================================
+   Retour au jeu : frise du continuum, courbe de douleur de la zone, cartes coach / athlète.
+   Données et règles : coachSynthesis.js (rtpState, zonePainHistory, painMonitor).
+   ===================================================================== */
+const TISSUE_NAME = { muscle: "muscle", tendon: "tendon", ligament: "ligament", os: "os / articulation", autre: "autre" };
+const MON_COLOR = { ok: GREEN, watch: "#d9a441", alert: RED, nodata: MUTED };
+
+/* Frise : 6 étapes regroupées en phases (Ardern 2016), position actuelle, jours passés dans chaque étape */
 export function RtpContinuum({ state, injury, status, you = false, details = true }) {
-  const stops = [...RTP_STAGES.map((s) => ({ id: s.id, short: s.short, icon: s.icon })), { id: 6, short: "Compétition", icon: "🏁" }];
-  const cur = state.stages[Math.min(state.stage, 5) - 1];
-  const inStage = state.cleared ? 0 : cur.criteria.filter((c) => c.ok).length / cur.criteria.length;
-  // position sur la frise : 0 % = étape 1, 100 % = compétition
-  const pos = state.cleared ? 100 : ((state.stage - 1 + inStage * 0.85) / 5) * 100;
+  const n = RTP_N;
+  const cur = state.cleared ? null : state.stages[state.stage - 1];
+  const inStage = cur ? cur.criteria.filter((c) => c.ok).length / cur.criteria.length : 0;
+  // position : centre de l'étape 1 = 0 %, centre de la dernière = 100 % ; on avance dans l'étape avec les critères remplis
+  const pos = state.cleared ? 100 : Math.min(100, ((state.stage - 1 + inStage * 0.85) / (n - 1)) * 100);
+  const col = (100 / n).toFixed(4);
   return (
-    <div style={{ margin: "6px 0 14px" }}>
-      <div style={{ position: "relative", padding: "34px 0 0" }}>
-        <div style={{ position: "absolute", left: "8.33%", right: "8.33%", top: 52, height: 6, borderRadius: 3, background: "#2a2620" }}>
-          <div style={{ width: `${pos}%`, height: "100%", borderRadius: 3, background: `linear-gradient(90deg, ${GREEN}, ${state.cleared ? GREEN : AMBER})`, transition: "width 0.4s ease" }} />
+    <div style={{ margin: "8px 0 14px" }}>
+      {/* bandes de phase */}
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${n}, 1fr)`, gap: 3, marginBottom: 6 }}>
+        {RTP_PHASES.map((ph) => {
+          const on = !state.cleared && state.stage >= ph.from && state.stage <= ph.to;
+          const done = state.cleared || state.stage > ph.to;
+          return (
+            <div
+              key={ph.id}
+              style={{
+                gridColumn: `${ph.from} / ${ph.to + 1}`,
+                fontSize: 10,
+                fontWeight: 800,
+                letterSpacing: 0.3,
+                textTransform: "uppercase",
+                textAlign: "center",
+                padding: "3px 4px",
+                borderRadius: 6,
+                color: on ? "#12100c" : done ? ph.color : MUTED,
+                background: on ? ph.color : `${ph.color}${done ? "22" : "10"}`,
+                border: `1px solid ${ph.color}${on ? "" : "44"}`,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+              title={ph.label}
+            >
+              {ph.short}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ position: "relative", padding: "30px 0 0" }}>
+        <div style={{ position: "absolute", left: `${col / 2}%`, right: `${col / 2}%`, top: 48, height: 6, borderRadius: 3, background: "#2a2620" }}>
+          <div style={{ width: `${pos}%`, height: "100%", borderRadius: 3, background: `linear-gradient(90deg, ${RED}, #d9a441 45%, ${GREEN})`, transition: "width 0.4s ease" }} />
           {!state.cleared && (
-            <div style={{ position: "absolute", left: `${pos}%`, top: -38, transform: "translateX(-50%)", fontSize: 10.5, fontWeight: 800, color: "#12100c", background: AMBER, borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap" }}>
+            <div style={{ position: "absolute", left: `${pos}%`, top: -34, transform: "translateX(-50%)", fontSize: 10.5, fontWeight: 800, color: "#12100c", background: AMBER, borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap" }}>
               {you ? "Tu es ici" : "Ici"}
               <span style={{ position: "absolute", left: "50%", bottom: -4, width: 8, height: 8, background: AMBER, transform: "translateX(-50%) rotate(45deg)" }} />
             </div>
           )}
         </div>
-        <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(6, 1fr)" }}>
-          {stops.map((s) => {
+        <div style={{ position: "relative", display: "grid", gridTemplateColumns: `repeat(${n}, 1fr)` }}>
+          {state.stages.map((s) => {
             const done = state.cleared || s.id < state.stage;
             const here = !state.cleared && s.id === state.stage;
+            const d = state.daysIn(s.id);
             return (
               <div key={s.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 0 }}>
                 <div
@@ -224,31 +263,43 @@ export function RtpContinuum({ state, injury, status, you = false, details = tru
                     filter: done || here ? "none" : "grayscale(1) opacity(0.55)",
                   }}
                 >
-                  {done && s.id !== 6 ? <span style={{ color: "#12100c", fontWeight: 900, fontSize: 15 }}>✓</span> : s.icon}
+                  {done ? <span style={{ color: "#12100c", fontWeight: 900, fontSize: 15 }}>✓</span> : s.icon}
                 </div>
                 <div style={{ marginTop: 5, fontSize: 10.5, fontWeight: here ? 800 : 600, color: here ? AMBER : done ? "#c9c1b5" : MUTED, textAlign: "center", lineHeight: 1.2, overflowWrap: "anywhere" }}>{s.short}</div>
+                <div style={{ fontSize: 10, color: here ? AMBER : MUTED, minHeight: 13 }}>{(done || here) && d != null ? `${d} j` : ""}</div>
               </div>
             );
           })}
         </div>
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: MUTED, marginTop: 8 }}>
-        <span>Blessure : {fmtDateFr(injury.date, { day: "numeric", month: "short" })}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", fontSize: 11.5, color: MUTED, marginTop: 6 }}>
+        <span>
+          Blessure : {fmtDateFr(injury.date, { day: "numeric", month: "short" })}
+          {state.sinceInjury != null ? ` (J+${state.sinceInjury})` : ""}
+          {state.tissue ? ` · ${TISSUE_NAME[state.tissue] || state.tissue}` : ""}
+        </span>
+        {!state.cleared && <span style={{ color: state.phase.color, fontWeight: 700 }}>{state.phase.label}</span>}
         {status?.back && <span>Retour estimé : {fmtDateFr(status.back, { day: "numeric", month: "short" })}</span>}
       </div>
-      {details && !state.cleared && (
+      {details && cur && (
         <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, background: "#0d0c0a", border: `1px solid ${BORDER}` }}>
           <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
-            {cur.icon} Étape {cur.id}/5 · {cur.label}
+            {cur.icon} Étape {cur.id}/{n} · {cur.label}
           </div>
           <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>{cur.goal}</div>
+          <div style={{ fontSize: 12, color: "#c9c1b5", marginTop: 4 }}>
+            <b style={{ color: MUTED }}>Au programme :</b> {cur.content}
+          </div>
           <div style={{ fontSize: 12, fontWeight: 800, color: MUTED, letterSpacing: 0.3, textTransform: "uppercase", marginTop: 8 }}>
             {cur.complete ? "Critères remplis" : `Pour passer à la suite (${cur.criteria.filter((c) => c.ok).length}/${cur.criteria.length})`}
           </div>
           {cur.criteria.map((c) => (
             <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: c.ok ? "#c9c1b5" : TEXT, marginTop: 4 }}>
               <span style={{ color: c.ok ? GREEN : "#6f6a62", fontWeight: 900, flexShrink: 0 }}>{c.ok ? "✓" : "○"}</span>
-              <span style={{ textDecoration: c.ok ? "line-through" : "none", textDecorationColor: "#6f6a62" }}>{c.t}</span>
+              <span>
+                <span style={{ textDecoration: c.ok ? "line-through" : "none", textDecorationColor: "#6f6a62" }}>{c.t}</span>
+                {c.note && <span style={{ display: "block", fontSize: 11.5, color: MUTED }}>{c.note}</span>}
+              </span>
             </div>
           ))}
         </div>
@@ -257,38 +308,79 @@ export function RtpContinuum({ state, injury, status, you = false, details = tru
   );
 }
 
+/* Douleur de la zone blessée jour par jour (schéma corporel du wellness) + lecture « surveillance de la douleur » */
+export function ZonePainStrip({ history, monitor }) {
+  if (!history || !history.length) return null;
+  const any = history.some((p) => p.v != null);
+  return (
+    <div style={{ margin: "4px 0 12px", padding: "10px 12px", borderRadius: 10, background: "#0d0c0a", border: `1px solid ${BORDER}` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: MUTED, letterSpacing: 0.3, textTransform: "uppercase" }}>Douleur de la zone, jour par jour</span>
+        <span style={{ fontSize: 11, color: MUTED }}>repère : ≤ 5/10 pendant l'effort</span>
+      </div>
+      {any ? (
+        <div style={{ position: "relative", display: "flex", alignItems: "flex-end", gap: 2, height: 54 }} role="img" aria-label="Douleur de la zone blessée par jour">
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: `${(5 / 10) * 54}px`, borderTop: `1px dashed ${RED}88` }} />
+          {history.map((p) => (
+            <div key={p.date} title={`${fmtDateFr(p.date, { day: "numeric", month: "short" })} : ${p.v == null ? "pas de wellness" : `${p.v}/10`}`} style={{ flex: 1, minWidth: 3, display: "flex", alignItems: "flex-end", height: "100%" }}>
+              <div
+                style={{
+                  width: "100%",
+                  height: p.v == null ? 2 : Math.max(3, (p.v / 10) * 54),
+                  borderRadius: 2,
+                  background: p.v == null ? "#2a2620" : p.v > 5 ? RED : p.v > 2 ? "#d9a441" : GREEN,
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div style={{ fontSize: 12.5, color: MON_COLOR[monitor.level] || MUTED, marginTop: 6, lineHeight: 1.4 }}>{monitor.text}</div>
+    </div>
+  );
+}
+
 /* Carte de l'athlète (lecture seule) : où j'en suis dans mon retour */
-export function RtpAthleteCard({ injury, status, state, pain }) {
+export function RtpAthleteCard({ injury, status, state, pain, painHistory, monitor, inGroup }) {
   if (!injury) return null;
   return (
     <div style={{ ...CARD, border: `1px solid ${RED}66` }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
         <h3 style={H3}>🏥 Mon retour au jeu : {injury.name || injury.zone || "blessure"}</h3>
         <span style={{ fontSize: 12, fontWeight: 800, color: state.cleared ? GREEN : AMBER, border: `1px solid ${state.cleared ? GREEN : AMBER}66`, borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap" }}>
-          {state.cleared ? "✓ Retour validé" : `Étape ${state.stage}/5`}
+          {state.cleared ? "✓ Performance retrouvée" : `Étape ${state.stage}/${RTP_N}`}
         </span>
       </div>
       <RtpContinuum state={state} injury={injury} status={status} you />
+      {inGroup && (
+        <div style={{ fontSize: 12.5, color: "#d8cfbd", background: "rgba(217,105,90,0.08)", border: `1px solid ${RED}44`, borderRadius: 10, padding: "8px 11px", marginBottom: 12, lineHeight: 1.45 }}>
+          🏥 Tu es dans le groupe « Blessés » : ton calendrier et ta planification affichent tes séances de réathlé à la place de
+          celles de ton équipe. Tu retrouves ton groupe dès que tu reprends l'entraînement collectif (étape 5).
+        </div>
+      )}
+      {painHistory && <ZonePainStrip history={painHistory} monitor={monitor} />}
       {pain?.onInjury && (
         <div style={{ fontSize: 13, color: "#f0d9ae", background: "rgba(217,105,90,0.12)", border: `1px solid ${RED}55`, borderRadius: 10, padding: "8px 11px", marginBottom: 8, lineHeight: 1.45 }}>
           ⚠️ Tu as noté une douleur de {pain.onInjury.v}/10 sur cette zone aujourd'hui : signale-la à ton coach avant de faire ta séance.
         </div>
       )}
       <div style={{ fontSize: 11.5, color: "#6f6a62" }}>
-        {state.started ? "C'est ton coach qui valide chaque étape, avec le médecin ou le kiné." : "Ton coach n'a pas encore démarré le suivi : tu es placé à la première étape par défaut."} On avance sur des critères, pas sur un délai.
+        {state.started ? "C'est ton coach qui valide chaque étape, avec le médecin ou le kiné." : "Ton coach n'a pas encore démarré le suivi : tu es placé à la première étape par défaut."} On avance sur des
+        critères, pas sur un délai. Remplis ton wellness chaque jour en indiquant la douleur sur le schéma : elle sert à valider les étapes.
       </div>
     </div>
   );
 }
 
-export function RtpCard({ injury, status, state, onSave, saving, pain }) {
+/* Carte du coach : frise + douleur de la zone + validation des critères étape par étape */
+export function RtpCard({ injury, status, state, onSave, saving, pain, painHistory, monitor, injuredGroup }) {
   const [open, setOpen] = useState(state.cleared ? 0 : state.stage);
   if (!injury) return null;
-  const checks = injury.rtp?.checks || {};
+  const checks = normalizeRtp(injury.rtp)?.checks || {};
   const toggle = (id) => onSave({ stage: state.stage, checks: { ...checks, [id]: !checks[id] } });
   const setStage = (n) => {
     onSave({ stage: n, checks });
-    setOpen(n >= 6 ? 0 : n);
+    setOpen(n > RTP_N ? 0 : n);
   };
   const name = injury.name || injury.zone || "Blessure";
   return (
@@ -296,11 +388,19 @@ export function RtpCard({ injury, status, state, onSave, saving, pain }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
         <h3 style={H3}>🏥 Retour au jeu : {name}</h3>
         <span style={{ fontSize: 12, fontWeight: 800, color: state.cleared ? GREEN : status?.color || AMBER, border: `1px solid ${state.cleared ? GREEN : status?.color || AMBER}66`, borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap" }}>
-          {state.cleared ? "✓ Retour validé" : `Étape ${state.stage}/5`}
+          {state.cleared ? "✓ Performance retrouvée" : `Étape ${state.stage}/${RTP_N}`}
         </span>
       </div>
       <div style={{ fontSize: 12, color: MUTED }}>On passe à l'étape suivante quand les critères sont remplis, pas quand le délai est écoulé.</div>
+      {injuredGroup && (
+        <div style={{ fontSize: 12, color: "#c9c1b5", marginTop: 6 }}>
+          {state.stage < 5 && !state.cleared
+            ? "🏥 Dans le groupe « Blessés » : il voit ses séances réathlé et sa planification dédiée. Il retrouve son groupe à l'étape 5 (entraînement collectif)."
+            : "Il a retrouvé les séances de son groupe (étape 5 atteinte)."}
+        </div>
+      )}
       <RtpContinuum state={state} injury={injury} status={status} details={false} />
+      {painHistory && <ZonePainStrip history={painHistory} monitor={monitor} />}
       {pain?.onInjury && (
         <div style={{ fontSize: 13, color: "#f0d9ae", background: "rgba(217,105,90,0.12)", border: `1px solid ${RED}55`, borderRadius: 10, padding: "8px 11px", marginBottom: 12, lineHeight: 1.45 }}>
           ⚠️ Douleur de {pain.onInjury.v}/10 déclarée aujourd'hui sur la zone ({pain.onInjury.label}) : ne pas valider l'étape suivante tant qu'elle persiste.
@@ -311,6 +411,7 @@ export function RtpCard({ injury, status, state, onSave, saving, pain }) {
         const isCur = !state.cleared && s.id === state.stage;
         const isDone = state.cleared || s.id < state.stage;
         const isOpen = open === s.id;
+        const d = state.daysIn(s.id);
         return (
           <div key={s.id} style={{ borderTop: `1px solid ${BORDER}`, padding: "8px 0" }}>
             <button
@@ -323,7 +424,10 @@ export function RtpCard({ injury, status, state, onSave, saving, pain }) {
                 {isDone ? "✓" : s.id}
               </span>
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: isCur ? TEXT : isDone ? "#c9c1b5" : MUTED }}>{s.label}</span>
+                <span style={{ display: "block", fontSize: 14, fontWeight: 700, color: isCur ? TEXT : isDone ? "#c9c1b5" : MUTED }}>
+                  {s.label}
+                  {(isDone || isCur) && d != null ? <span style={{ fontWeight: 600, color: MUTED }}> · {d} j</span> : null}
+                </span>
                 {isCur && <span style={{ display: "block", fontSize: 12, color: MUTED }}>{s.goal}</span>}
               </span>
               <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
@@ -332,23 +436,22 @@ export function RtpCard({ injury, status, state, onSave, saving, pain }) {
             </button>
             {isOpen && (
               <div style={{ margin: "8px 0 4px 34px" }}>
+                <div style={{ fontSize: 12, color: MUTED, marginBottom: 4 }}>
+                  <b>Au programme :</b> {s.content}
+                </div>
                 {s.criteria.map((c) => (
-                  <label key={c.id} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "5px 0", fontSize: 13, color: c.ok ? TEXT : "#c9c1b5", cursor: c.auto ? "default" : "pointer" }}>
-                    <input type="checkbox" checked={!!c.ok} disabled={c.auto || saving} onChange={() => toggle(c.id)} style={{ marginTop: 2, accentColor: GREEN, width: 16, height: 16, flexShrink: 0 }} />
+                  <label key={c.id} style={{ display: "flex", gap: 9, alignItems: "flex-start", padding: "5px 0", fontSize: 13, color: c.ok ? TEXT : "#c9c1b5", cursor: c.auto || isDone ? "default" : "pointer" }}>
+                    <input type="checkbox" checked={!!c.ok} disabled={c.auto || isDone || saving} onChange={() => toggle(c.id)} style={{ marginTop: 2, accentColor: GREEN, width: 16, height: 16, flexShrink: 0 }} />
                     <span>
                       {c.t}
-                      {c.auto && (
-                        <span style={{ display: "block", fontSize: 11.5, color: c.ok ? GREEN : MUTED }}>
-                          Calculé : {state.load.current} UA sur 7 jours, soit {state.load.pct} % de ses {state.load.usual} UA habituels
-                        </span>
-                      )}
+                      {c.note && <span style={{ display: "block", fontSize: 11.5, color: c.ok ? GREEN : MUTED }}>Calculé : {c.note}</span>}
                     </span>
                   </label>
                 ))}
                 {isCur && (
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                     <button type="button" className={s.complete ? "pt-btn pt-btn--primary" : "pt-btn"} disabled={saving} onClick={() => setStage(s.id + 1)} title={s.complete ? "" : "Tous les critères ne sont pas cochés"}>
-                      {s.id === 5 ? "✓ Valider le retour à la compétition" : `Passer à l'étape ${s.id + 1}`}
+                      {s.id === RTP_N ? "✓ Performance retrouvée : clôturer" : `Passer à l'étape ${s.id + 1}`}
                     </button>
                     {s.id > 1 && (
                       <button type="button" className="pt-btn" disabled={saving} onClick={() => setStage(s.id - 1)}>
@@ -365,14 +468,14 @@ export function RtpCard({ injury, status, state, onSave, saving, pain }) {
       })}
       {state.cleared && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
-          <span style={{ fontSize: 13, color: GREEN, fontWeight: 700 }}>✓ Retour à la compétition validé</span>
-          <button type="button" className="pt-btn" disabled={saving} onClick={() => setStage(5)}>
+          <span style={{ fontSize: 13, color: GREEN, fontWeight: 700 }}>✓ Retour à la performance validé</span>
+          <button type="button" className="pt-btn" disabled={saving} onClick={() => setStage(RTP_N)}>
             Rouvrir le suivi
           </button>
         </div>
       )}
       <div style={{ fontSize: 11, color: "#6f6a62", marginTop: 10 }}>
-        Trame générale de réathlétisation : elle ne remplace pas l'avis du médecin ou du kiné, qui décident du retour.
+        Trame de réathlétisation (Ardern 2016, Taberner 2019, Silbernagel 2007) : elle ne remplace pas l'avis du médecin ou du kiné, qui décident du retour.
       </div>
     </div>
   );

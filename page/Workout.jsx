@@ -17,7 +17,7 @@ import { getWorkoutDocs, getScopedUserDocs, getScopedDocs, daysAgoStr, WINDOW, i
 import { FoldBtn, useFold, PageHeader, stickyHead } from "../component/ui";
 import { GroupChips } from "../component/PersonPicker";
 import ExercisePhoto, { ExerciseThumb } from "../component/ExercisePhoto";
-import { withMembershipHistory, groupTargetMatches, hasProgress, formerTargetsOf } from "../component/groupHistory";
+import { withMembershipHistory, groupTargetMatches, hasProgress, formerTargetsOf, hiddenByInjury, injuredScopes } from "../component/groupHistory";
 import { REC_TYPES, REC_PRESETS, REC_DEFAULT_PCT, recKeys, recTypeOf, recPctOf, recSecOf, recText } from "../component/enduranceRecovery";
 import PlanningRefsModal from "../component/PlanningRefsModal";
 import TargetPicker from "../component/TargetPicker";
@@ -881,6 +881,8 @@ export default function Workout() {
         //    d'un groupe (ou sous-groupe) ne s'affichent qu'à partir de sa date d'entrée (groupHistory.js).
         filtered = allWorkouts.filter((w) => {
           if (hasProgress(w, currentUser.uid)) return true;
+          // dans le groupe « Blessés » : seulement ses séances réathlé (+ individuelles / « Moi »)
+          if (hiddenByInjury(w, currentUser.uid, customGroups)) return false;
           if (w.group === "total") return true;
           if (w.group === userGroup) return true;
           if (w.group === "moi" && w.createdBy === currentUser.uid) return true;
@@ -4907,6 +4909,7 @@ export default function Workout() {
   const isEventVisibleToAthlete = (evt, athlete) => {
     if (!athlete) return true;
     if (hasProgress(evt, athlete.id)) return true; // faite / commencée : toujours (même groupe quitté)
+    if (hiddenByInjury(evt, athlete.id, customGroups)) return false; // groupe « Blessés » : séances réathlé seulement
     if (evt.group === "total") return true;
     if (evt.targetUserId === athlete.id) return true;
     if (evt.group === "moi") return evt.createdBy === athlete.id;
@@ -5013,9 +5016,12 @@ export default function Workout() {
     if (viewMode === "admins" && adminFilterId) return isSuperAdmin ? [userScope(adminFilterId)] : [];
     if (viewMode === "admins")
       return adminUsers.filter((a) => a.id !== currentUser.uid && (isSuperAdmin)).map((a) => userScope(a.id));
-    if (filterAthlete) return ["total", ...groupsOf(filterAthlete.id), userScope(filterAthlete.id)];
+    // athlète du groupe « Blessés » : planification du groupe Blessés + la sienne (plus celle de son équipe)
+    const injuredOf = (uid) => injuredScopes(uid, customGroups);
+    if (filterAthlete) return injuredOf(filterAthlete.id) ? [...injuredOf(filterAthlete.id), userScope(filterAthlete.id)] : ["total", ...groupsOf(filterAthlete.id), userScope(filterAthlete.id)];
     if (filterGroup) return ["total", filterGroup.id];
     if (isAdminLike) return null;
+    if (injuredOf(currentUser.uid)) return [...injuredOf(currentUser.uid), userScope(currentUser.uid)];
     return ["total", userGroup, ...groupsOf(currentUser.uid), userScope(currentUser.uid)].filter(Boolean);
   })();
   // Calendrier / bandeau : en vue d'ensemble (admin sans filtre) on n'affiche pas
@@ -6458,9 +6464,20 @@ export default function Workout() {
                           <div style={{ fontSize: 12, color: "#a8a199" }}>
                             {(g.athleteIds || []).length} athlète(s)
                             {subs.length > 0 && ` · ${subs.length} sous-groupe(s)`}
+                            {g.system === "injured" && " · blessés en cours de réathlé : ils ne voient que les séances et la planification de ce groupe"}
                           </div>
                         </div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          {g.system === "injured" ? (
+                            // groupe automatique (injuredGroup.js) : les membres suivent le retour au jeu, pas de modification à la main
+                            <span
+                              title="Un athlète y entre quand il est blessé et en sort à l'étape 5 du retour au jeu (entraînement collectif). Crée des séances et une planification pour ce groupe : ce sont les seules qu'il voit pendant sa blessure."
+                              style={{ fontSize: 11.5, fontWeight: 700, color: "#d9695a", border: "1px solid rgba(217,105,90,0.5)", borderRadius: 999, padding: "4px 10px", whiteSpace: "nowrap" }}
+                            >
+                              🔄 Automatique
+                            </span>
+                          ) : (
+                            <>
                           <button
                             onClick={() => { startEditGroup(g); addGroupSubGroup(); }}
                             title="Ajouter un sous-groupe"
@@ -6477,6 +6494,8 @@ export default function Workout() {
                           <button onClick={() => deleteGroup(g.id)} title="Supprimer le groupe" style={act("#d9695a")}>
                             🗑️
                           </button>
+                            </>
+                          )}
                         </div>
                       </div>
 

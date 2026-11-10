@@ -6,7 +6,7 @@
    À tenir à jour à chaque nouvelle méthode ajoutée dans l'app.
    ===================================================================== */
 import { TH } from "../component/thresholdsCore";
-import { RTP_STAGES } from "../component/coachSynthesis";
+import { RTP_STAGES, RTP_TISSUE_CRITERIA, phaseOfStage } from "../component/coachSynthesis";
 import { SUPRA_MAX_PCT } from "../component/contraction";
 import React from "react";
 import { Navigate } from "react-router-dom";
@@ -225,13 +225,55 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
           Ces propositions sont des repères de terrain, pas des règles validées par une étude : elles servent à gagner du temps de lecture,
           la décision reste celle du coach. Une blessure en cours passe devant tout le reste (suivre le retour au jeu).
         </P>
-        <H>Retour au jeu</H>
-        <T head={["Étape", "Objectif", "Critères de passage"]} rows={RTP_STAGES.map((s) => [`${s.id}. ${s.label}`, s.goal, s.criteria.map((c) => c.t.replace("{p}", TH(c.auto === "loadFull" ? "rtpLoadFull" : "rtpLoadPartial"))).join(" · ")])} />
+        <H>Retour au jeu : le continuum</H>
         <P>
-          On avance sur des critères, pas sur un délai. Les deux critères de charge sont calculés : charge des 7 derniers jours ÷ charge
-          hebdomadaire moyenne des 4 semaines qui précèdent la blessure. Sans historique avant la blessure, le coach les coche à la main.
-          Trame générale : elle ne remplace pas l'avis du médecin ou du kiné, qui décident du retour.
+          6 étapes regroupées selon le continuum du consensus de Berne : soins, retour à la PARTICIPATION (entraînement adapté), retour au
+          SPORT (entraînement complet, contact compris), retour à la PERFORMANCE (match, niveau d'avant blessure). Sur le terrain, on va
+          du CONTRÔLE (exercices prévus, fermés) vers le CHAOS (exercices réactifs, imprévus, contact). On avance sur des critères, pas sur
+          un délai : la date de retour estimée n'est qu'un repère.
         </P>
+        <T
+          head={["Étape", "Phase", "Objectif", "Critères communs"]}
+          rows={RTP_STAGES.map((s) => [
+            `${s.id}. ${s.label}`,
+            phaseOfStage(s.id).label,
+            s.goal,
+            s.criteria.map((c) => c.t.replace("{loadPartial}", TH("rtpLoadPartial")).replace("{loadFull}", TH("rtpLoadFull"))).join(" · "),
+          ])}
+        />
+        <H>Critères propres au tissu</H>
+        <T
+          head={["Tissu", "Critères ajoutés (étape)"]}
+          rows={Object.entries(RTP_TISSUE_CRITERIA).map(([k, v]) => [
+            { muscle: "Muscle", tendon: "Tendon", ligament: "Ligament", os: "Os / articulation" }[k] || k,
+            Object.entries(v)
+              .map(([st, cs]) => cs.map((c) => `${c.t} (${st})`).join(" · "))
+              .join(" · "),
+          ])}
+        />
+        <H>Critères calculés</H>
+        <P>
+          Douleur de la zone : lue chaque jour sur le schéma corporel du wellness (zone reconnue par les mots communs avec le nom ou la
+          zone de la blessure). « Au repos ≤ 2/10 » pour l'étape 1, « ≤ 5/10 » pour le tendon (étape 3). Charge : 7 derniers jours ÷ charge
+          hebdomadaire moyenne des 4 semaines qui précèdent la blessure (≥ {TH("rtpLoadPartial")} % à l'étape 4, ≥ {TH("rtpLoadFull")} % à
+          l'étape 5) et 4 dernières semaines ÷ la même référence (≥ {TH("rtpLoadFull")} % à l'étape 6). Sans donnée ce jour-là, le coach
+          coche à la main. Les étapes déjà franchies restent validées.
+        </P>
+        <H>Surveillance de la douleur</H>
+        <P>
+          La courbe de douleur de la zone (21 derniers jours) suit le modèle de surveillance de la douleur : jusqu'à 5/10 pendant l'effort
+          est acceptable si elle revient à son niveau habituel le lendemain matin. Au-dessus de 5/10 : revenir à l'étape d'avant ou alléger ;
+          hausse d'au moins 2 points d'un jour à l'autre : ne pas progresser.
+        </P>
+        <H>Groupe « 🏥 Blessés » automatique</H>
+        <P>
+          Un athlète entre dans le groupe Blessés de son coach dès qu'une blessure est suivie (en cours, ou reprise dont le retour au jeu
+          n'est pas fini) et en sort à l'étape 5 (entraînement collectif complet). Pendant ce temps, il ne voit plus les séances des autres
+          groupes datées d'après son entrée : seulement celles du groupe Blessés, ses séances individuelles, ses séances « Moi » et celles
+          qu'il avait déjà commencées. Sa planification affichée est celle du groupe Blessés et la sienne, et sa charge prévue suit ces
+          séances. Le groupe est mis à jour par le coach (Dashboard, changement d'étape, blessure saisie dans Tests › Bilan).
+        </P>
+        <P>Trame générale : elle ne remplace pas l'avis du médecin ou du kiné, qui décident du retour.</P>
         <H>Force relative</H>
         <F>force relative = meilleur RM du mouvement / poids de corps (dernière pesée)</F>
         <P>
@@ -239,7 +281,7 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
           note /20 est celle du barème du poste et du niveau (voir « Normes rugby ») ; sans sport, poste ou niveau dans le profil, seule la
           force relative est affichée.
         </P>
-        <Ref>Foster 1998, Med Sci Sports Exerc 30:1164 (monotonie / contrainte) · Foster et al. 2001, J Strength Cond Res 15:109 (sRPE) · Ardern et al. 2016, Br J Sports Med 50:853 (consensus sur le retour au sport : progression par critères) · Impellizzeri et al. 2020, Int J Sports Physiol Perform 15:907 (limites du ratio aigu / chronique).</Ref>
+        <Ref>Foster 1998, Med Sci Sports Exerc 30:1164 (monotonie / contrainte) · Foster et al. 2001, J Strength Cond Res 15:109 (sRPE) · Ardern et al. 2016, Br J Sports Med 50:853 (consensus sur le retour au sport : continuum participation → sport → performance) · Taberner et al. 2019, Br J Sports Med 53:1132 (continuum contrôle → chaos) · Silbernagel et al. 2007, Am J Sports Med 35:897 (modèle de surveillance de la douleur) · Impellizzeri et al. 2020, Int J Sports Physiol Perform 15:907 (limites du ratio aigu / chronique).</Ref>
       </FoldCard>
 
       {/* ============ MUSCU ============ */}
@@ -520,6 +562,8 @@ historique utilisé : 6 mois (lu à l'ouverture de la planification)`}</F>
             "Crewther BT et al. 2009 — Scaling strength and power for body mass differences in rugby union players. J Sports Sci 27:1575-1580.",
             "Darrall-Jones J et al. 2016 — Fitness characteristics of rugby union players by age category (30-15 IFT). IJSPP.",
             "Hollander DB et al. 2007 — Maximal eccentric and concentric strength discrepancies between young men and women for dynamic resistance exercise. J Strength Cond Res 21:34-40.",
+            "Silbernagel KG et al. 2007 — Continued sports activity, using a pain-monitoring model, during rehabilitation in patients with Achilles tendinopathy. Am J Sports Med 35:897-906.",
+            "Taberner M, Allen T, Cohen DD 2019 — Progressing rehabilitation after injury: consider the 'control-chaos continuum'. Br J Sports Med 53:1132-1136.",
             "Impellizzeri FM et al. 2020 — Acute:Chronic Workload Ratio: Conceptual Issues and Fundamental Pitfalls. Int J Sports Physiol Perform 15:907-913.",
             "Wang C et al. 2020 — Analyzing Activity and Injury: Lessons Learned from the Acute:Chronic Workload Ratio. Sports Med 50:1243-1254.",
             "Oranchuk DJ et al. 2019 — Isometric training and long-term adaptations: effects of muscle length, intensity, and intent. Scand J Med Sci Sports 29:484-503.",

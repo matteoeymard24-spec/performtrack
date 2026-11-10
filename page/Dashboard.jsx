@@ -3,12 +3,13 @@ import { isMobileView } from "../component/viewMode";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { stickyHead } from "../component/ui";
 import DashColumns, { colOfFn } from "../component/DashColumns";
-import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
+import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, rtpPatch, zonePainHistory, painMonitor, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
 import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard } from "../component/CoachFiche";
+import { syncInjuredGroup, injuredGroupOf } from "../component/injuredGroup";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
 import { NutritionDashCard, SleepDashCard } from "../component/DashWellbeingCards";
 import WellnessLinks from "../component/WellnessLinks";
-import { groupTargetMatches, formerTargetsOf, hasProgress } from "../component/groupHistory";
+import { groupTargetMatches, formerTargetsOf, hasProgress, hiddenByInjury } from "../component/groupHistory";
 import { isDbBilateral, perHand } from "../component/dumbbell";
 import { isSpecialContraction } from "../component/contraction";
 import { rmSerie } from "../component/methods";
@@ -152,7 +153,7 @@ const getExerciseCategoryLabel = (value) =>
   "📦 Autre";
 
 export default function Dashboard() {
-  const { currentUser, userRole, userProfile, coachScope } = useAuth();
+  const { currentUser, userRole, userProfile, coachScope, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
 
   // Ouvre la séance du jour dans Workout, en lecture ("voir") ou en la
@@ -370,13 +371,18 @@ export default function Dashboard() {
   // Retour au jeu : étape + critères cochés, enregistrés sur la blessure (lus aussi par Tests › Bilan et le dashboard athlète)
   const [rtpSaving, setRtpSaving] = useState(false);
   const saveRtp = async (inj, rtp) => {
-    const payload = { rtp: { stage: rtp.stage, checks: rtp.checks || {}, updatedAt: new Date().toISOString() } };
+    const payload = { rtp: rtpPatch(inj, rtp, getLocalDateStr(new Date())) };
     const patch = (list) => (list || []).map((i) => (i.id === inj.id ? { ...i, ...payload } : i));
     setRtpSaving(true);
     try {
       await updateDoc(doc(db, "injuries", inj.id), payload);
       setShowAthleteDetail((prev) => (prev ? { ...prev, injuries: patch(prev.injuries) } : prev));
-      setAthletes((prev) => prev.map((a) => (a.id === inj.userId ? { ...a, injuries: patch(a.injuries) } : a)));
+      const nextAthletes = athletes.map((a) => (a.id === inj.userId ? { ...a, injuries: patch(a.injuries) } : a));
+      setAthletes(nextAthletes);
+      // l'étape 5 (entraînement collectif) fait sortir du groupe Blessés, revenir en arrière l'y remet
+      syncInjuredGroup({ db, coachUid: currentUser.uid, isSuperAdmin, athletes: nextAthletes, today: getLocalDateStr(new Date()) }).then((g) => {
+        if (g) setCustomGroups((prev) => [...prev.filter((x) => x.id !== g.id), g]);
+      });
     } catch (e) {
       alert("Retour au jeu non enregistré : " + e.message);
     } finally {
@@ -574,6 +580,7 @@ export default function Dashboard() {
   const [editingWeight, setEditingWeight] = useState(false);
   const [todayWellness, setTodayWellness] = useState(null);
   const [wellnessHistory, setWellnessHistory] = useState([]);
+  const [selfWellnessList, setSelfWellnessList] = useState([]); // tout mon wellness récent (douleur de la zone blessée)
   const [todayWorkout, setTodayWorkout] = useState(null);
   // Séances de l'athlète (déjà filtrées par groupe/cible) et aperçu de la
   // semaine en cours — alimentent la mini-frise 7 jours et la sparkline de
@@ -909,6 +916,7 @@ export default function Dashboard() {
 
         userWorkouts = allWorkouts.filter((w) => {
           if (hasProgress(w, currentUser.uid)) return true; // commencée / terminée par moi : compte toujours
+          if (hiddenByInjury(w, currentUser.uid, customGroups)) return false; // groupe « Blessés » : séances réathlé seulement
           // séances du coach de l'athlète uniquement (athlète sans coach : tout, comme avant)
           if (!athleteCanSeeWorkout(w, { id: currentUser.uid, coachId: userProfile?.coachId || null, coachIds: userProfile?.coachIds || [] }, myGroupIds)) return false;
           return (
@@ -1067,6 +1075,7 @@ export default function Dashboard() {
 
         todayW = myWellness.find((w) => w.date === today) || null;
         if (todayW) setTodayWellness(todayW);
+        setSelfWellnessList(myWellness);
 
         const last7 = myWellness.slice(0, 7).reverse();
         setWellnessHistory(
@@ -1351,6 +1360,7 @@ export default function Dashboard() {
             (w) =>
               !!w.userProgress?.[u.id]?.completedAt ||
               (athleteCanSeeWorkout(w, u, uGroupIds) &&
+                !hiddenByInjury(w, u.id, customGroups) &&
                 (w.group === "total" ||
                   w.group === uGrp ||
                   w.targetUserId === u.id ||
@@ -1455,6 +1465,10 @@ export default function Dashboard() {
         });
         setAthletes(result);
         setLoading(false);
+        // Groupe « 🏥 Blessés » automatique (injuredGroup.js) : en arrière-plan, sans bloquer le Dashboard
+        syncInjuredGroup({ db, coachUid: currentUser.uid, isSuperAdmin, athletes: result, today }).then((g) => {
+          if (g) setCustomGroups((prev) => [...prev.filter((x) => x.id !== g.id), g]);
+        });
       } catch (e) {
         console.error("Erreur admin:", e);
         setLoading(false);
@@ -1571,10 +1585,11 @@ export default function Dashboard() {
       const uWorkouts = allW.filter(
         (w) =>
           !!w.userProgress?.[athlete.id]?.completedAt || // séance terminée par l'athlète : compte toujours
-          w.group === "total" ||
-          w.group === uGrp ||
           w.targetUserId === athlete.id ||
-          groupTargetMatches(w, athlete.id, customGroups) // groupe actuel, depuis sa date d'entrée
+          (!hiddenByInjury(w, athlete.id, customGroups) && // groupe « Blessés » : seulement ses séances réathlé
+            (w.group === "total" ||
+              w.group === uGrp ||
+              groupTargetMatches(w, athlete.id, customGroups))) // groupe actuel, depuis sa date d'entrée
       );
       const todayW = uWorkouts.find((w) => w.date === today) || null;
 
@@ -2299,7 +2314,9 @@ export default function Dashboard() {
           const aWeeks = weeklyPlanVsDone(athleteWorkouts, aUid, aToday, 6);
           const aDyn = loadDynamics(aDaily, aToday, selfForm?.acwr);
           const aInjury = activeInjury(selfInjuries, aToday);
-          const aRtp = aInjury ? rtpState(aInjury.inj, aDaily, aToday) : null;
+          const aRtp = aInjury ? rtpState(aInjury.inj, aDaily, aToday, { wellnessToday: todayWellness || null }) : null;
+          const aPainHist = aInjury ? zonePainHistory(selfWellnessList, aInjury.inj, aToday, 21) : null;
+          const aInGroup = customGroups.some((g) => g.system === "injured" && (g.athleteIds || []).includes(aUid));
           const aPain = painSummary(todayWellness, aInjury?.inj);
           const aRmDocs = Object.entries(athleteRMFullHistory || {})
             .map(([name, pts]) => ({ name, kg: pts && pts.length ? Number(pts[pts.length - 1].kg) : 0 }))
@@ -2665,7 +2682,7 @@ export default function Dashboard() {
               </>
               </>
             ) },
-            { key: "rtp", pole: "recup", label: "🏥 Mon retour au jeu", node: aInjury ? <RtpAthleteCard injury={aInjury.inj} status={aInjury.st} state={aRtp} pain={aPain} /> : null },
+            { key: "rtp", pole: "recup", label: "🏥 Mon retour au jeu", node: aInjury ? <RtpAthleteCard injury={aInjury.inj} status={aInjury.st} state={aRtp} pain={aPain} painHistory={aPainHist} monitor={painMonitor(aPainHist)} inGroup={aInGroup} /> : null },
             { key: "sleep", pole: "recup", label: "😴 Sommeil", node: (
               <>
               <div style={CARD_STYLE}>
@@ -3860,7 +3877,9 @@ export default function Dashboard() {
               const fWeeks = weeklyPlanVsDone(fSessions, fa.id, fToday, 6);
               const fDyn = loadDynamics(fDaily, fToday, fa.acwr);
               const fInjury = activeInjury(fa.injuries, fToday);
-              const fRtp = fInjury ? rtpState(fInjury.inj, fDaily, fToday) : null;
+              const fRtp = fInjury ? rtpState(fInjury.inj, fDaily, fToday, { wellnessToday: fa.lastWellness || null }) : null;
+              const fPainHist = fInjury ? zonePainHistory(athleteDetails.wellness, fInjury.inj, fToday, 21) : null;
+              const fInGroup = !!injuredGroupOf(customGroups, currentUser.uid)?.athleteIds?.includes(fa.id);
               const fPain = painSummary(fa.lastWellness, fInjury?.inj);
               const fRmDocs = Object.entries(detailedAthleteRMHistory || {})
                 .map(([name, pts]) => ({ name, kg: pts && pts.length ? Number(pts[pts.length - 1].kg) : 0 }))
@@ -4301,7 +4320,7 @@ export default function Dashboard() {
                 </>
               ) },
               { key: "rtp", pole: "recup", label: "🏥 Retour au jeu", node: fInjury ? (
-                <RtpCard key={fInjury.inj.id} injury={fInjury.inj} status={fInjury.st} state={fRtp} pain={fPain} saving={rtpSaving} onSave={(rtp) => saveRtp(fInjury.inj, rtp)} />
+                <RtpCard key={fInjury.inj.id} injury={fInjury.inj} status={fInjury.st} state={fRtp} pain={fPain} painHistory={fPainHist} monitor={painMonitor(fPainHist)} injuredGroup={fInGroup || !!fInjury} saving={rtpSaving} onSave={(rtp) => saveRtp(fInjury.inj, rtp)} />
               ) : null },
               { key: "cmjSessions", pole: "recup", label: "🦘 Évolution CMJ (fatigue)", node: (
                 <>

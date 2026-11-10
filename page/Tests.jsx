@@ -1,4 +1,5 @@
-import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
+import { InjuryForm, InjuryTimeline, todayLocal } from "../component/InjuryHistory";
+import { syncInjuredGroup } from "../component/injuredGroup";
 import TestProgress from "../component/TestProgress";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -623,18 +624,24 @@ export default function Tests() {
   const loadInjuries = async (id) => {
     if (!id) {
       setInjuries([]);
-      return;
+      return [];
     }
     try {
       const snap = await getDocs(query(collection(db, "injuries"), where("userId", "==", id)));
-      setInjuries(
-        snap.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
-          .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
-      );
+      const list = snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+      setInjuries(list);
+      return list;
     } catch (e) {
       console.error("Tests: chargement blessures", e);
+      return null;
     }
+  };
+  // Le coach ajoute / modifie / supprime une blessure : le groupe « 🏥 Blessés » suit tout de suite (injuredGroup.js)
+  const syncInjured = (list) => {
+    if (!isCoach || !selectedAthlete || !list) return;
+    syncInjuredGroup({ db, coachUid: currentUser.uid, isSuperAdmin, athletes: [{ ...selectedAthlete, injuries: list }], today: todayLocal() });
   };
 
   const resetInjuryForm = () => {
@@ -666,7 +673,7 @@ export default function Tests() {
       } else {
         await setDoc(doc(db, "injuries", `${uid}_${Date.now()}`), { ...data, createdAt: Timestamp.now() });
       }
-      await loadInjuries(uid);
+      syncInjured(await loadInjuries(uid));
       setShowInjuryForm(false);
       resetInjuryForm();
     } catch (e) {
@@ -680,7 +687,9 @@ export default function Tests() {
     if (!await appConfirm("Supprimer cette blessure de l'historique ?")) return;
     try {
       await deleteDoc(doc(db, "injuries", id));
-      setInjuries((prev) => prev.filter((i) => i.id !== id));
+      const left = injuries.filter((i) => i.id !== id);
+      setInjuries(left);
+      syncInjured(left);
     } catch (e) {
       alert("Erreur suppression : " + e.message);
     }

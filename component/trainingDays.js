@@ -3,7 +3,7 @@ import { ensureThresholds } from "./thresholds";
 import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { getWorkoutDocs, getScopedDocs, getMyAccess } from "./workoutQueries";
-import { groupTargetMatches, hasProgress } from "./groupHistory";
+import { groupTargetMatches, hasProgress, hiddenByInjury } from "./groupHistory";
 import { sessionRpe } from "./sessionLoad";
 import { expectedRpeFor, athleteLoadRef } from "./rpePredict";
 
@@ -120,6 +120,7 @@ async function computeTrainingDays(uid, from, to) {
         w.targetUserId === uid ||
         (w.group === "moi" && w.createdBy === uid) ||
         (!isCoach &&
+          !hiddenByInjury(w, uid, groups) && // groupe « Blessés » : seulement ses séances réathlé
           (w.group === "total" ||
             (profile.group && w.group === profile.group) ||
             myGroupIds.includes(w.group) ||

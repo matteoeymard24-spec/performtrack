@@ -99,3 +99,41 @@ export function formerTargetsOf(uid, groups) {
   });
   return out;
 }
+
+/* ===== Groupe « Blessés » automatique (injuredGroup.js) =====
+   Pendant qu'un athlète en est membre (et que le groupe masque les autres : hideOthers ≠ false), il ne voit
+   plus les séances des AUTRES groupes datées d'après son entrée : seulement celles du groupe Blessés, ses
+   séances individuelles, ses séances « Moi » et celles qu'il a déjà commencées. */
+const injuredGroupsOf = (uid, groups) =>
+  (groups || []).filter((g) => g && g.system === "injured" && g.hideOthers !== false && (g.athleteIds || []).includes(uid));
+
+/* { ids: [groupes Blessés dont il est membre], since: date d'entrée la plus ancienne } ou null */
+export function injuredMembership(uid, groups) {
+  const gs = injuredGroupsOf(uid, groups);
+  if (!gs.length) return null;
+  const dates = gs.map((g) => g.memberSince?.[uid] || "");
+  return { ids: gs.map((g) => g.id), since: dates.sort()[0] || "" };
+}
+
+/* La séance est-elle masquée pour cet athlète parce qu'il est dans le groupe Blessés ? */
+export function hiddenByInjury(w, uid, groups) {
+  const m = injuredMembership(uid, groups);
+  if (!m || !w) return false;
+  if (hasProgress(w, uid)) return false;
+  if ((w.date || "") < m.since) return false;
+  if (w.targetUserId === uid) return false;
+  if (w.group === "moi") return false;
+  const t = String(w.group || "");
+  return !m.ids.some((id) => t === id || t.startsWith(`sg:${id}:`));
+}
+
+/* Planification affichée pour un athlète du groupe Blessés : celle du groupe Blessés (+ ses sous-groupes) */
+export function injuredScopes(uid, groups) {
+  const m = injuredMembership(uid, groups);
+  if (!m) return null;
+  const out = [...m.ids];
+  (groups || [])
+    .filter((g) => m.ids.includes(g.id))
+    .forEach((g) => (g.subGroups || []).forEach((sg) => (sg.athleteIds || []).includes(uid) && out.push(`sg:${g.id}:${sg.id}`)));
+  return out;
+}

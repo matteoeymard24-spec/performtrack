@@ -4,7 +4,8 @@
    • weeklyPlanVsDone : charge PRÉVUE (RPE prévu × durée prévue) et RÉALISÉE (sRPE) par semaine, pour UN athlète.
    • loadDynamics     : 7 derniers jours vs moyenne des 3 semaines d'avant, monotonie et contrainte (Foster 1998).
    • poleSynthesis    : un feu par pôle (charge / récupération / entraînement) + une décision proposée.
-   • RTP_STAGES / rtp*: retour au jeu par étapes à critères (continuum d'Ardern et al. 2016).
+   • RTP_STAGES / rtp*: retour au jeu en 6 étapes à critères, adaptées au tissu (continuum d'Ardern et al. 2016,
+                        progression contrôle → chaos de Taberner et al. 2019, surveillance de la douleur de Silbernagel 2007).
    • relativeStrength : RM rapportés au poids de corps + note du barème rugby quand il existe.
 
    Les seuils viennent de ⚙️ Paramètres (section « Synthèse de la fiche athlète »).
@@ -142,110 +143,320 @@ export function loadDynamics(dailyLoads, today, redi = null) {
 }
 
 /* ---------------------------------------------------------------------
-   Retour au jeu : 5 étapes, chacune validée par des critères (pas par un délai).
-   auto: "loadPartial" | "loadFull" = critère calculé avec la charge réalisée (voir rtpLoadCheck).
+   Retour au jeu (v2) : 6 étapes, chacune validée par des CRITÈRES (pas par un délai).
+
+   Repères :
+   • Ardern et al. 2016 (consensus de Berne) : continuum retour à la PARTICIPATION → retour au SPORT →
+     retour à la PERFORMANCE (bandes « phase » ci-dessous).
+   • Taberner, Allen & Cohen 2019 : progression du CONTRÔLE (exercices fermés, prévus) vers le CHAOS
+     (exercices ouverts, réactifs, contact) dans la réathlétisation terrain.
+   • Silbernagel et al. 2007 : modèle de surveillance de la douleur (tendon surtout) — douleur ≤ 5/10
+     pendant l'effort, revenue au niveau habituel le lendemain matin, pas de hausse d'une semaine à l'autre.
+   • Critères de force / sauts en % du côté sain ou d'avant blessure (LSI ≥ 90 %) : repères fréquents des
+     protocoles de retour au sport (genou, cheville, ischios), à adapter avec le médecin ou le kiné.
+
+   Critères « auto » (calculés, cochés tout seuls quand la donnée existe ; sinon le coach coche) :
+     painRest    : douleur du jour sur la zone ≤ 2/10 (schéma corporel du wellness)
+     painLoad    : douleur du jour sur la zone ≤ 5/10 (modèle de surveillance de la douleur)
+     loadPartial : charge des 7 derniers jours ≥ rtpLoadPartial % de sa charge hebdo d'avant blessure
+     loadFull    : charge des 7 derniers jours ≥ rtpLoadFull % de sa charge hebdo d'avant blessure
+     chronic     : charge des 28 derniers jours ≥ rtpLoadFull % de sa charge d'avant blessure
+   Données enregistrées sur la blessure : rtp = { v: 2, stage (1-6, 7 = performance retrouvée),
+   checks: { idCritère: true }, history: [{ stage, date }], updatedAt }.
    --------------------------------------------------------------------- */
-export const RTP_STAGES = [
+export const RTP_N = 6;
+export const RTP_PHASES = [
+  { id: "care", short: "Soins", label: "Soins", from: 1, to: 2, color: "#d9695a" },
+  { id: "participation", short: "Participation", label: "Retour à la participation", from: 3, to: 4, color: "#d9a441" },
+  { id: "sport", short: "Sport", label: "Retour au sport", from: 5, to: 5, color: "#5b9bd5" },
+  { id: "performance", short: "Perf.", label: "Retour à la performance", from: 6, to: 6, color: "#4fae7d" },
+];
+export const phaseOfStage = (n) => RTP_PHASES.find((p) => n >= p.from && n <= p.to) || RTP_PHASES[RTP_PHASES.length - 1];
+
+/* Critères propres au tissu (TISSUE_LABELS de InjuryHistory.jsx) : ajoutés à ceux de l'étape */
+const TISSUE_CRITERIA = {
+  muscle: {
+    2: [{ id: "m2", t: "Contraction isométrique forte (≈ 90 %) du muscle sans douleur" }],
+    3: [{ id: "m3", t: "Étirement actif / allongement indolore (ex. test H d'Askling négatif pour les ischios)" }],
+    4: [{ id: "m4", t: "Course à haute vitesse (≥ 90-95 % de sa vitesse max) sans douleur ni appréhension" }],
+  },
+  tendon: {
+    2: [{ id: "t2", t: "Exercices isométriques tolérés (douleur ≤ 3/10, effet antalgique)" }],
+    3: [{ id: "t3", t: "Douleur ≤ 5/10 pendant l'effort et revenue à son niveau habituel le lendemain matin", auto: "painLoad" }],
+    4: [{ id: "t4", t: "Exercices pliométriques (sauts, bonds) tolérés 48 h de suite sans hausse de douleur" }],
+  },
+  ligament: {
+    2: [{ id: "l2", t: "Appui unipodal stable 30 s, yeux ouverts, sans douleur" }],
+    3: [{ id: "l3", t: "Équilibre dynamique (Y-balance ou équivalent) ≥ 90 % du côté sain" }],
+    4: [{ id: "l4", t: "Sauts unipodaux (distance, triple saut) ≥ 90 % du côté sain" }],
+  },
+  os: {
+    2: [{ id: "o2", t: "Marche et appui complets sans douleur, consolidation confirmée par le médecin" }],
+    3: [{ id: "o3", t: "Impacts progressifs (sauts, course) sans douleur osseuse le lendemain" }],
+  },
+};
+
+const BASE_STAGES = [
   {
     id: 1,
     short: "Soins",
     icon: "🧊",
     label: "Protection & soins",
-    goal: "Calmer la zone, garder le reste du corps en activité.",
+    goal: "Protéger le tissu, calmer douleur et gonflement, garder le reste du corps actif.",
+    content: "Soins (kiné), mobilité douce, renforcement des zones non touchées, cardio sans impact sur la zone.",
     criteria: [
-      { id: "1a", t: "Douleur au repos ≤ 2/10" },
-      { id: "1b", t: "Gonflement / inflammation contrôlés" },
-      { id: "1c", t: "Diagnostic posé et consignes du médecin ou du kiné connues" },
+      { id: "s1a", t: "Douleur de la zone au repos ≤ 2/10", auto: "painRest" },
+      { id: "s1b", t: "Gonflement / inflammation contrôlés" },
+      { id: "s1c", t: "Diagnostic posé et consignes du médecin ou du kiné connues" },
     ],
   },
   {
     id: 2,
-    short: "Réathlé",
+    short: "Fonction",
     icon: "🧘",
-    label: "Réathlétisation sans impact",
-    goal: "Retrouver l'amplitude et remettre de la force sans douleur.",
+    label: "Récupération fonctionnelle",
+    goal: "Retrouver l'amplitude, une marche normale, et remettre de la force sans douleur.",
+    content: "Mobilité, isométrie puis renforcement léger de la zone, gainage, vélo / natation selon tolérance.",
     criteria: [
-      { id: "2a", t: "Amplitude complète et indolore" },
-      { id: "2b", t: "Marche et gestes du quotidien normaux" },
-      { id: "2c", t: "Renforcement isométrique puis dynamique sans douleur (≤ 2/10)" },
+      { id: "s2a", t: "Amplitude complète et indolore" },
+      { id: "s2b", t: "Marche et gestes du quotidien normaux" },
     ],
   },
   {
     id: 3,
     short: "Course",
     icon: "🏃",
-    label: "Course & renforcement",
-    goal: "Réintroduire la course en ligne et les charges.",
+    label: "Renforcement & course",
+    goal: "Charger le tissu en salle et réintroduire la course en ligne (beaucoup de contrôle, peu d'imprévu).",
+    content: "Musculation progressive (excentrique compris), course linéaire à allure modérée, sauts bilatéraux.",
     criteria: [
-      { id: "3a", t: "Course en ligne à allure modérée sans douleur, pendant et le lendemain" },
-      { id: "3b", t: "Force de la zone ≥ 80 % du côté sain (ou du RM d'avant blessure)" },
-      { id: "3c", t: "Sauts et réceptions bilatéraux sans appréhension" },
+      { id: "s3a", t: "Course en ligne à allure modérée sans douleur, pendant et le lendemain" },
+      { id: "s3b", t: "Force de la zone ≥ 80 % du côté sain (ou du RM d'avant blessure)" },
     ],
   },
   {
     id: 4,
-    short: "Spécifique",
+    short: "Terrain",
     icon: "⚡",
-    label: "Entraînement spécifique sans contact",
-    goal: "Vitesse, changements de direction, gestes du poste.",
+    label: "Réathlé terrain (contrôle → chaos)",
+    goal: "Vitesse, changements de direction puis situations réactives et gestes du poste, sans contact.",
+    content: "Sprints, appuis et changements de direction prévus puis réactifs, exercices du poste, jeu sans contact.",
     criteria: [
-      { id: "4a", t: "Sprints et changements de direction à 90-100 % sans douleur" },
-      { id: "4b", t: "Force de la zone ≥ 90 % du côté sain (ou du RM d'avant blessure)" },
-      { id: "4c", t: "Charge de la semaine ≥ {p} % de sa charge habituelle", auto: "loadPartial" },
+      { id: "s4a", t: "Changements de direction prévus PUIS réactifs (non annoncés) à pleine vitesse, sans douleur" },
+      { id: "s4b", t: "Force de la zone ≥ 90 % du côté sain (ou du RM d'avant blessure)" },
+      { id: "s4c", t: "Charge des 7 derniers jours ≥ {loadPartial} % de sa charge habituelle", auto: "loadPartial" },
     ],
   },
   {
     id: 5,
-    short: "Complet",
+    short: "Collectif",
     icon: "🤼",
-    label: "Entraînement complet",
-    goal: "Reprise du collectif, contact compris.",
+    label: "Entraînement collectif complet",
+    goal: "Reprendre tout l'entraînement du groupe, contact compris.",
+    content: "Séances collectives complètes, contact progressif (placages, rucks, mêlées selon le poste).",
     criteria: [
-      { id: "5a", t: "Une semaine d'entraînement complet sans réaction de la zone" },
-      { id: "5b", t: "Charge de la semaine ≥ {p} % de sa charge habituelle", auto: "loadFull" },
-      { id: "5c", t: "Feu vert du médecin ou du kiné, et l'athlète se sent prêt" },
+      { id: "s5a", t: "Une semaine d'entraînement complet, contact compris, sans réaction de la zone" },
+      { id: "s5b", t: "Charge des 7 derniers jours ≥ {loadFull} % de sa charge habituelle", auto: "loadFull" },
+      { id: "s5c", t: "Feu vert du médecin ou du kiné, et l'athlète se sent prêt (confiance, pas d'appréhension)" },
+    ],
+  },
+  {
+    id: 6,
+    short: "Match",
+    icon: "🏁",
+    label: "Retour au match & à la performance",
+    goal: "Rejouer, avec un temps de jeu progressif, jusqu'à retrouver son niveau d'avant blessure.",
+    content: "Temps de jeu progressif, suivi de la charge et des tests de performance.",
+    criteria: [
+      { id: "s6a", t: "Premier match joué (temps de jeu progressif) sans réaction de la zone" },
+      { id: "s6b", t: "Charge des 4 dernières semaines ≥ {loadFull} % de celle d'avant blessure", auto: "chronic" },
+      { id: "s6c", t: "Tests de performance (sprint, sauts, force) revenus à ≥ 95 % d'avant blessure" },
     ],
   },
 ];
 
-/* Charge hebdo habituelle = moyenne des 4 semaines qui précèdent la blessure ; actuelle = 7 derniers jours */
+/* Étapes pour un tissu donné (critères communs + propres au tissu, insérés avant les critères de charge) */
+export function rtpStagesFor(tissue) {
+  const extra = TISSUE_CRITERIA[tissue] || {};
+  return BASE_STAGES.map((s) => {
+    const add = extra[s.id] || [];
+    if (!add.length) return s;
+    const i = s.criteria.findIndex((c) => c.auto && c.auto.startsWith("load"));
+    const criteria = i < 0 ? [...s.criteria, ...add] : [...s.criteria.slice(0, i), ...add, ...s.criteria.slice(i)];
+    return { ...s, criteria };
+  });
+}
+/* Étapes sans critère de tissu (page Référence, libellés) */
+export const RTP_STAGES = BASE_STAGES;
+export const RTP_TISSUE_CRITERIA = TISSUE_CRITERIA;
+
+/* Ancien format (v1 : 5 étapes, 6 = validé) → v2 */
+export function normalizeRtp(rtp) {
+  if (!rtp) return null;
+  if (rtp.v === 2) return rtp;
+  const old = Number(rtp.stage) || 1;
+  return { v: 2, stage: old >= 6 ? 7 : old, checks: {}, history: [], updatedAt: rtp.updatedAt || null };
+}
+export const rtpStageOf = (inj) => (inj?.rtp ? normalizeRtp(inj.rtp).stage : 1);
+
+/* Charge hebdo habituelle = moyenne des 4 semaines qui précèdent la blessure ; actuelle = 7 derniers jours ;
+   chronique = 28 derniers jours ramenés à la semaine */
 export function rtpLoadCheck(dailyLoads, injuryDate, today) {
-  if (!injuryDate) return { usual: null, current: 0, pct: null };
+  if (!injuryDate) return { usual: null, current: 0, pct: null, chronicPct: null };
   const before = addDays(injuryDate, -1);
   const usual = Math.round(sumWindow(dailyLoads, before, 28) / 4);
   const current = Math.round(sumWindow(dailyLoads, today, 7));
-  return { usual: usual > 0 ? usual : null, current, pct: usual > 0 ? Math.round((current / usual) * 100) : null };
+  const chronic = Math.round(sumWindow(dailyLoads, today, 28) / 4);
+  return {
+    usual: usual > 0 ? usual : null,
+    current,
+    chronic,
+    pct: usual > 0 ? Math.round((current / usual) * 100) : null,
+    chronicPct: usual > 0 ? Math.round((chronic / usual) * 100) : null,
+  };
 }
 
-/* État du protocole pour une blessure : étape en cours (1-5), 6 = retour compétition validé */
-export function rtpState(inj, dailyLoads, today) {
-  const rtp = inj?.rtp || {};
+/* Mots significatifs d'une blessure (nom + zone) pour la reconnaître sur le schéma corporel */
+const injuryWords = (injury) =>
+  injury
+    ? norm(`${injury.name || ""} ${injury.zone || ""}`)
+        .split(" ")
+        .filter((w) => w.length >= 4)
+    : [];
+const zoneMatches = (label, words) =>
+  words.length > 0 && norm(label).split(" ").some((w) => w.length >= 4 && words.some((x) => x.startsWith(w.slice(0, 5)) || w.startsWith(x.slice(0, 5))));
+
+/* Douleur du jour sur la zone blessée : null = pas de wellness ce jour-là ; 0 = wellness rempli sans douleur sur la zone */
+export function zonePainOf(wellness, injury) {
+  if (!wellness) return null;
+  const words = injuryWords(injury);
+  let v = 0;
+  Object.entries(wellness.painMap || {}).forEach(([id, x]) => {
+    if (zoneMatches(zoneLabel(id), words)) v = Math.max(v, Number(x) || 0);
+  });
+  return v;
+}
+
+/* Douleur de la zone jour par jour depuis la blessure (au plus `days` jours) : [{ date, v }] (v null = pas de wellness) */
+export function zonePainHistory(wellnessList, injury, today, days = 21) {
+  if (!injury?.date) return [];
+  const byDate = Object.fromEntries((wellnessList || []).filter((w) => w && w.date).map((w) => [w.date, w]));
+  const out = [];
+  const start = injury.date > addDays(today, -(days - 1)) ? injury.date : addDays(today, -(days - 1));
+  for (let d = start; d <= today; d = addDays(d, 1)) out.push({ date: d, v: zonePainOf(byDate[d], injury) });
+  return out;
+}
+
+/* Modèle de surveillance de la douleur (Silbernagel 2007) appliqué aux derniers jours */
+export function painMonitor(history) {
+  const pts = (history || []).filter((p) => p.v != null);
+  if (!pts.length) return { level: "nodata", text: "Pas de douleur saisie sur la zone ces derniers jours (wellness non rempli)." };
+  const last = pts[pts.length - 1];
+  const prev = pts.length > 1 ? pts[pts.length - 2] : null;
+  if (last.v > 5) return { level: "alert", text: `Douleur ${last.v}/10 sur la zone : au-dessus de 5/10, revenir à l'étape d'avant ou alléger.` };
+  if (prev && last.v >= prev.v + 2) return { level: "watch", text: `Douleur en hausse sur la zone (${prev.v} → ${last.v}/10) : ne pas progresser tant qu'elle n'est pas revenue à son niveau habituel.` };
+  if (last.v > 2) return { level: "watch", text: `Douleur ${last.v}/10 sur la zone : acceptable (≤ 5/10) si elle revient à son niveau habituel le lendemain matin.` };
+  return { level: "ok", text: `Douleur ${last.v}/10 sur la zone : feu vert pour continuer la progression.` };
+}
+
+/* État du protocole pour une blessure. stage 1-6 ; 7 = performance retrouvée (cleared). */
+export function rtpState(inj, dailyLoads, today, opts = {}) {
+  const rtp = normalizeRtp(inj?.rtp) || { v: 2, stage: 1, checks: {}, history: [] };
   const checks = rtp.checks || {};
   const load = rtpLoadCheck(dailyLoads, inj?.date, today);
-  const autoOk = (kind) => (load.pct == null ? null : load.pct >= TH(kind === "loadFull" ? "rtpLoadFull" : "rtpLoadPartial"));
-  const stages = RTP_STAGES.map((st) => {
+  const painToday = opts.wellnessToday !== undefined ? zonePainOf(opts.wellnessToday, inj) : null;
+  const p = { loadPartial: TH("rtpLoadPartial"), loadFull: TH("rtpLoadFull") };
+  const autoValue = (kind) => {
+    if (kind === "painRest") return painToday == null ? null : painToday <= 2;
+    if (kind === "painLoad") return painToday == null ? null : painToday <= 5;
+    if (kind === "loadPartial") return load.pct == null ? null : load.pct >= p.loadPartial;
+    if (kind === "loadFull") return load.pct == null ? null : load.pct >= p.loadFull;
+    if (kind === "chronic") return load.chronicPct == null ? null : load.chronicPct >= p.loadFull;
+    return null;
+  };
+  const autoNote = (kind) => {
+    if (kind === "painRest" || kind === "painLoad") return `Douleur saisie aujourd'hui sur la zone : ${painToday}/10`;
+    if (kind === "chronic") return `${load.chronic} UA par semaine sur 28 jours, soit ${load.chronicPct} % de ses ${load.usual} UA habituels`;
+    return `${load.current} UA sur 7 jours, soit ${load.pct} % de ses ${load.usual} UA habituels`;
+  };
+  const stages = rtpStagesFor(inj?.tissueType).map((st) => {
     const criteria = st.criteria.map((c) => {
+      const t = c.t.replace("{loadPartial}", p.loadPartial).replace("{loadFull}", p.loadFull);
       if (c.auto) {
-        const p = TH(c.auto === "loadFull" ? "rtpLoadFull" : "rtpLoadPartial");
-        const ok = autoOk(c.auto);
-        // sans charge de référence (pas d'historique avant la blessure) : le coach coche à la main
-        return { ...c, t: c.t.replace("{p}", p), auto: ok !== null, ok: ok !== null ? ok : !!checks[c.id] };
+        const ok = autoValue(c.auto);
+        // sans donnée (pas de wellness aujourd'hui, pas d'historique de charge) : le coach coche à la main
+        return { ...c, t, auto: ok !== null, kind: c.auto, ok: ok !== null ? ok : !!checks[c.id], note: ok !== null ? autoNote(c.auto) : null };
       }
-      return { ...c, ok: !!checks[c.id] };
+      return { ...c, t, ok: !!checks[c.id] };
     });
     return { ...st, criteria, complete: criteria.every((c) => c.ok) };
   });
-  const stage = Math.max(1, Math.min(6, Number(rtp.stage) || 1));
-  return { stages, stage, cleared: stage >= 6, load, started: !!inj?.rtp, updatedAt: rtp.updatedAt || null };
+  const stage = Math.max(1, Math.min(RTP_N + 1, Number(rtp.stage) || 1));
+  // étapes déjà franchies : validées par le coach, on ne les « décoche » pas avec les données du jour
+  stages.forEach((st) => {
+    if (st.id < stage) {
+      st.passed = true;
+      st.complete = true;
+      st.criteria = st.criteria.map((c) => ({ ...c, ok: true, note: null }));
+    }
+  });
+  // dates d'entrée dans chaque étape (l'étape 1 commence le jour de la blessure)
+  const entered = { 1: inj?.date || null };
+  (rtp.history || []).forEach((h) => {
+    if (h && h.stage && h.date) entered[h.stage] = h.date;
+  });
+  const daysIn = (n) => {
+    const from = entered[n];
+    if (!from) return null;
+    const next = Object.keys(entered)
+      .map(Number)
+      .filter((k) => k > n && entered[k])
+      .sort((a, b) => a - b)[0];
+    const to = n === stage ? today : next ? entered[next] : null;
+    return to ? Math.max(0, Math.round((new Date(to + "T12:00:00") - new Date(from + "T12:00:00")) / 86400000)) : null;
+  };
+  const sinceInjury = inj?.date ? Math.max(0, Math.round((new Date(today + "T12:00:00") - new Date(inj.date + "T12:00:00")) / 86400000)) : null;
+  return {
+    stages,
+    stage,
+    cleared: stage > RTP_N,
+    phase: phaseOfStage(Math.min(stage, RTP_N)),
+    load,
+    painToday,
+    entered,
+    daysIn,
+    sinceInjury,
+    started: !!inj?.rtp,
+    tissue: inj?.tissueType || null,
+    updatedAt: rtp.updatedAt || null,
+  };
+}
+
+/* Patch à enregistrer quand le coach change d'étape ou coche un critère (garde l'historique daté) */
+export function rtpPatch(inj, { stage, checks }, today) {
+  const cur = normalizeRtp(inj?.rtp) || { v: 2, stage: 1, checks: {}, history: [] };
+  let history = [...(cur.history || [])];
+  if (stage !== cur.stage) {
+    history = history.filter((h) => h.stage < stage); // revenir en arrière efface les entrées suivantes
+    if (stage > 1) history.push({ stage, date: today });
+  }
+  return { v: 2, stage, checks: checks || cur.checks || {}, history: history.slice(-12), updatedAt: new Date().toISOString() };
 }
 
 /* Blessure qui demande un suivi : en cours, ou reprise récente dont le protocole n'est pas terminé */
 export function activeInjury(injuries, today) {
   const list = (injuries || [])
-    .map((inj) => ({ inj, st: injuryStatus(inj, today) }))
-    .filter(({ inj, st }) => st.key === "ongoing" || (inj.rtp && Number(inj.rtp.stage) < 6 && st.key !== "healed") || (st.key === "recent" && !(inj.rtp && Number(inj.rtp.stage) >= 6)));
+    .map((inj) => ({ inj, st: injuryStatus(inj, today), stage: rtpStageOf(inj) }))
+    .filter(({ inj, st, stage }) => st.key === "ongoing" || (inj.rtp && stage <= RTP_N && st.key !== "healed") || (st.key === "recent" && !(inj.rtp && stage > RTP_N)));
   list.sort((a, b) => (b.inj.date || "").localeCompare(a.inj.date || ""));
   return list[0] || null;
+}
+
+/* Doit-il être dans le groupe « Blessés » ? Oui tant que la blessure est suivie et qu'il n'a pas repris
+   l'entraînement collectif complet (étape 5). */
+export function needsInjuredGroup(injuries, today) {
+  const a = activeInjury(injuries, today);
+  return !!a && rtpStageOf(a.inj) < 5;
 }
 
 /* ---------------------------------------------------------------------
@@ -435,7 +646,7 @@ export function poleSynthesis({ dyn, weeks, form, wellnessScore, wellnessFilled,
     if (pain.onInjury) recup.reasons.unshift(`Douleur sur la zone blessée (${pain.onInjury.label} ${pain.onInjury.v}/10) : ne pas passer à l'étape suivante du retour au jeu`);
   }
   if (injury) {
-    const stg = rtp && !rtp.cleared ? ` · retour au jeu : étape ${rtp.stage}/5` : "";
+    const stg = rtp && !rtp.cleared ? ` · retour au jeu : étape ${rtp.stage}/${RTP_N}` : "";
     recup.reasons.unshift(`Blessure ${injury.st.key === "ongoing" ? "en cours" : "récente"} : ${injury.inj.name || injury.inj.zone || "zone non précisée"}${stg}`);
     if (recup.level === "ok" || recup.level === "nodata") recup.level = "watch";
   }
@@ -484,11 +695,11 @@ export function poleSynthesis({ dyn, weeks, form, wellnessScore, wellnessFilled,
   }
   if (charge.resumed && r !== "alert" && !(painReal && pain.level === "alert")) decision = charge.level === "watch" ? "Reprise trop rapide après la coupure : revenir à sa charge habituelle au plus, et étaler la remontée sur 1 à 2 semaines." : "Reprise après coupure : séance prévue, en remontant progressivement vers sa charge habituelle. Le ratio de charge n'est pas un signal de fatigue ici.";
   if (c === "under" && train.assid != null && train.assid < TH("synthComplianceLow")) decision += " Avant d'ajouter des séances, voir pourquoi certaines ne sont pas faites.";
-  if (injury && !(rtp && rtp.cleared)) decision = `Blessure ${injury.st.key === "ongoing" ? "en cours" : "récente"} : suivre le retour au jeu${rtp ? ` (étape ${rtp.stage}/5 — ${RTP_STAGES[Math.min(rtp.stage, 5) - 1].label})` : ""} et adapter la séance à la zone touchée. ${r === "alert" ? "La fatigue générale est élevée : alléger aussi le reste." : ""}${pain && pain.onInjury ? ` Douleur ${pain.onInjury.v}/10 sur la zone blessée aujourd'hui : rester à l'étape en cours.` : ""}`.trim();
+  if (injury && !(rtp && rtp.cleared)) decision = `Blessure ${injury.st.key === "ongoing" ? "en cours" : "récente"} : suivre le retour au jeu${rtp ? ` (étape ${rtp.stage}/${RTP_N} — ${RTP_STAGES[Math.min(rtp.stage, RTP_N) - 1].label})` : ""} et adapter la séance à la zone touchée. ${r === "alert" ? "La fatigue générale est élevée : alléger aussi le reste." : ""}${pain && pain.onInjury ? ` Douleur ${pain.onInjury.v}/10 sur la zone blessée aujourd'hui : rester à l'étape en cours.` : ""}`.trim();
 
   /* Message pour l'athlète lui-même (son dashboard) : mêmes feux, formulation à la 2e personne, sans consigne de programmation */
   let advice;
-  if (injury && !(rtp && rtp.cleared)) advice = `Tu es en retour de blessure${rtp ? ` (étape ${rtp.stage}/5 — ${RTP_STAGES[Math.min(rtp.stage, 5) - 1].label})` : ""}. Respecte les étapes${pain && pain.onInjury ? " et signale à ton coach la douleur ressentie aujourd'hui sur la zone" : ""}.`;
+  if (injury && !(rtp && rtp.cleared)) advice = `Tu es en retour de blessure${rtp ? ` (étape ${rtp.stage}/${RTP_N} — ${RTP_STAGES[Math.min(rtp.stage, RTP_N) - 1].label})` : ""}. Respecte les étapes${pain && pain.onInjury ? " et signale à ton coach la douleur ressentie aujourd'hui sur la zone" : ""}.`;
   else if (painReal && pain.level === "alert") advice = `Douleur marquée aujourd'hui${pain.top ? ` (${pain.top.label})` : ""} : préviens ton coach avant ta séance et ne force pas sur cette zone.`;
   else if (r === "alert") advice = "Ta récupération est en baisse : préviens ton coach, et mets la priorité sur le sommeil, l'alimentation et l'hydratation aujourd'hui.";
   else if (charge.resumed) advice = "Tu reprends après une coupure : c'est normal que la charge remonte. Reprends progressivement, sans chercher tes charges d'avant dès la première semaine.";
