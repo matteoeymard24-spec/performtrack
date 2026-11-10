@@ -15,7 +15,8 @@
 import { TH } from "./thresholdsCore";
 import { sessionDurationMin, sessionLoad, doneDateOf } from "./sessionLoad";
 import { baseRpe } from "./rpePredict";
-import { monotonyStrain } from "./loadMetrics";
+import { monotonyStrain, resumeInfo } from "./loadMetrics";
+import { zoneLabel, PAIN_TYPES } from "./BodyScan";
 import { mondayOf } from "./cycles";
 import { injuryStatus } from "./InjuryHistory";
 import { STRENGTH_NORMS, findRM, evaluateStrength, hasNorms } from "./norms";
@@ -107,13 +108,17 @@ const sumWindow = (dailyLoads, end, n) => {
 };
 
 /* ---------------------------------------------------------------------
-   Dynamique de charge : 7 derniers jours vs moyenne hebdo des 3 semaines d'avant (prev7), monotonie,
-   contrainte, REDI (descriptif).
+   Dynamique de charge : 7 derniers jours vs moyenne hebdo des 3 semaines d'avant (prev7, semaines vides
+   exclues), monotonie, contrainte, REDI (descriptif), reprise après coupure (resumed, restDays).
    --------------------------------------------------------------------- */
 export function loadDynamics(dailyLoads, today, redi = null) {
   const last7 = Math.round(sumWindow(dailyLoads, today, 7));
-  // référence = moyenne hebdo des 3 semaines d'avant (jours 8 à 28) : une seule semaine creuse ne fausse pas le %
-  const prev7 = Math.round(sumWindow(dailyLoads, addDays(today, -7), 21) / 3);
+  // référence = moyenne des 3 semaines d'avant (jours 8 à 28), SANS les semaines vides : une coupure
+  // (vacances, maladie) ne doit pas faire croire que sa charge habituelle est plus basse
+  const prevWeeks = [7, 14, 21].map((k) => sumWindow(dailyLoads, addDays(today, -k), 7));
+  const trained = prevWeeks.filter((x) => x > 0);
+  const prev7 = trained.length ? Math.round(trained.reduce((a, b) => a + b, 0) / trained.length) : 0;
+  const resume = resumeInfo(dailyLoads || [], today);
   const last28 = Math.round(sumWindow(dailyLoads, today, 28));
   const changePct = prev7 > 0 ? Math.round(((last7 - prev7) / prev7) * 100) : null;
   const ms = monotonyStrain(dailyLoads || [], today);
@@ -130,6 +135,8 @@ export function loadDynamics(dailyLoads, today, redi = null) {
     strainRef,
     strainPct: strainRef && ms.strain != null ? Math.round((ms.strain / strainRef) * 100) : null,
     redi: redi === null || redi === undefined || redi === "" ? null : Number(redi),
+    resumed: resume.resumed,
+    restDays: resume.restDays,
     hasData: last28 > 0,
   };
 }
@@ -141,6 +148,8 @@ export function loadDynamics(dailyLoads, today, redi = null) {
 export const RTP_STAGES = [
   {
     id: 1,
+    short: "Soins",
+    icon: "🧊",
     label: "Protection & soins",
     goal: "Calmer la zone, garder le reste du corps en activité.",
     criteria: [
@@ -151,6 +160,8 @@ export const RTP_STAGES = [
   },
   {
     id: 2,
+    short: "Réathlé",
+    icon: "🧘",
     label: "Réathlétisation sans impact",
     goal: "Retrouver l'amplitude et remettre de la force sans douleur.",
     criteria: [
@@ -161,6 +172,8 @@ export const RTP_STAGES = [
   },
   {
     id: 3,
+    short: "Course",
+    icon: "🏃",
     label: "Course & renforcement",
     goal: "Réintroduire la course en ligne et les charges.",
     criteria: [
@@ -171,6 +184,8 @@ export const RTP_STAGES = [
   },
   {
     id: 4,
+    short: "Spécifique",
+    icon: "⚡",
     label: "Entraînement spécifique sans contact",
     goal: "Vitesse, changements de direction, gestes du poste.",
     criteria: [
@@ -181,6 +196,8 @@ export const RTP_STAGES = [
   },
   {
     id: 5,
+    short: "Complet",
+    icon: "🤼",
     label: "Entraînement complet",
     goal: "Reprise du collectif, contact compris.",
     criteria: [
@@ -295,6 +312,45 @@ export function rmTrend(rmHistory, today, weeks) {
 }
 
 /* ---------------------------------------------------------------------
+   Douleurs du jour (wellness : schéma corporel painMap { zone: 0-10 } + painTypes { zone: type }).
+   level : "none" | "info" (courbatures) | "watch" | "alert". onInjury = douleur sur la zone blessée.
+   --------------------------------------------------------------------- */
+const SHARP = ["aigue", "nerveuse", "articulaire"];
+const norm = (t) =>
+  String(t || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ");
+const TYPE_LABEL = Object.fromEntries(PAIN_TYPES.map((t) => [t.key, t.label.toLowerCase()]));
+export function painSummary(wellness, injury) {
+  if (!wellness) return { level: "none", zones: [], max: 0, filled: false };
+  const map = wellness.painMap || {};
+  const types = wellness.painTypes || {};
+  const zones = Object.entries(map)
+    .map(([id, v]) => ({ id, v: Number(v) || 0, type: types[id] || null, label: zoneLabel(id) }))
+    .filter((z) => z.v > 0)
+    .sort((a, b) => b.v - a.v);
+  const watch = TH("synthPainWatch");
+  const alert = TH("synthPainAlert");
+  const max = zones.length ? zones[0].v : 0;
+  // zone blessée : un mot de 4 lettres ou plus en commun entre la zone du schéma et la blessure (nom + zone)
+  const injWords = injury ? norm(`${injury.name || ""} ${injury.zone || ""}`).split(" ").filter((w) => w.length >= 4) : [];
+  const onInjury = zones.find((z) => z.v >= 3 && norm(z.label).split(" ").some((w) => w.length >= 4 && injWords.some((x) => x.startsWith(w.slice(0, 5)) || w.startsWith(x.slice(0, 5))))) || null;
+  const real = zones.filter((z) => z.v >= watch && !(z.type === "courbature" && z.v < alert)); // hors simples courbatures
+  const sharp = real.find((z) => SHARP.includes(z.type)) || null;
+  let level = "none";
+  if (max >= alert || sharp) level = "alert";
+  else if (real.length) level = "watch";
+  else if (zones.some((z) => z.v >= watch)) level = "info";
+  // pas de schéma rempli mais douleur globale forte déclarée
+  const global = Number(wellness.douleur) || 0;
+  if (!zones.length && global >= alert) level = "watch";
+  const top = (sharp || real[0] || zones[0]) ?? null;
+  return { level, zones, max, top, sharp, onInjury, global, filled: true, typeLabel: top && top.type ? TYPE_LABEL[top.type] : null };
+}
+
+/* ---------------------------------------------------------------------
    Synthèse : un feu par pôle + une décision.
    level : "ok" | "watch" | "alert" | "under" (sous-charge) | "nodata"
    --------------------------------------------------------------------- */
@@ -306,7 +362,7 @@ export const SYNTH_LEVELS = {
   nodata: { label: "Pas de donnée", color: "#a8a199", icon: "⚪" },
 };
 
-export function poleSynthesis({ dyn, weeks, form, wellnessScore, wellnessFilled, injury, rtp, trend, strength }) {
+export function poleSynthesis({ dyn, weeks, form, wellnessScore, wellnessFilled, injury, rtp, trend, strength, pain = null }) {
   /* ----- Charge ----- */
   const charge = { level: "nodata", reasons: [] };
   const lastFull = (weeks || []).filter((w) => !w.current).slice(-1)[0] || null;
@@ -318,6 +374,19 @@ export function poleSynthesis({ dyn, weeks, form, wellnessScore, wellnessFilled,
     const rediHigh = dyn.redi != null && dyn.redi > TH("rediHigh");
     const rediVery = dyn.redi != null && dyn.redi > TH("rediVeryHigh");
     const lowDone = lastFull && lastFull.loadPct != null && lastFull.loadPct < TH("synthComplianceLow");
+    if (dyn.resumed) {
+      // Reprise après coupure : on juge seulement si la reprise est trop rapide (vs sa charge habituelle hors coupure)
+      const rest = dyn.restDays != null ? `${dyn.restDays} jours sans séance` : "une coupure";
+      if (jump != null && jump >= TH("synthJumpWatch")) {
+        charge.level = "watch";
+        charge.reasons.push(`Reprise après ${rest} : déjà ${jump} % au-dessus de sa semaine habituelle (${dyn.prev7} → ${dyn.last7} UA). Reprise trop rapide`);
+      } else {
+        charge.level = "ok";
+        charge.reasons.push(`Reprise après ${rest} : ${dyn.last7} UA sur 7 jours${dyn.prev7 ? `, pour ${dyn.prev7} UA d'habitude` : ""}`);
+        charge.reasons.push("Le ratio de charge récente (REDI) n'est pas lu comme de la fatigue pendant une reprise");
+      }
+      charge.resumed = true;
+    } else {
     if (jump != null && jump >= TH("synthJumpWatch")) charge.reasons.push(`Charge des 7 derniers jours en hausse de ${jump} % par rapport à ses 3 semaines d'avant (${dyn.prev7} → ${dyn.last7} UA)`);
     if (monoHigh) charge.reasons.push(`Monotonie élevée (${fr(mono)}) : les jours se ressemblent trop, il manque des jours faciles`);
     if (rediHigh) charge.reasons.push(`Charge récente au-dessus de son habitude (REDI ${fr(dyn.redi.toFixed(2))})`);
@@ -332,6 +401,7 @@ export function poleSynthesis({ dyn, weeks, form, wellnessScore, wellnessFilled,
     } else {
       charge.level = "ok";
       charge.reasons.push(jump != null ? `Charge stable (${jump >= 0 ? "+" : ""}${jump} % vs ses 3 semaines d'avant)${mono != null ? `, monotonie ${fr(mono)}` : ""}` : `${dyn.last7} UA sur les 7 derniers jours`);
+    }
     }
     if (cur && cur.plannedSessions > cur.dueSessions) charge.reasons.push(`Encore ${cur.plannedSessions - cur.dueSessions} séance(s) prévue(s) cette semaine`);
   } else if (weeks && weeks.some((w) => w.plannedSessions > 0)) {
@@ -353,6 +423,17 @@ export function poleSynthesis({ dyn, weeks, form, wellnessScore, wellnessFilled,
     if (!recup.reasons.length) recup.reasons.push(wellnessScore != null ? `Wellness du jour ${fr(r1(wellnessScore))}/10, dans sa norme` : "Aucun signal de fatigue");
     if (!wellnessFilled) recup.reasons.push("Wellness du jour non rempli : lecture basée sur les séances");
   } else recup.reasons.push("Pas de wellness aujourd'hui, pas de CMJ ni de séance de force récente");
+  // Douleurs du jour (schéma corporel) : croisées avec la blessure et la charge
+  if (pain && pain.filled && pain.level !== "none") {
+    const where = pain.top ? `${pain.top.label} ${pain.top.v}/10${pain.typeLabel ? ` (${pain.typeLabel})` : ""}` : `douleur globale ${pain.global}/10`;
+    if (pain.level === "info") recup.reasons.push(`Courbatures : ${where}`);
+    else {
+      recup.reasons.unshift(`Douleur du jour : ${where}${pain.zones.length > 1 ? ` + ${pain.zones.length - 1} autre${pain.zones.length > 2 ? "s" : ""} zone${pain.zones.length > 2 ? "s" : ""}` : ""}`);
+      if (pain.level === "alert") recup.level = "alert";
+      else if (recup.level === "ok" || recup.level === "nodata") recup.level = "watch";
+    }
+    if (pain.onInjury) recup.reasons.unshift(`Douleur sur la zone blessée (${pain.onInjury.label} ${pain.onInjury.v}/10) : ne pas passer à l'étape suivante du retour au jeu`);
+  }
   if (injury) {
     const stg = rtp && !rtp.cleared ? ` · retour au jeu : étape ${rtp.stage}/5` : "";
     recup.reasons.unshift(`Blessure ${injury.st.key === "ongoing" ? "en cours" : "récente"} : ${injury.inj.name || injury.inj.zone || "zone non précisée"}${stg}`);
@@ -395,8 +476,29 @@ export function poleSynthesis({ dyn, weeks, form, wellnessScore, wellnessFilled,
   else if (r === "ok") decision = "Récupération correcte. Pas assez de séances avec RPE pour juger la charge : appliquer la séance prévue.";
   else if (c === "alert") decision = "Charge en forte hausse et pas de wellness du jour : demander le questionnaire avant la séance, sinon rester sur du modéré.";
   else decision = "Pas de wellness du jour : demander le questionnaire avant de décider.";
+  const painReal = pain && (pain.level === "watch" || pain.level === "alert");
+  if (painReal && pain.top) {
+    const z = pain.top.label;
+    if (pain.level === "alert") decision = `Douleur marquée (${z} ${pain.top.v}/10${pain.typeLabel ? `, ${pain.typeLabel}` : ""}) : retirer les exercices qui sollicitent cette zone et la faire évaluer avant de la recharger.${c === "alert" || c === "watch" ? " La charge est en hausse : ne rien ajouter cette semaine." : ""}`;
+    else decision += ` Douleur à surveiller (${z} ${pain.top.v}/10) : adapter les exercices de cette zone${c === "alert" || c === "watch" ? ", d'autant que la charge est en hausse" : ""}.`;
+  }
+  if (charge.resumed && r !== "alert" && !(painReal && pain.level === "alert")) decision = charge.level === "watch" ? "Reprise trop rapide après la coupure : revenir à sa charge habituelle au plus, et étaler la remontée sur 1 à 2 semaines." : "Reprise après coupure : séance prévue, en remontant progressivement vers sa charge habituelle. Le ratio de charge n'est pas un signal de fatigue ici.";
   if (c === "under" && train.assid != null && train.assid < TH("synthComplianceLow")) decision += " Avant d'ajouter des séances, voir pourquoi certaines ne sont pas faites.";
-  if (injury && !(rtp && rtp.cleared)) decision = `Blessure ${injury.st.key === "ongoing" ? "en cours" : "récente"} : suivre le retour au jeu${rtp ? ` (étape ${rtp.stage}/5 — ${RTP_STAGES[Math.min(rtp.stage, 5) - 1].label})` : ""} et adapter la séance à la zone touchée. ${r === "alert" ? "La fatigue générale est élevée : alléger aussi le reste." : ""}`.trim();
+  if (injury && !(rtp && rtp.cleared)) decision = `Blessure ${injury.st.key === "ongoing" ? "en cours" : "récente"} : suivre le retour au jeu${rtp ? ` (étape ${rtp.stage}/5 — ${RTP_STAGES[Math.min(rtp.stage, 5) - 1].label})` : ""} et adapter la séance à la zone touchée. ${r === "alert" ? "La fatigue générale est élevée : alléger aussi le reste." : ""}${pain && pain.onInjury ? ` Douleur ${pain.onInjury.v}/10 sur la zone blessée aujourd'hui : rester à l'étape en cours.` : ""}`.trim();
 
-  return { charge, recup, train, decision };
+  /* Message pour l'athlète lui-même (son dashboard) : mêmes feux, formulation à la 2e personne, sans consigne de programmation */
+  let advice;
+  if (injury && !(rtp && rtp.cleared)) advice = `Tu es en retour de blessure${rtp ? ` (étape ${rtp.stage}/5 — ${RTP_STAGES[Math.min(rtp.stage, 5) - 1].label})` : ""}. Respecte les étapes${pain && pain.onInjury ? " et signale à ton coach la douleur ressentie aujourd'hui sur la zone" : ""}.`;
+  else if (painReal && pain.level === "alert") advice = `Douleur marquée aujourd'hui${pain.top ? ` (${pain.top.label})` : ""} : préviens ton coach avant ta séance et ne force pas sur cette zone.`;
+  else if (r === "alert") advice = "Ta récupération est en baisse : préviens ton coach, et mets la priorité sur le sommeil, l'alimentation et l'hydratation aujourd'hui.";
+  else if (charge.resumed) advice = "Tu reprends après une coupure : c'est normal que la charge remonte. Reprends progressivement, sans chercher tes charges d'avant dès la première semaine.";
+  else if (r === "watch" && c === "alert") advice = "Ta charge monte vite et ta récupération suit moins bien : soigne ton sommeil et dis à ton coach comment tu te sens à l'échauffement.";
+  else if (r === "watch") advice = "Petite baisse de forme : fais ta séance en écoutant tes sensations à l'échauffement, et dis-le à ton coach si ça ne va pas.";
+  else if (r === "ok" && c === "alert") advice = "Tu encaisses bien une charge en forte hausse : garde des jours faciles pour récupérer.";
+  else if (r === "ok" && c === "under") advice = "Tu es frais et ta charge est sous ton habitude : tu as de la marge pour t'entraîner.";
+  else if (r === "ok") advice = "Tout est au vert : fais ta séance comme prévu.";
+  else advice = "Remplis ton wellness du jour : il sert à adapter ta séance.";
+  if (painReal && pain.level === "watch" && !(injury && !(rtp && rtp.cleared)) && pain.top) advice += ` Douleur à surveiller (${pain.top.label}) : signale-la à ton coach.`;
+
+  return { charge, recup, train, decision, advice };
 }

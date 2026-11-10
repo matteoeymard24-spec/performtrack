@@ -3,8 +3,8 @@ import { isMobileView } from "../component/viewMode";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { stickyHead } from "../component/ui";
 import DashColumns, { colOfFn } from "../component/DashColumns";
-import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, relativeStrength, rmTrend, poleSynthesis } from "../component/coachSynthesis";
-import { SynthesisBanner, WeekLoadCard, RtpCard, RelStrengthCard } from "../component/CoachFiche";
+import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
+import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard } from "../component/CoachFiche";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
 import { NutritionDashCard, SleepDashCard } from "../component/DashWellbeingCards";
 import WellnessLinks from "../component/WellnessLinks";
@@ -60,6 +60,7 @@ import {
   cmjStatus,
   neuralFatigueAnalysis,
   classifyForm,
+  resumeInfo,
   FORM_LEVELS,
 } from "../component/loadMetrics";
 import { athleteCanSeeWorkout } from "../component/coachScope";
@@ -223,12 +224,6 @@ export default function Dashboard() {
   // Blocs du dashboard athlète que chacun peut masquer (réglage mémorisé sur
   // l'appareil, par utilisateur).
   // Ordre des cartes du dashboard athlète (glisser-déposer) : appareil + profil (suit le compte partout)
-  const DASH_CARDS = [
-    ["today", "🏋️ Séance du jour"], ["form", "🩺 État de forme"], ["wellness", "🧘 Wellness"], ["injuries", "🚑 Blessures récentes"],
-    ["pain", "🩹 Douleur du jour"], ["tests", "🧪 Mes tests"], ["progress", "📊 Progression des séances"], ["load", "📈 Charge des 3 semaines"],
-    ["weight", "⚖️ Mon poids"], ["vmacmj", "🏃 VMA & 🦘 CMJ"], ["fbex", "🕘 Mes derniers exercices"], ["rm", "💪 Mes RM"],
-    ["nutrition", "🥗 Nutrition du jour"], ["sleep", "😴 Sommeil"],
-  ];
   const orderStoreKey = `pt_dash_order_${currentUser?.uid || "anon"}`;
   const [dashOrder, setDashOrder] = useState(() => {
     try {
@@ -261,20 +256,6 @@ export default function Dashboard() {
     if (!dashOrder && Array.isArray(userProfile?.dashOrder) && userProfile.dashOrder.length) setDashOrder(userProfile.dashOrder);
     if (!dashCols && userProfile?.dashCols && typeof userProfile.dashCols === "object") setDashCols(userProfile.dashCols);
   }, [userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
-  const orderedKeys = (keys) => {
-    const base = Array.isArray(dashOrder) ? dashOrder.filter((k) => keys.includes(k)) : [];
-    return [...base, ...keys.filter((k) => !base.includes(k))];
-  };
-  const saveDashOrder = (order) => {
-    setDashOrder(order);
-    try {
-      if (order) localStorage.setItem(orderStoreKey, JSON.stringify(order));
-      else localStorage.removeItem(orderStoreKey);
-    } catch (e) {
-      /* stockage indisponible */
-    }
-    if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashOrder: order || [] }).catch(() => null);
-  };
   const saveDashLayout = (order, cols) => {
     setDashOrder(order);
     setDashCols(cols);
@@ -302,17 +283,6 @@ export default function Dashboard() {
   useEffect(() => {
     if (!dashOff && Array.isArray(userProfile?.dashOff)) setDashOff(userProfile.dashOff);
   }, [userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
-  const offList = Array.isArray(dashOff) ? dashOff : [];
-  const toggleCardOff = (k) => {
-    const next = offList.includes(k) ? offList.filter((x) => x !== k) : [...offList, k];
-    setDashOff(next);
-    try {
-      localStorage.setItem(offStoreKey, JSON.stringify(next));
-    } catch (e) {
-      /* stockage indisponible */
-    }
-    if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashOff: next }).catch(() => null);
-  };
 
   const hiddenStoreKey = `pt_dash_hidden_${currentUser?.uid || "anon"}`;
   const [hiddenDash, setHiddenDash] = useState(() => {
@@ -414,37 +384,40 @@ export default function Dashboard() {
     }
   };
   const detailScrollRef = useRef(null);
-  const renderCoachPoles = (cards) => {
-    const order = Array.isArray(coachDash?.order) ? coachDash.order : [];
+  /* Rendu commun « outils rangés par pôle » (fiche athlète du coach ET dashboard de l'athlète).
+     cfg : { poles, dash: { order, cols, off, folded }, save(patch), panel, setPanel, defaultOff, scrollRef, idPrefix, panelTitle, panelHint } */
+  const renderPoles = (cards, cfg) => {
+    const { poles, dash, save, panel, setPanel, defaultOff = [], scrollRef, idPrefix, panelTitle, panelHint } = cfg;
+    const order = Array.isArray(dash?.order) ? dash?.order : [];
     // « Séance aujourd'hui » fait doublon avec « Séances & feedbacks » : masquée tant que le coach ne l'a pas réaffichée
-    const off = Array.isArray(coachDash?.off) ? coachDash.off : COACH_DEFAULT_OFF;
-    const folded = Array.isArray(coachDash?.folded) ? coachDash.folded : [];
+    const off = Array.isArray(dash?.off) ? dash?.off : defaultOff;
+    const folded = Array.isArray(dash?.folded) ? dash?.folded : [];
     const allKeys = cards.map((c) => c.key);
     const fullOrder = [...order.filter((k) => allKeys.includes(k)), ...allKeys.filter((k) => !order.includes(k))];
     const byKey = Object.fromEntries(cards.map((c) => [c.key, c]));
-    const toggleOff = (k) => saveCoachDash({ off: off.includes(k) ? off.filter((x) => x !== k) : [...off, k] });
-    const toggleFold = (id) => saveCoachDash({ folded: folded.includes(id) ? folded.filter((x) => x !== id) : [...folded, id] });
+    const toggleOff = (k) => save({ off: off.includes(k) ? off.filter((x) => x !== k) : [...off, k] });
+    const toggleFold = (id) => save({ folded: folded.includes(id) ? folded.filter((x) => x !== id) : [...folded, id] });
     return (
       <>
-        {coachToolsPanel && (
+        {panel && (
           <div style={{ ...CARD_STYLE, border: "1px solid #e0a13d88" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>👁 Outils affichés dans les fiches</div>
-                <div style={{ fontSize: 12, color: "#a8a199" }}>Touche un outil pour l'afficher ou le masquer (pour toutes les fiches). Pour changer l'ordre, attrape la barre en haut d'un outil.</div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>{panelTitle}</div>
+                <div style={{ fontSize: 12, color: "#a8a199" }}>{panelHint}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {(order.length > 0 || Array.isArray(coachDash?.off)) && (
-                  <button className="pt-btn" onClick={() => saveCoachDash({ order: [], cols: {}, off: null })}>
+                {(order.length > 0 || Array.isArray(dash?.off)) && (
+                  <button className="pt-btn" onClick={() => save({ order: [], cols: {}, off: null })}>
                     ↺ Par défaut
                   </button>
                 )}
-                <button className="pt-btn" onClick={() => setCoachToolsPanel(false)}>
+                <button className="pt-btn" onClick={() => setPanel(false)}>
                   ✓ Terminé
                 </button>
               </div>
             </div>
-            {COACH_POLES.map((pl) => (
+            {poles.map((pl) => (
               <div key={pl.id} style={{ marginTop: 8 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: pl.color, marginBottom: 6 }}>{pl.label}</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -482,7 +455,7 @@ export default function Dashboard() {
             ))}
           </div>
         )}
-        {COACH_POLES.map((pl) => {
+        {poles.map((pl) => {
           const poleKeys = fullOrder.filter((k) => byKey[k].pole === pl.id);
           const items = poleKeys.filter((k) => !off.includes(k)).map((k) => byKey[k]);
           const isFolded = folded.includes(pl.id);
@@ -490,10 +463,10 @@ export default function Dashboard() {
             let vi = 0;
             const vset = new Set(items.map((i) => i.key));
             const merged = fullOrder.map((k) => (vset.has(k) ? visOrder[vi++] : k));
-            saveCoachDash({ order: merged, cols: { ...(coachDash?.cols || {}), ...cols } });
+            save({ order: merged, cols: { ...(dash?.cols || {}), ...cols } });
           };
           return (
-            <section key={pl.id} id={`pt-pole-${pl.id}`} aria-label={pl.label} style={{ marginBottom: isFolded ? 12 : 22, scrollMarginTop: 12 }}>
+            <section key={pl.id} id={`${idPrefix}${pl.id}`} aria-label={pl.label} style={{ marginBottom: isFolded ? 12 : 22, scrollMarginTop: 12 }}>
               <button
                 type="button"
                 onClick={() => toggleFold(pl.id)}
@@ -524,7 +497,7 @@ export default function Dashboard() {
               </button>
               {!isFolded &&
                 (items.length ? (
-                  <DashColumns items={items} cols={colOfFn(poleKeys, coachDash?.cols)} twoCols={twoCols} onCommit={onCommit} scrollRef={detailScrollRef} />
+                  <DashColumns items={items} cols={colOfFn(poleKeys, dash?.cols)} twoCols={twoCols} onCommit={onCommit} scrollRef={scrollRef} />
                 ) : (
                   <div style={{ fontSize: 13, color: "#6f6a62", padding: "4px 4px 8px" }}>Tous les outils de ce pôle sont masqués (👁 Outils pour les réafficher).</div>
                 ))}
@@ -533,6 +506,56 @@ export default function Dashboard() {
         })}
       </>
     );
+  };
+  const renderCoachPoles = (cards) =>
+    renderPoles(cards, {
+      poles: COACH_POLES,
+      dash: coachDash,
+      save: saveCoachDash,
+      panel: coachToolsPanel,
+      setPanel: setCoachToolsPanel,
+      defaultOff: COACH_DEFAULT_OFF,
+      scrollRef: detailScrollRef,
+      idPrefix: "pt-pole-",
+      panelTitle: "👁 Outils affichés dans les fiches",
+      panelHint: "Touche un outil pour l'afficher ou le masquer (pour toutes les fiches). Pour changer l'ordre, attrape la barre en haut d'un outil.",
+    });
+
+  /* Dashboard de l'athlète : mêmes 3 pôles, avec SES réglages existants (ordre dashOrder, colonnes dashCols, cartes masquées dashOff) */
+  const ATH_POLES = [
+    { id: "charge", label: "⚖️ Ma charge", sub: "Ce que j'encaisse : séances faites et charge des dernières semaines", color: "#e0a13d" },
+    { id: "recup", label: "🛌 Ma récupération", sub: "Comment je l'encaisse : forme du jour, douleurs, sommeil, nutrition, blessures", color: "#5b9bd5" },
+    { id: "train", label: "💪 Mon entraînement", sub: "Ce que ça produit : séance du jour, RM, force relative, tests, poids", color: "#4fae7d" },
+  ];
+  const athFoldKey = `pt_dash_polefold_${currentUser?.uid || "anon"}`;
+  const [athFolded, setAthFolded] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`pt_dash_polefold_${currentUser?.uid || "anon"}`) || "[]");
+    } catch (e) {
+      return [];
+    }
+  });
+  const saveAthDash = (patch) => {
+    if ("order" in patch || "cols" in patch) saveDashLayout("order" in patch ? patch.order : dashOrder, "cols" in patch ? patch.cols : dashCols);
+    if ("off" in patch) {
+      const next = Array.isArray(patch.off) ? patch.off : null;
+      setDashOff(next);
+      try {
+        if (next) localStorage.setItem(offStoreKey, JSON.stringify(next));
+        else localStorage.removeItem(offStoreKey);
+      } catch (e) {
+        /* stockage indisponible */
+      }
+      if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashOff: next || [] }).catch(() => null);
+    }
+    if ("folded" in patch) {
+      setAthFolded(patch.folded || []);
+      try {
+        localStorage.setItem(athFoldKey, JSON.stringify(patch.folded || []));
+      } catch (e) {
+        /* stockage indisponible */
+      }
+    }
   };
   const [athleteDetails, setAthleteDetails] = useState(null);
   const [detailedAthleteRMHistory, setDetailedAthleteRMHistory] = useState({});
@@ -684,6 +707,8 @@ export default function Dashboard() {
     return { label: "Wellness bon", color: "#4fae7d", emoji: "💪" };
   };
 
+  // Reprise après coupure : le ratio n'est pas lu comme de la fatigue (voir resumeInfo dans loadMetrics.js)
+  const RESUME_STATUS = { label: "Reprise après coupure", color: "#5b9bd5" };
   const getACWRStatus = (acwr) => {
     if (!acwr) return { label: "Données insuffisantes", color: "#95a5a6" };
     const v = Number(acwr);
@@ -1126,12 +1151,13 @@ export default function Dashboard() {
           neural: myNeural,
           sick: !!(todayW && todayW.sick),
           effort: recentEffortSignal(userWorkouts, currentUser.uid, today),
+          resume: resumeInfo(buildDailyLoads(userWorkouts, currentUser.uid), today),
         });
         setSelfForm({
           id: currentUser.uid,
           crossStatus: myForm,
           acwr: myAcwr,
-          acwrStatus: getACWRStatus(myAcwr),
+          acwrStatus: myForm.resumed ? RESUME_STATUS : getACWRStatus(myAcwr),
           wellnessZ: wZ,
           wellnessScore: todayScoreForZ,
           wellnessZStatus: getWellnessZScoreStatus(wZ),
@@ -1365,6 +1391,7 @@ export default function Dashboard() {
             neural,
             sick: !!(todayW && todayW.sick),
             effort: recentEffortSignal(uWorkouts, u.id, today),
+            resume: resumeInfo(buildDailyLoads(uWorkouts, u.id), today),
           });
 
           const totalSessions = uWorkouts.length;
@@ -1392,7 +1419,7 @@ export default function Dashboard() {
             rpeReliabilityStatus: getRPEReliabilityStatus(uRpeReliability),
             injuries: uInjuries,
             acwr: acwr,
-            acwrStatus: getACWRStatus(acwr),
+            acwrStatus: form.resumed ? RESUME_STATUS : getACWRStatus(acwr),
             todayCompleted: todayWorkout ? isWorkoutCompleted(todayWorkout, u.id) : false,
             todayWorkoutTitle: todayWorkout?.title || null,
             todayWorkoutInProgress: todayWorkout ? isWorkoutInProgress(todayWorkout, u.id) : false,
@@ -2006,63 +2033,17 @@ export default function Dashboard() {
               {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
             </div>
             <h2 style={{ fontSize: 24, margin: "2px 0 0" }}>👋 Bonjour {userProfile?.firstName || "Athlète"}</h2>
-            <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>Ta forme, tes séances et ta charge · attrape la barre en haut d'une carte pour la déplacer</p>
+            <p style={{ color: "#a8a199", margin: "2px 0 0", fontSize: 13.5 }}>Ta charge, ta récupération et ton entraînement · attrape la barre en haut d'une carte pour la déplacer</p>
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className={cardsPanel ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setCardsPanel((v) => !v)} title="Choisir les cartes affichées">
-              👁 Cartes{offList.length ? ` (${DASH_CARDS.length - offList.filter((k) => DASH_CARDS.some(([x]) => x === k)).length}/${DASH_CARDS.length})` : ""}
+              👁 Cartes
             </button>
             {userRole === "admin" && meMode && (
               <button className="pt-btn" onClick={() => setMeMode(false)}>← Vue coach</button>
             )}
           </div>
         </div>
-        {cardsPanel && (
-          <div style={{ ...CARD_STYLE, border: "1px solid #e0a13d88" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 15 }}>👁 Cartes affichées</div>
-                <div style={{ fontSize: 12, color: "#a8a199" }}>Touche une carte pour l'afficher ou la masquer. Rien n'est supprimé : tu peux la remettre quand tu veux.</div>
-              </div>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button className="pt-btn" onClick={() => setCardsPanel(false)}>✓ Terminé</button>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {DASH_CARDS.map(([k, label]) => {
-                const on = !offList.includes(k);
-                return (
-                  <button
-                    key={k}
-                    type="button"
-                    onClick={() => toggleCardOff(k)}
-                    aria-pressed={on}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "8px 14px",
-                      borderRadius: 999,
-                      fontSize: 13.5,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      border: `1px solid ${on ? "#e0a13d" : "#2a2620"}`,
-                      background: on ? "rgba(224,161,61,0.16)" : "#0d0c0a",
-                      color: on ? "#f3f0ea" : "#6f6a62",
-                      textDecoration: on ? "none" : "line-through",
-                    }}
-                  >
-                    <span style={{ width: 16, height: 16, borderRadius: 5, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, background: on ? "#e0a13d" : "transparent", border: `1px solid ${on ? "#e0a13d" : "#3a342a"}`, color: "#1a1306" }}>
-                      {on ? "✓" : ""}
-                    </span>
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
         {(() => {
           const done = todayWorkout && isWorkoutCompleted(todayWorkout);
           const inProg = todayWorkout && !done && isWorkoutInProgress(todayWorkout);
@@ -2071,12 +2052,12 @@ export default function Dashboard() {
           const hasAcwr = acwr !== null && acwr !== undefined && Number(acwr) > 0;
           const pct = totalSessions > 0 ? Math.round((completedSessions / totalSessions) * 100) : null;
           const kpi = (key, icon, label, value, color, sub, onClick) => (
-            <button className="pt-btn"
+            <button
               key={key}
               type="button"
               onClick={onClick}
               disabled={!onClick}
-              style={{ textAlign: "left", minWidth: 0 }}
+              style={{ display: "block", textAlign: "left", padding: "12px 14px", borderRadius: 12, cursor: onClick ? "pointer" : "default", background: "#151310", border: "1px solid #2a2620", color: "#f3f0ea", minWidth: 0 }}
             >
               <div style={{ fontSize: 12, color: "#a8a199", fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {icon} {label}
@@ -2310,373 +2291,35 @@ export default function Dashboard() {
         )}
 
         {(() => {
-          // Cartes du dashboard athlète : ordre (dashOrder) + colonne (dashCols), déplaçables par glisser-déposer
+          /* Cartes du dashboard athlète, rangées par pôle (mêmes pôles que la fiche du coach) : ordre (dashOrder),
+             colonne (dashCols) et cartes masquées (dashOff) restent ceux de l'athlète. Calculs : coachSynthesis.js. */
+          const aUid = currentUser.uid;
+          const aToday = getLocalDateStr(new Date());
+          const aDaily = buildDailyLoads(athleteWorkouts, aUid);
+          const aWeeks = weeklyPlanVsDone(athleteWorkouts, aUid, aToday, 6);
+          const aDyn = loadDynamics(aDaily, aToday, selfForm?.acwr);
+          const aInjury = activeInjury(selfInjuries, aToday);
+          const aRtp = aInjury ? rtpState(aInjury.inj, aDaily, aToday) : null;
+          const aPain = painSummary(todayWellness, aInjury?.inj);
+          const aRmDocs = Object.entries(athleteRMFullHistory || {})
+            .map(([name, pts]) => ({ name, kg: pts && pts.length ? Number(pts[pts.length - 1].kg) : 0 }))
+            .filter((r) => r.kg > 0);
+          const aStrength = relativeStrength(aRmDocs, Number(athleteWeight) || userProfile?.weight, userProfile?.sport, userProfile?.position, userProfile?.level);
+          const aSynth = poleSynthesis({
+            dyn: aDyn,
+            weeks: aWeeks,
+            form: selfForm?.crossStatus,
+            wellnessScore: todayScore,
+            wellnessFilled: !!todayWellness,
+            injury: aInjury,
+            rtp: aRtp,
+            trend: rmTrend(athleteRMFullHistory, aToday, TH("synthStagnWeeks")),
+            strength: aStrength,
+            pain: aPain,
+          });
           const cards = [
-            { key: "today", label: "🏋️ Séance du jour", node: (
+            { key: "load", pole: "charge", label: "📈 Charge des 3 semaines", node: (
               <>
-        {(
-        <div
-          style={{
-            ...CARD_STYLE,
-            border: CARD_ACCENT_BORDER,
-          }}
-        >
-            {foldHead("today", "🏋️ Séance du jour")}
-            {vis("today") && (
-            <>
-          {todayWorkout ? (
-            <div>
-              <div
-                style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}
-              >
-                {todayWorkout.title}
-              </div>
-              <div style={{ fontSize: 14, color: "#a8a199", marginBottom: 10 }}>
-                Durée estimée : {todayWorkout.estimatedDuration || "N/A"} min
-              </div>
-              {isWorkoutCompleted(todayWorkout) ? (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "rgba(79,174,125,0.14)",
-                    borderRadius: 8,
-                    color: "#4fae7d",
-                    textAlign: "center",
-                    fontWeight: "bold",
-                    marginBottom: 10,
-                  }}
-                >
-                  ✅ Séance validée
-                </div>
-              ) : null}
-              {todaySummary && (todaySummary.avgRpe !== null || todaySummary.vsRM.length > 0) && (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "#0d0c0a",
-                    borderRadius: 8,
-                    marginBottom: 10,
-                    fontSize: 13,
-                  }}
-                >
-                  {todaySummary.avgRpe !== null && (
-                    <div style={{ color: "#a8a199", marginBottom: todaySummary.vsRM.length > 0 ? 8 : 0 }}>
-                      RPE moyen : <strong style={{ color: "#f3f0ea" }}>{todaySummary.avgRpe.toFixed(1)}</strong>
-                    </div>
-                  )}
-                  {todaySummary.vsRM.map((v, i) => (
-                    <div key={i} style={{ color: "#a8a199" }}>
-                      {v.name} : <strong style={{ color: "#f3f0ea" }}>{v.weight} kg</strong>{" "}
-                      ({v.pct}% du RM)
-                    </div>
-                  ))}
-                </div>
-              )}
-              {isWorkoutCompleted(todayWorkout) ? null : isWorkoutInProgress(todayWorkout) ? (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "rgba(217,164,65,0.14)",
-                    borderRadius: 8,
-                    color: "#d9a441",
-                    textAlign: "center",
-                    fontWeight: "bold",
-                    marginBottom: 10,
-                  }}
-                >
-                  ⏳ En cours
-                </div>
-              ) : (
-                <div
-                  style={{
-                    padding: 12,
-                    background: "rgba(217,105,90,0.14)",
-                    borderRadius: 8,
-                    color: "#d9695a",
-                    textAlign: "center",
-                    marginBottom: 10,
-                  }}
-                >
-                  ❌ Non démarrée
-                </div>
-              )}
-              {/* Deux actions toujours disponibles : voir la séance en entier
-                  sans rien démarrer, ou la démarrer/reprendre directement —
-                  sans avoir à aller la chercher dans le calendrier de la
-                  page Séances. */}
-              <div style={{ display: "flex", gap: 10 }}>
-                <button className="pt-btn"
-                  onClick={() => goToWorkout(todayWorkout.id, false)}
-                  style={{ flex: 1 }}
-                >
-                  👁️ Voir la séance
-                </button>
-                {!isWorkoutCompleted(todayWorkout) && (
-                  <button className="pt-btn pt-btn--accent"
-                    onClick={() => goToWorkout(todayWorkout.id, true)}
-                    style={{ flex: 1 }}
-                  >
-                    {isWorkoutInProgress(todayWorkout)
-                      ? "▶️ Reprendre"
-                      : "▶️ Démarrer"}
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div style={{ textAlign: "center", padding: 20, color: "#a8a199" }}>
-              Pas de séance programmée aujourd'hui
-            </div>
-          )}
-            </>
-          )}
-        </div>
-        )}
-              </>
-            ) },
-            { key: "form", label: "🩺 État de forme", node: (
-              <>
-        {/* État de forme : même analyse que la fiche athlète du coach, mais pour MOI
-            (athlète, ou coach via « Moi (mon dashboard) »). */}
-        {selfForm && selfForm.crossStatus && renderFormCard(selfForm, true)}
-
-        {/* Encadré « RM en attente » retiré : les RM se remplissent tout seuls à la fin des séances. */}
-              </>
-            ) },
-            { key: "wellness", label: "🧘 Wellness", node: (
-              <>
-        {todayScore !== null && (
-          <div
-            style={{
-              background: "#151310",
-              padding: 20,
-              borderRadius: 12,
-              border: "1px solid #2a2620",
-              marginBottom: 16,
-            }}
-          >
-            {foldHead("wellness", "🧘 Wellness")}
-            {vis("wellness") && (
-            <>
-              <button className="pt-btn pt-btn--accent pt-btn--block"
-                type="button"
-                onClick={() => navigate("/wellness?from=dashboard")}
-                style={{ marginBottom: 14 }}
-              >
-                🧘 Ouvrir l'onglet Wellness →
-              </button>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 10,
-                marginBottom: 15,
-              }}
-            >
-              <div
-                style={{
-                  background: "#0d0c0a",
-                  padding: 12,
-                  borderRadius: 10,
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
-                  Score du jour
-                </div>
-                <div
-                  style={{ fontSize: 28, fontWeight: "bold", color: "#e0a13d" }}
-                >
-                  {todayScore.toFixed(1)}/10
-                </div>
-              </div>
-              <div
-                style={{
-                  background: "#0d0c0a",
-                  padding: 12,
-                  borderRadius: 10,
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
-                  Moy. Hebdo
-                </div>
-                <div
-                  style={{ fontSize: 28, fontWeight: "bold", color: "#4fae7d" }}
-                >
-                  {weeklyAvg || "–"}
-                </div>
-              </div>
-            </div>
-            {wellnessHistory.length > 1 && <WellnessScoreChart data={wellnessHistory} height={170} legend={false} />}
-            </>
-          )}
-          </div>
-        )}
-              </>
-            ) },
-            { key: "nutrition", label: "🥗 Nutrition du jour", node: (
-              <div style={CARD_STYLE}>
-                {foldHead("nutrition", "🥗 Nutrition du jour")}
-                {vis("nutrition") && <NutritionDashCard uid={currentUser?.uid} onOpen={(t, focus) => navigate(`/nutrition?tab=${t}${focus ? `&focus=${focus}` : ""}&from=dashboard`)} />}
-              </div>
-            ) },
-            { key: "sleep", label: "😴 Sommeil", node: (
-              <div style={CARD_STYLE}>
-                {foldHead("sleep", "😴 Sommeil")}
-                {vis("sleep") && <SleepDashCard uid={currentUser?.uid} onOpen={(t) => navigate(`/sommeil?tab=${t}&from=dashboard`)} />}
-              </div>
-            ) },
-            { key: "injuries", label: "🚑 Blessures récentes", node: (
-              <>
-        {selfInjuries.length > 0 && (
-          <div
-            style={{
-              background: "#151310",
-              padding: 20,
-              borderRadius: 12,
-              border: "1px solid #2a2620",
-              marginBottom: 16,
-            }}
-          >
-            {foldHead("injuries", "🚑 Blessures récentes")}
-            {vis("injuries") && (
-            <>
-            <InjuryTimeline injuries={selfInjuries} compact />
-            <button className="pt-btn" style={{ marginTop: 4, width: "100%" }} onClick={() => navigate("/tests?tab=bilan&from=dashboard")}>
-              Voir / modifier mon historique →
-            </button>
-            </>
-          )}
-          </div>
-        )}
-              </>
-            ) },
-            { key: "pain", label: "🩹 Douleur du jour", node: (
-              <>
-        {todayWellness && (
-            <div
-              style={{
-                background: "#151310",
-                padding: 20,
-                borderRadius: 12,
-                border: "1px solid #2a2620",
-                marginBottom: 16,
-              }}
-            >
-            {foldHead("pain", "🩹 Douleur (aujourd'hui)")}
-            {vis("pain") && (
-            <>
-              <BodyScan
-                painMap={todayWellness.painMap || {}}
-                painTypes={todayWellness.painTypes || {}}
-                setPainMap={(m) => savePainField("painMap", m)}
-                setPainTypes={(t) => savePainField("painTypes", t)}
-                selectedZone={selfPainZone}
-                setSelectedZone={setSelfPainZone}
-              />
-              {painSaveError && (
-                <div style={{ marginTop: 8, fontSize: 12, color: "#d9695a" }}>{painSaveError}</div>
-              )}
-            </>
-          )}
-            </div>
-          )}
-              </>
-            ) },
-            { key: "tests", label: "🧪 Mes tests", node: (
-              <>
-        {currentUser?.uid && (
-          <div>
-            <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" simple collapsed={!vis("tests")} onToggle={() => toggleDash("tests")} />
-          </div>
-        )}
-              </>
-            ) },
-            { key: "progress", label: "📊 Progression des séances", node: (
-              <>
-        {(
-        <div
-          style={{
-            background: "#151310",
-            padding: 20,
-            borderRadius: 12,
-            border: "1px solid #2a2620",
-            marginBottom: 16,
-          }}
-        >
-            {foldHead("progress", "📊 Progression des séances")}
-            {vis("progress") && (
-            <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                background: "#0d0c0a",
-                padding: 12,
-                borderRadius: 10,
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
-                Complétées
-              </div>
-              <div
-                style={{ fontSize: 28, fontWeight: "bold", color: "#4fae7d" }}
-              >
-                {completedSessions}
-              </div>
-            </div>
-            <div
-              style={{
-                background: "#0d0c0a",
-                padding: 12,
-                borderRadius: 10,
-                textAlign: "center",
-              }}
-            >
-              <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
-                Passées
-              </div>
-              <div
-                style={{ fontSize: 28, fontWeight: "bold", color: "#e0a13d" }}
-              >
-                {totalSessions}
-              </div>
-            </div>
-          </div>
-          <div
-            style={{
-              marginTop: 15,
-              padding: 12,
-              background: "rgba(79,174,125,0.14)",
-              borderRadius: 8,
-              textAlign: "center",
-            }}
-          >
-            <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 4 }}>
-              Taux de réalisation (60 derniers jours)
-            </div>
-            <div style={{ fontSize: 24, fontWeight: "bold", color: "#4fae7d" }}>
-              {totalSessions > 0
-                ? Math.round((completedSessions / totalSessions) * 100)
-                : 0}
-              %
-            </div>
-          </div>
-
-            </>
-          )}
-        </div>
-        )}
-              </>
-            ) },
-            { key: "load", label: "📈 Charge des 3 semaines", node: (
               <>
         {(
           <div style={CARD_STYLE}>
@@ -2824,8 +2467,608 @@ export default function Dashboard() {
           </div>
         )}
               </>
+              </>
             ) },
-            { key: "weight", label: "⚖️ Mon poids", node: (
+            { key: "progress", pole: "charge", label: "📊 Progression des séances", node: (
+              <>
+              <>
+        {(
+        <div
+          style={{
+            background: "#151310",
+            padding: 20,
+            borderRadius: 12,
+            border: "1px solid #2a2620",
+            marginBottom: 16,
+          }}
+        >
+            {foldHead("progress", "📊 Progression des séances")}
+            {vis("progress") && (
+            <>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                background: "#0d0c0a",
+                padding: 12,
+                borderRadius: 10,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
+                Complétées
+              </div>
+              <div
+                style={{ fontSize: 28, fontWeight: "bold", color: "#4fae7d" }}
+              >
+                {completedSessions}
+              </div>
+            </div>
+            <div
+              style={{
+                background: "#0d0c0a",
+                padding: 12,
+                borderRadius: 10,
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
+                Passées
+              </div>
+              <div
+                style={{ fontSize: 28, fontWeight: "bold", color: "#e0a13d" }}
+              >
+                {totalSessions}
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              marginTop: 15,
+              padding: 12,
+              background: "rgba(79,174,125,0.14)",
+              borderRadius: 8,
+              textAlign: "center",
+            }}
+          >
+            <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 4 }}>
+              Taux de réalisation (60 derniers jours)
+            </div>
+            <div style={{ fontSize: 24, fontWeight: "bold", color: "#4fae7d" }}>
+              {totalSessions > 0
+                ? Math.round((completedSessions / totalSessions) * 100)
+                : 0}
+              %
+            </div>
+          </div>
+
+            </>
+          )}
+        </div>
+        )}
+              </>
+              </>
+            ) },
+            { key: "formDay", pole: "recup", label: "🩺 Ma forme du jour (état de forme, wellness, douleur)", node: (
+              <>
+              <>
+        {/* État de forme : même analyse que la fiche athlète du coach, mais pour MOI
+            (athlète, ou coach via « Moi (mon dashboard) »). */}
+        {selfForm && selfForm.crossStatus && renderFormCard(selfForm, true)}
+
+        {/* Encadré « RM en attente » retiré : les RM se remplissent tout seuls à la fin des séances. */}
+              </>
+              <>
+        {todayScore !== null && (
+          <div
+            style={{
+              background: "#151310",
+              padding: 20,
+              borderRadius: 12,
+              border: "1px solid #2a2620",
+              marginBottom: 16,
+            }}
+          >
+            {foldHead("wellness", "🧘 Wellness")}
+            {vis("wellness") && (
+            <>
+              <button className="pt-btn pt-btn--accent pt-btn--block"
+                type="button"
+                onClick={() => navigate("/wellness?from=dashboard")}
+                style={{ marginBottom: 14 }}
+              >
+                🧘 Ouvrir l'onglet Wellness →
+              </button>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 10,
+                marginBottom: 15,
+              }}
+            >
+              <div
+                style={{
+                  background: "#0d0c0a",
+                  padding: 12,
+                  borderRadius: 10,
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
+                  Score du jour
+                </div>
+                <div
+                  style={{ fontSize: 28, fontWeight: "bold", color: "#e0a13d" }}
+                >
+                  {todayScore.toFixed(1)}/10
+                </div>
+              </div>
+              <div
+                style={{
+                  background: "#0d0c0a",
+                  padding: 12,
+                  borderRadius: 10,
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: 11, color: "#a8a199", marginBottom: 4 }}>
+                  Moy. Hebdo
+                </div>
+                <div
+                  style={{ fontSize: 28, fontWeight: "bold", color: "#4fae7d" }}
+                >
+                  {weeklyAvg || "–"}
+                </div>
+              </div>
+            </div>
+            {wellnessHistory.length > 1 && <WellnessScoreChart data={wellnessHistory} height={170} legend={false} />}
+            </>
+          )}
+          </div>
+        )}
+              </>
+              <>
+        {todayWellness && (
+            <div
+              style={{
+                background: "#151310",
+                padding: 20,
+                borderRadius: 12,
+                border: "1px solid #2a2620",
+                marginBottom: 16,
+              }}
+            >
+            {foldHead("pain", "🩹 Douleur (aujourd'hui)")}
+            {vis("pain") && (
+            <>
+              <BodyScan
+                painMap={todayWellness.painMap || {}}
+                painTypes={todayWellness.painTypes || {}}
+                setPainMap={(m) => savePainField("painMap", m)}
+                setPainTypes={(t) => savePainField("painTypes", t)}
+                selectedZone={selfPainZone}
+                setSelectedZone={setSelfPainZone}
+              />
+              {painSaveError && (
+                <div style={{ marginTop: 8, fontSize: 12, color: "#d9695a" }}>{painSaveError}</div>
+              )}
+            </>
+          )}
+            </div>
+          )}
+              </>
+              </>
+            ) },
+            { key: "rtp", pole: "recup", label: "🏥 Mon retour au jeu", node: aInjury ? <RtpAthleteCard injury={aInjury.inj} status={aInjury.st} state={aRtp} pain={aPain} /> : null },
+            { key: "sleep", pole: "recup", label: "😴 Sommeil", node: (
+              <>
+              <div style={CARD_STYLE}>
+                {foldHead("sleep", "😴 Sommeil")}
+                {vis("sleep") && <SleepDashCard uid={currentUser?.uid} onOpen={(t) => navigate(`/sommeil?tab=${t}&from=dashboard`)} />}
+              </div>
+              </>
+            ) },
+            { key: "nutrition", pole: "recup", label: "🥗 Nutrition du jour", node: (
+              <>
+              <div style={CARD_STYLE}>
+                {foldHead("nutrition", "🥗 Nutrition du jour")}
+                {vis("nutrition") && <NutritionDashCard uid={currentUser?.uid} onOpen={(t, focus) => navigate(`/nutrition?tab=${t}${focus ? `&focus=${focus}` : ""}&from=dashboard`)} />}
+              </div>
+              </>
+            ) },
+            { key: "injuries", pole: "recup", label: "🚑 Blessures récentes", node: (
+              <>
+              <>
+        {selfInjuries.length > 0 && (
+          <div
+            style={{
+              background: "#151310",
+              padding: 20,
+              borderRadius: 12,
+              border: "1px solid #2a2620",
+              marginBottom: 16,
+            }}
+          >
+            {foldHead("injuries", "🚑 Blessures récentes")}
+            {vis("injuries") && (
+            <>
+            <InjuryTimeline injuries={selfInjuries} compact />
+            <button className="pt-btn" style={{ marginTop: 4, width: "100%" }} onClick={() => navigate("/tests?tab=bilan&from=dashboard")}>
+              Voir / modifier mon historique →
+            </button>
+            </>
+          )}
+          </div>
+        )}
+              </>
+              </>
+            ) },
+            { key: "today", pole: "train", label: "🏋️ Séance du jour", node: (
+              <>
+              <>
+        {(
+        <div
+          style={{
+            ...CARD_STYLE,
+            border: CARD_ACCENT_BORDER,
+          }}
+        >
+            {foldHead("today", "🏋️ Séance du jour")}
+            {vis("today") && (
+            <>
+          {todayWorkout ? (
+            <div>
+              <div
+                style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8 }}
+              >
+                {todayWorkout.title}
+              </div>
+              <div style={{ fontSize: 14, color: "#a8a199", marginBottom: 10 }}>
+                Durée estimée : {todayWorkout.estimatedDuration || "N/A"} min
+              </div>
+              {isWorkoutCompleted(todayWorkout) ? (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "rgba(79,174,125,0.14)",
+                    borderRadius: 8,
+                    color: "#4fae7d",
+                    textAlign: "center",
+                    fontWeight: "bold",
+                    marginBottom: 10,
+                  }}
+                >
+                  ✅ Séance validée
+                </div>
+              ) : null}
+              {todaySummary && (todaySummary.avgRpe !== null || todaySummary.vsRM.length > 0) && (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "#0d0c0a",
+                    borderRadius: 8,
+                    marginBottom: 10,
+                    fontSize: 13,
+                  }}
+                >
+                  {todaySummary.avgRpe !== null && (
+                    <div style={{ color: "#a8a199", marginBottom: todaySummary.vsRM.length > 0 ? 8 : 0 }}>
+                      RPE moyen : <strong style={{ color: "#f3f0ea" }}>{todaySummary.avgRpe.toFixed(1)}</strong>
+                    </div>
+                  )}
+                  {todaySummary.vsRM.map((v, i) => (
+                    <div key={i} style={{ color: "#a8a199" }}>
+                      {v.name} : <strong style={{ color: "#f3f0ea" }}>{v.weight} kg</strong>{" "}
+                      ({v.pct}% du RM)
+                    </div>
+                  ))}
+                </div>
+              )}
+              {isWorkoutCompleted(todayWorkout) ? null : isWorkoutInProgress(todayWorkout) ? (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "rgba(217,164,65,0.14)",
+                    borderRadius: 8,
+                    color: "#d9a441",
+                    textAlign: "center",
+                    fontWeight: "bold",
+                    marginBottom: 10,
+                  }}
+                >
+                  ⏳ En cours
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: 12,
+                    background: "rgba(217,105,90,0.14)",
+                    borderRadius: 8,
+                    color: "#d9695a",
+                    textAlign: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  ❌ Non démarrée
+                </div>
+              )}
+              {/* Deux actions toujours disponibles : voir la séance en entier
+                  sans rien démarrer, ou la démarrer/reprendre directement —
+                  sans avoir à aller la chercher dans le calendrier de la
+                  page Séances. */}
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="pt-btn"
+                  onClick={() => goToWorkout(todayWorkout.id, false)}
+                  style={{ flex: 1 }}
+                >
+                  👁️ Voir la séance
+                </button>
+                {!isWorkoutCompleted(todayWorkout) && (
+                  <button className="pt-btn pt-btn--accent"
+                    onClick={() => goToWorkout(todayWorkout.id, true)}
+                    style={{ flex: 1 }}
+                  >
+                    {isWorkoutInProgress(todayWorkout)
+                      ? "▶️ Reprendre"
+                      : "▶️ Démarrer"}
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", padding: 20, color: "#a8a199" }}>
+              Pas de séance programmée aujourd'hui
+            </div>
+          )}
+            </>
+          )}
+        </div>
+        )}
+              </>
+              </>
+            ) },
+            { key: "rm", pole: "train", label: "💪 Mes RM", node: (
+              <>
+              <>
+        {Object.keys(athleteRMFullHistory).length > 0 && (() => {
+          const q = rmSearchSelf.trim().toLowerCase();
+          const fmtD = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+          const cats = EXERCISE_CATEGORIES.map((cat) => {
+            const list = Object.entries(athleteRMFullHistory)
+              .filter(([ex]) => (athleteRMCategoriesMap[ex] || "autre") === cat.value)
+              .filter(([ex]) => !q || ex.toLowerCase().includes(q))
+              .sort((a, b) => a[0].localeCompare(b[0], "fr"));
+            return { cat, list };
+          }).filter((c) => c.list.length > 0);
+          const total = cats.reduce((n, c) => n + c.list.length, 0);
+          return (
+            <div style={CARD_STYLE}>
+              {foldHead("rmhist", "💪 Mes RM")}
+              {vis("rmhist") && (
+                <>
+                  <input
+                    type="text"
+                    value={rmSearchSelf}
+                    onChange={(e) => setRmSearchSelf(e.target.value)}
+                    placeholder={`🔍 Chercher un exercice (${Object.keys(athleteRMFullHistory).length})`}
+                    style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 8, color: "#f3f0ea", fontSize: 14, outline: "none", marginBottom: 12 }}
+                  />
+                  {total === 0 && (
+                    <div style={{ fontSize: 13, color: "#a8a199", textAlign: "center", padding: 12 }}>Aucun exercice trouvé.</div>
+                  )}
+                  {cats.map(({ cat, list }) => {
+                    const open = q ? true : !!rmOpenCats[cat.value];
+                    return (
+                      <div key={cat.value} style={{ marginBottom: 8 }}>
+                        <button className="pt-btn pt-btn--block"
+                          onClick={() => setRmOpenCats((p) => ({ ...p, [cat.value]: !p[cat.value] }))}
+                          style={{ justifyContent: "space-between", alignItems: "center", textAlign: "left" }}
+                        >
+                          <span>{cat.label} <span style={{ color: "#a8a199", fontWeight: 400 }}>({list.length})</span></span>
+                          <span style={{ color: "#a8a199" }}>{open ? "▾" : "▸"}</span>
+                        </button>
+                        {open && (
+                          <div style={{ marginTop: 4 }}>
+                            {list.map(([exercise, history]) => {
+                              const latest = history[history.length - 1];
+                              const prev = history.length > 1 ? history[history.length - 2] : null;
+                              const diff = prev ? Math.round((latest.kg - prev.kg) * 10) / 10 : null;
+                              const isOpen = !!rmOpenEx[exercise];
+                              return (
+                                <div key={exercise} style={{ borderBottom: "1px solid #1d1a16" }}>
+                                  <div
+                                    onClick={() => history.length > 1 && setRmOpenEx((p) => ({ ...p, [exercise]: !p[exercise] }))}
+                                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 4px", cursor: history.length > 1 ? "pointer" : "default" }}
+                                  >
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: 14, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise}</div>
+                                      <div style={{ fontSize: 11, color: "#a8a199" }}>
+                                        {fmtD(latest.date)}
+                                        {history.length > 1 ? ` · ${history.length} mesures ${isOpen ? "▾" : "▸"}` : ""}
+                                      </div>
+                                    </div>
+                                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                                      <div style={{ fontSize: 18, fontWeight: 700, color: "#e0a13d" }}>
+                                        {latest.kg} <span style={{ fontSize: 12 }}>kg</span>
+                                        {latest.autoAdjusted && <span style={{ fontSize: 12, marginLeft: 4 }}>⚡</span>}
+                                      </div>
+                                      {diff !== null && diff !== 0 && (
+                                        <div style={{ fontSize: 11, color: diff > 0 ? "#4fae7d" : "#d9695a" }}>
+                                          {diff > 0 ? "▲ +" : "▼ "}{diff} kg
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {isOpen && history.length > 1 && (
+                                    <div style={{ paddingBottom: 10 }}>
+                                      <ResponsiveContainer width="100%" height={120}>
+                                        <LineChart
+                                          data={history.map((item) => ({
+                                            ...item,
+                                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                                          }))}
+                                        >
+                                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
+                                          <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
+                                          <Tooltip contentStyle={CHART_TOOLTIP} formatter={(value) => [`${value} kg`, "1RM"]} />
+                                          <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
+                                        </LineChart>
+                                      </ResponsiveContainer>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          );
+        })()}
+              </>
+              </>
+            ) },
+            { key: "relStrength", pole: "train", label: "🏋️ Ma force relative", node: aStrength.rows.length ? <RelStrengthCard data={aStrength} /> : null },
+            { key: "fbex", pole: "train", label: "🕘 Mes derniers exercices", node: (
+              <>
+              <>
+        {(() => {
+          const fbEntries = extractFeedbackExercises(athleteWorkouts, currentUser?.uid);
+          if (fbEntries.length === 0) return null;
+          return (
+            <div style={CARD_STYLE}>
+              {foldHead("fbex", "🕘 Mes derniers exercices")}
+              {vis("fbex") && (
+                <>
+                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10 }}>
+                    Les derniers exercices pour lesquels tu as donné un feedback. Touche une ligne pour voir tes séries.
+                  </div>
+                  <FeedbackList entries={fbEntries} mode="last" limit={6} />
+                  <button className="pt-btn pt-btn--accent pt-btn--block"
+                    type="button"
+                    onClick={() => navigate("/myrm?from=dashboard#feedbacks")}
+                    style={{ marginTop: 12 }}
+                  >
+                    Voir tout ({fbEntries.length}) →
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })()}
+              </>
+              </>
+            ) },
+            { key: "tests", pole: "train", label: "🧪 Mes tests", node: (
+              <>
+              <>
+        {currentUser?.uid && (
+          <div>
+            <TestsSummary uid={currentUser.uid} title="🧪 Mes tests" simple collapsed={!vis("tests")} onToggle={() => toggleDash("tests")} />
+          </div>
+        )}
+              </>
+              </>
+            ) },
+            { key: "vmacmj", pole: "train", label: "🏃 VMA & 🦘 CMJ", node: (
+              <>
+              <>
+        {(athleteVma || athleteCmj) && (
+          <div
+            style={{
+              background: "#151310",
+              padding: 20,
+              borderRadius: 12,
+              border: "1px solid #2a2620",
+              marginBottom: 16,
+            }}
+          >
+            {foldHead("vmacmj", "🏃 Ma VMA & 🦘 Mon CMJ")}
+            {vis("vmacmj") && (
+            <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: 16,
+              }}
+            >
+              {athleteVma && athleteVma.kg != null && (
+                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 10 }}>
+                  <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
+                    🏃 VMA actuelle
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#e0a13d", marginBottom: 10 }}>
+                    {athleteVma.kg} km/h
+                  </div>
+                  {athleteVma.history.length > 1 && (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <LineChart
+                        data={athleteVma.history.map((item) => ({
+                          ...item,
+                          dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                        }))}
+                      >
+                        <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
+                        <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
+                        <Tooltip
+                          contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
+                          formatter={(value) => [`${value} km/h`, "VMA"]}
+                        />
+                        <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              )}
+              {athleteCmj && athleteCmj.kg != null && (
+                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 10 }}>
+                  <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
+                    🦘 CMJ actuel
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#e0a13d", marginBottom: 10 }}>
+                    {athleteCmj.kg} cm
+                  </div>
+                  {athleteCmj.history.length > 1 && (
+                    <ResponsiveContainer width="100%" height={120}>
+                      <LineChart
+                        data={athleteCmj.history.map((item) => ({
+                          ...item,
+                          dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+                        }))}
+                      >
+                        <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
+                        <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
+                        <Tooltip
+                          contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
+                          formatter={(value) => [`${value} cm`, "CMJ"]}
+                        />
+                        <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              )}
+            </div>
+            </>
+          )}
+          </div>
+        )}
+              </>
+              </>
+            ) },
+            { key: "weight", pole: "train", label: "⚖️ Mon poids", node: (
+              <>
               <>
         {(
         <div
@@ -2970,236 +3213,32 @@ export default function Dashboard() {
         </div>
         )}
               </>
-            ) },
-            { key: "vmacmj", label: "🏃 VMA & 🦘 CMJ", node: (
-              <>
-        {(athleteVma || athleteCmj) && (
-          <div
-            style={{
-              background: "#151310",
-              padding: 20,
-              borderRadius: 12,
-              border: "1px solid #2a2620",
-              marginBottom: 16,
-            }}
-          >
-            {foldHead("vmacmj", "🏃 Ma VMA & 🦘 Mon CMJ")}
-            {vis("vmacmj") && (
-            <>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-                gap: 16,
-              }}
-            >
-              {athleteVma && athleteVma.kg != null && (
-                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 10 }}>
-                  <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
-                    🏃 VMA actuelle
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#e0a13d", marginBottom: 10 }}>
-                    {athleteVma.kg} km/h
-                  </div>
-                  {athleteVma.history.length > 1 && (
-                    <ResponsiveContainer width="100%" height={120}>
-                      <LineChart
-                        data={athleteVma.history.map((item) => ({
-                          ...item,
-                          dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
-                        }))}
-                      >
-                        <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
-                        <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
-                        <Tooltip
-                          contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
-                          formatter={(value) => [`${value} km/h`, "VMA"]}
-                        />
-                        <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              )}
-              {athleteCmj && athleteCmj.kg != null && (
-                <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 10 }}>
-                  <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 8 }}>
-                    🦘 CMJ actuel
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#e0a13d", marginBottom: 10 }}>
-                    {athleteCmj.kg} cm
-                  </div>
-                  {athleteCmj.history.length > 1 && (
-                    <ResponsiveContainer width="100%" height={120}>
-                      <LineChart
-                        data={athleteCmj.history.map((item) => ({
-                          ...item,
-                          dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
-                        }))}
-                      >
-                        <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
-                        <YAxis hide domain={["dataMin - 1", "dataMax + 1"]} />
-                        <Tooltip
-                          contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
-                          formatter={(value) => [`${value} cm`, "CMJ"]}
-                        />
-                        <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              )}
-            </div>
-            </>
-          )}
-          </div>
-        )}
-              </>
-            ) },
-            { key: "fbex", label: "🕘 Mes derniers exercices", node: (
-              <>
-        {(() => {
-          const fbEntries = extractFeedbackExercises(athleteWorkouts, currentUser?.uid);
-          if (fbEntries.length === 0) return null;
-          return (
-            <div style={CARD_STYLE}>
-              {foldHead("fbex", "🕘 Mes derniers exercices")}
-              {vis("fbex") && (
-                <>
-                  <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 10 }}>
-                    Les derniers exercices pour lesquels tu as donné un feedback. Touche une ligne pour voir tes séries.
-                  </div>
-                  <FeedbackList entries={fbEntries} mode="last" limit={6} />
-                  <button className="pt-btn pt-btn--accent pt-btn--block"
-                    type="button"
-                    onClick={() => navigate("/myrm?from=dashboard#feedbacks")}
-                    style={{ marginTop: 12 }}
-                  >
-                    Voir tout ({fbEntries.length}) →
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        })()}
-              </>
-            ) },
-            { key: "rm", label: "💪 Mes RM", node: (
-              <>
-        {Object.keys(athleteRMFullHistory).length > 0 && (() => {
-          const q = rmSearchSelf.trim().toLowerCase();
-          const fmtD = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "2-digit" });
-          const cats = EXERCISE_CATEGORIES.map((cat) => {
-            const list = Object.entries(athleteRMFullHistory)
-              .filter(([ex]) => (athleteRMCategoriesMap[ex] || "autre") === cat.value)
-              .filter(([ex]) => !q || ex.toLowerCase().includes(q))
-              .sort((a, b) => a[0].localeCompare(b[0], "fr"));
-            return { cat, list };
-          }).filter((c) => c.list.length > 0);
-          const total = cats.reduce((n, c) => n + c.list.length, 0);
-          return (
-            <div style={CARD_STYLE}>
-              {foldHead("rmhist", "💪 Mes RM")}
-              {vis("rmhist") && (
-                <>
-                  <input
-                    type="text"
-                    value={rmSearchSelf}
-                    onChange={(e) => setRmSearchSelf(e.target.value)}
-                    placeholder={`🔍 Chercher un exercice (${Object.keys(athleteRMFullHistory).length})`}
-                    style={{ width: "100%", boxSizing: "border-box", padding: "9px 12px", background: "#0d0c0a", border: "1px solid #2a2620", borderRadius: 8, color: "#f3f0ea", fontSize: 14, outline: "none", marginBottom: 12 }}
-                  />
-                  {total === 0 && (
-                    <div style={{ fontSize: 13, color: "#a8a199", textAlign: "center", padding: 12 }}>Aucun exercice trouvé.</div>
-                  )}
-                  {cats.map(({ cat, list }) => {
-                    const open = q ? true : !!rmOpenCats[cat.value];
-                    return (
-                      <div key={cat.value} style={{ marginBottom: 8 }}>
-                        <button className="pt-btn pt-btn--block"
-                          onClick={() => setRmOpenCats((p) => ({ ...p, [cat.value]: !p[cat.value] }))}
-                          style={{ justifyContent: "space-between", alignItems: "center", textAlign: "left" }}
-                        >
-                          <span>{cat.label} <span style={{ color: "#a8a199", fontWeight: 400 }}>({list.length})</span></span>
-                          <span style={{ color: "#a8a199" }}>{open ? "▾" : "▸"}</span>
-                        </button>
-                        {open && (
-                          <div style={{ marginTop: 4 }}>
-                            {list.map(([exercise, history]) => {
-                              const latest = history[history.length - 1];
-                              const prev = history.length > 1 ? history[history.length - 2] : null;
-                              const diff = prev ? Math.round((latest.kg - prev.kg) * 10) / 10 : null;
-                              const isOpen = !!rmOpenEx[exercise];
-                              return (
-                                <div key={exercise} style={{ borderBottom: "1px solid #1d1a16" }}>
-                                  <div
-                                    onClick={() => history.length > 1 && setRmOpenEx((p) => ({ ...p, [exercise]: !p[exercise] }))}
-                                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "10px 4px", cursor: history.length > 1 ? "pointer" : "default" }}
-                                  >
-                                    <div style={{ minWidth: 0 }}>
-                                      <div style={{ fontSize: 14, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis" }}>{exercise}</div>
-                                      <div style={{ fontSize: 11, color: "#a8a199" }}>
-                                        {fmtD(latest.date)}
-                                        {history.length > 1 ? ` · ${history.length} mesures ${isOpen ? "▾" : "▸"}` : ""}
-                                      </div>
-                                    </div>
-                                    <div style={{ textAlign: "right", flexShrink: 0 }}>
-                                      <div style={{ fontSize: 18, fontWeight: 700, color: "#e0a13d" }}>
-                                        {latest.kg} <span style={{ fontSize: 12 }}>kg</span>
-                                        {latest.autoAdjusted && <span style={{ fontSize: 12, marginLeft: 4 }}>⚡</span>}
-                                      </div>
-                                      {diff !== null && diff !== 0 && (
-                                        <div style={{ fontSize: 11, color: diff > 0 ? "#4fae7d" : "#d9695a" }}>
-                                          {diff > 0 ? "▲ +" : "▼ "}{diff} kg
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {isOpen && history.length > 1 && (
-                                    <div style={{ paddingBottom: 10 }}>
-                                      <ResponsiveContainer width="100%" height={120}>
-                                        <LineChart
-                                          data={history.map((item) => ({
-                                            ...item,
-                                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
-                                          }))}
-                                        >
-                                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={9} />
-                                          <YAxis hide domain={["dataMin - 2", "dataMax + 2"]} />
-                                          <Tooltip contentStyle={CHART_TOOLTIP} formatter={(value) => [`${value} kg`, "1RM"]} />
-                                          <Line type="monotone" dataKey="kg" stroke="#e0a13d" strokeWidth={2} dot={{ fill: "#e0a13d", r: 3 }} />
-                                        </LineChart>
-                                      </ResponsiveContainer>
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </div>
-          );
-        })()}
               </>
             ) },
           ];
-          const items = orderedKeys(cards.map((c) => c.key))
-            .filter((k) => !offList.includes(k))
-            .map((k) => cards.find((x) => x.key === k));
-          // les cartes masquées gardent leur place : on ne remplace que la suite des cartes visibles
-          const fullOrder = orderedKeys(cards.map((c) => c.key));
-          const onCommit = (visOrder, cols) => {
-            let vi = 0;
-            const merged = fullOrder.map((k) => (offList.includes(k) ? k : visOrder[vi++]));
-            saveDashLayout(merged, { ...(dashCols || {}), ...cols });
-          };
-          // colonnes par défaut calculées sur TOUTES les cartes : masquer une carte ne fait pas changer les autres de côté
-          return <DashColumns items={items} cols={colOfFn(fullOrder, dashCols)} twoCols={twoCols} onCommit={onCommit} />;
+          return (
+            <>
+              <SynthesisBanner
+                athlete
+                synth={aSynth}
+                onGo={(id) => {
+                  if (athFolded.includes(id)) saveAthDash({ folded: athFolded.filter((x) => x !== id) });
+                  document.getElementById(`pt-apole-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              />
+              {renderPoles(cards, {
+                poles: ATH_POLES,
+                dash: { order: dashOrder || [], cols: dashCols || {}, off: dashOff, folded: athFolded },
+                save: saveAthDash,
+                panel: cardsPanel,
+                setPanel: setCardsPanel,
+                defaultOff: [],
+                idPrefix: "pt-apole-",
+                panelTitle: "👁 Cartes affichées",
+                panelHint: "Touche une carte pour l'afficher ou la masquer. Rien n'est supprimé : tu peux la remettre quand tu veux.",
+              })}
+            </>
+          );
         })()}
       </div>
     );
@@ -3822,6 +3861,7 @@ export default function Dashboard() {
               const fDyn = loadDynamics(fDaily, fToday, fa.acwr);
               const fInjury = activeInjury(fa.injuries, fToday);
               const fRtp = fInjury ? rtpState(fInjury.inj, fDaily, fToday) : null;
+              const fPain = painSummary(fa.lastWellness, fInjury?.inj);
               const fRmDocs = Object.entries(detailedAthleteRMHistory || {})
                 .map(([name, pts]) => ({ name, kg: pts && pts.length ? Number(pts[pts.length - 1].kg) : 0 }))
                 .filter((r) => r.kg > 0);
@@ -3838,6 +3878,7 @@ export default function Dashboard() {
                 rtp: fRtp,
                 trend: fTrend,
                 strength: fStrength,
+                pain: fPain,
               });
               const fTh = { jumpWatch: TH("synthJumpWatch"), jumpAlert: TH("synthJumpAlert"), dropUnder: TH("synthDropUnder"), monoHigh: TH("synthMonoHigh"), complianceLow: TH("synthComplianceLow") };
               return (
@@ -4260,7 +4301,7 @@ export default function Dashboard() {
                 </>
               ) },
               { key: "rtp", pole: "recup", label: "🏥 Retour au jeu", node: fInjury ? (
-                <RtpCard key={fInjury.inj.id} injury={fInjury.inj} status={fInjury.st} state={fRtp} saving={rtpSaving} onSave={(rtp) => saveRtp(fInjury.inj, rtp)} />
+                <RtpCard key={fInjury.inj.id} injury={fInjury.inj} status={fInjury.st} state={fRtp} pain={fPain} saving={rtpSaving} onSave={(rtp) => saveRtp(fInjury.inj, rtp)} />
               ) : null },
               { key: "cmjSessions", pole: "recup", label: "🦘 Évolution CMJ (fatigue)", node: (
                 <>

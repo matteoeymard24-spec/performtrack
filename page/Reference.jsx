@@ -150,7 +150,8 @@ strain = charge de la semaine × monotonie   (comparé à l'historique propre : 
       {/* ============ FICHE ATHLÈTE (COACH) ============ */}
       <FoldCard id="fiche" fold={fold} title="🚦 Fiche athlète du coach (synthèse, prévu / réalisé, retour au jeu, force relative)">
         <P>
-          La fiche d'un athlète (Dashboard › clic sur l'athlète) range les outils en 3 pôles : charge (ce qu'il encaisse), récupération
+          Le dashboard de l'athlète suit la même organisation (mêmes pôles, mêmes feux), avec un message « Pour aujourd'hui » à la
+          place de la décision du coach et sans la charge prévue. La fiche d'un athlète (Dashboard › clic sur l'athlète) range les outils en 3 pôles : charge (ce qu'il encaisse), récupération
           (comment il l'encaisse), entraînement (ce que ça produit). Les seuils ci-dessous se règlent dans Paramètres › Seuils › « Synthèse
           de la fiche athlète ».
         </P>
@@ -176,11 +177,29 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
             ["OK", "aucun de ces signaux"],
           ]}
         />
+        <H>Reprise après coupure</H>
+        <P>
+          Le REDI ignore les jours sans séance. Après une coupure, son terme « récent » ne contient donc que la ou les séances de reprise :
+          le ratio monte dès qu'elles sont un peu plus dures que la moyenne, alors que l'athlète sort d'une période de repos. Dès que la
+          première séance des 7 derniers jours suit au moins {TH("resumeGapDays")} jours sans séance, l'app parle de « reprise » : le ratio
+          n'est plus compté comme fatigue dans l'état de forme, et le pôle charge compare seulement la semaine à sa semaine habituelle
+          (semaines vides exclues). Il passe en vigilance uniquement si la reprise dépasse déjà cette habitude de {TH("synthJumpWatch")} %.
+        </P>
+        <H>Douleurs du jour</H>
+        <P>
+          Lues sur le schéma corporel du wellness (intensité 0-10 et type par zone). Vigilance à partir de {TH("synthPainWatch")}/10,
+          alerte à partir de {TH("synthPainAlert")}/10 ou dès qu'une zone au-dessus du seuil de vigilance est de type aigu, nerveux ou
+          articulaire. De simples courbatures sous le seuil d'alerte sont affichées sans changer le feu. Croisements : une douleur sur la
+          zone d'une blessure en cours bloque la proposition de passer à l'étape suivante du retour au jeu ; une douleur avec une charge en
+          hausse ajoute « ne rien ajouter cette semaine » à la décision. La zone blessée est reconnue par les mots communs entre la zone du
+          schéma et le nom ou la zone de la blessure : c'est une aide, à vérifier.
+        </P>
         <H>Feu du pôle récupération</H>
         <P>
           Il reprend les domaines « bien-être » (wellness, effort perçu) et « neuromusculaire » (CMJ, force) de l'état de forme : alerte si
           l'un des deux est en alerte ou si les deux sont en vigilance ; vigilance si un seul est en vigilance ou si l'athlète est malade ;
-          une blessure en cours ou récente met au minimum en vigilance. La charge n'entre pas dans ce feu : elle a le sien.
+          une blessure en cours ou récente met au minimum en vigilance, tout comme une douleur du jour au-dessus du seuil. La charge n'entre
+          pas dans ce feu : elle a le sien.
         </P>
         <H>Feu du pôle entraînement</H>
         <P>

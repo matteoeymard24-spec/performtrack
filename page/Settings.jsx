@@ -31,6 +31,7 @@ const CHECKS = [
   ["loadLight", "loadHard", "Repères fixes : « légère » doit être sous « intense »"],
   ["rpeVolLow", "rpeVolHigh", "RPE auto : le petit volume doit être sous le gros volume"],
   ["synthJumpWatch", "synthJumpAlert", "Synthèse : la hausse « à surveiller » doit être sous la hausse « alerte »"],
+  ["synthPainWatch", "synthPainAlert", "Douleur : « à surveiller » doit être sous « alerte »"],
   ["rtpLoadPartial", "rtpLoadFull", "Retour au jeu : la charge « sans contact » doit être sous la charge « complet »"],
 ];
 

@@ -93,6 +93,27 @@ export function getREDIStatus(ratio) {
 }
 
 /**
+ * Reprise après coupure. Le REDI ignore les jours sans séance : après une semaine d'arrêt, le terme
+ * « aigu » ne contient que la ou les séances de reprise, et le ratio monte dès qu'elles sont un peu plus
+ * dures que la moyenne — alors que l'athlète sort d'une période de repos. On repère donc ce cas pour ne
+ * pas lire ce ratio comme de la fatigue accumulée.
+ * resumed = il y a au moins une séance dans les 7 derniers jours ET la première de ces séances suit
+ * au moins `resumeGapDays` jours sans séance (ou aucune séance dans les 28 jours d'avant).
+ */
+export function resumeInfo(dailyLoads, targetDateStr) {
+  const target = new Date(targetDateStr + "T12:00:00");
+  const ago = (dateStr) => Math.round((target - new Date(dateStr + "T12:00:00")) / 86400000);
+  const days = [...new Set((dailyLoads || []).filter((e) => e && Number(e.load) > 0).map((e) => ago(e.date)))].filter((i) => i >= 0 && i <= 35).sort((a, b) => a - b);
+  const recent = days.filter((i) => i < 7);
+  if (!recent.length) return { resumed: false, restDays: null, sessions7: 0 };
+  const first = recent[recent.length - 1]; // la plus ancienne des 7 derniers jours
+  const before = days.filter((i) => i > first);
+  const restDays = before.length ? before[0] - first - 1 : null; // null = rien avant (début ou longue coupure)
+  const resumed = restDays === null ? days.length <= 3 : restDays >= TH("resumeGapDays");
+  return { resumed, restDays, sessions7: recent.length };
+}
+
+/**
  * Complétude des données sur la fenêtre chronique (28j) : proportion de
  * jours avec une charge renseignée. REDI reste calculable avec des trous,
  * mais ce chiffre permet d'afficher un niveau de confiance à l'utilisateur.
@@ -782,7 +803,7 @@ export const FORM_LEVELS = {
   nodata: { label: "Données insuffisantes", color: "#a8a199", emoji: "❔", rank: 4 },
 };
 
-export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctChange, neural, sick = false, effort = null }) {
+export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctChange, neural, sick = false, effort = null, resume = null }) {
   const hasRedi = rediRatioValue !== null && rediRatioValue !== undefined;
   const hasZ = wellnessZ !== null && wellnessZ !== undefined;
   const hasScore = wellnessScore !== null && wellnessScore !== undefined;
@@ -799,7 +820,11 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
   const reasons = [];
   if (sick) reasons.push("🤒 Malade (déclaré dans le wellness) : une baisse de performance peut venir de la maladie, pas seulement de la fatigue");
   let load = 0;
-  if (hasRedi) {
+  // Reprise après coupure : un ratio élevé vient de la séance de reprise, pas d'une fatigue accumulée.
+  const resumed = !!(resume && resume.resumed);
+  if (hasRedi && resumed) {
+    if (rediRatioValue > TH("rediHigh")) reasons.push(`Reprise après ${resume.restDays != null ? `${resume.restDays} jours` : "une coupure"} sans séance : la charge récente (REDI ${rediRatioValue.toFixed(2)}) n'est pas comptée comme fatigue. Remonter progressivement`);
+  } else if (hasRedi) {
     if (rediRatioValue > TH("rediVeryHigh")) { load = 2; reasons.push(`Charge très élevée (REDI ${rediRatioValue.toFixed(2)})`); }
     else if (rediRatioValue > TH("rediHigh")) { load = 1; reasons.push(`Charge élevée (REDI ${rediRatioValue.toFixed(2)})`); }
   }
@@ -868,10 +893,11 @@ export function classifyForm({ rediRatioValue, wellnessZ, wellnessScore, cmjPctC
   let label = base.label;
   if (level === "fatigue" && neu === 2 && load < 2 && well < 2) label = "Fatigue nerveuse";
   if (level === "fit" && hasRedi && rediRatioValue < TH("rediUnder")) label = "En forme (sous-charge)";
+  if (level === "fit" && resumed) label = "En forme (reprise)";
 
   const detail =
     reasons.length > 0
       ? reasons.join(" · ")
       : "REDI, wellness et performance de force dans la norme individuelle.";
-  return { level, label, color: base.color, emoji: base.emoji, detail, reasons, domains: { load, wellness: well, neural: neu }, sick: !!sick };
+  return { level, label, color: base.color, emoji: base.emoji, detail, reasons, domains: { load, wellness: well, neural: neu }, sick: !!sick, resumed };
 }

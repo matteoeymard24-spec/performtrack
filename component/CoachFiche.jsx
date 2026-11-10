@@ -28,13 +28,13 @@ const POLES = [
   { id: "train", label: "Entraînement", icon: "💪" },
 ];
 
-export function SynthesisBanner({ synth, onGo }) {
+export function SynthesisBanner({ synth, onGo, athlete = false }) {
   if (!synth) return null;
   return (
     <div style={{ ...CARD, border: `1px solid ${AMBER}66`, marginBottom: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-        <h3 style={H3}>🚦 Synthèse du jour</h3>
-        <span style={{ fontSize: 11.5, color: MUTED }}>Proposition calculée : la décision reste la tienne</span>
+        <h3 style={H3}>{athlete ? "🚦 Ma synthèse du jour" : "🚦 Synthèse du jour"}</h3>
+        <span style={{ fontSize: 11.5, color: MUTED }}>{athlete ? "Calculée avec tes séances, ton wellness et tes douleurs du jour" : "Proposition calculée : la décision reste la tienne"}</span>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 230px), 1fr))", gap: 10 }}>
         {POLES.map((p) => {
@@ -69,8 +69,8 @@ export function SynthesisBanner({ synth, onGo }) {
         })}
       </div>
       <div style={{ marginTop: 12, padding: "12px 14px", borderRadius: 10, background: "rgba(224,161,61,0.09)", border: `1px solid ${AMBER}44` }}>
-        <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: AMBER, marginBottom: 3 }}>Décision proposée</div>
-        <div style={{ fontSize: 14.5, color: TEXT, lineHeight: 1.45, fontWeight: 600 }}>{synth.decision}</div>
+        <div style={{ fontSize: 11.5, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: AMBER, marginBottom: 3 }}>{athlete ? "Pour aujourd'hui" : "Décision proposée"}</div>
+        <div style={{ fontSize: 14.5, color: TEXT, lineHeight: 1.45, fontWeight: 600 }}>{athlete ? synth.advice : synth.decision}</div>
       </div>
     </div>
   );
@@ -87,25 +87,32 @@ function Stat({ label, value, sub, color = TEXT, title }) {
   );
 }
 
-export function WeekLoadCard({ weeks, dyn, thresholds }) {
+export function WeekLoadCard({ weeks, dyn, thresholds, athlete = false }) {
   const th = thresholds || {};
-  const max = Math.max(1, ...weeks.map((w) => Math.max(w.plannedLoad, w.doneLoad)));
+  const max = Math.max(1, ...weeks.map((w) => (athlete ? w.doneLoad : Math.max(w.plannedLoad, w.doneLoad))));
   const any = weeks.some((w) => w.plannedSessions > 0 || w.doneSessions > 0);
-  const jumpCol = dyn.changePct == null ? MUTED : dyn.changePct >= th.jumpAlert ? RED : dyn.changePct >= th.jumpWatch ? "#d9a441" : dyn.changePct <= -th.dropUnder ? BLUE : GREEN;
+  const jumpCol = dyn.changePct == null ? MUTED : dyn.resumed ? (dyn.changePct >= th.jumpWatch ? "#d9a441" : GREEN) : dyn.changePct >= th.jumpAlert ? RED : dyn.changePct >= th.jumpWatch ? "#d9a441" : dyn.changePct <= -th.dropUnder ? BLUE : GREEN;
   const monoCol = dyn.monotony == null ? MUTED : dyn.monotony >= th.monoHigh ? RED : dyn.monotony >= 1.5 ? "#d9a441" : GREEN;
   const pctCol = (p) => (p == null ? MUTED : p < th.complianceLow ? "#d9a441" : p > 130 ? RED : GREEN);
   return (
     <div style={CARD}>
-      <h3 style={{ ...H3, marginBottom: 4 }}>📅 Charge de la semaine : prévu / réalisé</h3>
+      <h3 style={{ ...H3, marginBottom: 4 }}>{athlete ? "📅 Ma charge, semaine par semaine" : "📅 Charge de la semaine : prévu / réalisé"}</h3>
       <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
-        Prévu = RPE prévu × durée prévue des séances de la semaine. Réalisé = note de séance × durée réelle (sRPE). En UA.
+        {athlete
+          ? "Charge = ta note de séance × la durée (en UA). Séances faites sur séances prévues."
+          : "Prévu = RPE prévu × durée prévue des séances de la semaine. Réalisé = note de séance × durée réelle (sRPE). En UA."}
       </div>
+      {dyn.resumed && (
+        <div style={{ fontSize: 12.5, color: "#d8cfbd", background: "rgba(91,155,213,0.1)", border: `1px solid ${BLUE}55`, borderRadius: 10, padding: "8px 11px", marginBottom: 12, lineHeight: 1.45 }}>
+          🔄 Reprise après {dyn.restDays != null ? `${dyn.restDays} jours sans séance` : "une coupure"} : la hausse de charge vient de la reprise, pas d'une fatigue accumulée. La comparaison se fait avec {athlete ? "ta" : "sa"} semaine habituelle, hors coupure.
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 130px), 1fr))", gap: 8, marginBottom: 14 }}>
         <Stat
           label="7 derniers jours"
           value={dyn.changePct == null ? "—" : `${dyn.changePct > 0 ? "+" : ""}${dyn.changePct} %`}
           color={jumpCol}
-          sub={dyn.changePct == null ? "pas assez d'historique" : `${dyn.last7} UA · ${dyn.prev7} d'habitude`}
+          sub={dyn.changePct == null ? "pas assez d'historique" : `${dyn.last7} UA · ${dyn.prev7} d'habitude${dyn.resumed ? " · reprise" : ""}`}
           title="Charge des 7 derniers jours comparée à la moyenne hebdomadaire des 3 semaines d'avant"
         />
         <Stat
@@ -136,24 +143,33 @@ export function WeekLoadCard({ weeks, dyn, thresholds }) {
                 </span>
               </div>
               <div role="cell" style={{ minWidth: 0 }}>
-                <div title={`Prévu : ${w.plannedLoad} UA`} style={{ height: 7, borderRadius: 4, background: "#1a1815", marginBottom: 3 }}>
-                  <div style={{ width: `${(w.plannedLoad / max) * 100}%`, height: "100%", borderRadius: 4, background: "#6f6a62" }} />
-                </div>
+                {!athlete && (
+                  <div title={`Prévu : ${w.plannedLoad} UA`} style={{ height: 7, borderRadius: 4, background: "#1a1815", marginBottom: 3 }}>
+                    <div style={{ width: `${(w.plannedLoad / max) * 100}%`, height: "100%", borderRadius: 4, background: "#6f6a62" }} />
+                  </div>
+                )}
                 <div title={`Réalisé : ${w.doneLoad} UA`} style={{ height: 7, borderRadius: 4, background: "#1a1815" }}>
                   <div style={{ width: `${(w.doneLoad / max) * 100}%`, height: "100%", borderRadius: 4, background: AMBER }} />
                 </div>
               </div>
               <div role="cell" style={{ textAlign: "right", fontSize: 12, color: MUTED, whiteSpace: "nowrap", lineHeight: 1.3 }}>
-                <b style={{ color: TEXT }}>{w.doneLoad}</b> / {w.plannedLoad || "—"}
-                <span style={{ display: "block", fontWeight: 800, color: pctCol(w.loadPct) }}>{w.loadPct == null ? "—" : `${w.loadPct} %`}</span>
+                <b style={{ color: TEXT }}>{w.doneLoad}</b>
+                {athlete ? " UA" : ` / ${w.plannedLoad || "—"}`}
+                {athlete ? (
+                  <span style={{ display: "block", fontWeight: 800, color: pctCol(w.sessionPct) }}>{w.sessionPct == null ? "—" : `${w.sessionPct} % des séances`}</span>
+                ) : (
+                  <span style={{ display: "block", fontWeight: 800, color: pctCol(w.loadPct) }}>{w.loadPct == null ? "—" : `${w.loadPct} %`}</span>
+                )}
               </div>
             </div>
           ))}
           <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 11.5, color: MUTED, marginTop: 8 }}>
-            <span>
-              <span style={{ display: "inline-block", width: 14, height: 6, borderRadius: 3, background: "#6f6a62", marginRight: 5 }} />
-              Prévu
-            </span>
+            {!athlete && (
+              <span>
+                <span style={{ display: "inline-block", width: 14, height: 6, borderRadius: 3, background: "#6f6a62", marginRight: 5 }} />
+                Prévu
+              </span>
+            )}
             <span>
               <span style={{ display: "inline-block", width: 14, height: 6, borderRadius: 3, background: AMBER, marginRight: 5 }} />
               Réalisé
@@ -167,7 +183,105 @@ export function WeekLoadCard({ weeks, dyn, thresholds }) {
   );
 }
 
-export function RtpCard({ injury, status, state, onSave, saving }) {
+/* Frise du retour au jeu : 5 étapes + l'arrivée (compétition). Le trait plein va jusqu'à la position actuelle,
+   avec l'avancement DANS l'étape en cours (critères remplis). */
+export function RtpContinuum({ state, injury, status, you = false, details = true }) {
+  const stops = [...RTP_STAGES.map((s) => ({ id: s.id, short: s.short, icon: s.icon })), { id: 6, short: "Compétition", icon: "🏁" }];
+  const cur = state.stages[Math.min(state.stage, 5) - 1];
+  const inStage = state.cleared ? 0 : cur.criteria.filter((c) => c.ok).length / cur.criteria.length;
+  // position sur la frise : 0 % = étape 1, 100 % = compétition
+  const pos = state.cleared ? 100 : ((state.stage - 1 + inStage * 0.85) / 5) * 100;
+  return (
+    <div style={{ margin: "6px 0 14px" }}>
+      <div style={{ position: "relative", padding: "34px 0 0" }}>
+        <div style={{ position: "absolute", left: "8.33%", right: "8.33%", top: 52, height: 6, borderRadius: 3, background: "#2a2620" }}>
+          <div style={{ width: `${pos}%`, height: "100%", borderRadius: 3, background: `linear-gradient(90deg, ${GREEN}, ${state.cleared ? GREEN : AMBER})`, transition: "width 0.4s ease" }} />
+          {!state.cleared && (
+            <div style={{ position: "absolute", left: `${pos}%`, top: -38, transform: "translateX(-50%)", fontSize: 10.5, fontWeight: 800, color: "#12100c", background: AMBER, borderRadius: 6, padding: "2px 7px", whiteSpace: "nowrap" }}>
+              {you ? "Tu es ici" : "Ici"}
+              <span style={{ position: "absolute", left: "50%", bottom: -4, width: 8, height: 8, background: AMBER, transform: "translateX(-50%) rotate(45deg)" }} />
+            </div>
+          )}
+        </div>
+        <div style={{ position: "relative", display: "grid", gridTemplateColumns: "repeat(6, 1fr)" }}>
+          {stops.map((s) => {
+            const done = state.cleared || s.id < state.stage;
+            const here = !state.cleared && s.id === state.stage;
+            return (
+              <div key={s.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 0 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 17,
+                    background: done ? GREEN : here ? "#2a2010" : "#151310",
+                    border: `2px solid ${done ? GREEN : here ? AMBER : "#3a342a"}`,
+                    boxShadow: here ? `0 0 0 4px ${AMBER}33` : "none",
+                    filter: done || here ? "none" : "grayscale(1) opacity(0.55)",
+                  }}
+                >
+                  {done && s.id !== 6 ? <span style={{ color: "#12100c", fontWeight: 900, fontSize: 15 }}>✓</span> : s.icon}
+                </div>
+                <div style={{ marginTop: 5, fontSize: 10.5, fontWeight: here ? 800 : 600, color: here ? AMBER : done ? "#c9c1b5" : MUTED, textAlign: "center", lineHeight: 1.2, overflowWrap: "anywhere" }}>{s.short}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 11.5, color: MUTED, marginTop: 8 }}>
+        <span>Blessure : {fmtDateFr(injury.date, { day: "numeric", month: "short" })}</span>
+        {status?.back && <span>Retour estimé : {fmtDateFr(status.back, { day: "numeric", month: "short" })}</span>}
+      </div>
+      {details && !state.cleared && (
+        <div style={{ marginTop: 10, padding: "10px 12px", borderRadius: 10, background: "#0d0c0a", border: `1px solid ${BORDER}` }}>
+          <div style={{ fontSize: 13.5, fontWeight: 800, color: TEXT }}>
+            {cur.icon} Étape {cur.id}/5 · {cur.label}
+          </div>
+          <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>{cur.goal}</div>
+          <div style={{ fontSize: 12, fontWeight: 800, color: MUTED, letterSpacing: 0.3, textTransform: "uppercase", marginTop: 8 }}>
+            {cur.complete ? "Critères remplis" : `Pour passer à la suite (${cur.criteria.filter((c) => c.ok).length}/${cur.criteria.length})`}
+          </div>
+          {cur.criteria.map((c) => (
+            <div key={c.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, color: c.ok ? "#c9c1b5" : TEXT, marginTop: 4 }}>
+              <span style={{ color: c.ok ? GREEN : "#6f6a62", fontWeight: 900, flexShrink: 0 }}>{c.ok ? "✓" : "○"}</span>
+              <span style={{ textDecoration: c.ok ? "line-through" : "none", textDecorationColor: "#6f6a62" }}>{c.t}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Carte de l'athlète (lecture seule) : où j'en suis dans mon retour */
+export function RtpAthleteCard({ injury, status, state, pain }) {
+  if (!injury) return null;
+  return (
+    <div style={{ ...CARD, border: `1px solid ${RED}66` }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+        <h3 style={H3}>🏥 Mon retour au jeu : {injury.name || injury.zone || "blessure"}</h3>
+        <span style={{ fontSize: 12, fontWeight: 800, color: state.cleared ? GREEN : AMBER, border: `1px solid ${state.cleared ? GREEN : AMBER}66`, borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap" }}>
+          {state.cleared ? "✓ Retour validé" : `Étape ${state.stage}/5`}
+        </span>
+      </div>
+      <RtpContinuum state={state} injury={injury} status={status} you />
+      {pain?.onInjury && (
+        <div style={{ fontSize: 13, color: "#f0d9ae", background: "rgba(217,105,90,0.12)", border: `1px solid ${RED}55`, borderRadius: 10, padding: "8px 11px", marginBottom: 8, lineHeight: 1.45 }}>
+          ⚠️ Tu as noté une douleur de {pain.onInjury.v}/10 sur cette zone aujourd'hui : signale-la à ton coach avant de faire ta séance.
+        </div>
+      )}
+      <div style={{ fontSize: 11.5, color: "#6f6a62" }}>
+        {state.started ? "C'est ton coach qui valide chaque étape, avec le médecin ou le kiné." : "Ton coach n'a pas encore démarré le suivi : tu es placé à la première étape par défaut."} On avance sur des critères, pas sur un délai.
+      </div>
+    </div>
+  );
+}
+
+export function RtpCard({ injury, status, state, onSave, saving, pain }) {
   const [open, setOpen] = useState(state.cleared ? 0 : state.stage);
   if (!injury) return null;
   const checks = injury.rtp?.checks || {};
@@ -185,15 +299,14 @@ export function RtpCard({ injury, status, state, onSave, saving }) {
           {state.cleared ? "✓ Retour validé" : `Étape ${state.stage}/5`}
         </span>
       </div>
-      <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
-        Blessure du {fmtDateFr(injury.date)}
-        {status?.back ? ` · retour estimé le ${fmtDateFr(status.back)}` : ""}. On passe à l'étape suivante quand les critères sont remplis, pas quand le délai est écoulé.
-      </div>
-      <div style={{ display: "flex", gap: 4, marginBottom: 14 }} aria-hidden="true">
-        {RTP_STAGES.map((s) => (
-          <div key={s.id} style={{ flex: 1, height: 6, borderRadius: 3, background: state.cleared || s.id < state.stage ? GREEN : s.id === state.stage ? AMBER : "#2a2620" }} />
-        ))}
-      </div>
+      <div style={{ fontSize: 12, color: MUTED }}>On passe à l'étape suivante quand les critères sont remplis, pas quand le délai est écoulé.</div>
+      <RtpContinuum state={state} injury={injury} status={status} details={false} />
+      {pain?.onInjury && (
+        <div style={{ fontSize: 13, color: "#f0d9ae", background: "rgba(217,105,90,0.12)", border: `1px solid ${RED}55`, borderRadius: 10, padding: "8px 11px", marginBottom: 12, lineHeight: 1.45 }}>
+          ⚠️ Douleur de {pain.onInjury.v}/10 déclarée aujourd'hui sur la zone ({pain.onInjury.label}) : ne pas valider l'étape suivante tant qu'elle persiste.
+        </div>
+      )}
+      <div style={{ fontSize: 12, fontWeight: 800, color: MUTED, letterSpacing: 0.3, textTransform: "uppercase", marginBottom: 4 }}>Valider les critères</div>
       {state.stages.map((s) => {
         const isCur = !state.cleared && s.id === state.stage;
         const isDone = state.cleared || s.id < state.stage;

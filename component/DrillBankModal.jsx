@@ -44,11 +44,11 @@ export default function DrillBankModal({ type, onPick, onClose, ratio, entries }
                   const t = e.template || {};
                   const z = type === "sprint" ? null : zoneOf(pctCS(t, ratio));
                   return (
-                    <button className="pt-btn"
+                    <button
                       key={e.name}
                       type="button"
                       onClick={() => onPick(e)}
-                      style={{ textAlign: "left", borderLeft: `4px solid ${z ? z.color : "#e0a13d"}`, minHeight: 48 }}
+                      style={{ display: "block", textAlign: "left", padding: "10px 12px", borderRadius: 8, border: "1px solid #2a2620", borderLeft: `4px solid ${z ? z.color : "#e0a13d"}`, background: "#0d0c0a", color: "#f3f0ea", cursor: "pointer", minHeight: 48 }}
                     >
                       <div style={{ fontWeight: 600, fontSize: 14 }}>
                         {e.name}
@@ -96,7 +96,7 @@ export function DrillBankManager({ kind, drills, onDelete }) {
               </div>
               <div style={{ fontSize: 12, color: "#a8a199" }}>{summary(kind, d.template || {})}</div>
             </div>
-            <button className="pt-btn" type="button" onClick={() => onDelete(d)} style={{ minWidth: 40, minHeight: 40 }} aria-label="Retirer">🗑</button>
+            <button className="pt-btn pt-btn--danger" type="button" onClick={() => onDelete(d)} style={{ minWidth: 40, minHeight: 40 }} aria-label="Retirer">🗑</button>
           </div>
         ))}
         {list.length === 0 && <div style={{ color: "#a8a199", fontSize: 13, textAlign: "center", padding: 16 }}>Aucun exo.</div>}

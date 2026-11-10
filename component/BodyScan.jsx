@@ -111,6 +111,10 @@ const ALL_ZONES = buildZones();
 const LEGACY_LABELS = { tronc: "Tronc", dos: "Dos" };
 const LEGACY_VIEW = { tronc: "front", dos: "back" };
 
+/* Libellé lisible d'une zone du schéma (« Ischio-jambiers D ») à partir de son identifiant */
+const ZONE_LABELS = Object.fromEntries(ALL_ZONES.map((z) => [z.id, z.label]));
+export const zoneLabel = (id) => ZONE_LABELS[id] || LEGACY_LABELS[id] || String(id || "");
+
 function zoneValue(painMap, zone) {
   const own = painMap[zone.id];
   if (own !== undefined && own !== null) return own;
