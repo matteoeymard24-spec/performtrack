@@ -153,7 +153,8 @@ service cloud.firestore {
     // ===================== WELLNESS =====================
     match /wellness/{wellnessId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      // le superadmin peut aussi en créer pour un autre compte (athlète test : Paramètres › 🧪 Athlète test)
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || isSuperAdmin());
       allow update: if isAdmin() || (
         isSignedIn() &&
         resource.data.userId == request.auth.uid &&
@@ -180,6 +181,16 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isSuperAdmin() || (isAdmin() && request.resource.data.createdBy == request.auth.uid);
       allow update, delete: if isSuperAdmin() || (isAdmin() && resource.data.createdBy == request.auth.uid);
+      // Athlète qui déclare une blessure : il s'ajoute LUI-MÊME (et seulement lui) au groupe « Blessés »
+      // automatique de l'un de ses coachs, avec sa date d'entrée. Rien d'autre n'est modifiable.
+      allow update: if isSignedIn() && !isAdmin() &&
+        resource.data.get('system', '') == 'injured' &&
+        isMyCoach(resource.data.get('createdBy', '')) &&
+        !(request.auth.uid in resource.data.get('forcedOut', [])) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['athleteIds', 'memberSince']) &&
+        request.resource.data.athleteIds.toSet().difference(resource.data.get('athleteIds', []).toSet()) == [request.auth.uid].toSet() &&
+        resource.data.get('athleteIds', []).toSet().difference(request.resource.data.athleteIds.toSet()).size() == 0 &&
+        request.resource.data.get('memberSince', {}).diff(resource.data.get('memberSince', {})).affectedKeys().hasOnly([request.auth.uid]);
     }
 
     // ===================== EXERCISE MEDIA (banque d'exos commune) =====================

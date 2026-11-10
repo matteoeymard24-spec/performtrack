@@ -18,6 +18,7 @@ import { sessionDurationMin, sessionLoad, doneDateOf } from "./sessionLoad";
 import { baseRpe } from "./rpePredict";
 import { monotonyStrain, resumeInfo } from "./loadMetrics";
 import { zoneLabel, PAIN_TYPES } from "./BodyScan";
+import { sameZoneText, injuryText } from "./injuryZones";
 import { mondayOf } from "./cycles";
 import { injuryStatus } from "./InjuryHistory";
 import { STRENGTH_NORMS, findRM, evaluateStrength, hasNorms } from "./norms";
@@ -328,23 +329,15 @@ export function rtpLoadCheck(dailyLoads, injuryDate, today) {
   };
 }
 
-/* Mots significatifs d'une blessure (nom + zone) pour la reconnaître sur le schéma corporel */
-const injuryWords = (injury) =>
-  injury
-    ? norm(`${injury.name || ""} ${injury.zone || ""}`)
-        .split(" ")
-        .filter((w) => w.length >= 4)
-    : [];
-const zoneMatches = (label, words) =>
-  words.length > 0 && norm(label).split(" ").some((w) => w.length >= 4 && words.some((x) => x.startsWith(w.slice(0, 5)) || w.startsWith(x.slice(0, 5))));
+/* Une zone du schéma corporel (« Ischio-jambiers D ») correspond-elle à la blessure ? (injuryZones.js : synonymes + côté) */
+const zoneMatches = (label, injury) => !!injury && sameZoneText(label, injuryText(injury));
 
 /* Douleur du jour sur la zone blessée : null = pas de wellness ce jour-là ; 0 = wellness rempli sans douleur sur la zone */
 export function zonePainOf(wellness, injury) {
   if (!wellness) return null;
-  const words = injuryWords(injury);
   let v = 0;
   Object.entries(wellness.painMap || {}).forEach(([id, x]) => {
-    if (zoneMatches(zoneLabel(id), words)) v = Math.max(v, Number(x) || 0);
+    if (zoneMatches(zoneLabel(id), injury)) v = Math.max(v, Number(x) || 0);
   });
   return v;
 }
@@ -387,7 +380,9 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     if (kind === "chronic") return load.chronicPct == null ? null : load.chronicPct >= p.loadFull;
     if (TEST_RULES[kind]) {
       const [tid, min] = TEST_RULES[kind];
-      const v = lsiOf(tests[tid]);
+      let v = lsiOf(tests[tid]);
+      // force : sans test saisi, on prend la récupération des RM retestés depuis la blessure (injuryRm.js)
+      if (v == null && tid === "force" && opts.rmRecovery != null) v = opts.rmRecovery;
       return v == null ? null : v >= min;
     }
     return null;
@@ -398,6 +393,7 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     if (TEST_RULES[kind]) {
       const [tid] = TEST_RULES[kind];
       const t = tests[tid];
+      if (!t && tid === "force") return `RM retestés depuis la blessure : ${opts.rmRecovery} % de ceux d'avant`;
       return `test « ${RTP_TESTS.find((x) => x.id === tid).label} » : ${lsiOf(t)} %${t.date ? ` (${t.date.slice(8, 10)}/${t.date.slice(5, 7)})` : ""}`;
     }
     return `${load.current} UA sur 7 jours, soit ${load.pct} % de ses ${load.usual} UA habituels`;
@@ -586,8 +582,7 @@ export function painSummary(wellness, injury) {
   const alert = TH("synthPainAlert");
   const max = zones.length ? zones[0].v : 0;
   // zone blessée : un mot de 4 lettres ou plus en commun entre la zone du schéma et la blessure (nom + zone)
-  const injWords = injury ? norm(`${injury.name || ""} ${injury.zone || ""}`).split(" ").filter((w) => w.length >= 4) : [];
-  const onInjury = zones.find((z) => z.v >= 3 && norm(z.label).split(" ").some((w) => w.length >= 4 && injWords.some((x) => x.startsWith(w.slice(0, 5)) || w.startsWith(x.slice(0, 5))))) || null;
+  const onInjury = zones.find((z) => z.v >= 3 && zoneMatches(z.label, injury)) || null;
   const real = zones.filter((z) => z.v >= watch && !(z.type === "courbature" && z.v < alert)); // hors simples courbatures
   const sharp = real.find((z) => SHARP.includes(z.type)) || null;
   let level = "none";

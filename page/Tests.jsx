@@ -1,5 +1,6 @@
 import { InjuryForm, InjuryTimeline, todayLocal } from "../component/InjuryHistory";
-import { syncInjuredGroup } from "../component/injuredGroup";
+import { syncInjuredGroup, joinInjuredGroupSelf } from "../component/injuredGroup";
+import { coachIdsOf } from "../component/coachScope";
 import { activeInjury, normalizeRtp, rtpTestsPatch } from "../component/coachSynthesis";
 import { RtpTestsForm } from "../component/CoachFiche";
 import TestProgress from "../component/TestProgress";
@@ -305,7 +306,7 @@ function forceDomain(strengthRows) {
 }
 
 export default function Tests() {
-  const { currentUser, userRole, isSuperAdmin, coachScope } = useAuth();
+  const { currentUser, userRole, isSuperAdmin, coachScope, userProfile } = useAuth();
   // Coach (admin / superadmin) = saisie + gestion ; athlète = consultation de ses propres tests uniquement.
   const isCoach = userRole === "admin" || isSuperAdmin === true;
   const [showParams, setShowParams] = useState(true);
@@ -642,7 +643,13 @@ export default function Tests() {
   };
   // Le coach ajoute / modifie / supprime une blessure : le groupe « 🏥 Blessés » suit tout de suite (injuredGroup.js)
   const syncInjured = (list) => {
-    if (!isCoach || !selectedAthlete || !list) return;
+    if (!list) return;
+    // athlète qui déclare lui-même : il s'ajoute au groupe Blessés de ses coachs
+    if (!isCoach) {
+      if (userRole !== "admin") joinInjuredGroupSelf({ db, uid: currentUser.uid, coachIds: coachIdsOf(userProfile), injuries: list, today: todayLocal() });
+      return;
+    }
+    if (!selectedAthlete) return;
     syncInjuredGroup({ db, coachUid: currentUser.uid, isSuperAdmin, athletes: [{ ...selectedAthlete, injuries: list }], today: todayLocal() });
   };
 

@@ -4971,6 +4971,8 @@ export default function Workout() {
   });
   const filterSub = filterGroup && subFilterId ? (filterGroup.subGroups || []).find((s) => s.id === subFilterId) || null : null;
   const isEventVisibleToFilter = (evt) => {
+    // séances de l'athlète test (Paramètres › 🧪 Athlète test) : seulement quand on le sélectionne
+    if (evt.testOf && !(filterAthlete && filterAthlete.id === evt.testOf)) return false;
     if (viewMode === "moi")
       return (
         (evt.group === "moi" && evt.createdBy === currentUser?.uid) ||

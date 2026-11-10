@@ -271,7 +271,8 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
           n'est pas fini) et en sort à l'étape 5 (entraînement collectif complet). Pendant ce temps, il ne voit plus les séances des autres
           groupes datées d'après son entrée : seulement celles du groupe Blessés, ses séances individuelles, ses séances « Moi » et celles
           qu'il avait déjà commencées. Sa planification affichée est celle du groupe Blessés et la sienne, et sa charge prévue suit ces
-          séances. Le groupe est mis à jour par le coach (Dashboard, changement d'étape, blessure saisie dans Tests › Bilan).
+          séances. L'athlète qui déclare lui-même sa blessure y entre aussitôt ; le coach met aussi le groupe à jour (Dashboard, changement
+          d'étape, blessure saisie dans Tests › Bilan), et c'est lui seul qui en fait sortir.
         </P>
         <P>
           Bascule manuelle : le bouton « 🏥 Passer en blessé » de la fiche athlète (et « 🏥 Je suis blessé » sur le dashboard du coach

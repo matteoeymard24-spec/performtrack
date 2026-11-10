@@ -8,6 +8,51 @@ import { THRESHOLD_SECTIONS, DEFAULTS, saveThresholds } from "../component/thres
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 import { useSearchParams } from "react-router-dom";
 import Reference from "./Reference";
+import { createTestAthlete, deleteTestAthlete } from "../component/testAthlete";
+
+/* 🧪 Athlète test : un faux athlète rempli avec ~4 mois de données pour voir le rendu complet (testAthlete.js) */
+function TestAthleteCard() {
+  const { currentUser } = useAuth();
+  const [busy, setBusy] = useState("");
+  const [msg, setMsg] = useState("");
+  const run = async (kind) => {
+    if (kind === "delete" && !(await appConfirm("Supprimer l'athlète test et toutes ses données ?", { ok: "Supprimer", danger: true }))) return;
+    setBusy(kind);
+    setMsg("");
+    try {
+      if (kind === "create") {
+        const res = await createTestAthlete({ db, coachUid: currentUser.uid });
+        setMsg(`✓ Athlète test prêt (${res.docs} documents). Ouvre le Dashboard et clique sur « Test Démo 🧪 ».`);
+      } else {
+        const n = await deleteTestAthlete({ db, coachUid: currentUser.uid });
+        setMsg(`✓ Athlète test supprimé (${n} documents).`);
+      }
+    } catch (e) {
+      setMsg("❌ " + e.message + (/permission/i.test(e.message) ? " — vérifie que la règle « wellness » autorise le superadmin (voir la conversation)." : ""));
+    } finally {
+      setBusy("");
+    }
+  };
+  return (
+    <div style={{ marginTop: 22, padding: 16, borderRadius: 12, background: "#151310", border: "1px solid #2a2620" }}>
+      <div style={{ fontSize: 16, fontWeight: 800 }}>🧪 Athlète test</div>
+      <div style={{ fontSize: 12.5, color: MUTED, margin: "4px 0 12px", lineHeight: 1.5 }}>
+        Crée « Test Démo 🧪 », rattaché à toi, avec environ 4 mois de séances (RPE, durées), wellness quotidien, RM, CMJ, VMA, poids,
+        une blessure aux ischios en récidive avec son retour au jeu à l'étape 4, et des séances à venir. Régénérer remet les données à
+        jour par rapport à aujourd'hui. Ses séances lui sont propres : elles n'apparaissent chez aucun autre athlète.
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button type="button" className="pt-btn pt-btn--primary" disabled={!!busy} onClick={() => run("create")}>
+          {busy === "create" ? "Création…" : "Créer / régénérer"}
+        </button>
+        <button type="button" className="pt-btn pt-btn--danger" disabled={!!busy} onClick={() => run("delete")}>
+          {busy === "delete" ? "Suppression…" : "Supprimer"}
+        </button>
+        {msg && <span style={{ fontSize: 12.5, color: msg.startsWith("✓") ? GREEN : "#d9695a" }}>{msg}</span>}
+      </div>
+    </div>
+  );
+}
 
 /* =====================================================================
    Settings.jsx — ⚙️ Paramètres : seuils et normes de l'app (coach).
@@ -254,6 +299,7 @@ export default function Settings() {
         </button>
         <span style={{ fontSize: 12, color: dirty ? ACCENT : GREEN, alignSelf: "center" }}>{dirty ? "Modifications non enregistrées" : ""}</span>
       </div>
+      <TestAthleteCard />
     </Page>
   );
 }

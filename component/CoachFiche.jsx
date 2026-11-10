@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { SYNTH_LEVELS, RTP_N, RTP_PHASES, RTP_TESTS, normalizeRtp } from "./coachSynthesis";
 import { fmtDateFr, InjuryForm, injuryRecurrences } from "./InjuryHistory";
+import { REGIONS } from "./injuryRm";
 
 /* =====================================================================
    CoachFiche.jsx — cartes de la fiche athlète (vue coach), affichage seulement.
@@ -604,6 +605,153 @@ export function DeclareInjuryCard({ pain, onSave, you = false }) {
             }
           }}
         />
+      )}
+    </div>
+  );
+}
+
+/* RM des mouvements liés à la blessure : avant / maintenant, écart, évolution, recalage (injuryRm.js) */
+function RmSpark({ points, pre, injDate }) {
+  const W = 150;
+  const H = 40;
+  if (!points || points.length < 1) return null;
+  const vals = points.map((p) => p.kg).concat(pre);
+  const lo = Math.min(...vals) * 0.95;
+  const hi = Math.max(...vals) * 1.03;
+  const x = (i) => (points.length === 1 ? W / 2 : 4 + (i * (W - 8)) / (points.length - 1));
+  const y = (v) => H - 4 - ((v - lo) / (hi - lo || 1)) * (H - 8);
+  const cut = points.findIndex((p) => p.d >= injDate);
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Évolution du RM" style={{ display: "block", flexShrink: 0 }}>
+      <line x1="0" x2={W} y1={y(pre)} y2={y(pre)} stroke={MUTED} strokeDasharray="3 3" strokeWidth="1" />
+      {cut > 0 && <line x1={(x(cut - 1) + x(cut)) / 2} x2={(x(cut - 1) + x(cut)) / 2} y1="0" y2={H} stroke={RED} strokeWidth="1.5" />}
+      <polyline fill="none" stroke={AMBER} strokeWidth="2" points={points.map((p, i) => `${x(i)},${y(p.kg)}`).join(" ")} />
+      {points.map((p, i) => (
+        <circle key={i} cx={x(i)} cy={y(p.kg)} r="2.6" fill={p.adj ? RED : cut >= 0 && i >= cut ? AMBER : "#6f6a62"} />
+      ))}
+    </svg>
+  );
+}
+
+export function InjuryRmCard({ injury, region, rows, stage, forceLsi, onRecalibrate, you = false }) {
+  const [open, setOpen] = useState(false);
+  const proposed = forceLsi != null ? Math.min(100, forceLsi) : stage <= 2 ? 50 : stage === 3 ? 70 : stage === 4 ? 85 : 95;
+  const [pct, setPct] = useState(proposed);
+  const [sel, setSel] = useState(() => rows.filter((r) => !r.retested && !r.adjusted).map((r) => r.name));
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+  if (!injury) return null;
+  const R = REGIONS[region];
+  const rec = rows.filter((r) => r.recovered).length;
+  return (
+    <div style={CARD}>
+      <h3 style={{ ...H3, marginBottom: 4 }}>📉 RM & blessure : {injury.name || injury.zone || "blessure"}</h3>
+      <div style={{ fontSize: 12, color: MUTED, marginBottom: 10 }}>
+        {R ? `${R.icon} ${R.label}` : "Région non reconnue"} · RM d'avant blessure (pointillés) comparés aux RM actuels. Trait rouge = date de la blessure.
+      </div>
+      {!R ? (
+        <div style={{ fontSize: 13, color: MUTED }}>Impossible de savoir si la blessure touche le haut ou le bas du corps : précise la zone dans la blessure (ex. « genou », « épaule »).</div>
+      ) : !rows.length ? (
+        <div style={{ fontSize: 13, color: MUTED }}>Aucun RM {R.label.toLowerCase()} enregistré avant la blessure : rien à comparer.</div>
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 999, border: `1px solid ${GREEN}55`, color: rec === rows.length ? GREEN : TEXT }}>
+              {rec}/{rows.length} RM retrouvé{rec > 1 ? "s" : ""}
+            </span>
+          </div>
+          {rows.map((r) => {
+            const col = r.recovered ? GREEN : !r.retested ? MUTED : r.pct >= 90 ? "#d9a441" : RED;
+            return (
+              <div key={r.name} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderTop: `1px solid ${BORDER}` }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: TEXT, textTransform: "capitalize", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</div>
+                  <div style={{ fontSize: 11.5, color: MUTED }}>
+                    avant : {fr(r.pre)} kg · maintenant : <b style={{ color: TEXT }}>{fr(r.current)} kg</b>
+                    {r.adjusted ? " (recalé)" : !r.retested ? " (pas retesté)" : ""}
+                  </div>
+                  {!r.recovered && r.gapKg > 0 && <div style={{ fontSize: 11.5, color: col }}>{fr(r.gapKg)} kg à reprendre</div>}
+                </div>
+                <RmSpark points={r.points} pre={r.pre} injDate={injury.date} />
+                <div style={{ width: 56, textAlign: "right", fontSize: 17, fontWeight: 800, color: col }} title={!r.retested ? "Pas retesté depuis la blessure : la force réelle est inconnue" : ""}>
+                  {r.recovered ? "✓" : !r.retested ? "?" : `${r.pct} %`}
+                </div>
+              </div>
+            );
+          })}
+          {rows.some((r) => !r.retested && !r.adjusted) && (
+            <div style={{ fontSize: 12, color: "#d9a441", marginTop: 6, lineHeight: 1.45 }}>
+              ⚠️ Des RM n'ont pas bougé depuis la blessure : les poids cibles des séances sont encore calculés sur la force d'avant. Recale-les
+              ci-dessous (ou retestez-les).
+            </div>
+          )}
+          {onRecalibrate && (
+            <div style={{ borderTop: `1px solid ${BORDER}`, marginTop: 8, paddingTop: 8 }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <button type="button" className="pt-btn" onClick={() => setOpen((x) => !x)} aria-expanded={open}>
+                  ⚖️ Recaler les RM de la zone {open ? "▾" : "▸"}
+                </button>
+                {msg && <span style={{ fontSize: 12.5, color: msg.startsWith("✓") ? GREEN : msg.startsWith("❌") ? RED : MUTED }}>{msg}</span>}
+              </div>
+              {open && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 12.5, color: "#c9c1b5", marginBottom: 8, lineHeight: 1.45 }}>
+                    Nouveau RM = RM d'avant blessure × force disponible. Les poids cibles suivent tout de suite ; l'ajustement automatique
+                    des séances le fait ensuite remonter. Proposé : {proposed} % ({forceLsi != null ? "test de force saisi" : `étape ${stage} du retour au jeu`}).
+                  </div>
+                  <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: TEXT, marginBottom: 8 }}>
+                    Force disponible
+                    <input type="range" min="30" max="100" step="5" value={pct} onChange={(e) => setPct(Number(e.target.value))} style={{ flex: 1, accentColor: AMBER }} />
+                    <b style={{ width: 44, textAlign: "right" }}>{pct} %</b>
+                  </label>
+                  {rows.map((r) => {
+                    const kg = Math.round(((r.pre * pct) / 100) * 2) / 2;
+                    const lower = kg < r.current;
+                    return (
+                      <label key={r.name} style={{ display: "flex", gap: 9, alignItems: "center", padding: "4px 0", fontSize: 13, color: lower ? TEXT : MUTED, cursor: lower ? "pointer" : "default" }}>
+                        <input
+                          type="checkbox"
+                          disabled={!lower}
+                          checked={lower && sel.includes(r.name)}
+                          onChange={() => setSel((p) => (p.includes(r.name) ? p.filter((x) => x !== r.name) : [...p, r.name]))}
+                          style={{ accentColor: AMBER, width: 16, height: 16 }}
+                        />
+                        <span style={{ flex: 1, textTransform: "capitalize" }}>{r.name}</span>
+                        <span>
+                          {fr(r.current)} → <b>{fr(kg)} kg</b>
+                          {!lower && " (déjà en dessous)"}
+                        </span>
+                      </label>
+                    );
+                  })}
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="pt-btn pt-btn--accent"
+                      disabled={busy || !rows.some((r) => sel.includes(r.name) && Math.round(((r.pre * pct) / 100) * 2) / 2 < r.current)}
+                      onClick={async () => {
+                        setBusy(true);
+                        setMsg("");
+                        try {
+                          const done = await onRecalibrate(sel, pct);
+                          setMsg(done.length ? `✓ ${done.length} RM recalé${done.length > 1 ? "s" : ""}` : "Aucun RM à baisser");
+                          setOpen(false);
+                        } catch (e) {
+                          setMsg("❌ " + e.message);
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    >
+                      Appliquer
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {you && !onRecalibrate && <div style={{ fontSize: 11.5, color: MUTED, marginTop: 6 }}>Ton coach peut recaler ces RM pour adapter tes charges.</div>}
+        </>
       )}
     </div>
   );

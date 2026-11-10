@@ -8,9 +8,9 @@
    • Pendant qu'il y est (hideOthers ≠ false) : il ne voit plus les séances des autres groupes datées
      d'après son entrée (sauf celles qu'il a commencées, ses séances individuelles et « Moi »),
      et sa planification affichée est celle du groupe Blessés + la sienne (voir groupHistory.js).
-   • La synchro est faite par le COACH (seul un admin peut écrire un groupe) : à l'ouverture du Dashboard
-     et à chaque changement d'étape du retour au jeu. Une blessure déclarée par l'athlète lui-même compte
-     donc à la prochaine ouverture du Dashboard par son coach : c'est voulu (le coach valide).
+   • La synchro est faite par le COACH : à l'ouverture du Dashboard, à chaque changement d'étape du retour
+     au jeu et quand il saisit une blessure. Un athlète qui déclare LUI-MÊME une blessure s'y ajoute tout de
+     suite (joinInjuredGroupSelf : la règle Firestore ne lui permet que de s'ajouter lui-même).
    • Bascule MANUELLE par le coach (bouton du Dashboard, pour un athlète ou pour lui-même) :
        forcedIn  = dedans même sans blessure suivie ; forcedOut = dehors même avec une blessure suivie.
      Un forcedOut devenu inutile (blessure terminée) est nettoyé à la synchro suivante.
@@ -126,4 +126,39 @@ async function doManual({ db, coachUid, uid, on, needs, today }) {
   const patch = { ...withMembershipHistory(g, { athleteIds: [...ids] }), forcedIn, forcedOut };
   await updateDoc(doc(db, "groups", g.id), patch);
   return { ...g, ...patch };
+}
+
+/* Retire un compte de TOUS les groupes (membre, sous-groupes, bascules manuelles) : à la suppression d'un
+   athlète, sinon il resterait comme membre fantôme (la synchro ne retire que les athlètes qu'elle connaît). */
+export async function removeUserFromGroups(db, uid) {
+  const gs = await getDocs(query(collection(db, "groups"), where("athleteIds", "array-contains", uid)));
+  for (const g of gs.docs) {
+    const data = { id: g.id, ...g.data() };
+    const subGroups = (data.subGroups || []).map((sg) => ({ ...sg, athleteIds: (sg.athleteIds || []).filter((u) => u !== uid) }));
+    const patch = withMembershipHistory(data, { athleteIds: (data.athleteIds || []).filter((u) => u !== uid), ...(data.subGroups ? { subGroups } : {}) });
+    if (data.forcedIn) patch.forcedIn = data.forcedIn.filter((u) => u !== uid);
+    if (data.forcedOut) patch.forcedOut = data.forcedOut.filter((u) => u !== uid);
+    await updateDoc(doc(db, "groups", g.id), patch);
+  }
+  return gs.size;
+}
+
+/* L'ATHLÈTE lui-même, quand il déclare une blessure : il s'ajoute au groupe « Blessés » de ses coachs (s'il
+   existe et que le coach ne l'en a pas sorti à la main). La règle Firestore ne l'autorise qu'à s'ajouter
+   LUI-MÊME (athleteIds + sa date dans memberSince), rien d'autre. Retourne les groupes modifiés. */
+export async function joinInjuredGroupSelf({ db, uid, coachIds, injuries, today }) {
+  if (!db || !uid || !needsInjuredGroup(injuries, today)) return [];
+  const out = [];
+  for (const c of [...new Set(coachIds || [])]) {
+    try {
+      const g = await readGroup(db, c);
+      if (!g || (g.athleteIds || []).includes(uid) || (g.forcedOut || []).includes(uid)) continue;
+      const patch = withMembershipHistory(g, { athleteIds: [...(g.athleteIds || []), uid] });
+      await updateDoc(doc(db, "groups", g.id), { athleteIds: patch.athleteIds, memberSince: patch.memberSince });
+      out.push({ ...g, athleteIds: patch.athleteIds, memberSince: patch.memberSince });
+    } catch (e) {
+      console.warn("Groupe Blessés : ajout impossible", e);
+    }
+  }
+  return out;
 }

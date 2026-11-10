@@ -4,8 +4,9 @@ import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCha
 import { stickyHead } from "../component/ui";
 import DashColumns, { colOfFn } from "../component/DashColumns";
 import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, rtpPatch, rtpTestsPatch, needsInjuredGroup, zonePainHistory, painMonitor, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
-import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard, DeclareInjuryCard } from "../component/CoachFiche";
-import { syncInjuredGroup, injuredGroupOf, setInjuredManual } from "../component/injuredGroup";
+import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard, DeclareInjuryCard, InjuryRmCard } from "../component/CoachFiche";
+import { syncInjuredGroup, injuredGroupOf, setInjuredManual, joinInjuredGroupSelf } from "../component/injuredGroup";
+import { injuryRmRows, rmRecoveryPct, recalibrateInjuryRms } from "../component/injuryRm";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
 import { NutritionDashCard, SleepDashCard } from "../component/DashWellbeingCards";
 import WellnessLinks from "../component/WellnessLinks";
@@ -64,7 +65,7 @@ import {
   resumeInfo,
   FORM_LEVELS,
 } from "../component/loadMetrics";
-import { athleteCanSeeWorkout } from "../component/coachScope";
+import { athleteCanSeeWorkout, coachIdsOf } from "../component/coachScope";
 import { sprintSummaryText } from "../component/sprintFeedback";
 import { rirLabel, rpeColor as rirRpeColor } from "../component/rir";
 import { blockTypeOf } from "../component/blockType";
@@ -368,6 +369,7 @@ export default function Dashboard() {
     if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { coachDash: next }).catch(() => null);
   };
   const [coachToolsPanel, setCoachToolsPanel] = useState(false);
+  const [poleDrag, setPoleDrag] = useState(null); // { prefix, id, order } pendant qu'on glisse un pôle
   // Retour au jeu : étape + critères cochés, enregistrés sur la blessure (lus aussi par Tests › Bilan et le dashboard athlète)
   const [rtpSaving, setRtpSaving] = useState(false);
   const saveRtp = async (inj, rtp) => {
@@ -431,6 +433,82 @@ export default function Dashboard() {
     const byKey = Object.fromEntries(cards.map((c) => [c.key, c]));
     const toggleOff = (k) => save({ off: off.includes(k) ? off.filter((x) => x !== k) : [...off, k] });
     const toggleFold = (id) => save({ folded: folded.includes(id) ? folded.filter((x) => x !== id) : [...folded, id] });
+    /* Ordre des pôles (glisser la poignée ⠿ d'un en-tête, ou flèches du clavier) : dash.poleOrder */
+    const saved = Array.isArray(dash?.poleOrder) ? dash.poleOrder : [];
+    const baseOrder = [...saved.filter((id) => poles.some((p) => p.id === id)), ...poles.map((p) => p.id).filter((id) => !saved.includes(id))];
+    const dragging = poleDrag && poleDrag.prefix === idPrefix ? poleDrag : null;
+    const poleOrder = dragging ? dragging.order : baseOrder;
+    const orderedPoles = poleOrder.map((id) => poles.find((p) => p.id === id)).filter(Boolean);
+    const scroller = () => scrollRef?.current || null;
+    const startPoleDrag = (e, id) => {
+      if (e.button != null && e.button !== 0) return;
+      e.preventDefault();
+      const head = e.currentTarget.closest("section");
+      const grabDy = head ? e.clientY - head.getBoundingClientRect().top : 20;
+      const startY = e.clientY;
+      let anchor = null; // haut de l'en-tête attrapé une fois les pôles repliés
+      let cur = baseOrder.slice();
+      setPoleDrag({ prefix: idPrefix, id, order: cur });
+      // pendant le glisser, tous les pôles sont repliés : on ramène l'en-tête attrapé sous le doigt
+      requestAnimationFrame(() => {
+        const el = document.getElementById(`${idPrefix}${id}`);
+        if (!el) return;
+        const dy = el.getBoundingClientRect().top - (startY - grabDy);
+        const sc = scroller();
+        if (sc) sc.scrollBy(0, dy);
+        else window.scrollBy(0, dy);
+        anchor = el.getBoundingClientRect().top;
+      });
+      const move = (ev) => {
+        ev.preventDefault();
+        if (anchor == null || Math.abs(ev.clientY - startY) < 6) return;
+        // position « virtuelle » du milieu de l'en-tête glissé, indépendante du défilement
+        const vy = anchor + (ev.clientY - startY) + 30;
+        const others = cur.filter((x) => x !== id);
+        let idx = others.length;
+        for (let i = 0; i < others.length; i++) {
+          const el = document.getElementById(`${idPrefix}${others[i]}`);
+          if (!el) continue;
+          const r = el.getBoundingClientRect();
+          if (vy < r.top + r.height / 2) {
+            idx = i;
+            break;
+          }
+        }
+        const next = [...others.slice(0, idx), id, ...others.slice(idx)];
+        if (next.join() !== cur.join()) {
+          cur = next;
+          setPoleDrag({ prefix: idPrefix, id, order: cur });
+          // l'en-tête a changé de place dans la liste : on recale l'ancre sur sa nouvelle position
+          requestAnimationFrame(() => {
+            const el = document.getElementById(`${idPrefix}${id}`);
+            if (el) anchor = el.getBoundingClientRect().top - (ev.clientY - startY);
+          });
+        }
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+        setPoleDrag(null);
+        if (cur.join() !== baseOrder.join()) save({ poleOrder: cur });
+      };
+      window.addEventListener("pointermove", move, { passive: false });
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    };
+    const movePoleKey = (e, id) => {
+      const d = e.key === "ArrowUp" ? -1 : e.key === "ArrowDown" ? 1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      const i = baseOrder.indexOf(id);
+      const j = i + d;
+      if (j < 0 || j >= baseOrder.length) return;
+      const next = baseOrder.slice();
+      [next[i], next[j]] = [next[j], next[i]];
+      save({ poleOrder: next });
+      requestAnimationFrame(() => document.getElementById(`${idPrefix}grip-${id}`)?.focus());
+    };
     return (
       <>
         {panel && (
@@ -441,8 +519,8 @@ export default function Dashboard() {
                 <div style={{ fontSize: 12, color: "#a8a199" }}>{panelHint}</div>
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {(order.length > 0 || Array.isArray(dash?.off)) && (
-                  <button className="pt-btn" onClick={() => save({ order: [], cols: {}, off: null })}>
+                {(order.length > 0 || Array.isArray(dash?.off) || saved.length > 0) && (
+                  <button className="pt-btn" onClick={() => save({ order: [], cols: {}, off: null, poleOrder: [] })}>
                     ↺ Par défaut
                   </button>
                 )}
@@ -489,10 +567,11 @@ export default function Dashboard() {
             ))}
           </div>
         )}
-        {poles.map((pl) => {
+        {orderedPoles.map((pl) => {
           const poleKeys = fullOrder.filter((k) => byKey[k].pole === pl.id);
           const items = poleKeys.filter((k) => !off.includes(k)).map((k) => byKey[k]);
-          const isFolded = folded.includes(pl.id);
+          const isFolded = folded.includes(pl.id) || !!dragging;
+          const isDragged = dragging && dragging.id === pl.id;
           const onCommit = (visOrder, cols) => {
             let vi = 0;
             const vset = new Set(items.map((i) => i.key));
@@ -500,21 +579,45 @@ export default function Dashboard() {
             save({ order: merged, cols: { ...(dash?.cols || {}), ...cols } });
           };
           return (
-            <section key={pl.id} id={`${idPrefix}${pl.id}`} aria-label={pl.label} style={{ marginBottom: isFolded ? 12 : 22, scrollMarginTop: 12 }}>
+            <section key={pl.id} id={`${idPrefix}${pl.id}`} aria-label={pl.label} style={{ marginBottom: isFolded ? 12 : 22, scrollMarginTop: 12, opacity: dragging && !isDragged ? 0.75 : 1, transform: isDragged ? "scale(1.01)" : "none", transition: "transform 0.15s ease" }}>
+              <div style={{ display: "flex", alignItems: "stretch", gap: 6, marginBottom: isFolded ? 0 : 12 }}>
+              <button
+                type="button"
+                id={`${idPrefix}grip-${pl.id}`}
+                onPointerDown={(e) => startPoleDrag(e, pl.id)}
+                onKeyDown={(e) => movePoleKey(e, pl.id)}
+                aria-label={`Déplacer le pôle « ${pl.label} » (glisser, ou flèches haut / bas)`}
+                title="Glisser pour changer l'ordre des pôles"
+                style={{
+                  flexShrink: 0,
+                  width: 34,
+                  borderRadius: 12,
+                  border: `1px solid ${isDragged ? pl.color : `${pl.color}55`}`,
+                  background: isDragged ? `${pl.color}33` : `${pl.color}12`,
+                  color: pl.color,
+                  fontSize: 18,
+                  cursor: dragging ? "grabbing" : "grab",
+                  touchAction: "none",
+                  boxShadow: isDragged ? `0 8px 24px rgba(0,0,0,0.5)` : "none",
+                }}
+              >
+                ⠿
+              </button>
               <button
                 type="button"
                 onClick={() => toggleFold(pl.id)}
                 aria-expanded={!isFolded}
                 style={{
-                  width: "100%",
+                  flex: 1,
+                  minWidth: 0,
                   display: "flex",
                   alignItems: "center",
                   gap: 12,
                   textAlign: "left",
                   padding: "12px 14px",
-                  marginBottom: isFolded ? 0 : 12,
                   borderRadius: 12,
-                  border: `1px solid ${pl.color}55`,
+                  border: `1px solid ${isDragged ? pl.color : `${pl.color}55`}`,
+                  boxShadow: isDragged ? `0 8px 24px rgba(0,0,0,0.5)` : "none",
                   borderLeft: `4px solid ${pl.color}`,
                   background: `${pl.color}12`,
                   color: "#f3f0ea",
@@ -529,6 +632,7 @@ export default function Dashboard() {
                   {items.length} outil{items.length > 1 ? "s" : ""} {isFolded ? "▸" : "▾"}
                 </span>
               </button>
+              </div>
               {!isFolded &&
                 (items.length ? (
                   <DashColumns items={items} cols={colOfFn(poleKeys, dash?.cols)} twoCols={twoCols} onCommit={onCommit} scrollRef={scrollRef} />
@@ -569,7 +673,28 @@ export default function Dashboard() {
       return [];
     }
   });
+  const athPoleKey = `pt_dash_poleorder_${currentUser?.uid || "anon"}`;
+  const [athPoleOrder, setAthPoleOrder] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`pt_dash_poleorder_${currentUser?.uid || "anon"}`) || "null");
+    } catch (e) {
+      return null;
+    }
+  });
+  useEffect(() => {
+    if (!athPoleOrder && Array.isArray(userProfile?.dashPoleOrder)) setAthPoleOrder(userProfile.dashPoleOrder);
+  }, [userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
   const saveAthDash = (patch) => {
+    if ("poleOrder" in patch) {
+      const next = Array.isArray(patch.poleOrder) ? patch.poleOrder : [];
+      setAthPoleOrder(next);
+      try {
+        localStorage.setItem(athPoleKey, JSON.stringify(next));
+      } catch (e) {
+        /* stockage indisponible */
+      }
+      if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { dashPoleOrder: next }).catch(() => null);
+    }
     if ("order" in patch || "cols" in patch) saveDashLayout("order" in patch ? patch.order : dashOrder, "cols" in patch ? patch.cols : dashCols);
     if ("off" in patch) {
       const next = Array.isArray(patch.off) ? patch.off : null;
@@ -1066,6 +1191,7 @@ export default function Dashboard() {
               kg: h.kg,
               date: h.date,
               autoAdjusted: h.autoAdjusted || false,
+              injuryAdjust: h.injuryAdjust || null,
             }));
           } else {
             fullHistory[name] = [
@@ -1584,6 +1710,7 @@ export default function Dashboard() {
             kg: h.kg,
             date: h.date,
             autoAdjusted: h.autoAdjusted || false,
+            injuryAdjust: h.injuryAdjust || null,
           }));
         } else if (data.kg !== null && data.kg !== undefined) {
           rmByEx[name] = [
@@ -2357,7 +2484,8 @@ export default function Dashboard() {
           const aWeeks = weeklyPlanVsDone(athleteWorkouts, aUid, aToday, 6);
           const aDyn = loadDynamics(aDaily, aToday, selfForm?.acwr);
           const aInjury = activeInjury(selfInjuries, aToday);
-          const aRtp = aInjury ? rtpState(aInjury.inj, aDaily, aToday, { wellnessToday: todayWellness || null }) : null;
+          const aRm = aInjury ? injuryRmRows(athleteRMFullHistory, athleteRMCategoriesMap, aInjury.inj) : null;
+          const aRtp = aInjury ? rtpState(aInjury.inj, aDaily, aToday, { wellnessToday: todayWellness || null, rmRecovery: rmRecoveryPct(aRm?.rows) }) : null;
           const aPainHist = aInjury ? zonePainHistory(selfWellnessList, aInjury.inj, aToday, 21) : null;
           const aInGroup = customGroups.some((g) => g.system === "injured" && (g.athleteIds || []).includes(aUid));
           const aPain = painSummary(todayWellness, aInjury?.inj);
@@ -2731,7 +2859,13 @@ export default function Dashboard() {
                 pain={aPain}
                 onSave={async (payload) => {
                   const inj = await createInjury(aUid, payload);
-                  setSelfInjuries((prev) => [inj, ...(prev || [])]);
+                  const list = [inj, ...(selfInjuries || [])];
+                  setSelfInjuries(list);
+                  // il s'ajoute tout de suite au groupe Blessés de ses coachs (le coach, lui, utilise son bouton)
+                  if (userRole !== "admin") {
+                    const gs = await joinInjuredGroupSelf({ db, uid: aUid, coachIds: coachIdsOf(userProfile), injuries: list, today: aToday });
+                    if (gs.length) setCustomGroups((prev) => [...prev.filter((x) => !gs.some((g) => g.id === x.id)), ...gs]);
+                  }
                 }}
               />
             ) : aInjury ? <RtpAthleteCard injury={aInjury.inj} status={aInjury.st} state={aRtp} pain={aPain} painHistory={aPainHist} monitor={painMonitor(aPainHist)} inGroup={aInGroup} /> : null },
@@ -3007,6 +3141,32 @@ export default function Dashboard() {
               </>
               </>
             ) },
+            { key: "injuryRm", pole: "train", label: "📉 Mes RM & ma blessure", node: aInjury && aRm ? (
+              <InjuryRmCard
+                you
+                key={aInjury.inj.id}
+                injury={aInjury.inj}
+                region={aRm.region}
+                rows={aRm.rows}
+                stage={aRtp.stage}
+                forceLsi={aRtp.tests?.force ? Math.round((aRtp.tests.force.inj / aRtp.tests.force.ref) * 100) : null}
+                onRecalibrate={
+                  userRole === "admin"
+                    ? async (names, pct) => {
+                        // le coach lui-même blessé : il recale ses propres RM
+                        const done = await recalibrateInjuryRms({ db, uid: aUid, injury: aInjury.inj, rows: aRm.rows, names, pct });
+                        const now = new Date().toISOString();
+                        setAthleteRMFullHistory((prev) => {
+                          const next = { ...prev };
+                          done.forEach((d) => (next[d.name] = [...(next[d.name] || []), { kg: d.kg, date: now, autoAdjusted: false, injuryAdjust: aInjury.inj.id }]));
+                          return next;
+                        });
+                        return done;
+                      }
+                    : null
+                }
+              />
+            ) : null },
             { key: "relStrength", pole: "train", label: "🏋️ Ma force relative", node: aStrength.rows.length ? <RelStrengthCard data={aStrength} /> : null },
             { key: "fbex", pole: "train", label: "🕘 Mes derniers exercices", node: (
               <>
@@ -3297,7 +3457,7 @@ export default function Dashboard() {
               />
               {renderPoles(cards, {
                 poles: ATH_POLES,
-                dash: { order: dashOrder || [], cols: dashCols || {}, off: dashOff, folded: athFolded },
+                dash: { order: dashOrder || [], cols: dashCols || {}, off: dashOff, folded: athFolded, poleOrder: athPoleOrder || [] },
                 save: saveAthDash,
                 panel: cardsPanel,
                 setPanel: setCardsPanel,
@@ -3329,9 +3489,11 @@ export default function Dashboard() {
       {/* EN-TÊTE */}
       {(() => {
         const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-        const lv = (l) => athletes.filter((a) => (a.status?.level || "nodata") === l).length;
-        const wellToday = athletes.filter((a) => !!a.lastWellness).length;
-        const withSess = athletes.filter((a) => !!a.todayWorkoutTitle);
+        // compteurs de l'équipe : sans l'athlète test (Paramètres › 🧪 Athlète test), qui reste visible dans la liste
+        const team = athletes.filter((a) => !a.isTest);
+        const lv = (l) => team.filter((a) => (a.status?.level || "nodata") === l).length;
+        const wellToday = team.filter((a) => !!a.lastWellness).length;
+        const withSess = team.filter((a) => !!a.todayWorkoutTitle);
         const sessDone = withSess.filter((a) => a.todayCompleted).length;
         const tile = (key, icon, label, value, color, sub) => {
           const on = wellnessFilter === key;
@@ -3389,7 +3551,7 @@ export default function Dashboard() {
             </button>
             {formTilesOpen && (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 12 }}>
-              {tile("total", "👥", "Athlètes", athletes.length, "#e0a13d")}
+              {tile("total", "👥", "Athlètes", team.length, "#e0a13d", athletes.length > team.length ? "+ l'athlète test" : undefined)}
               {tile("risque", F("risk").emoji, "Risque", lv("risk"), F("risk").color)}
               {tile("fatigue", F("fatigue").emoji, "Fatigués", lv("fatigue"), F("fatigue").color)}
               {tile("surveiller", F("watch").emoji, "À surveiller", lv("watch"), F("watch").color)}
@@ -3399,7 +3561,7 @@ export default function Dashboard() {
             {!formTilesOpen && <div style={{ height: 6 }} />}
             <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: "#a8a199", fontWeight: 700, margin: "0 0 6px 2px" }}>Aujourd'hui</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8, marginBottom: 16 }}>
-              {tile("nowell", "📝", "Wellness remplis", `${wellToday}/${athletes.length}`, wellToday === athletes.length ? "#4fae7d" : "#e0a13d", wellToday < athletes.length ? `Voir les ${athletes.length - wellToday} manquants` : "Tout le monde a répondu")}
+              {tile("nowell", "📝", "Wellness remplis", `${wellToday}/${team.length}`, wellToday === team.length ? "#4fae7d" : "#e0a13d", wellToday < team.length ? `Voir les ${team.length - wellToday} manquants` : "Tout le monde a répondu")}
               {tile("noseance", "🏋️", "Séances faites", `${sessDone}/${withSess.length}`, withSess.length && sessDone === withSess.length ? "#4fae7d" : "#e0a13d", withSess.length ? (sessDone < withSess.length ? `Voir les ${withSess.length - sessDone} pas faites` : "Toutes faites") : "Pas de séance prévue")}
             </div>
           </>
@@ -3942,7 +4104,8 @@ export default function Dashboard() {
               const fWeeks = weeklyPlanVsDone(fSessions, fa.id, fToday, 6);
               const fDyn = loadDynamics(fDaily, fToday, fa.acwr);
               const fInjury = activeInjury(fa.injuries, fToday);
-              const fRtp = fInjury ? rtpState(fInjury.inj, fDaily, fToday, { wellnessToday: fa.lastWellness || null }) : null;
+              const fRm = fInjury ? injuryRmRows(detailedAthleteRMHistory, detailedAthleteRMCategories, fInjury.inj) : null;
+              const fRtp = fInjury ? rtpState(fInjury.inj, fDaily, fToday, { wellnessToday: fa.lastWellness || null, rmRecovery: rmRecoveryPct(fRm?.rows) }) : null;
               const fPainHist = fInjury ? zonePainHistory(athleteDetails.wellness, fInjury.inj, fToday, 21) : null;
               const fInGroup = !!injuredGroupOf(customGroups, currentUser.uid)?.athleteIds?.includes(fa.id);
               const fPain = painSummary(fa.lastWellness, fInjury?.inj);
@@ -4541,6 +4704,26 @@ export default function Dashboard() {
             )}
                 </>
               ) },
+              { key: "injuryRm", pole: "train", label: "📉 RM & blessure", node: fInjury && fRm ? (
+                <InjuryRmCard
+                  key={fInjury.inj.id}
+                  injury={fInjury.inj}
+                  region={fRm.region}
+                  rows={fRm.rows}
+                  stage={fRtp.stage}
+                  forceLsi={fRtp.tests?.force ? Math.round((fRtp.tests.force.inj / fRtp.tests.force.ref) * 100) : null}
+                  onRecalibrate={async (names, pct) => {
+                    const done = await recalibrateInjuryRms({ db, uid: fa.id, injury: fInjury.inj, rows: fRm.rows, names, pct });
+                    const now = new Date().toISOString();
+                    setDetailedAthleteRMHistory((prev) => {
+                      const next = { ...prev };
+                      done.forEach((d) => (next[d.name] = [...(next[d.name] || []), { kg: d.kg, date: now, autoAdjusted: false, injuryAdjust: fInjury.inj.id }]));
+                      return next;
+                    });
+                    return done;
+                  }}
+                />
+              ) : null },
               { key: "relStrength", pole: "train", label: "🏋️ Force relative & normes", node: <RelStrengthCard data={fStrength} /> },
               { key: "rm", pole: "train", label: "💪 Évolution des RM / charges", node: (
                 <>

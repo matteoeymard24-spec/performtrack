@@ -7,6 +7,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { Page, CARD_STYLE, CARD_ACCENT_BORDER, CARD_TITLE, PAGE_TITLE, FIELD_STYLE, FoldBtn, PageHeader, Kpi, KpiGrid } from "../component/ui";
 import { Navigate } from "react-router-dom";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
+import { removeUserFromGroups } from "../component/injuredGroup";
 
 // Durée de vie d'une archive d'athlète supprimé : passé ce délai, ses RM /
 // tests ne sont plus représentatifs (progrès ou régression) → supprimée.
@@ -555,6 +556,9 @@ export default function Athletes() {
       for (const d of weightSnap.docs) {
         await deleteDoc(d.ref);
       }
+
+      // 4 bis. Le retirer de tous les groupes (sinon membre fantôme, ex. groupe « Blessés »)
+      await removeUserFromGroups(db, userId).catch((e) => console.warn("[DeleteAthlete] groupes :", e));
 
       // 5. Supprimer le document user
       await deleteDoc(doc(db, "users", userId));

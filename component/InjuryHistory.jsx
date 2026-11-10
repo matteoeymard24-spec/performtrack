@@ -1,3 +1,4 @@
+import { sameInjuryZone } from "./injuryZones";
 import React, { useState } from "react";
 
 /* =====================================================================
@@ -80,16 +81,9 @@ export function injuryStatus(inj, today = todayLocal()) {
    Récidives (Fuller et al. 2007, consensus sur les définitions des blessures au rugby) : nouvelle blessure du
    même site et du même type après le retour complet. Précoce ≤ 2 mois après le retour, tardive 2-12 mois,
    différée > 12 mois. Retour = clôture du retour au jeu si elle existe, sinon date + jours d'arrêt.
-   Même site = un mot du nom / de la zone en commun ; même type = même tissu (si renseigné des deux côtés).
+   Même site = même zone anatomique (synonymes et côté, injuryZones.js) ; même type = même tissu (si renseigné des deux côtés).
    Retour : { idBlessure: { prevId, kind: "early" | "late" | "delayed", label, days } }
    --------------------------------------------------------------------- */
-const recNorm = (t) =>
-  String(t || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ");
-const injuryWords = (inj) => recNorm(`${inj?.name || ""} ${inj?.zone || ""}`).split(" ").filter((w) => w.length >= 4);
 const returnDateOf = (inj) => {
   // retour au jeu clôturé (v2 : étape 7, enregistrée dans history) : c'est la vraie date de retour
   const h = inj?.rtp?.v === 2 ? inj.rtp.history || [] : [];
@@ -102,14 +96,12 @@ export function injuryRecurrences(injuries) {
   const list = (injuries || []).filter((i) => i && i.date).slice().sort((a, b) => a.date.localeCompare(b.date));
   const out = {};
   list.forEach((inj, k) => {
-    const words = injuryWords(inj);
     for (let j = k - 1; j >= 0; j--) {
       const prev = list[j];
       const back = returnDateOf(prev);
       if (!back || back > inj.date) continue; // pas encore revenu : c'est une aggravation, pas une récidive
       if (inj.tissueType && prev.tissueType && inj.tissueType !== prev.tissueType) continue;
-      const pw = injuryWords(prev);
-      if (!words.some((w) => pw.some((x) => x.slice(0, 5) === w.slice(0, 5)))) continue;
+      if (!sameInjuryZone(inj, prev)) continue; // même zone (synonymes + côté, injuryZones.js)
       const days = Math.round((new Date(inj.date + "T12:00:00") - new Date(back + "T12:00:00")) / 86400000);
       const kind = days <= 61 ? "early" : days <= 365 ? "late" : "delayed";
       out[inj.id] = { prevId: prev.id, prevName: prev.name || prev.zone || "blessure", kind, days, label: kind === "early" ? "Récidive précoce" : kind === "late" ? "Récidive tardive" : "Récidive différée" };
