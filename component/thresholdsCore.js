@@ -61,6 +61,21 @@ export const THRESHOLD_SECTIONS = [
     ],
   },
   {
+    id: "synth",
+    title: "🚦 Synthèse de la fiche athlète",
+    intro: "Règles des feux par pôle (charge / récupération / entraînement) et de la décision proposée. Repères de terrain, pas des seuils validés : à ajuster à ton groupe.",
+    params: [
+      { k: "synthJumpWatch", label: "Charge : hausse sur 7 jours à surveiller à partir de", def: 20, step: 5, min: 5, max: 60, unit: "%", help: "Charge des 7 derniers jours comparée à la moyenne hebdomadaire des 3 semaines d'avant." },
+      { k: "synthJumpAlert", label: "Charge : hausse sur 7 jours en alerte à partir de", def: 40, step: 5, min: 10, max: 120, unit: "%" },
+      { k: "synthDropUnder", label: "Charge : sous-charge si baisse d'au moins", def: 40, step: 5, min: 10, max: 90, unit: "%" },
+      { k: "synthMonoHigh", label: "Monotonie élevée à partir de", def: 2, step: 0.1, min: 1.2, max: 3.5, src: "Foster 1998" },
+      { k: "synthComplianceLow", label: "Réalisé / prévu : faible sous", def: 70, step: 5, min: 30, max: 95, unit: "%" },
+      { k: "synthStagnWeeks", label: "Force : stagnation si aucun progrès depuis", def: 6, step: 1, min: 3, max: 16, unit: "sem." },
+      { k: "rtpLoadPartial", label: "Retour au jeu : charge pour l'entraînement sans contact", def: 70, step: 5, min: 40, max: 95, unit: "% de l'habituelle" },
+      { k: "rtpLoadFull", label: "Retour au jeu : charge pour l'entraînement complet", def: 90, step: 5, min: 60, max: 110, unit: "% de l'habituelle" },
+    ],
+  },
+  {
     id: "nutri",
     title: "🥗 Nutrition & hydratation",
     intro: "Repères d'hydratation et tolérances de « dans les clous ».",

@@ -80,14 +80,16 @@ export function rediRatioHistory(dailyLoads, days = 60) {
   return history;
 }
 
-/** Zones d'interprétation du ratio REDI (mêmes seuils que l'ACWR littérature). */
+/** Zones du ratio REDI (mêmes bornes que l'ACWR de la littérature). Libellés DESCRIPTIFS : le ratio dit
+ *  comment la charge récente évolue par rapport à l'habitude, il ne prédit pas la blessure à lui seul
+ *  (Impellizzeri et al. 2020). La décision vient du croisement avec le wellness, le CMJ et la force. */
 export function getREDIStatus(ratio) {
   if (ratio === null || ratio === undefined) return { label: "Données insuffisantes", color: "#a8a199" };
   const v = Number(ratio);
-  if (v < TH("rediUnder")) return { label: "Sous-chargé", color: "#3498db" };
-  if (v <= TH("rediHigh")) return { label: "Zone optimale", color: "#4fae7d" };
-  if (v <= TH("rediVeryHigh")) return { label: "Attention", color: "#d9a441" };
-  return { label: "Surcharge", color: "#d9695a" };
+  if (v < TH("rediUnder")) return { label: "Charge en baisse", color: "#3498db" };
+  if (v <= TH("rediHigh")) return { label: "Charge stable", color: "#4fae7d" };
+  if (v <= TH("rediVeryHigh")) return { label: "Charge en hausse", color: "#d9a441" };
+  return { label: "Forte hausse", color: "#d9695a" };
 }
 
 /**

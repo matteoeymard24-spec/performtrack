@@ -14,6 +14,7 @@ import React, { useEffect, useRef, useState } from "react";
    cols   : { key: 0 | 1 } (colonne de chaque carte en mode 2 colonnes ; absente = alternée)
    twoCols: booléen
    onCommit(order, cols) : appelé au dépôt
+   scrollRef : (optionnel) conteneur à faire défiler près des bords, à la place de la page
    ===================================================================== */
 
 const AMBER = "#e0a13d";
@@ -26,7 +27,7 @@ export const colOfFn = (keys, cols) => {
   return out;
 };
 
-export default function DashColumns({ items, cols, twoCols, onCommit }) {
+export default function DashColumns({ items, cols, twoCols, onCommit, scrollRef }) {
   const keys = items.map((i) => i.key);
   const colOf = colOfFn(keys, cols);
   const colKeys = twoCols ? [keys.filter((k) => colOf[k] === 0), keys.filter((k) => colOf[k] === 1)] : [keys];
@@ -136,7 +137,9 @@ export default function DashColumns({ items, cols, twoCols, onCommit }) {
         const edge = 90;
         const v = y < edge ? -Math.ceil((edge - y) / 6) : y > window.innerHeight - edge ? Math.ceil((y - (window.innerHeight - edge)) / 6) : 0;
         if (v) {
-          window.scrollBy(0, v);
+          const sc = scrollRef?.current; // conteneur qui défile (ex. fiche athlète en surimpression), sinon la page
+          if (sc) sc.scrollBy(0, v);
+          else window.scrollBy(0, v);
           const t = targetAt(x, y, d);
           if (t.col !== d.col || t.index !== d.index) setDrag({ ...d, ...t });
         }

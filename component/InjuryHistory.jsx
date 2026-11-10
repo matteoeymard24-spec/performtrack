@@ -8,6 +8,8 @@ import React, { useState } from "react";
    • name      : nom / diagnostic (ex. « Entorse externe ») — optionnel, mis en avant.
    • lostValue + lostUnit : durée d'arrêt telle que saisie ; daysLost reste toujours
      renseigné en jours (rétro-compatible avec l'ACWR, les anciens écrans, etc.).
+   • rtp? : { stage (1-5, 6 = retour validé), checks: { idCritère: true }, updatedAt } — suivi du retour
+     au jeu, rempli par le coach dans la fiche athlète du Dashboard (voir coachSynthesis.js).
    ===================================================================== */
 
 export const TISSUE_LABELS = { muscle: "Muscle", tendon: "Tendon", ligament: "Ligament", os: "Os / articulation", autre: "Autre" };
@@ -298,6 +300,7 @@ export function InjuryTimeline({ injuries = [], onEdit, onDelete, editingId, ren
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
                       {inj.tissueType && <span style={tag}>{TISSUE_ICON[inj.tissueType] || "•"} {TISSUE_LABELS[inj.tissueType] || inj.tissueType}</span>}
                       {inj.mechanism && <span style={tag}>{MECHANISM_LABELS[inj.mechanism] || inj.mechanism}</span>}
+                      {inj.rtp && <span style={{ ...tag, color: Number(inj.rtp.stage) >= 6 ? GREEN : AMBER }}>🏥 Retour au jeu : {Number(inj.rtp.stage) >= 6 ? "validé" : `étape ${Math.max(1, Number(inj.rtp.stage) || 1)}/5`}</span>}
                       {lost && <span style={{ ...tag, color: TEXT, borderColor: "rgba(217,105,90,0.45)", background: "rgba(217,105,90,0.1)" }}>⏱ {lost} d'arrêt</span>}
                       {st.back && st.key !== "na" && <span style={tag}>↩ retour {st.key === "ongoing" ? "prévu" : ""} {fmtDateFr(st.back, { day: "numeric", month: "short" })}</span>}
                     </div>

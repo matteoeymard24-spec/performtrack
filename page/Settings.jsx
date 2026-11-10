@@ -30,6 +30,8 @@ const CHECKS = [
   ["dayZLight", "dayZHard", "Journée : le seuil « légère » doit être sous « intense »"],
   ["loadLight", "loadHard", "Repères fixes : « légère » doit être sous « intense »"],
   ["rpeVolLow", "rpeVolHigh", "RPE auto : le petit volume doit être sous le gros volume"],
+  ["synthJumpWatch", "synthJumpAlert", "Synthèse : la hausse « à surveiller » doit être sous la hausse « alerte »"],
+  ["rtpLoadPartial", "rtpLoadFull", "Retour au jeu : la charge « sans contact » doit être sous la charge « complet »"],
 ];
 
 function ParamRow({ p, value, onChange }) {

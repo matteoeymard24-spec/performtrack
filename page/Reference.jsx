@@ -6,6 +6,7 @@
    À tenir à jour à chaque nouvelle méthode ajoutée dans l'app.
    ===================================================================== */
 import { TH } from "../component/thresholdsCore";
+import { RTP_STAGES } from "../component/coachSynthesis";
 import { SUPRA_MAX_PCT } from "../component/contraction";
 import React from "react";
 import { Navigate } from "react-router-dom";
@@ -74,7 +75,7 @@ const T = ({ head, rows }) => (
 
 export default function Reference({ embedded = false }) {
   const { isSuperAdmin } = useAuth();
-  const fold = useFold("reference", ["charge", "muscu", "sprint", "endurance", "forme", "normes", "morpho", "biblio"]);
+  const fold = useFold("reference", ["charge", "fiche", "muscu", "sprint", "endurance", "forme", "normes", "morpho", "biblio"]);
   if (!isSuperAdmin) return <Navigate to="/" replace />;
 
   const lvlLabel = (id) => LEVELS.find((l) => l.id === id)?.label || id;
@@ -121,12 +122,18 @@ ratio = REDI aigu / REDI chronique`}</F>
         <T
           head={["Ratio", "Zone"]}
           rows={[
-            ["< 0,8", "Sous-chargé"],
-            ["0,8 – 1,3", "Zone optimale"],
-            ["1,3 – 1,5", "Attention"],
-            ["> 1,5", "Surcharge"],
+            ["< 0,8", "Charge en baisse"],
+            ["0,8 – 1,3", "Charge stable"],
+            ["1,3 – 1,5", "Charge en hausse"],
+            ["> 1,5", "Forte hausse"],
           ]}
         />
+        <P>
+          Les libellés sont volontairement descriptifs (« charge en hausse », pas « risque ») : le ratio aigu / chronique dit comment la
+          charge récente évolue par rapport à l'habitude, mais seul il ne prédit pas la blessure (couplage mathématique entre les deux
+          termes, faible valeur prédictive). L'app ne s'en sert donc jamais seul pour une alerte : il est croisé avec le wellness, le CMJ,
+          la force, la monotonie et la variation de charge (voir « Fiche athlète » ci-dessous).
+        </P>
         <P>
           Une séance compte pour un athlète seulement s'il l'a démarrée ET terminée (peu importe qui l'a créée, séance « Moi » comprise).
           Le ratio est aussi comparé à l'historique propre de l'athlète (z-score, ≥ 1,5 ou ≤ −1,5 = inhabituel), car les zones fixes
@@ -137,7 +144,83 @@ ratio = REDI aigu / REDI chronique`}</F>
 strain = charge de la semaine × monotonie   (comparé à l'historique propre : z > 0,5 plus haut, > 1,5 inhabituel)`}</F>
         <H>Fiabilité du RPE déclaré</H>
         <P>Écart-type des RPE moyens des 20 dernières séances (minimum 5) : &lt; 0,4 = déclaration peu variable, à vérifier avec l'athlète.</P>
-        <Ref>Moussa et al. 2020, Frontiers in Physiology (REDI) · Foster 1998, Med Sci Sports Exerc 30:1164 (monotonie / strain) · Gabbett 2016, Br J Sports Med 50:273 (zones du ratio).</Ref>
+        <Ref>Moussa et al. 2020, Frontiers in Physiology (REDI) · Foster 1998, Med Sci Sports Exerc 30:1164 (monotonie / strain) · Gabbett 2016, Br J Sports Med 50:273 (zones du ratio) · Impellizzeri et al. 2020, Int J Sports Physiol Perform 15:907 et Wang et al. 2020, Sports Med 50:1243 (limites du ratio aigu / chronique).</Ref>
+      </FoldCard>
+
+      {/* ============ FICHE ATHLÈTE (COACH) ============ */}
+      <FoldCard id="fiche" fold={fold} title="🚦 Fiche athlète du coach (synthèse, prévu / réalisé, retour au jeu, force relative)">
+        <P>
+          La fiche d'un athlète (Dashboard › clic sur l'athlète) range les outils en 3 pôles : charge (ce qu'il encaisse), récupération
+          (comment il l'encaisse), entraînement (ce que ça produit). Les seuils ci-dessous se règlent dans Paramètres › Seuils › « Synthèse
+          de la fiche athlète ».
+        </P>
+        <H>Charge de la semaine : prévu / réalisé</H>
+        <F>{`prévu (UA) = Σ RPE prévu × durée prévue des séances datées dans la semaine   (RPE prévu = celui du coach, sinon le RPE automatique)
+réalisé (UA) = Σ note de séance × durée réelle des séances terminées   (rangées dans la semaine où elles ont été faites)
+% réalisé = réalisé / prévu   (semaine en cours : seulement les séances déjà dues ou déjà faites)`}</F>
+        <H>Dynamique de charge</H>
+        <F>{`variation = (charge des 7 derniers jours − moyenne hebdo des 3 semaines d'avant) / moyenne hebdo des 3 semaines d'avant
+monotonie = charge moyenne par jour / écart-type sur 7 jours        contrainte = charge de la semaine × monotonie
+contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</F>
+        <P>
+          La variation est comparée à 3 semaines (et pas à la seule semaine d'avant) pour qu'une semaine creuse ne donne pas un pourcentage
+          démesuré. Les 7 derniers jours ne sont pas dans la référence : les deux termes ne se recouvrent pas.
+        </P>
+        <H>Feu du pôle charge</H>
+        <T
+          head={["Feu", "Règle"]}
+          rows={[
+            ["Alerte", `variation ≥ +${TH("synthJumpAlert")} %, ou variation ≥ +${TH("synthJumpWatch")} % avec monotonie ≥ ${fr(TH("synthMonoHigh"), 1)} ou REDI > ${fr(TH("rediVeryHigh"), 2)}`],
+            ["Vigilance", `variation ≥ +${TH("synthJumpWatch")} %, ou monotonie ≥ ${fr(TH("synthMonoHigh"), 1)}, ou REDI > ${fr(TH("rediHigh"), 2)}`],
+            ["Sous-charge", `variation ≤ −${TH("synthDropUnder")} %, ou moins de ${TH("synthComplianceLow")} % de la charge prévue réalisée la semaine dernière, ou REDI < ${fr(TH("rediUnder"), 2)}`],
+            ["OK", "aucun de ces signaux"],
+          ]}
+        />
+        <H>Feu du pôle récupération</H>
+        <P>
+          Il reprend les domaines « bien-être » (wellness, effort perçu) et « neuromusculaire » (CMJ, force) de l'état de forme : alerte si
+          l'un des deux est en alerte ou si les deux sont en vigilance ; vigilance si un seul est en vigilance ou si l'athlète est malade ;
+          une blessure en cours ou récente met au minimum en vigilance. La charge n'entre pas dans ce feu : elle a le sien.
+        </P>
+        <H>Feu du pôle entraînement</H>
+        <P>
+          Vigilance si moins de {TH("synthComplianceLow")} % des séances prévues sont faites sur 3 semaines, ou si aucun RM suivi n'a
+          progressé depuis {TH("synthStagnWeeks")} semaines (meilleur RM de la période comparé au meilleur d'avant). Le point faible affiché
+          est le mouvement le moins bien noté du barème.
+        </P>
+        <H>Décision proposée</H>
+        <T
+          head={["Récupération", "Charge", "Proposition"]}
+          rows={[
+            ["Alerte", "Alerte / vigilance", "−30 à −40 % de volume, pas d'intensité maximale, recontrôle wellness et CMJ"],
+            ["Alerte", "OK / sous-charge", "cause à chercher hors entraînement, séance allégée d'environ 20 %"],
+            ["Vigilance", "Alerte", "stabiliser : pas d'augmentation, 1 à 2 séries en moins par exercice"],
+            ["Vigilance", "autre", "séance prévue, ajustée à l'échauffement"],
+            ["OK", "Alerte", "ne rien ajouter, lisser la charge sur 7 jours"],
+            ["OK", "Vigilance", "séance prévue, sans volume supplémentaire"],
+            ["OK", "Sous-charge", "remonter de 10 à 15 % par semaine"],
+            ["OK", "OK", "appliquer la séance prévue"],
+          ]}
+        />
+        <P>
+          Ces propositions sont des repères de terrain, pas des règles validées par une étude : elles servent à gagner du temps de lecture,
+          la décision reste celle du coach. Une blessure en cours passe devant tout le reste (suivre le retour au jeu).
+        </P>
+        <H>Retour au jeu</H>
+        <T head={["Étape", "Objectif", "Critères de passage"]} rows={RTP_STAGES.map((s) => [`${s.id}. ${s.label}`, s.goal, s.criteria.map((c) => c.t.replace("{p}", TH(c.auto === "loadFull" ? "rtpLoadFull" : "rtpLoadPartial"))).join(" · ")])} />
+        <P>
+          On avance sur des critères, pas sur un délai. Les deux critères de charge sont calculés : charge des 7 derniers jours ÷ charge
+          hebdomadaire moyenne des 4 semaines qui précèdent la blessure. Sans historique avant la blessure, le coach les coche à la main.
+          Trame générale : elle ne remplace pas l'avis du médecin ou du kiné, qui décident du retour.
+        </P>
+        <H>Force relative</H>
+        <F>force relative = meilleur RM du mouvement / poids de corps (dernière pesée)</F>
+        <P>
+          Mouvements de référence : squat, développé couché, développé militaire, RDL, hip thrust, trap bar, tirage planche, traction. La
+          note /20 est celle du barème du poste et du niveau (voir « Normes rugby ») ; sans sport, poste ou niveau dans le profil, seule la
+          force relative est affichée.
+        </P>
+        <Ref>Foster 1998, Med Sci Sports Exerc 30:1164 (monotonie / contrainte) · Foster et al. 2001, J Strength Cond Res 15:109 (sRPE) · Ardern et al. 2016, Br J Sports Med 50:853 (consensus sur le retour au sport : progression par critères) · Impellizzeri et al. 2020, Int J Sports Physiol Perform 15:907 (limites du ratio aigu / chronique).</Ref>
       </FoldCard>
 
       {/* ============ MUSCU ============ */}
@@ -408,6 +491,7 @@ historique utilisé : 6 mois (lu à l'ouverture de la planification)`}</F>
       <FoldCard id="biblio" fold={fold} title="📖 Toutes les références">
         <ul style={{ margin: 0, paddingLeft: 18, color: MUTED, fontSize: 12.5, lineHeight: 1.75 }}>
           {[
+            "Ardern CL et al. 2016 — 2016 Consensus statement on return to sport from the First World Congress in Sports Physical Therapy, Bern. Br J Sports Med 50:853-864.",
             "Argus CK et al. 2012 — Kinetic and training comparisons between amateur and professional rugby union players. J Strength Cond Res.",
             "Billat LV 2001 — Interval training for performance: a scientific and empirical practice. Sports Med 31:13-31.",
             "Buchheit M 2008 — The 30-15 Intermittent Fitness Test. J Strength Cond Res 22:365-374.",
@@ -417,6 +501,8 @@ historique utilisé : 6 mois (lu à l'ouverture de la planification)`}</F>
             "Crewther BT et al. 2009 — Scaling strength and power for body mass differences in rugby union players. J Sports Sci 27:1575-1580.",
             "Darrall-Jones J et al. 2016 — Fitness characteristics of rugby union players by age category (30-15 IFT). IJSPP.",
             "Hollander DB et al. 2007 — Maximal eccentric and concentric strength discrepancies between young men and women for dynamic resistance exercise. J Strength Cond Res 21:34-40.",
+            "Impellizzeri FM et al. 2020 — Acute:Chronic Workload Ratio: Conceptual Issues and Fundamental Pitfalls. Int J Sports Physiol Perform 15:907-913.",
+            "Wang C et al. 2020 — Analyzing Activity and Injury: Lessons Learned from the Acute:Chronic Workload Ratio. Sports Med 50:1243-1254.",
             "Oranchuk DJ et al. 2019 — Isometric training and long-term adaptations: effects of muscle length, intensity, and intent. Scand J Med Sci Sports 29:484-503.",
             "Day ML et al. 2004 — Monitoring exercise intensity during resistance training using the session RPE scale. J Strength Cond Res 18:353-358.",
             "Fitzsimons M et al. 1993 — Cycling and running tests of repeated sprint ability. Aust J Sci Med Sport 25:82-87.",

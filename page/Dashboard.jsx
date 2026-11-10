@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { isMobileView } from "../component/viewMode";
 import { WellnessScoreChart, WellnessIndicators } from "../component/WellnessCharts";
 import { stickyHead } from "../component/ui";
 import DashColumns, { colOfFn } from "../component/DashColumns";
+import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, relativeStrength, rmTrend, poleSynthesis } from "../component/coachSynthesis";
+import { SynthesisBanner, WeekLoadCard, RtpCard, RelStrengthCard } from "../component/CoachFiche";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
 import { NutritionDashCard, SleepDashCard } from "../component/DashWellbeingCards";
 import WellnessLinks from "../component/WellnessLinks";
@@ -363,6 +365,175 @@ export default function Dashboard() {
   );
 
   const [showAthleteDetail, setShowAthleteDetail] = useState(null);
+
+  /* ===== Fiche athlète (vue coach) : outils rangés par pôle, déplaçables et masquables =====
+     Même système que le dashboard athlète (DashColumns). Le classement est celui du coach
+     (appareil + profil « coachDash ») et vaut pour toutes les fiches qu'il ouvre. */
+  const COACH_POLES = [
+    { id: "charge", label: "⚖️ Gestion de la charge", sub: "Ce que l'athlète encaisse : prévu / réalisé, séances et RPE, dynamique de charge", color: "#e0a13d" },
+    { id: "recup", label: "🛌 Gestion de la récupération", sub: "Comment il l'encaisse : forme du jour, CMJ, blessures et retour au jeu", color: "#5b9bd5" },
+    { id: "train", label: "💪 Entraînement & performance", sub: "Ce que ça produit : force relative, RM, tests, VMA & CMJ, poids", color: "#4fae7d" },
+  ];
+  const COACH_DEFAULT_OFF = ["todayWorkout"];
+  const coachDashKey = `pt_coach_dash_${currentUser?.uid || "anon"}`;
+  const [coachDash, setCoachDash] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(`pt_coach_dash_${currentUser?.uid || "anon"}`) || "null");
+    } catch (e) {
+      return null;
+    }
+  });
+  useEffect(() => {
+    if (!coachDash && userProfile?.coachDash && typeof userProfile.coachDash === "object") setCoachDash(userProfile.coachDash);
+  }, [userProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saveCoachDash = (patch) => {
+    const next = { ...(coachDash || {}), ...patch };
+    setCoachDash(next);
+    try {
+      localStorage.setItem(coachDashKey, JSON.stringify(next));
+    } catch (e) {
+      /* stockage indisponible */
+    }
+    if (currentUser?.uid) updateDoc(doc(db, "users", currentUser.uid), { coachDash: next }).catch(() => null);
+  };
+  const [coachToolsPanel, setCoachToolsPanel] = useState(false);
+  // Retour au jeu : étape + critères cochés, enregistrés sur la blessure (lus aussi par Tests › Bilan et le dashboard athlète)
+  const [rtpSaving, setRtpSaving] = useState(false);
+  const saveRtp = async (inj, rtp) => {
+    const payload = { rtp: { stage: rtp.stage, checks: rtp.checks || {}, updatedAt: new Date().toISOString() } };
+    const patch = (list) => (list || []).map((i) => (i.id === inj.id ? { ...i, ...payload } : i));
+    setRtpSaving(true);
+    try {
+      await updateDoc(doc(db, "injuries", inj.id), payload);
+      setShowAthleteDetail((prev) => (prev ? { ...prev, injuries: patch(prev.injuries) } : prev));
+      setAthletes((prev) => prev.map((a) => (a.id === inj.userId ? { ...a, injuries: patch(a.injuries) } : a)));
+    } catch (e) {
+      alert("Retour au jeu non enregistré : " + e.message);
+    } finally {
+      setRtpSaving(false);
+    }
+  };
+  const detailScrollRef = useRef(null);
+  const renderCoachPoles = (cards) => {
+    const order = Array.isArray(coachDash?.order) ? coachDash.order : [];
+    // « Séance aujourd'hui » fait doublon avec « Séances & feedbacks » : masquée tant que le coach ne l'a pas réaffichée
+    const off = Array.isArray(coachDash?.off) ? coachDash.off : COACH_DEFAULT_OFF;
+    const folded = Array.isArray(coachDash?.folded) ? coachDash.folded : [];
+    const allKeys = cards.map((c) => c.key);
+    const fullOrder = [...order.filter((k) => allKeys.includes(k)), ...allKeys.filter((k) => !order.includes(k))];
+    const byKey = Object.fromEntries(cards.map((c) => [c.key, c]));
+    const toggleOff = (k) => saveCoachDash({ off: off.includes(k) ? off.filter((x) => x !== k) : [...off, k] });
+    const toggleFold = (id) => saveCoachDash({ folded: folded.includes(id) ? folded.filter((x) => x !== id) : [...folded, id] });
+    return (
+      <>
+        {coachToolsPanel && (
+          <div style={{ ...CARD_STYLE, border: "1px solid #e0a13d88" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 15 }}>👁 Outils affichés dans les fiches</div>
+                <div style={{ fontSize: 12, color: "#a8a199" }}>Touche un outil pour l'afficher ou le masquer (pour toutes les fiches). Pour changer l'ordre, attrape la barre en haut d'un outil.</div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {(order.length > 0 || Array.isArray(coachDash?.off)) && (
+                  <button className="pt-btn" onClick={() => saveCoachDash({ order: [], cols: {}, off: null })}>
+                    ↺ Par défaut
+                  </button>
+                )}
+                <button className="pt-btn" onClick={() => setCoachToolsPanel(false)}>
+                  ✓ Terminé
+                </button>
+              </div>
+            </div>
+            {COACH_POLES.map((pl) => (
+              <div key={pl.id} style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: pl.color, marginBottom: 6 }}>{pl.label}</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {fullOrder
+                    .filter((k) => byKey[k].pole === pl.id)
+                    .map((k) => {
+                      const on = !off.includes(k);
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => toggleOff(k)}
+                          aria-pressed={on}
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            padding: "7px 13px",
+                            borderRadius: 999,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            border: `1px solid ${on ? pl.color : "#2a2620"}`,
+                            background: on ? `${pl.color}22` : "#0d0c0a",
+                            color: on ? "#f3f0ea" : "#6f6a62",
+                            textDecoration: on ? "none" : "line-through",
+                          }}
+                        >
+                          {on ? "✓" : "○"} {byKey[k].label}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {COACH_POLES.map((pl) => {
+          const poleKeys = fullOrder.filter((k) => byKey[k].pole === pl.id);
+          const items = poleKeys.filter((k) => !off.includes(k)).map((k) => byKey[k]);
+          const isFolded = folded.includes(pl.id);
+          const onCommit = (visOrder, cols) => {
+            let vi = 0;
+            const vset = new Set(items.map((i) => i.key));
+            const merged = fullOrder.map((k) => (vset.has(k) ? visOrder[vi++] : k));
+            saveCoachDash({ order: merged, cols: { ...(coachDash?.cols || {}), ...cols } });
+          };
+          return (
+            <section key={pl.id} id={`pt-pole-${pl.id}`} aria-label={pl.label} style={{ marginBottom: isFolded ? 12 : 22, scrollMarginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => toggleFold(pl.id)}
+                aria-expanded={!isFolded}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  textAlign: "left",
+                  padding: "12px 14px",
+                  marginBottom: isFolded ? 0 : 12,
+                  borderRadius: 12,
+                  border: `1px solid ${pl.color}55`,
+                  borderLeft: `4px solid ${pl.color}`,
+                  background: `${pl.color}12`,
+                  color: "#f3f0ea",
+                  cursor: "pointer",
+                }}
+              >
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: pl.color }}>{pl.label}</span>
+                  <span style={{ display: "block", fontSize: 12.5, color: "#a8a199", marginTop: 2 }}>{pl.sub}</span>
+                </span>
+                <span style={{ fontSize: 12, color: "#a8a199", whiteSpace: "nowrap" }}>
+                  {items.length} outil{items.length > 1 ? "s" : ""} {isFolded ? "▸" : "▾"}
+                </span>
+              </button>
+              {!isFolded &&
+                (items.length ? (
+                  <DashColumns items={items} cols={colOfFn(poleKeys, coachDash?.cols)} twoCols={twoCols} onCommit={onCommit} scrollRef={detailScrollRef} />
+                ) : (
+                  <div style={{ fontSize: 13, color: "#6f6a62", padding: "4px 4px 8px" }}>Tous les outils de ce pôle sont masqués (👁 Outils pour les réafficher).</div>
+                ))}
+            </section>
+          );
+        })}
+      </>
+    );
+  };
   const [athleteDetails, setAthleteDetails] = useState(null);
   const [detailedAthleteRMHistory, setDetailedAthleteRMHistory] = useState({});
   const [detailedAthleteRMCategories, setDetailedAthleteRMCategories] = useState({});
@@ -507,19 +678,19 @@ export default function Dashboard() {
 
   const getWellnessStatus = (score) => {
     if (score < 5)
-      return { label: "Risque de blessure", color: "#d9695a", emoji: "⚠️" };
+      return { label: "Wellness bas", color: "#d9695a", emoji: "⚠️" };
     if (score < 7.5)
-      return { label: "Fatigue fonctionnelle", color: "#d9a441", emoji: "😌" };
-    return { label: "En forme", color: "#4fae7d", emoji: "💪" };
+      return { label: "Wellness moyen", color: "#d9a441", emoji: "😌" };
+    return { label: "Wellness bon", color: "#4fae7d", emoji: "💪" };
   };
 
   const getACWRStatus = (acwr) => {
     if (!acwr) return { label: "Données insuffisantes", color: "#95a5a6" };
     const v = Number(acwr);
-    if (v < 0.8) return { label: "Sous-chargé", color: "#3498db" };
-    if (v <= 1.3) return { label: "Optimal", color: "#4fae7d" };
-    if (v <= 1.5) return { label: "Attention", color: "#d9a441" };
-    return { label: "Surcharge", color: "#d9695a" };
+    if (v < 0.8) return { label: "Charge en baisse", color: "#3498db" };
+    if (v <= 1.3) return { label: "Charge stable", color: "#4fae7d" };
+    if (v <= 1.5) return { label: "Charge en hausse", color: "#d9a441" };
+    return { label: "Forte hausse", color: "#d9695a" };
   };
 
   // Charge d'une séance (sRPE de Foster = note globale de séance × durée ;
@@ -3342,6 +3513,7 @@ export default function Dashboard() {
 
       {showAthleteDetail && athleteDetails && (
         <div
+          ref={detailScrollRef}
           style={{
             position: "fixed",
             top: 0,
@@ -3386,6 +3558,10 @@ export default function Dashboard() {
                       )}
                     </div>
                   </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button className={coachToolsPanel ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setCoachToolsPanel((v) => !v)} title="Choisir et classer les outils de la fiche">
+                    👁 Outils
+                  </button>
                   <button
                     className="pt-btn"
                     onClick={() => {
@@ -3397,6 +3573,7 @@ export default function Dashboard() {
                   >
                     ✕ Fermer
                   </button>
+                  </div>
                 </div>
               );
             })()}
@@ -3634,239 +3811,48 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {showAthleteDetail.cmjEntries && showAthleteDetail.cmjEntries.length > 1 && (
-              <div
-                style={{
-                  background: "#151310",
-                  padding: 18,
-                  borderRadius: 12,
-                  marginBottom: 16,
-                  border: "1px solid #2a2620",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: sectionVisibility.cmjSessions ? 12 : 0,
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
-                    🦘 Évolution CMJ (détente verticale)
-                  </h3>
-                  <SectionToggleBtn sectionKey="cmjSessions" />
-                </div>
-                {sectionVisibility.cmjSessions && (
-                <ResponsiveContainer width="100%" height={220}>
-                  <LineChart
-                    data={showAthleteDetail.cmjEntries.map((e) => ({
-                      ...e,
-                      shortDate: new Date(e.date).toLocaleDateString("fr-FR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                      }),
-                    }))}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
-                    <XAxis dataKey="shortDate" stroke="#a8a199" fontSize={11} />
-                    <YAxis stroke="#a8a199" fontSize={11} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#1a1815",
-                        border: "1px solid #3a342a",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                      labelStyle={{ color: "#f3f0ea" }}
-                      formatter={(value) => [`${value} cm`, "CMJ"]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="heightCm"
-                      name="CMJ (cm)"
-                      stroke="#d9a441"
-                      strokeWidth={2.5}
-                      dot={{ fill: "#d9a441", r: 4 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-                )}
-              </div>
-            )}
-
-            {showAthleteDetail.crossStatus && renderFormCard(showAthleteDetail)}
-
-            {/* Wellness relié aux journaux Sommeil / Nutrition de l'athlète */}
-            <div style={{ background: "#151310", padding: 18, borderRadius: 12, marginBottom: 16, border: "1px solid #2a2620" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: sectionVisibility.links ? 12 : 0 }}>
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>🔗 Wellness × sommeil × nutrition</h3>
-                <button className="pt-btn"
-                  onClick={() => toggleSection("links")}
-                >
-                  {sectionVisibility.links ? "▾" : "▸"}
-                </button>
-              </div>
-              {sectionVisibility.links && <WellnessLinks uid={showAthleteDetail.id} />}
-            </div>
-
-            {showAthleteDetail.injuries && (
-              <div
-                style={{
-                  background: "#151310",
-                  padding: 18,
-                  borderRadius: 12,
-                  marginBottom: 16,
-                  border: "1px solid rgba(217,105,90,0.4)",
-                }}
-              >
-                <button
-                  onClick={() => setShowInjuryHistory((v) => !v)}
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    padding: 0,
-                    color: "#d9695a",
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
-                    🚑 Historique de blessures ({showAthleteDetail.injuries.length})
-                  </h3>
-                  <span style={{ fontSize: 13, color: "#a8a199" }}>
-                    {showInjuryHistory ? "▾ Réduire" : "▸ Voir / modifier"}
-                  </span>
-                </button>
-
-                {showInjuryHistory && (
-                  <div style={{ marginTop: 14 }}>
-                    <InjuryTimeline
-                      injuries={showAthleteDetail.injuries}
-                      emptyText="Aucune blessure enregistrée. Ajoute-en depuis Tests › Bilan."
-                      editingId={editingInjury}
-                      onEdit={(inj) => setEditingInjury(inj.id)}
-                      onDelete={async (inj) => {
-                        if (!await appConfirm("Supprimer cette blessure de l'historique ?")) return;
-                        try {
-                          await deleteDoc(doc(db, "injuries", inj.id));
-                          setShowAthleteDetail((prev) => ({ ...prev, injuries: prev.injuries.filter((i) => i.id !== inj.id) }));
-                        } catch (e) {
-                          alert("Erreur suppression : " + e.message);
-                        }
-                      }}
-                      renderEdit={(inj) => (
-                        <InjuryForm
-                          initial={inj}
-                          onCancel={() => setEditingInjury(null)}
-                          onSave={async (payload) => {
-                            try {
-                              await updateDoc(doc(db, "injuries", inj.id), payload);
-                              setShowAthleteDetail((prev) => ({
-                                ...prev,
-                                injuries: prev.injuries.map((i) => (i.id === inj.id ? { ...i, ...payload } : i)),
-                              }));
-                              setEditingInjury(null);
-                            } catch (e) {
-                              alert("Erreur : " + e.message);
-                            }
-                          }}
-                        />
-                      )}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div
-              style={{
-                background: "#151310",
-                padding: 18,
-                borderRadius: 12,
-                marginBottom: 16,
-                border: "1px solid #2a2620",
+            {(() => {
+              /* Calculs de la fiche (coachSynthesis.js) : prévu / réalisé, dynamique de charge, retour au jeu,
+                 force relative, puis un feu par pôle et une décision proposée. */
+              const fa = showAthleteDetail;
+              const fToday = getLocalDateStr(new Date());
+              const fSessions = athleteDetails.sessions || [];
+              const fDaily = buildDailyLoads(fSessions, fa.id);
+              const fWeeks = weeklyPlanVsDone(fSessions, fa.id, fToday, 6);
+              const fDyn = loadDynamics(fDaily, fToday, fa.acwr);
+              const fInjury = activeInjury(fa.injuries, fToday);
+              const fRtp = fInjury ? rtpState(fInjury.inj, fDaily, fToday) : null;
+              const fRmDocs = Object.entries(detailedAthleteRMHistory || {})
+                .map(([name, pts]) => ({ name, kg: pts && pts.length ? Number(pts[pts.length - 1].kg) : 0 }))
+                .filter((r) => r.kg > 0);
+              const fWeight = (athleteDetails.weightHistory || []).slice(-1)[0]?.weight || fa.weight;
+              const fStrength = relativeStrength(fRmDocs, fWeight, fa.sport, fa.position, fa.level);
+              const fTrend = rmTrend(detailedAthleteRMHistory, fToday, TH("synthStagnWeeks"));
+              const fSynth = poleSynthesis({
+                dyn: fDyn,
+                weeks: fWeeks,
+                form: fa.crossStatus,
+                wellnessScore: fa.wellnessScore,
+                wellnessFilled: !!fa.lastWellness,
+                injury: fInjury,
+                rtp: fRtp,
+                trend: fTrend,
+                strength: fStrength,
+              });
+              const fTh = { jumpWatch: TH("synthJumpWatch"), jumpAlert: TH("synthJumpAlert"), dropUnder: TH("synthDropUnder"), monoHigh: TH("synthMonoHigh"), complianceLow: TH("synthComplianceLow") };
+              return (
+                <>
+            <SynthesisBanner
+              synth={fSynth}
+              onGo={(id) => {
+                if ((coachDash?.folded || []).includes(id)) saveCoachDash({ folded: (coachDash.folded || []).filter((x) => x !== id) });
+                document.getElementById(`pt-pole-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 8,
-                  marginBottom: sectionVisibility.todayWorkout ? 12 : 0,
-                }}
-              >
-                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
-                  🏋️ Séance aujourd'hui
-                </h3>
-                <SectionToggleBtn sectionKey="todayWorkout" />
-              </div>
-              {sectionVisibility.todayWorkout && (
-              athleteDetails.todayWorkout ? (
-                <div>
-                  <div
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "bold",
-                      marginBottom: 8,
-                    }}
-                  >
-                    {athleteDetails.todayWorkout.title}
-                  </div>
-                  {isWorkoutCompleted(athleteDetails.todayWorkout, showAthleteDetail.id) ? (
-                    <div
-                      style={{
-                        padding: 12,
-                        background: "rgba(79,174,125,0.14)",
-                        borderRadius: 8,
-                        color: "#4fae7d",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      ✅ Validée –{" "}
-                      {new Date(
-                        getUserProgress(athleteDetails.todayWorkout, showAthleteDetail.id)?.completedAt
-                      ).toLocaleString("fr-FR")}
-                    </div>
-                  ) : isWorkoutInProgress(athleteDetails.todayWorkout, showAthleteDetail.id) ? (
-                    <div
-                      style={{
-                        padding: 12,
-                        background: "rgba(217,164,65,0.14)",
-                        borderRadius: 8,
-                        color: "#d9a441",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      ⏳ En cours
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        padding: 12,
-                        background: "rgba(217,105,90,0.14)",
-                        borderRadius: 8,
-                        color: "#d9695a",
-                        fontWeight: "bold",
-                      }}
-                    >
-                      ❌ Non démarrée
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div style={{ color: "#a8a199", fontSize: 14 }}>
-                  Pas de séance programmée
-                </div>
-              )
-              )}
-            </div>
-
+            />
+            {renderCoachPoles([
+              { key: "weekLoad", pole: "charge", label: "📅 Charge de la semaine : prévu / réalisé", node: <WeekLoadCard weeks={fWeeks} dyn={fDyn} thresholds={fTh} /> },
+              { key: "sessions", pole: "charge", label: "📋 Séances & feedbacks", node: (
+                <>
             {/* Séances de l'athlète + feedbacks (RPE, charges, commentaires) */}
             <div
               style={{
@@ -4042,7 +4028,106 @@ export default function Dashboard() {
                 );
               })()}
             </div>
-
+                </>
+              ) },
+              { key: "redi", pole: "charge", label: "📊 Charge récente / habituelle (REDI)", node: (
+                <>
+            {acwrHistory.length > 0 ? (
+              <div
+                style={{
+                  background: "#151310",
+                  padding: 20,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid #2a2620",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: sectionVisibility.redi ? 15 : 0,
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
+                    📊 Charge récente / habituelle (REDI)
+                  </h3>
+                  <SectionToggleBtn sectionKey="redi" />
+                </div>
+                {sectionVisibility.redi && (
+                <>
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={acwrHistory}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
+                    <XAxis
+                      dataKey="date"
+                      stroke="#a8a199"
+                      fontSize={11}
+                      tickFormatter={(d) => d.slice(5)}
+                    />
+                    <YAxis stroke="#a8a199" fontSize={11} domain={[0, 2]} />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#0d0c0a",
+                        border: "1px solid rgba(255, 255, 255, 0.05)",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="acwr"
+                      name="REDI"
+                      stroke="#e0a13d"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#a8a199",
+                    marginTop: 10,
+                    textAlign: "center",
+                  }}
+                >
+                  Charge récente ÷ charge habituelle. Stable : 0,8 à 1,3 · en hausse : 1,3 à 1,5 · forte hausse : {'>'} 1,5.
+                  <br />
+                  Ce ratio décrit l'évolution de la charge ; seul, il ne prédit pas la blessure. À lire avec le wellness, le CMJ et la monotonie.
+                </div>
+                </>
+                )}
+              </div>
+            ) : (
+              <div
+                style={{
+                  background: "#151310",
+                  padding: 20,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid #2a2620",
+                  textAlign: "center",
+                }}
+              >
+                <h3
+                  style={{ margin: "0 0 10px 0", fontSize: 17, color: "#a8a199" }}
+                >
+                  📊 REDI
+                </h3>
+                <p style={{ color: "#a8a199", fontSize: 14 }}>
+                  Données insuffisantes (aucune séance complétée avec RPE
+                  renseigné récemment)
+                </p>
+              </div>
+            )}
+                </>
+              ) },
+              { key: "formDay", pole: "recup", label: "🩺 Forme du jour (état de forme, douleur, wellness, sommeil & nutrition)", node: (
+                <>
+            {showAthleteDetail.crossStatus && renderFormCard(showAthleteDetail)}
             {showAthleteDetail.lastWellness &&
               showAthleteDetail.lastWellness.douleur > 0 && (
                 <div
@@ -4129,98 +4214,6 @@ export default function Dashboard() {
                   )}
                 </div>
               )}
-
-            {acwrHistory.length > 0 ? (
-              <div
-                style={{
-                  background: "#151310",
-                  padding: 20,
-                  borderRadius: 12,
-                  marginBottom: 16,
-                  border: "1px solid #2a2620",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 8,
-                    marginBottom: sectionVisibility.redi ? 15 : 0,
-                  }}
-                >
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
-                    📊 Évolution REDI
-                  </h3>
-                  <SectionToggleBtn sectionKey="redi" />
-                </div>
-                {sectionVisibility.redi && (
-                <>
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={acwrHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
-                    <XAxis
-                      dataKey="date"
-                      stroke="#a8a199"
-                      fontSize={11}
-                      tickFormatter={(d) => d.slice(5)}
-                    />
-                    <YAxis stroke="#a8a199" fontSize={11} domain={[0, 2]} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#0d0c0a",
-                        border: "1px solid rgba(255, 255, 255, 0.05)",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="acwr"
-                      name="REDI"
-                      stroke="#e0a13d"
-                      strokeWidth={2}
-                      dot={{ r: 3 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "#a8a199",
-                    marginTop: 10,
-                    textAlign: "center",
-                  }}
-                >
-                  Zone optimale: 0.8 - 1.3 | Zone attention: 1.3 - 1.5 |
-                  Surcharge: {'>'} 1.5
-                </div>
-                </>
-                )}
-              </div>
-            ) : (
-              <div
-                style={{
-                  background: "#151310",
-                  padding: 20,
-                  borderRadius: 12,
-                  marginBottom: 16,
-                  border: "1px solid #2a2620",
-                  textAlign: "center",
-                }}
-              >
-                <h3
-                  style={{ margin: "0 0 10px 0", fontSize: 17, color: "#a8a199" }}
-                >
-                  📊 REDI
-                </h3>
-                <p style={{ color: "#a8a199", fontSize: 14 }}>
-                  Données insuffisantes (aucune séance complétée avec RPE
-                  renseigné récemment)
-                </p>
-              </div>
-            )}
-
             {athleteDetails.wellness.length > 0 && (
               <>
                 <div
@@ -4252,12 +4245,30 @@ export default function Dashboard() {
                 )}
               </>
             )}
-
-            {athleteDetails.weightHistory.length > 0 && (
+            {/* Wellness relié aux journaux Sommeil / Nutrition de l'athlète */}
+            <div style={{ background: "#151310", padding: 18, borderRadius: 12, marginBottom: 16, border: "1px solid #2a2620" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: sectionVisibility.links ? 12 : 0 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>🔗 Wellness × sommeil × nutrition</h3>
+                <button className="pt-btn"
+                  onClick={() => toggleSection("links")}
+                >
+                  {sectionVisibility.links ? "▾" : "▸"}
+                </button>
+              </div>
+              {sectionVisibility.links && <WellnessLinks uid={showAthleteDetail.id} />}
+            </div>
+                </>
+              ) },
+              { key: "rtp", pole: "recup", label: "🏥 Retour au jeu", node: fInjury ? (
+                <RtpCard key={fInjury.inj.id} injury={fInjury.inj} status={fInjury.st} state={fRtp} saving={rtpSaving} onSave={(rtp) => saveRtp(fInjury.inj, rtp)} />
+              ) : null },
+              { key: "cmjSessions", pole: "recup", label: "🦘 Évolution CMJ (fatigue)", node: (
+                <>
+            {showAthleteDetail.cmjEntries && showAthleteDetail.cmjEntries.length > 1 && (
               <div
                 style={{
                   background: "#151310",
-                  padding: 20,
+                  padding: 18,
                   borderRadius: 12,
                   marginBottom: 16,
                   border: "1px solid #2a2620",
@@ -4269,282 +4280,131 @@ export default function Dashboard() {
                     justifyContent: "space-between",
                     alignItems: "center",
                     gap: 8,
-                    marginBottom: sectionVisibility.weight ? 15 : 0,
+                    marginBottom: sectionVisibility.cmjSessions ? 12 : 0,
                   }}
                 >
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
-                    ⚖️ Évolution du poids
+                    🦘 Évolution CMJ (détente verticale)
                   </h3>
-                  <SectionToggleBtn sectionKey="weight" />
+                  <SectionToggleBtn sectionKey="cmjSessions" />
                 </div>
-                {sectionVisibility.weight && (
-                <>
+                {sectionVisibility.cmjSessions && (
                 <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={athleteDetails.weightHistory}>
-                    <defs>
-                      <linearGradient id="pGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop
-                          offset="5%"
-                          stopColor="#e0a13d"
-                          stopOpacity={0.7}
-                        />
-                        <stop
-                          offset="95%"
-                          stopColor="#e0a13d"
-                          stopOpacity={0}
-                        />
-                      </linearGradient>
-                    </defs>
+                  <LineChart
+                    data={showAthleteDetail.cmjEntries.map((e) => ({
+                      ...e,
+                      shortDate: new Date(e.date).toLocaleDateString("fr-FR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                      }),
+                    }))}
+                  >
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
-                    <XAxis
-                      dataKey="date"
-                      stroke="#a8a199"
-                      fontSize={11}
-                      tickFormatter={(d) => d.slice(5)}
-                    />
-                    <YAxis
-                      stroke="#a8a199"
-                      fontSize={11}
-                      domain={["auto", "auto"]}
-                    />
+                    <XAxis dataKey="shortDate" stroke="#a8a199" fontSize={11} />
+                    <YAxis stroke="#a8a199" fontSize={11} />
                     <Tooltip
                       contentStyle={{
-                        background: "#0d0c0a",
-                        border: "1px solid rgba(255, 255, 255, 0.05)",
+                        background: "#1a1815",
+                        border: "1px solid #3a342a",
                         borderRadius: 8,
                         fontSize: 12,
                       }}
+                      labelStyle={{ color: "#f3f0ea" }}
+                      formatter={(value) => [`${value} cm`, "CMJ"]}
                     />
-                    <Area
+                    <Line
                       type="monotone"
-                      dataKey="weight"
-                      name="Poids (kg)"
-                      stroke="#e0a13d"
-                      strokeWidth={2}
-                      fill="url(#pGrad)"
+                      dataKey="heightCm"
+                      name="CMJ (cm)"
+                      stroke="#d9a441"
+                      strokeWidth={2.5}
+                      dot={{ fill: "#d9a441", r: 4 }}
                     />
-                  </AreaChart>
+                  </LineChart>
                 </ResponsiveContainer>
-                <div
-                  style={{
-                    textAlign: "center",
-                    marginTop: 10,
-                    fontSize: 13,
-                    color: "#a8a199",
-                  }}
-                >
-                  Poids actuel:{" "}
-                  <strong style={{ color: "#e0a13d" }}>
-                    {
-                      athleteDetails.weightHistory[
-                        athleteDetails.weightHistory.length - 1
-                      ].weight
-                    }{" "}
-                    kg
-                  </strong>
-                </div>
+                )}
+              </div>
+            )}
                 </>
-                )}
-              </div>
-            )}
-
-            {showAthleteDetail && (
+              ) },
+              { key: "injuries", pole: "recup", label: "🚑 Blessures", node: (
+                <>
+            {showAthleteDetail.injuries && (
               <div
-                style={{ background: "#151310", padding: 20, borderRadius: 12, border: "1px solid #2a2620", marginBottom: 16 }}
+                style={{
+                  background: "#151310",
+                  padding: 18,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid rgba(217,105,90,0.4)",
+                }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: sectionVisibility.vmacmj ? 14 : 0 }}>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>🏃 VMA & 🦘 CMJ</h3>
-                  <SectionToggleBtn sectionKey="vmacmj" />
-                </div>
-                {sectionVisibility.vmacmj && (
-                <div
+                <button
+                  onClick={() => setShowInjuryHistory((v) => !v)}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                    gap: 20,
+                    width: "100%",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    padding: 0,
+                    color: "#d9695a",
                   }}
                 >
-                  <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 8,
-                        marginBottom: sectionVisibility.vma ? 12 : 0,
-                      }}
-                    >
-                      <h4 style={{ margin: 0, fontSize: 15, color: "#e0a13d" }}>
-                        🏃 VMA
-                      </h4>
-                      <SectionToggleBtn sectionKey="vma" />
-                    </div>
-                    {sectionVisibility.vma && (
-                    <>
-                    {athleteDetails.vma && athleteDetails.vma.history.length > 1 ? (
-                      <ResponsiveContainer width="100%" height={160}>
-                        <LineChart
-                          data={athleteDetails.vma.history.map((item) => ({
-                            ...item,
-                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                            }),
-                          }))}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
-                          <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
-                          <Tooltip
-                            contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
-                            labelStyle={{ color: "#f3f0ea" }}
-                            formatter={(value) => [`${value} km/h`, "VMA"]}
-                          />
-                          <Line type="monotone" dataKey="kg" name="VMA (km/h)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
-                        {athleteDetails.vma?.kg != null ? "1 seul point" : "Non renseignée"}
-                      </div>
-                    )}
-                    <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
-                      VMA actuelle :{" "}
-                      <strong style={{ color: "#e0a13d" }}>
-                        {athleteDetails.vma?.kg != null ? `${athleteDetails.vma.kg} km/h` : "—"}
-                      </strong>
-                    </div>
-                    {/* Saisie manuelle par le coach — contribue au même
-                        historique que si l'athlète l'avait renseignée
-                        lui-même depuis "Mes RM". */}
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="Ex: 15.5"
-                        value={vmaCmjInput.vma}
-                        onChange={(e) =>
-                          setVmaCmjInput((p) => ({ ...p, vma: e.target.value }))
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
+                    🚑 Historique de blessures ({showAthleteDetail.injuries.length})
+                  </h3>
+                  <span style={{ fontSize: 13, color: "#a8a199" }}>
+                    {showInjuryHistory ? "▾ Réduire" : "▸ Voir / modifier"}
+                  </span>
+                </button>
+
+                {showInjuryHistory && (
+                  <div style={{ marginTop: 14 }}>
+                    <InjuryTimeline
+                      injuries={showAthleteDetail.injuries}
+                      emptyText="Aucune blessure enregistrée. Ajoute-en depuis Tests › Bilan."
+                      editingId={editingInjury}
+                      onEdit={(inj) => setEditingInjury(inj.id)}
+                      onDelete={async (inj) => {
+                        if (!await appConfirm("Supprimer cette blessure de l'historique ?")) return;
+                        try {
+                          await deleteDoc(doc(db, "injuries", inj.id));
+                          setShowAthleteDetail((prev) => ({ ...prev, injuries: prev.injuries.filter((i) => i.id !== inj.id) }));
+                        } catch (e) {
+                          alert("Erreur suppression : " + e.message);
                         }
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          padding: 8,
-                          borderRadius: 6,
-                          border: "1px solid #2a2620",
-                          background: "#151310",
-                          color: "#f3f0ea",
-                        }}
-                      />
-                      <button className="pt-btn pt-btn--ok"
-                        disabled={savingVmaCmj === "vma"}
-                        onClick={() => saveManualVmaCmj("vma")}
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        {savingVmaCmj === "vma" ? "…" : "✅ Enregistrer"}
-                      </button>
-                    </div>
-                    <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
-                      💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
-                    </div>
-                    </>
-                    )}
-                  </div>
-                  <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 8,
-                        marginBottom: sectionVisibility.cmj ? 12 : 0,
                       }}
-                    >
-                      <h4 style={{ margin: 0, fontSize: 15, color: "#e0a13d" }}>
-                        🦘 CMJ
-                      </h4>
-                      <SectionToggleBtn sectionKey="cmj" />
-                    </div>
-                    {sectionVisibility.cmj && (
-                    <>
-                    {athleteDetails.cmj && athleteDetails.cmj.history.length > 1 ? (
-                      <ResponsiveContainer width="100%" height={160}>
-                        <LineChart
-                          data={athleteDetails.cmj.history.map((item) => ({
-                            ...item,
-                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                            }),
-                          }))}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
-                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
-                          <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
-                          <Tooltip
-                            contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
-                            labelStyle={{ color: "#f3f0ea" }}
-                            formatter={(value) => [`${value} cm`, "CMJ"]}
-                          />
-                          <Line type="monotone" dataKey="kg" name="CMJ (cm)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
-                        {athleteDetails.cmj?.kg != null ? "1 seul point" : "Non renseigné"}
-                      </div>
-                    )}
-                    <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
-                      CMJ actuel :{" "}
-                      <strong style={{ color: "#e0a13d" }}>
-                        {athleteDetails.cmj?.kg != null ? `${athleteDetails.cmj.kg} cm` : "—"}
-                      </strong>
-                    </div>
-                    {/* Saisie manuelle par le coach — le CMJ DOIT contribuer
-                        au graphique d'évolution même quand c'est le coach
-                        qui le rentre. */}
-                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                      <input
-                        type="number"
-                        step="0.1"
-                        placeholder="Ex: 42"
-                        value={vmaCmjInput.cmj}
-                        onChange={(e) =>
-                          setVmaCmjInput((p) => ({ ...p, cmj: e.target.value }))
-                        }
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          padding: 8,
-                          borderRadius: 6,
-                          border: "1px solid #2a2620",
-                          background: "#151310",
-                          color: "#f3f0ea",
-                        }}
-                      />
-                      <button className="pt-btn pt-btn--ok"
-                        disabled={savingVmaCmj === "cmj"}
-                        onClick={() => saveManualVmaCmj("cmj")}
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        {savingVmaCmj === "cmj" ? "…" : "✅ Enregistrer"}
-                      </button>
-                    </div>
-                    <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
-                      💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
-                    </div>
-                    </>
-                    )}
+                      renderEdit={(inj) => (
+                        <InjuryForm
+                          initial={inj}
+                          onCancel={() => setEditingInjury(null)}
+                          onSave={async (payload) => {
+                            try {
+                              await updateDoc(doc(db, "injuries", inj.id), payload);
+                              setShowAthleteDetail((prev) => ({
+                                ...prev,
+                                injuries: prev.injuries.map((i) => (i.id === inj.id ? { ...i, ...payload } : i)),
+                              }));
+                              setEditingInjury(null);
+                            } catch (e) {
+                              alert("Erreur : " + e.message);
+                            }
+                          }}
+                        />
+                      )}
+                    />
                   </div>
-                </div>
                 )}
               </div>
             )}
-
-            <div style={{ marginBottom: 16 }}>
-              <TestsSummary uid={showAthleteDetail.id} title="🧪 Tests de l'athlète" simple />
-            </div>
-
+                </>
+              ) },
+              { key: "relStrength", pole: "train", label: "🏋️ Force relative & normes", node: <RelStrengthCard data={fStrength} /> },
+              { key: "rm", pole: "train", label: "💪 Évolution des RM / charges", node: (
+                <>
             {(() => {
               /* ===== Évolution des RM / charges : recherche par exercice =====
                  Source 1 : l'historique de la fiche "Mes RM" de l'athlète.
@@ -4894,6 +4754,400 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
+              );
+            })()}
+                </>
+              ) },
+              { key: "tests", pole: "train", label: "🧪 Tests", node: (
+                <>
+            <div style={{ marginBottom: 16 }}>
+              <TestsSummary uid={showAthleteDetail.id} title="🧪 Tests de l'athlète" simple />
+            </div>
+                </>
+              ) },
+              { key: "vmacmj", pole: "train", label: "🏃 VMA & 🦘 CMJ", node: (
+                <>
+            {showAthleteDetail && (
+              <div
+                style={{ background: "#151310", padding: 20, borderRadius: 12, border: "1px solid #2a2620", marginBottom: 16 }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: sectionVisibility.vmacmj ? 14 : 0 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>🏃 VMA & 🦘 CMJ</h3>
+                  <SectionToggleBtn sectionKey="vmacmj" />
+                </div>
+                {sectionVisibility.vmacmj && (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                    gap: 20,
+                  }}
+                >
+                  <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: sectionVisibility.vma ? 12 : 0,
+                      }}
+                    >
+                      <h4 style={{ margin: 0, fontSize: 15, color: "#e0a13d" }}>
+                        🏃 VMA
+                      </h4>
+                      <SectionToggleBtn sectionKey="vma" />
+                    </div>
+                    {sectionVisibility.vma && (
+                    <>
+                    {athleteDetails.vma && athleteDetails.vma.history.length > 1 ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <LineChart
+                          data={athleteDetails.vma.history.map((item) => ({
+                            ...item,
+                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                            }),
+                          }))}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
+                          <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
+                          <Tooltip
+                            contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
+                            labelStyle={{ color: "#f3f0ea" }}
+                            formatter={(value) => [`${value} km/h`, "VMA"]}
+                          />
+                          <Line type="monotone" dataKey="kg" name="VMA (km/h)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
+                        {athleteDetails.vma?.kg != null ? "1 seul point" : "Non renseignée"}
+                      </div>
+                    )}
+                    <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
+                      VMA actuelle :{" "}
+                      <strong style={{ color: "#e0a13d" }}>
+                        {athleteDetails.vma?.kg != null ? `${athleteDetails.vma.kg} km/h` : "—"}
+                      </strong>
+                    </div>
+                    {/* Saisie manuelle par le coach — contribue au même
+                        historique que si l'athlète l'avait renseignée
+                        lui-même depuis "Mes RM". */}
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="Ex: 15.5"
+                        value={vmaCmjInput.vma}
+                        onChange={(e) =>
+                          setVmaCmjInput((p) => ({ ...p, vma: e.target.value }))
+                        }
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          padding: 8,
+                          borderRadius: 6,
+                          border: "1px solid #2a2620",
+                          background: "#151310",
+                          color: "#f3f0ea",
+                        }}
+                      />
+                      <button className="pt-btn pt-btn--ok"
+                        disabled={savingVmaCmj === "vma"}
+                        onClick={() => saveManualVmaCmj("vma")}
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        {savingVmaCmj === "vma" ? "…" : "✅ Enregistrer"}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
+                      💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
+                    </div>
+                    </>
+                    )}
+                  </div>
+                  <div style={{ background: "#0d0c0a", padding: 15, borderRadius: 8 }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        marginBottom: sectionVisibility.cmj ? 12 : 0,
+                      }}
+                    >
+                      <h4 style={{ margin: 0, fontSize: 15, color: "#e0a13d" }}>
+                        🦘 CMJ
+                      </h4>
+                      <SectionToggleBtn sectionKey="cmj" />
+                    </div>
+                    {sectionVisibility.cmj && (
+                    <>
+                    {athleteDetails.cmj && athleteDetails.cmj.history.length > 1 ? (
+                      <ResponsiveContainer width="100%" height={160}>
+                        <LineChart
+                          data={athleteDetails.cmj.history.map((item) => ({
+                            ...item,
+                            dateShort: new Date(item.date).toLocaleDateString("fr-FR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                            }),
+                          }))}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                          <XAxis dataKey="dateShort" stroke="#a8a199" fontSize={10} />
+                          <YAxis stroke="#a8a199" fontSize={10} domain={["dataMin - 1", "dataMax + 1"]} />
+                          <Tooltip
+                            contentStyle={{ background: "#1a1815", border: "1px solid #3a342a", borderRadius: 8, fontSize: 12 }}
+                            labelStyle={{ color: "#f3f0ea" }}
+                            formatter={(value) => [`${value} cm`, "CMJ"]}
+                          />
+                          <Line type="monotone" dataKey="kg" name="CMJ (cm)" stroke="#e0a13d" strokeWidth={2.5} dot={{ fill: "#e0a13d", r: 4 }} activeDot={{ r: 6 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div style={{ textAlign: "center", padding: 20, color: "#a8a199", fontSize: 14 }}>
+                        {athleteDetails.cmj?.kg != null ? "1 seul point" : "Non renseigné"}
+                      </div>
+                    )}
+                    <div style={{ marginTop: 8, fontSize: 13, color: "#a8a199", textAlign: "center" }}>
+                      CMJ actuel :{" "}
+                      <strong style={{ color: "#e0a13d" }}>
+                        {athleteDetails.cmj?.kg != null ? `${athleteDetails.cmj.kg} cm` : "—"}
+                      </strong>
+                    </div>
+                    {/* Saisie manuelle par le coach — le CMJ DOIT contribuer
+                        au graphique d'évolution même quand c'est le coach
+                        qui le rentre. */}
+                    <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                      <input
+                        type="number"
+                        step="0.1"
+                        placeholder="Ex: 42"
+                        value={vmaCmjInput.cmj}
+                        onChange={(e) =>
+                          setVmaCmjInput((p) => ({ ...p, cmj: e.target.value }))
+                        }
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          padding: 8,
+                          borderRadius: 6,
+                          border: "1px solid #2a2620",
+                          background: "#151310",
+                          color: "#f3f0ea",
+                        }}
+                      />
+                      <button className="pt-btn pt-btn--ok"
+                        disabled={savingVmaCmj === "cmj"}
+                        onClick={() => saveManualVmaCmj("cmj")}
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        {savingVmaCmj === "cmj" ? "…" : "✅ Enregistrer"}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 11, color: "#a8a199", marginTop: 4 }}>
+                      💡 À remplir toi-même si l'athlète oublie — contribue à son évolution.
+                    </div>
+                    </>
+                    )}
+                  </div>
+                </div>
+                )}
+              </div>
+            )}
+                </>
+              ) },
+              { key: "weight", pole: "train", label: "⚖️ Évolution du poids", node: (
+                <>
+            {athleteDetails.weightHistory.length > 0 && (
+              <div
+                style={{
+                  background: "#151310",
+                  padding: 20,
+                  borderRadius: 12,
+                  marginBottom: 16,
+                  border: "1px solid #2a2620",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    marginBottom: sectionVisibility.weight ? 15 : 0,
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
+                    ⚖️ Évolution du poids
+                  </h3>
+                  <SectionToggleBtn sectionKey="weight" />
+                </div>
+                {sectionVisibility.weight && (
+                <>
+                <ResponsiveContainer width="100%" height={220}>
+                  <AreaChart data={athleteDetails.weightHistory}>
+                    <defs>
+                      <linearGradient id="pGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop
+                          offset="5%"
+                          stopColor="#e0a13d"
+                          stopOpacity={0.7}
+                        />
+                        <stop
+                          offset="95%"
+                          stopColor="#e0a13d"
+                          stopOpacity={0}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
+                    <XAxis
+                      dataKey="date"
+                      stroke="#a8a199"
+                      fontSize={11}
+                      tickFormatter={(d) => d.slice(5)}
+                    />
+                    <YAxis
+                      stroke="#a8a199"
+                      fontSize={11}
+                      domain={["auto", "auto"]}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#0d0c0a",
+                        border: "1px solid rgba(255, 255, 255, 0.05)",
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="weight"
+                      name="Poids (kg)"
+                      stroke="#e0a13d"
+                      strokeWidth={2}
+                      fill="url(#pGrad)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+                <div
+                  style={{
+                    textAlign: "center",
+                    marginTop: 10,
+                    fontSize: 13,
+                    color: "#a8a199",
+                  }}
+                >
+                  Poids actuel:{" "}
+                  <strong style={{ color: "#e0a13d" }}>
+                    {
+                      athleteDetails.weightHistory[
+                        athleteDetails.weightHistory.length - 1
+                      ].weight
+                    }{" "}
+                    kg
+                  </strong>
+                </div>
+                </>
+                )}
+              </div>
+            )}
+                </>
+              ) },
+              { key: "todayWorkout", pole: "train", label: "🏋️ Séance aujourd'hui", node: (
+                <>
+            <div
+              style={{
+                background: "#151310",
+                padding: 18,
+                borderRadius: 12,
+                marginBottom: 16,
+                border: "1px solid #2a2620",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  marginBottom: sectionVisibility.todayWorkout ? 12 : 0,
+                }}
+              >
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f3f0ea" }}>
+                  🏋️ Séance aujourd'hui
+                </h3>
+                <SectionToggleBtn sectionKey="todayWorkout" />
+              </div>
+              {sectionVisibility.todayWorkout && (
+              athleteDetails.todayWorkout ? (
+                <div>
+                  <div
+                    style={{
+                      fontSize: 16,
+                      fontWeight: "bold",
+                      marginBottom: 8,
+                    }}
+                  >
+                    {athleteDetails.todayWorkout.title}
+                  </div>
+                  {isWorkoutCompleted(athleteDetails.todayWorkout, showAthleteDetail.id) ? (
+                    <div
+                      style={{
+                        padding: 12,
+                        background: "rgba(79,174,125,0.14)",
+                        borderRadius: 8,
+                        color: "#4fae7d",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ✅ Validée –{" "}
+                      {new Date(
+                        getUserProgress(athleteDetails.todayWorkout, showAthleteDetail.id)?.completedAt
+                      ).toLocaleString("fr-FR")}
+                    </div>
+                  ) : isWorkoutInProgress(athleteDetails.todayWorkout, showAthleteDetail.id) ? (
+                    <div
+                      style={{
+                        padding: 12,
+                        background: "rgba(217,164,65,0.14)",
+                        borderRadius: 8,
+                        color: "#d9a441",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ⏳ En cours
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        padding: 12,
+                        background: "rgba(217,105,90,0.14)",
+                        borderRadius: 8,
+                        color: "#d9695a",
+                        fontWeight: "bold",
+                      }}
+                    >
+                      ❌ Non démarrée
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{ color: "#a8a199", fontSize: 14 }}>
+                  Pas de séance programmée
+                </div>
+              )
+              )}
+            </div>
+                </>
+              ) },
+            ])}
+                </>
               );
             })()}
           </div>

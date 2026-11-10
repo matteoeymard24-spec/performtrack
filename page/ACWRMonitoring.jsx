@@ -476,16 +476,16 @@ export default function ACWRMonitoring() {
                   >
                     <div>
                       <div style={{ color: "#3498db", fontWeight: "bold", marginBottom: 5 }}>
-                        Sous-chargé (&lt; 0.8)
+                        Charge en baisse (&lt; 0.8)
                       </div>
                       <p style={{ margin: 0, fontSize: 13, color: "#a8a199" }}>
-                        L'athlète peut supporter plus de charge. Possibilité
-                        d'augmenter le volume.
+                        Charge récente sous son habitude : marge pour remonter
+                        progressivement, si la récupération est bonne.
                       </p>
                     </div>
                     <div>
                       <div style={{ color: "#4fae7d", fontWeight: "bold", marginBottom: 5 }}>
-                        Zone optimale (0.8 - 1.3)
+                        Charge stable (0.8 - 1.3)
                       </div>
                       <p style={{ margin: 0, fontSize: 13, color: "#a8a199" }}>
                         Charge cohérente avec l'historique récent de l'athlète.
@@ -493,7 +493,7 @@ export default function ACWRMonitoring() {
                     </div>
                     <div>
                       <div style={{ color: "#d9a441", fontWeight: "bold", marginBottom: 5 }}>
-                        Attention (1.3 - 1.5)
+                        Charge en hausse (1.3 - 1.5)
                       </div>
                       <p style={{ margin: 0, fontSize: 13, color: "#a8a199" }}>
                         Charge élevée. Surveiller la récupération, le
@@ -502,7 +502,7 @@ export default function ACWRMonitoring() {
                     </div>
                     <div>
                       <div style={{ color: "#d9695a", fontWeight: "bold", marginBottom: 5 }}>
-                        Surcharge (&gt; 1.5)
+                        Forte hausse (&gt; 1.5)
                       </div>
                       <p style={{ margin: 0, fontSize: 13, color: "#a8a199" }}>
                         Écart important par rapport à la charge chronique.
