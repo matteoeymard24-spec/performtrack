@@ -5,6 +5,7 @@ import { stickyHead } from "../component/ui";
 import DashColumns, { colOfFn } from "../component/DashColumns";
 import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, rtpPatch, rtpTestsPatch, needsInjuredGroup, zonePainHistory, painMonitor, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
 import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard, DeclareInjuryCard, InjuryRmCard } from "../component/CoachFiche";
+import { CoachChatCard, AthleteRepliesCard, sendSessionMsg, withMsg, chatSeen, markChatSeen, athleteItemsOf } from "../component/sessionChat";
 import { syncInjuredGroup, injuredGroupOf, setInjuredManual, joinInjuredGroupSelf } from "../component/injuredGroup";
 import { injuryRmRows, rmRecoveryPct, recalibrateInjuryRms } from "../component/injuryRm";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
@@ -717,6 +718,9 @@ export default function Dashboard() {
     }
   };
   const [athleteDetails, setAthleteDetails] = useState(null);
+  // 💬 Messagerie de séance : « lu » mémorisé sur l'appareil ; chatPrevSeen = dernière lecture AVANT d'ouvrir la fiche
+  const [chatPrevSeen, setChatPrevSeen] = useState("");
+  const [, setChatSeenTick] = useState(0); // force le rendu (pastilles 💬) après lecture
   const [detailedAthleteRMHistory, setDetailedAthleteRMHistory] = useState({});
   const [detailedAthleteRMCategories, setDetailedAthleteRMCategories] = useState({});
   const [acwrHistory, setAcwrHistory] = useState([]);
@@ -1589,6 +1593,7 @@ export default function Dashboard() {
             todayWorkoutInProgress: todayWorkout ? isWorkoutInProgress(todayWorkout, u.id) : false,
             totalSessions: totalSessions,
             completedSessions: completedSessions,
+            chatTimes: uWorkouts.flatMap((w) => athleteItemsOf(w, u.id)),
           };
         });
 
@@ -1632,6 +1637,11 @@ export default function Dashboard() {
   }, [userRole, currentUser, customGroups]);
 
   const loadAthleteDetail = async (athlete) => {
+    if (currentUser?.uid && athlete?.id) {
+      setChatPrevSeen(chatSeen(currentUser.uid, athlete.id));
+      markChatSeen(currentUser.uid, athlete.id);
+      setChatSeenTick((t) => t + 1);
+    }
     try {
       const today = getLocalDateStr(new Date());
 
@@ -3455,6 +3465,20 @@ export default function Dashboard() {
                   document.getElementById(`pt-apole-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
                 }}
               />
+              {/* 💬 réponses du coach dans la messagerie de séance (component/sessionChat.jsx) */}
+              <AthleteRepliesCard
+                sessions={athleteWorkouts}
+                uid={currentUser?.uid}
+                seenIso={currentUser?.uid ? chatSeen(currentUser.uid, "coach") : ""}
+                onSeen={() => {
+                  markChatSeen(currentUser.uid, "coach");
+                  setChatSeenTick((t) => t + 1);
+                }}
+                onOpen={(w) => {
+                  markChatSeen(currentUser.uid, "coach");
+                  goToWorkout(w.id);
+                }}
+              />
               {renderPoles(cards, {
                 poles: ATH_POLES,
                 dash: { order: dashOrder || [], cols: dashCols || {}, off: dashOff, folded: athFolded, poleOrder: athPoleOrder || [] },
@@ -3628,6 +3652,15 @@ export default function Dashboard() {
                       <span title={athlete.crossStatus?.detail} style={{ fontSize: 11, fontWeight: 700, color: col, background: `${col}1a`, border: `1px solid ${col}66`, borderRadius: 999, padding: "1px 8px" }}>
                         {(athlete.crossStatus || fl).emoji} {(athlete.crossStatus || fl).label}
                       </span>
+                      {(() => {
+                        const seen = currentUser?.uid ? chatSeen(currentUser.uid, athlete.id) : "";
+                        const n = (athlete.chatTimes || []).filter((t) => !seen || t > seen).length;
+                        return n > 0 ? (
+                          <span title="Nouvelles remarques de séance" style={{ fontSize: 11, fontWeight: 800, color: "#1a1306", background: "#e0a13d", borderRadius: 999, padding: "1px 8px" }}>
+                            💬 {n}
+                          </span>
+                        ) : null;
+                      })()}
                       {athlete.lastWellness && athlete.lastWellness.sick && (
                         <span title={athlete.lastWellness.sickType || "Malade"} style={{ fontSize: 11, fontWeight: 700, color: "#d9695a", background: "rgba(217,105,90,0.12)", border: "1px solid #d9695a66", borderRadius: 999, padding: "1px 8px" }}>
                           🤒 Malade
@@ -4135,6 +4168,21 @@ export default function Dashboard() {
               onGo={(id) => {
                 if ((coachDash?.folded || []).includes(id)) saveCoachDash({ folded: (coachDash.folded || []).filter((x) => x !== id) });
                 document.getElementById(`pt-pole-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            />
+            <CoachChatCard
+              sessions={athleteDetails.sessions || []}
+              uid={showAthleteDetail.id}
+              coachUid={currentUser?.uid}
+              seenIso={chatPrevSeen}
+              athleteName={showAthleteDetail.firstName || getAthleteName(showAthleteDetail)}
+              canReply={(w) => isSuperAdmin || w.createdBy === currentUser?.uid}
+              onSend={async (w, t) => {
+                const aid = showAthleteDetail.id;
+                const msg = await sendSessionMsg({ db, workoutId: w.id, uid: aid, from: "coach", by: currentUser.uid, text: t });
+                if (!msg) return;
+                markChatSeen(currentUser.uid, aid);
+                setAthleteDetails((d) => (d ? { ...d, sessions: (d.sessions || []).map((x) => (x.id === w.id ? withMsg(x, aid, msg) : x)) } : d));
               }}
             />
             {renderCoachPoles([

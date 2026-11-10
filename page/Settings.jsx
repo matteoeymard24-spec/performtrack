@@ -8,13 +8,21 @@ import { THRESHOLD_SECTIONS, DEFAULTS, saveThresholds } from "../component/thres
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 import { useSearchParams } from "react-router-dom";
 import Reference from "./Reference";
-import { createTestAthlete, deleteTestAthlete } from "../component/testAthlete";
+import { createTestAthlete, deleteTestAthlete, testAthleteId } from "../component/testAthlete";
 
 /* 🧪 Athlète test : un faux athlète rempli avec ~4 mois de données pour voir le rendu complet (testAthlete.js) */
 function TestAthleteCard() {
   const { currentUser } = useAuth();
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
+  // existe-t-il déjà ? (1 lecture, à l'ouverture de la carte)
+  const [exists, setExists] = useState(null);
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    getDoc(doc(db, "users", testAthleteId(currentUser.uid)))
+      .then((d) => setExists(d.exists()))
+      .catch(() => setExists(null));
+  }, [currentUser?.uid, msg]);
   const run = async (kind) => {
     if (kind === "delete" && !(await appConfirm("Supprimer l'athlète test et toutes ses données ?", { ok: "Supprimer", danger: true }))) return;
     setBusy(kind);
@@ -22,7 +30,7 @@ function TestAthleteCard() {
     try {
       if (kind === "create") {
         const res = await createTestAthlete({ db, coachUid: currentUser.uid });
-        setMsg(`✓ Athlète test prêt (${res.docs} documents). Ouvre le Dashboard et clique sur « Test Démo 🧪 ».`);
+        setMsg(`✓ Athlète test prêt (${res.docs} documents). Ouvre le Dashboard (recharge la page) et clique sur « Test Démo 🧪 ».`);
       } else {
         const n = await deleteTestAthlete({ db, coachUid: currentUser.uid });
         setMsg(`✓ Athlète test supprimé (${n} documents).`);
@@ -34,8 +42,13 @@ function TestAthleteCard() {
     }
   };
   return (
-    <div style={{ marginTop: 22, padding: 16, borderRadius: 12, background: "#151310", border: "1px solid #2a2620" }}>
-      <div style={{ fontSize: 16, fontWeight: 800 }}>🧪 Athlète test</div>
+    <div style={{ marginBottom: 16, padding: 16, borderRadius: 12, background: "#151310", border: "1px solid #2a2620" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 16, fontWeight: 800 }}>🧪 Athlète test</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: exists ? GREEN : MUTED }}>
+          {exists == null ? "" : exists ? "✓ créé : visible seulement par toi (Dashboard, Athlètes, Séances)" : "pas encore créé : clique sur « Créer »"}
+        </span>
+      </div>
       <div style={{ fontSize: 12.5, color: MUTED, margin: "4px 0 12px", lineHeight: 1.5 }}>
         Crée « Test Démo 🧪 », rattaché à toi, avec environ 4 mois de séances (RPE, durées), wellness quotidien, RM, CMJ, VMA, poids,
         une blessure aux ischios en récidive avec son retour au jeu à l'étape 4, et des séances à venir. Régénérer remet les données à
@@ -242,6 +255,8 @@ export default function Settings() {
     <Page>
       <PageHeader title="⚙️ Paramètres" subtitle="Seuils et normes utilisés par l'app : état de forme, RPE prévu, charge de la journée, nutrition." />
       {tabs}
+      {/* réservé au superadmin : l'athlète test n'existe que pour lui */}
+      {isSuperAdmin && <TestAthleteCard />}
 
       <KpiGrid min={150}>
         <Kpi icon="🎛️" label="Réglages modifiés" value={nChanged} sub={`sur ${Object.keys(DEFAULTS).length}`} color={nChanged ? ACCENT : TEXT} />
@@ -299,7 +314,6 @@ export default function Settings() {
         </button>
         <span style={{ fontSize: 12, color: dirty ? ACCENT : GREEN, alignSelf: "center" }}>{dirty ? "Modifications non enregistrées" : ""}</span>
       </div>
-      <TestAthleteCard />
     </Page>
   );
 }

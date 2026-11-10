@@ -265,6 +265,13 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
           est acceptable si elle revient à son niveau habituel le lendemain matin. Au-dessus de 5/10 : revenir à l'étape d'avant ou alléger ;
           hausse d'au moins 2 points d'un jour à l'autre : ne pas progresser.
         </P>
+        <H>💬 Messagerie de séance</H>
+        <P>
+          Une fois sa séance démarrée ou terminée, l'athlète écrit une remarque à son coach (encadré « 💬 Remarques pour ton coach » de la
+          séance, ou à la fin dans la fenêtre du RPE) ; les « Notes » de chaque exercice sont reprises avec. Le coach les lit dans la fiche
+          athlète (carte « 💬 Messagerie de séance », pastille 💬 sur la carte de l'athlète tant qu'il ne l'a pas ouverte) et répond dans les
+          séances qu'il a créées ; l'athlète voit la réponse sur son Dashboard. Tout est rangé dans la séance : aucune lecture en plus.
+        </P>
         <H>Groupe « 🏥 Blessés » automatique</H>
         <P>
           Un athlète entre dans le groupe Blessés de son coach dès qu'une blessure est suivie (en cours, ou reprise dont le retour au jeu

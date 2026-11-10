@@ -32,6 +32,7 @@ import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
 import EnduranceProfile, { ZonesCard } from "../component/EnduranceProfile";
 import { zoneOf, pctCS, hrTarget, HR_MIN_EFFORT_SEC, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK, refKindOf, refLabel, refLong, REF_KINDS, setVmiVmaRatio, vmiVmaRatio } from "../component/drillBank";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
+import { ChatThread, ChatInput, chatOf, exerciseNotesOf, canAthleteWrite, sendSessionMsg, withMsg } from "../component/sessionChat";
 import { CONTRACTIONS, contractionOf, isSpecialContraction, contractionTip, contractionShort } from "../component/contraction";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -2480,6 +2481,13 @@ export default function Workout() {
         feedback: { ...(userProgressData.feedback || {}), ...sessionFeedback },
         inProgress: false,
       };
+      // remarque de fin de séance pour le coach (messagerie de séance, component/sessionChat.jsx)
+      if (endRating && endRating.note && !isAdminLike && actorUid === currentUser?.uid) {
+        newUserProgressData.msgs = [
+          ...(Array.isArray(userProgressData.msgs) ? userProgressData.msgs : []),
+          { from: "athlete", by: currentUser.uid, text: endRating.note.slice(0, 1000), at: new Date().toISOString() },
+        ];
+      }
       
       console.log("[endSession] 💾 Mise à jour userProgress pour", actorUid);
       
@@ -10115,6 +10123,30 @@ export default function Workout() {
               })()}
             </div>
           )}
+          {/* 💬 Messagerie de séance (component/sessionChat.jsx) : l'athlète écrit à son coach une fois la séance
+              démarrée ou terminée ; le coach lit et répond depuis la fiche athlète du Dashboard. */}
+          {!isAdminLike && actorUid === currentUser?.uid && canAthleteWrite(selectedSession, actorUid) && (
+            <div style={{ margin: "0 0 14px", padding: 12, borderRadius: 12, background: "#151310", border: "1px solid #2a2620" }}>
+              <div style={{ fontSize: 14.5, fontWeight: 800, color: "#f3f0ea", marginBottom: 4 }}>💬 Remarques pour ton coach</div>
+              <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8, lineHeight: 1.45 }}>
+                Ressenti, douleur, exercice trop dur ou trop facile… Ton coach le voit dans ta fiche. Pour un exercice précis, utilise aussi le
+                champ « Notes » de son feedback.
+              </div>
+              <ChatThread msgs={chatOf(selectedSession, actorUid)} notes={exerciseNotesOf(selectedSession, actorUid)} viewer="athlete" names={{ athlete: "Toi", coach: "Coach" }} />
+              <ChatInput
+                placeholder="Ta remarque sur la séance…"
+                onSend={async (t) => {
+                  const id = selectedSession.id;
+                  const msg = await sendSessionMsg({ db, workoutId: id, uid: actorUid, from: "athlete", by: currentUser.uid, text: t });
+                  if (!msg) return;
+                  invalidateQueryCache("workout|");
+                  const patch = (x) => (x && x.id === id ? withMsg(x, actorUid, msg) : x);
+                  setSelectedSession((x) => patch(x));
+                  setEvents((list) => (Array.isArray(list) ? list.map(patch) : list));
+                }}
+              />
+            </div>
+          )}
           {/* Blocs exercices */}
           {rmPicker}
           {restTimer && (() => {
@@ -11468,11 +11500,24 @@ export default function Workout() {
                 ? `Durée prévue : ${endAsk.estimated} min.`
                 : ""}
             </div>
+            {!isAdminLike && actorUid === currentUser?.uid && (
+              <>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginTop: 14, marginBottom: 6 }}>💬 Une remarque pour ton coach ? (facultatif)</label>
+                <textarea
+                  value={endAsk.note || ""}
+                  maxLength={1000}
+                  rows={2}
+                  onChange={(e) => setEndAsk((d) => (d ? { ...d, note: e.target.value } : d))}
+                  placeholder="Ressenti, douleur, exercice trop dur…"
+                  style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: "1px solid #2a2620", background: "#0d0c0a", color: "#f3f0ea", fontSize: 15, fontFamily: "inherit", resize: "vertical" }}
+                />
+              </>
+            )}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button
                 type="button"
                 disabled={endAsk.rpe == null || !(endAsk.duration > 0)}
-                onClick={() => closeEndAsk({ rpe: endAsk.rpe, duration: Number(endAsk.duration) })}
+                onClick={() => closeEndAsk({ rpe: endAsk.rpe, duration: Number(endAsk.duration), note: String(endAsk.note || "").trim() })}
                 style={{ flex: 2, padding: 12, borderRadius: 8, border: "none", background: endAsk.rpe == null || !(endAsk.duration > 0) ? "#3a352d" : "#4fae7d", color: "white", fontWeight: 700, fontSize: 15, cursor: endAsk.rpe == null ? "not-allowed" : "pointer" }}
               >
                 ✅ Terminer la séance
@@ -11788,7 +11833,7 @@ export default function Workout() {
                       fontWeight: "bold",
                     }}
                   >
-                    Notes
+                    Notes (ton coach les voit)
                   </label>
                   <textarea
                     value={currentExerciseFeedback.notes || ""}
@@ -12364,7 +12409,7 @@ export default function Workout() {
                       fontWeight: "bold",
                     }}
                   >
-                    Notes
+                    Notes (ton coach les voit)
                   </label>
                   <textarea
                     value={currentExerciseFeedback.notes || ""}
@@ -12635,7 +12680,7 @@ export default function Workout() {
                       fontWeight: "bold",
                     }}
                   >
-                    Notes
+                    Notes (ton coach les voit)
                   </label>
                   <textarea
                     value={currentExerciseFeedback.notes || ""}

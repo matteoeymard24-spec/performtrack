@@ -124,8 +124,20 @@ export async function createTestAthlete({ db, coachUid }) {
     createdAt: nowTs,
   });
 
-  // séances
-  sessionsPlan(r).forEach((s, i) => {
+  // séances (+ quelques remarques dans la messagerie de séance, component/sessionChat.jsx)
+  const plan = sessionsPlan(r);
+  const doneIdx = plan.map((s, i) => (s.felt != null ? i : -1)).filter((i) => i >= 0);
+  const CHAT = {
+    [doneIdx[doneIdx.length - 1]]: [
+      { from: "athlete", text: "Ischios un peu tendus sur les dernières accélérations, rien de douloureux (2/10).", h: 19 },
+    ],
+    [doneIdx[doneIdx.length - 2]]: [
+      { from: "athlete", text: "RDL facile aujourd'hui, je pourrais monter la charge ?", h: 19 },
+      { from: "coach", text: "Oui : +5 kg à la prochaine si la douleur reste ≤ 2/10 le lendemain.", h: 21 },
+    ],
+    [doneIdx[doneIdx.length - 4]]: [{ from: "athlete", text: "Grosse fatigue, mauvaise nuit. J'ai écourté la dernière série.", h: 20 }],
+  };
+  plan.forEach((s, i) => {
     const T = TEMPLATES[s.tpl];
     const done = s.felt != null;
     put(doc(db, "workout", `test_${coachUid}_${i}`), {
@@ -140,7 +152,17 @@ export async function createTestAthlete({ db, coachUid }) {
       blocks: T.blocks,
       testOf: uid,
       createdAt: nowTs,
-      userProgress: done ? { [uid]: { completedAt: isoTs(s.d), doneDate: isoDay(s.d), sessionRpe: s.felt, sessionDuration: s.dur } } : {},
+      userProgress: done
+        ? {
+            [uid]: {
+              completedAt: isoTs(s.d),
+              doneDate: isoDay(s.d),
+              sessionRpe: s.felt,
+              sessionDuration: s.dur,
+              ...(CHAT[i] ? { msgs: CHAT[i].map((m) => ({ from: m.from, by: m.from === "coach" ? coachUid : uid, text: m.text, at: isoTs(s.d, m.h) })) } : {}),
+            },
+          }
+        : {},
     });
   });
 
