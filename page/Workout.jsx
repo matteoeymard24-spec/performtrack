@@ -32,7 +32,7 @@ import DrillBankModal, { DrillBankManager } from "../component/DrillBankModal";
 import EnduranceProfile, { ZonesCard } from "../component/EnduranceProfile";
 import { zoneOf, pctCS, hrTarget, HR_MIN_EFFORT_SEC, defaultSprintDiagram, DEFAULT_CS_VMA_RATIO, SPRINT_BANK, ENDURANCE_BANK, refKindOf, refLabel, refLong, REF_KINDS, setVmiVmaRatio, vmiVmaRatio } from "../component/drillBank";
 import PlanningPanel, { CycleBanner } from "../component/PlanningPanel";
-import { ChatThread, ChatInput, chatOf, exerciseNotesOf, canAthleteWrite, sendSessionMsg, withMsg } from "../component/sessionChat";
+import { AthleteSessionPanel, canAthleteWrite, sendSessionMsg, withMsg, chatCutoff } from "../component/sessionChat";
 import { CONTRACTIONS, contractionOf, isSpecialContraction, contractionTip, contractionShort } from "../component/contraction";
 import { cyclesOnDay, cycleInScope, cycleColor, levelOf, isIndividual, userScope, fixturesOnDay, kindOf } from "../component/cycles";
 import {
@@ -2484,7 +2484,7 @@ export default function Workout() {
       // remarque de fin de séance pour le coach (messagerie de séance, component/sessionChat.jsx)
       if (endRating && endRating.note && !isAdminLike && actorUid === currentUser?.uid) {
         newUserProgressData.msgs = [
-          ...(Array.isArray(userProgressData.msgs) ? userProgressData.msgs : []),
+          ...(Array.isArray(userProgressData.msgs) ? userProgressData.msgs : []).filter((m) => m?.at && m.at >= chatCutoff()),
           { from: "athlete", by: currentUser.uid, text: endRating.note.slice(0, 1000), at: new Date().toISOString() },
         ];
       }
@@ -10126,26 +10126,19 @@ export default function Workout() {
           {/* 💬 Messagerie de séance (component/sessionChat.jsx) : l'athlète écrit à son coach une fois la séance
               démarrée ou terminée ; le coach lit et répond depuis la fiche athlète du Dashboard. */}
           {!isAdminLike && actorUid === currentUser?.uid && canAthleteWrite(selectedSession, actorUid) && (
-            <div style={{ margin: "0 0 14px", padding: 12, borderRadius: 12, background: "#151310", border: "1px solid #2a2620" }}>
-              <div style={{ fontSize: 14.5, fontWeight: 800, color: "#f3f0ea", marginBottom: 4 }}>💬 Remarques pour ton coach</div>
-              <div style={{ fontSize: 12, color: "#a8a199", marginBottom: 8, lineHeight: 1.45 }}>
-                Ressenti, douleur, exercice trop dur ou trop facile… Ton coach le voit dans ta fiche. Pour un exercice précis, utilise aussi le
-                champ « Notes » de son feedback.
-              </div>
-              <ChatThread msgs={chatOf(selectedSession, actorUid)} notes={exerciseNotesOf(selectedSession, actorUid)} viewer="athlete" names={{ athlete: "Toi", coach: "Coach" }} />
-              <ChatInput
-                placeholder="Ta remarque sur la séance…"
-                onSend={async (t) => {
-                  const id = selectedSession.id;
-                  const msg = await sendSessionMsg({ db, workoutId: id, uid: actorUid, from: "athlete", by: currentUser.uid, text: t });
-                  if (!msg) return;
-                  invalidateQueryCache("workout|");
-                  const patch = (x) => (x && x.id === id ? withMsg(x, actorUid, msg) : x);
-                  setSelectedSession((x) => patch(x));
-                  setEvents((list) => (Array.isArray(list) ? list.map(patch) : list));
-                }}
-              />
-            </div>
+            <AthleteSessionPanel
+              w={selectedSession}
+              uid={actorUid}
+              onSend={async (t) => {
+                const id = selectedSession.id;
+                const msg = await sendSessionMsg({ db, workoutId: id, uid: actorUid, from: "athlete", by: currentUser.uid, text: t });
+                if (!msg) return;
+                invalidateQueryCache("workout|");
+                const patch = (x) => (x && x.id === id ? withMsg(x, actorUid, msg) : x);
+                setSelectedSession((x) => patch(x));
+                setEvents((list) => (Array.isArray(list) ? list.map(patch) : list));
+              }}
+            />
           )}
           {/* Blocs exercices */}
           {rmPicker}

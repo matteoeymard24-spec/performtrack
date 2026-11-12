@@ -270,7 +270,9 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
           Une fois sa séance démarrée ou terminée, l'athlète écrit une remarque à son coach (encadré « 💬 Remarques pour ton coach » de la
           séance, ou à la fin dans la fenêtre du RPE) ; les « Notes » de chaque exercice sont reprises avec. Le coach les lit dans la fiche
           athlète (carte « 💬 Messagerie de séance », pastille 💬 sur la carte de l'athlète tant qu'il ne l'a pas ouverte) et répond dans les
-          séances qu'il a créées ; l'athlète voit la réponse sur son Dashboard. Tout est rangé dans la séance : aucune lecture en plus.
+          séances qu'il a créées ; l'athlète voit la réponse sur son Dashboard. Côté coach, une ligne repliable par séance, rangée par semaine,
+          avec les filtres « Nouvelles » et « Sans réponse » ; un bouton « Masquer » replie la messagerie. Les messages sont supprimés au bout
+          de 14 jours (ménage fait par l'appli à l'ouverture, sans service payant). Tout est rangé dans la séance : aucune lecture en plus.
         </P>
         <H>Groupe « 🏥 Blessés » automatique</H>
         <P>

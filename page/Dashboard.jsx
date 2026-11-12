@@ -5,7 +5,8 @@ import { stickyHead } from "../component/ui";
 import DashColumns, { colOfFn } from "../component/DashColumns";
 import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, rtpPatch, rtpTestsPatch, needsInjuredGroup, zonePainHistory, painMonitor, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
 import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard, DeclareInjuryCard, InjuryRmCard } from "../component/CoachFiche";
-import { CoachChatCard, AthleteRepliesCard, sendSessionMsg, withMsg, chatSeen, markChatSeen, athleteItemsOf } from "../component/sessionChat";
+import { CoachChatCard, AthleteRepliesCard, sendSessionMsg, withMsg, chatSeen, markChatSeen, athleteItemsOf, purgeOldMsgs, applyPurge } from "../component/sessionChat";
+import { createTestAthlete } from "../component/testAthlete";
 import { syncInjuredGroup, injuredGroupOf, setInjuredManual, joinInjuredGroupSelf } from "../component/injuredGroup";
 import { injuryRmRows, rmRecoveryPct, recalibrateInjuryRms } from "../component/injuryRm";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
@@ -18,7 +19,7 @@ import { rmSerie } from "../component/methods";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthProvider";
 import { db } from "../firebase";
-import { getWorkoutDocs, getScopedUserDocs, getWellnessSince, daysAgoStr, WINDOW } from "../component/workoutQueries";
+import { getWorkoutDocs, getScopedUserDocs, getWellnessSince, daysAgoStr, WINDOW, invalidateQueryCache } from "../component/workoutQueries";
 import {
   collection,
   getDocs,
@@ -169,6 +170,7 @@ export default function Dashboard() {
   };
 
   const [athletes, setAthletes] = useState([]);
+  const [testCreating, setTestCreating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [customGroups, setCustomGroups] = useState([]);
   const [wellnessFilter, setWellnessFilter] = useState("total");
@@ -743,6 +745,25 @@ export default function Dashboard() {
   // semaine en cours — alimentent la mini-frise 7 jours et la sparkline de
   // charge, sans refaire de requête Firestore séparée.
   const [athleteWorkouts, setAthleteWorkouts] = useState([]);
+  // Messages de séance de plus de 14 jours : supprimés (une fois par athlète ouvert / par chargement)
+  const chatPurged = useRef(new Set());
+  useEffect(() => {
+    const aid = showAthleteDetail?.id;
+    const list = athleteDetails?.sessions;
+    if (!aid || !Array.isArray(list) || !list.length || chatPurged.current.has(`c_${aid}`)) return;
+    chatPurged.current.add(`c_${aid}`);
+    purgeOldMsgs({ db, sessions: list, uid: aid, canWrite: (w) => isSuperAdmin || w.createdBy === currentUser?.uid }).then((changed) => {
+      if (changed.length) setAthleteDetails((d) => (d ? { ...d, sessions: applyPurge(d.sessions || [], aid, changed) } : d));
+    });
+  }, [athleteDetails, showAthleteDetail?.id, isSuperAdmin, currentUser?.uid]);
+  useEffect(() => {
+    const uid = currentUser?.uid;
+    if (!uid || userRole === "admin" || !athleteWorkouts.length || chatPurged.current.has(`a_${uid}`)) return;
+    chatPurged.current.add(`a_${uid}`);
+    purgeOldMsgs({ db, sessions: athleteWorkouts, uid }).then((changed) => {
+      if (changed.length) setAthleteWorkouts((l) => applyPurge(l, uid, changed));
+    });
+  }, [athleteWorkouts, currentUser?.uid, userRole]);
   const [weekOverview, setWeekOverview] = useState([]);
   const [selfForm, setSelfForm] = useState(null); // « état de forme » de MON dashboard
   const [, setSelfCrossStatus] = useState(null);
@@ -3510,6 +3531,32 @@ export default function Dashboard() {
         overflowX: "clip", // « clip » et pas « hidden » : laisse fonctionner les en-têtes collants
       }}
     >
+      {/* 🧪 Athlète test absent : création directe (superadmin uniquement, invisible pour tous les autres) */}
+      {isSuperAdmin && !loading && !athletes.some((a) => a.isTest) && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "10px 14px", marginBottom: 14, borderRadius: 12, background: "#151310", border: "1px dashed #e0a13d88" }}>
+          <span style={{ fontSize: 13.5, color: "#f3f0ea" }}>
+            <b>🧪 Athlète test</b> <span style={{ color: "#a8a199" }}>· pas encore créé. ~4 mois de fausses données (séances, wellness, blessure, RM, bilans) visibles seulement par toi.</span>
+          </span>
+          <button
+            type="button"
+            className="pt-btn pt-btn--accent pt-btn--sm"
+            disabled={testCreating}
+            onClick={async () => {
+              setTestCreating(true);
+              try {
+                await createTestAthlete({ db, coachUid: currentUser.uid });
+                invalidateQueryCache("");
+                window.location.reload();
+              } catch (e) {
+                setTestCreating(false);
+                await alert("Création impossible : " + (e?.message || e) + "\n(Vérifie que les règles Firestore à jour sont publiées.)");
+              }
+            }}
+          >
+            {testCreating ? "Création… (≈ 10 s)" : "Créer l'athlète test"}
+          </button>
+        </div>
+      )}
       {/* EN-TÊTE */}
       {(() => {
         const today = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });

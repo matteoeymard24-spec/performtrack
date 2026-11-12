@@ -9,12 +9,14 @@
      → récidive précoce. Une semaine sans séance, puis réathlé individuelle qui remonte.
    • Retour au jeu à l'étape 4 (terrain), avec historique daté, critères cochés et tests de retour.
    • Wellness presque tous les jours (fatigue qui monte avec la charge, douleur de la zone qui décroît).
+   • Bilans (page Tests) : 3 campagnes (pré-saison, mi-saison, retour de blessure avec déficit ischio droit).
    • RM avec historique : bas du corps recalé après la blessure puis en remontée, RDL pas retesté, haut du
      corps stable ; CMJ, VMA, poids hebdomadaire. 3 séances à venir.
    Tout porte isTest / testOf : « Supprimer » enlève exactement ces documents.
    ===================================================================== */
 import { collection, doc, getDocs, query, where, writeBatch, Timestamp, deleteDoc } from "firebase/firestore";
 import { removeUserFromGroups } from "./injuredGroup";
+import { getTest, computeResult, toStoredResult } from "./testsCalc";
 
 export const testAthleteId = (coachUid) => `test_${coachUid}`;
 
@@ -285,6 +287,63 @@ export async function createTestAthlete({ db, coachUid }) {
     history: [[-110, 16], [-60, 16.5]].map(([d, kg]) => ({ date: isoTs(d, 12), kg })),
     testOf: uid,
   });
+  // Bilans (page Tests) : 3 campagnes, calculées avec les formules de la page Tests (testsCalc.js).
+  // Pré-saison (J-110), mi-saison (J-60), retour de blessure (J-6 : déficit ischio DROIT, cohérent avec la lésion).
+  const CAMPAIGNS = [
+    { d: -110, k: 0.96, inj: 1 },
+    { d: -60, k: 1.0, inj: 1 },
+    { d: -6, k: 0.98, inj: 0.84 },
+  ];
+  const SIDE_BASE = { ham: 310, quad: 460, add: 360, abd: 300, er: 150, ir: 205, reps: 24, t: 0, reach: 63 };
+  CAMPAIGNS.forEach(({ d, k, inj }, ci) => {
+    const kk = (x, dec = 1) => Math.round(x * k * 10 ** dec) / 10 ** dec;
+    const vals = {
+      leger: { speed: [13, 13.5, 13][ci] },
+      yoyo_ir1: { distance: [1120, 1280, 1160][ci] },
+      bronco: { time: ["5:42", "5:28", "5:39"][ci] },
+      cmj: { height: [38, 41, 37][ci] },
+      broad_jump: { d1: kk(228, 0), d2: kk(234, 0), d3: kk(231, 0) },
+      sprint: { t5: [1.14, 1.11, 1.16][ci], t10: [1.95, 1.91, 1.99][ci], t20: [3.38, 3.31, 3.44][ci], vmax: [27.6, 28.3, 27.1][ci] },
+      ktw: { ktw_L: 11, ktw_R: 12 },
+      slr: { slr_L: 82, slr_R: Math.round(82 * (inj < 1 ? 0.88 : 1)) },
+      hip_rot: { ri_L: 33, ri_R: 36, re_L: 42, re_R: 41 },
+      thomas: { psoas_L: 8, psoas_R: 6, quad_L: 78, quad_R: 80 },
+      fms: { deep_squat: 2, hurdle_L: 2, hurdle_R: 2, lunge_L: 3, lunge_R: 2, shoulder_L: 3, shoulder_R: 2, aslr_L: 3, aslr_R: inj < 1 ? 2 : 3, pushup: 3, rotary_L: 2, rotary_R: 2 },
+      iso_ham: { ham_L: kk(SIDE_BASE.ham, 0), ham_R: Math.round(kk(SIDE_BASE.ham, 0) * inj), quad_L: kk(SIDE_BASE.quad, 0), quad_R: kk(SIDE_BASE.quad * 1.02, 0) },
+      iso_hip: { add_L: kk(SIDE_BASE.add, 0), add_R: kk(SIDE_BASE.add * 0.97, 0), abd_L: kk(SIDE_BASE.abd, 0), abd_R: kk(SIDE_BASE.abd, 0) },
+      iso_shoulder: { er_L: kk(SIDE_BASE.er, 0), er_R: kk(SIDE_BASE.er * 1.05, 0), ir_L: kk(SIDE_BASE.ir, 0), ir_R: kk(SIDE_BASE.ir * 1.04, 0) },
+      cop_plank: { t_L: [38, 44, 40][ci], t_R: [36, 42, 37][ci] },
+      calf_raise: { reps_L: kk(SIDE_BASE.reps, 0), reps_R: kk(SIDE_BASE.reps * 0.92, 0) },
+      reach_ant: { reach_L: kk(SIDE_BASE.reach, 0), reach_R: Math.round(kk(SIDE_BASE.reach, 0) * (inj < 1 ? 0.94 : 0.99)) },
+    };
+    Object.entries(vals).forEach(([testId, values]) => {
+      const t = getTest(testId);
+      if (!t) return;
+      // ne garder que les clés que le test connaît (champs ou mesures, côtés G/D)
+      const known = new Set([
+        ...(t.fields || []).map((f) => f.key),
+        ...(t.measures || []).flatMap((m) => (m.sided ? [`${m.key}_L`, `${m.key}_R`] : [m.key])),
+      ]);
+      const clean = {};
+      Object.entries(values).forEach(([key, v]) => {
+        if (known.has(key)) clean[key] = String(v);
+      });
+      const res = toStoredResult(computeResult(t, clean));
+      if (!res || !Object.keys(clean).length) return;
+      put(doc(db, "users", uid, "tests", `test_${testId}_${ci}`), {
+        testId,
+        group: t.group,
+        date: isoDay(d),
+        values: clean,
+        result: res,
+        notes: ci === 2 && testId === "iso_ham" ? "Bilan de retour : ischios droits encore en déficit." : "",
+        createdAt: isoTs(d, 10),
+        createdBy: coachUid,
+        testOf: uid,
+      });
+    });
+  });
+
   for (let d = -112; d <= 0; d += 7) {
     put(doc(db, "users", uid, "weight_history", isoDay(d)), { weight: Math.round((92 + (r() - 0.5) * 1.2 - (d > INJURY_DAY ? 0.8 : 0)) * 10) / 10, date: isoDay(d), testOf: uid });
   }
