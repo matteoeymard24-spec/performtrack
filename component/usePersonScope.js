@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../firebase";
 import { useAuth } from "../auth/AuthProvider";
@@ -13,8 +13,24 @@ import { getScopedUserDocs } from "./workoutQueries";
 export default function usePersonScope() {
   const { currentUser, userRole, isSuperAdmin, coachScope, userProfile } = useAuth();
   const isAdminLike = userRole === "admin" || !!isSuperAdmin;
-  const [mode, setMode] = useState("moi"); // moi | athletes | admins
-  const [viewUid, setViewUid] = useState("");
+  // lien direct depuis la fiche coach : ?athlete=<uid> ouvre les données de cet athlète
+  const urlAthlete = (() => {
+    try {
+      return new URLSearchParams(window.location.search).get("athlete") || "";
+    } catch (e) {
+      return "";
+    }
+  })();
+  const [mode, setMode] = useState(() => (isAdminLike && urlAthlete && urlAthlete !== currentUser?.uid ? "athletes" : "moi")); // moi | athletes | admins
+  const [viewUid, setViewUid] = useState(() => (isAdminLike && urlAthlete && urlAthlete !== currentUser?.uid ? urlAthlete : ""));
+  // le rôle peut arriver après le premier affichage : appliquer le lien une fois qu'on sait que c'est un coach
+  const urlApplied = useRef(false);
+  useEffect(() => {
+    if (urlApplied.current || !isAdminLike || !urlAthlete || urlAthlete === currentUser?.uid) return;
+    urlApplied.current = true;
+    setMode("athletes");
+    setViewUid(urlAthlete);
+  }, [isAdminLike, currentUser?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
   const [athletes, setAthletes] = useState([]);
   const [admins, setAdmins] = useState([]);
   const [groups, setGroups] = useState([]);

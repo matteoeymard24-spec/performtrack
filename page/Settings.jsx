@@ -8,7 +8,7 @@ import { THRESHOLD_SECTIONS, DEFAULTS, saveThresholds } from "../component/thres
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 import { useSearchParams } from "react-router-dom";
 import Reference from "./Reference";
-import { createTestAthlete, deleteTestAthlete, testAthleteId } from "../component/testAthlete";
+import { createTestAthlete, deleteTestAthlete, testAthleteId, setTestHidden } from "../component/testAthlete";
 
 /* 🧪 Athlète test : un faux athlète rempli avec ~4 mois de données pour voir le rendu complet (testAthlete.js) */
 function TestAthleteCard() {
@@ -17,10 +17,14 @@ function TestAthleteCard() {
   const [msg, setMsg] = useState("");
   // existe-t-il déjà ? (1 lecture, à l'ouverture de la carte)
   const [exists, setExists] = useState(null);
+  const [hidden, setHidden] = useState(false);
   useEffect(() => {
     if (!currentUser?.uid) return;
     getDoc(doc(db, "users", testAthleteId(currentUser.uid)))
-      .then((d) => setExists(d.exists()))
+      .then((d) => {
+        setExists(d.exists());
+        setHidden(!!(d.exists() && d.data().testHidden));
+      })
       .catch(() => setExists(null));
   }, [currentUser?.uid, msg]);
   const run = async (kind) => {
@@ -28,7 +32,10 @@ function TestAthleteCard() {
     setBusy(kind);
     setMsg("");
     try {
-      if (kind === "create") {
+      if (kind === "hide") {
+        await setTestHidden({ db, coachUid: currentUser.uid, hidden: !hidden });
+        setMsg(hidden ? "✓ Athlète test affiché (recharge la page)." : "✓ Athlète test masqué partout (recharge la page).");
+      } else if (kind === "create") {
         const res = await createTestAthlete({ db, coachUid: currentUser.uid });
         setMsg(`✓ Athlète test prêt (${res.docs} documents). Ouvre le Dashboard (recharge la page) et clique sur « Test Démo 🧪 ».`);
       } else {
@@ -46,7 +53,7 @@ function TestAthleteCard() {
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 16, fontWeight: 800 }}>🧪 Athlète test</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: exists ? GREEN : MUTED }}>
-          {exists == null ? "" : exists ? "✓ créé : visible seulement par toi (Dashboard, Athlètes, Séances)" : "pas encore créé : clique sur « Créer »"}
+          {exists == null ? "" : !exists ? "pas encore créé : clique sur « Créer »" : hidden ? "créé, masqué partout" : "✓ créé : visible seulement par toi (Dashboard, Athlètes, Séances)"}
         </span>
       </div>
       <div style={{ fontSize: 12.5, color: MUTED, margin: "4px 0 12px", lineHeight: 1.5 }}>
@@ -58,6 +65,11 @@ function TestAthleteCard() {
         <button type="button" className="pt-btn pt-btn--primary" disabled={!!busy} onClick={() => run("create")}>
           {busy === "create" ? "Création…" : "Créer / régénérer"}
         </button>
+        {exists && (
+          <button type="button" className="pt-btn" disabled={!!busy} onClick={() => run("hide")}>
+            {busy === "hide" ? "…" : hidden ? "👁 Afficher" : "🙈 Masquer partout"}
+          </button>
+        )}
         <button type="button" className="pt-btn pt-btn--danger" disabled={!!busy} onClick={() => run("delete")}>
           {busy === "delete" ? "Suppression…" : "Supprimer"}
         </button>

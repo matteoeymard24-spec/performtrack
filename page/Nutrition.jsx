@@ -2,7 +2,7 @@ import { TH } from "../component/thresholdsCore";
 import WellbeingTabs from "../component/WellbeingTabs";
 import React, { useRef, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, ReferenceLine } from "recharts";
 import { db } from "../firebase";
 import { Page, PageHeader, Kpi, KpiGrid, FoldCard, useFold, CARD_STYLE, FIELD_STYLE, SectionLabel, TEXT, MUTED, ACCENT } from "../component/ui";
@@ -15,6 +15,7 @@ import { loadBank, publishFood, publishRecipe, deleteBankItem, setPrivateRecipes
 import { setBudget, setUserPrices, setStore, setUnavailable } from "../component/prices";
 import { useAuth } from "../auth/AuthProvider";
 import usePersonScope from "../component/usePersonScope";
+import { evaluateMorph, hasMorph, nutritionGoalFor } from "../component/morphology";
 import { normSex } from "../component/cycling";
 import { appConfirm, appAlert as alert } from "../component/appDialog";
 import {
@@ -343,8 +344,11 @@ export default function Nutrition() {
         const sref = doc(db, "users", uid, "nutrition", "settings");
         const sd = await getDoc(sref);
         const s = { ...defaults, ...(sd.exists() ? sd.data() : {}) };
-        // le poids / la taille du profil restent la référence s'ils ne sont pas saisis ici
-        ["weight", "height", "age", "bodyFat"].forEach((k) => {
+        // poids et % de gras : le PROFIL fait référence (pesée du Dashboard, bilan) ; taille / âge : seulement s'ils manquent ici
+        ["weight", "bodyFat"].forEach((k) => {
+          if (defaults[k]) s[k] = defaults[k];
+        });
+        ["height", "age"].forEach((k) => {
           if (!s[k] && defaults[k]) s[k] = defaults[k];
         });
         if (!alive) return;
@@ -496,11 +500,21 @@ export default function Nutrition() {
     else delete pr[foodId];
     return saveSettings({ ...settings, prices: pr }, "✅ Prix enregistré");
   };
-  const saveSettings = async (next, msg = "✅ Réglages enregistrés") => {
+  const saveSettings = async (next0, msg = "✅ Réglages enregistrés") => {
+    // date de début de l'objectif (point de départ de la trajectoire prévue sur la courbe du poids)
+    const changed = !settings?.goalSince || next0.goal !== settings?.goal || Number(next0.rate || 0) !== Number(settings?.rate || 0) || Number(next0.targetWeight || 0) !== Number(settings?.targetWeight || 0);
+    const d0 = new Date();
+    const todayIso = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, "0")}-${String(d0.getDate()).padStart(2, "0")}`;
+    const next = changed ? { ...next0, goalSince: todayIso } : next0;
     setSettings(next);
     setDraft(next);
     try {
       await setDoc(doc(db, "users", uid, "nutrition", "settings"), { ...next, updatedAt: new Date().toISOString() });
+      // poids / % de gras modifiés ici : recopiés dans le profil (une seule source pour le Dashboard, le bilan et la nutrition)
+      const prof = {};
+      if (Number(next.weight) > 0 && Number(next.weight) !== Number(person.weight)) prof.weight = Number(next.weight);
+      if (Number(next.bodyFat) > 0 && Number(next.bodyFat) !== Number(person.bodyFat)) prof.bodyFat = Number(next.bodyFat);
+      if (Object.keys(prof).length) await updateDoc(doc(db, "users", uid), prof).catch((e) => console.warn("Profil non mis à jour :", e?.message || e));
       setSaved(msg);
       setTimeout(() => setSaved(""), 2500);
     } catch (e) {
@@ -1174,6 +1188,40 @@ export default function Nutrition() {
                 </div>
 
                 <SectionLabel>Objectif</SectionLabel>
+                {(() => {
+                  // Orientation du bilan (Tests › radar, axe « Masse ») → objectif proposé
+                  if (!hasMorph(person.position)) return null;
+                  const w = Number(draft.weight) || Number(person.weight);
+                  const m = w ? evaluateMorph(person.position, person.level, w, Number(draft.bodyFat) || Number(person.bodyFat) || null, person.bodyFatMethod || "dxa") : null;
+                  const o = m?.orientation;
+                  const sug = nutritionGoalFor(o);
+                  if (!o) return null;
+                  const same = sug && draft.goal === sug.goal && Number(draft.rate || 0) === Number(sug.rate || 0) && (sug.targetWeight == null || Number(draft.targetWeight) === Number(sug.targetWeight));
+                  return (
+                    <div style={{ padding: "10px 12px", borderRadius: 10, background: `${o.color}14`, border: `1px solid ${o.color}55`, marginBottom: 12 }}>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: o.color }}>🏋️ Orientation du bilan : {o.label}</div>
+                      <div style={{ fontSize: 12.5, color: TEXT, marginTop: 3, lineHeight: 1.45 }}>{o.text}</div>
+                      {sug && (
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                          {same ? (
+                            <span style={{ fontSize: 12.5, fontWeight: 700, color: "#4fae7d" }}>✓ L'objectif ci-dessous suit le bilan.</span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="pt-btn pt-btn--accent pt-btn--sm"
+                              onClick={() => setDraft({ ...draft, goal: sug.goal, rate: sug.rate, targetWeight: sug.targetWeight ?? "", proteinPerKg: "", fatPct: "" })}
+                            >
+                              Appliquer : {GOAL_BY_ID[sug.goal]?.icon} {GOAL_BY_ID[sug.goal]?.label}
+                              {sug.rate ? ` ${GOAL_BY_ID[sug.goal]?.sign < 0 ? "−" : "+"}${String(sug.rate).replace(".", ",")} kg/sem` : ""}
+                              {sug.targetWeight ? ` → ${String(sug.targetWeight).replace(".", ",")} kg` : ""}
+                            </button>
+                          )}
+                          {!same && <span style={{ fontSize: 11.5, color: MUTED }}>puis « Enregistrer » en bas</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
                   {GOALS.map((g) => (
                     <button key={g.id} type="button" style={chip(draft.goal === g.id)} onClick={() => setDraft({ ...draft, goal: g.id, rate: g.defRate, proteinPerKg: "", fatPct: "" })}>
@@ -1199,6 +1247,20 @@ export default function Nutrition() {
                     </div>
                   </div>
                 )}
+
+                <div style={{ marginBottom: 14, maxWidth: 260 }}>
+                  <label style={lbl}>Poids cible (kg, facultatif)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    inputMode="decimal"
+                    value={draft.targetWeight ?? ""}
+                    onChange={(e) => setDraft({ ...draft, targetWeight: e.target.value === "" ? "" : Number(e.target.value) })}
+                    placeholder="ex. 110"
+                    style={{ ...FIELD_STYLE, width: "100%" }}
+                  />
+                  <div style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>Affiché sur la courbe du poids (Dashboard), avec la trajectoire prévue.</div>
+                </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 14 }}>
                   <div>

@@ -253,18 +253,20 @@ export const getScopedDocs = async (colName, opts = {}) => {
 export const getWorkoutDocs = (opts = {}) => getScopedDocs("workout", { withTarget: true, ...opts });
 
 // Comptes visibles : superadmin = tous ; coach = ses athlètes + les coachs + lui-même.
+// Athlète test masqué (bouton du Dashboard / Paramètres) : retiré de TOUTES les listes de l'appli
+const withoutHiddenTest = (snap) => ({ docs: (snap?.docs || []).filter((d) => !(d.data()?.isTest && d.data()?.testHidden)) });
 export const getScopedUserDocs = async () => {
   const me = await getMyAccess();
   const col = collection(db, "users");
   if (!me.uid) return { docs: [] };
-  if (me.superAdmin) return getDocs(col);
+  if (me.superAdmin) return withoutHiddenTest(await getDocs(col));
   const [mine, mine2, admins, self] = await Promise.all([
     getDocs(query(col, where("coachId", "==", me.uid))),
     getDocs(query(col, where("coachIds", "array-contains", me.uid))),
     getDocs(query(col, where("role", "==", "admin"))),
     getDoc(doc(db, "users", me.uid)),
   ]);
-  return mergeSnaps([mine, mine2, admins, { docs: self.exists() ? [self] : [] }]);
+  return withoutHiddenTest(mergeSnaps([mine, mine2, admins, { docs: self.exists() ? [self] : [] }]));
 };
 
 // Wellness d'une période (coach : tous ses athlètes ; filtrage par athlète côté appli).

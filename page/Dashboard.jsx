@@ -6,7 +6,10 @@ import DashColumns, { colOfFn } from "../component/DashColumns";
 import { weeklyPlanVsDone, loadDynamics, activeInjury, rtpState, rtpPatch, rtpTestsPatch, needsInjuredGroup, zonePainHistory, painMonitor, relativeStrength, rmTrend, poleSynthesis, painSummary } from "../component/coachSynthesis";
 import { SynthesisBanner, WeekLoadCard, RtpCard, RtpAthleteCard, RelStrengthCard, DeclareInjuryCard, InjuryRmCard } from "../component/CoachFiche";
 import { CoachChatCard, AthleteRepliesCard, sendSessionMsg, withMsg, chatSeen, markChatSeen, athleteItemsOf, purgeOldMsgs, applyPurge } from "../component/sessionChat";
-import { createTestAthlete } from "../component/testAthlete";
+import { createTestAthlete, setTestHidden, testAthleteId } from "../component/testAthlete";
+import { syncRtpPlan } from "../component/rtpPlan";
+import { WeightGoalChart } from "../component/WeightGoal";
+import { evaluateMorph, hasMorph } from "../component/morphology";
 import { syncInjuredGroup, injuredGroupOf, setInjuredManual, joinInjuredGroupSelf } from "../component/injuredGroup";
 import { injuryRmRows, rmRecoveryPct, recalibrateInjuryRms } from "../component/injuryRm";
 import { InjuryForm, InjuryTimeline } from "../component/InjuryHistory";
@@ -26,6 +29,7 @@ import {
   query,
   where,
   doc,
+  getDoc,
   updateDoc,
   setDoc,
   deleteDoc,
@@ -171,6 +175,14 @@ export default function Dashboard() {
 
   const [athletes, setAthletes] = useState([]);
   const [testCreating, setTestCreating] = useState(false);
+  // état de l'athlète test pour le superadmin : { exists, hidden } (1 lecture)
+  const [testInfo, setTestInfo] = useState(null);
+  useEffect(() => {
+    if (!isSuperAdmin || !currentUser?.uid) return;
+    getDoc(doc(db, "users", testAthleteId(currentUser.uid)))
+      .then((d) => setTestInfo({ exists: d.exists(), hidden: !!(d.exists() && d.data().testHidden) }))
+      .catch(() => setTestInfo(null));
+  }, [isSuperAdmin, currentUser?.uid]);
   const [loading, setLoading] = useState(true);
   const [customGroups, setCustomGroups] = useState([]);
   const [wellnessFilter, setWellnessFilter] = useState("total");
@@ -816,6 +828,14 @@ export default function Dashboard() {
     autre: "Autre",
   };
   const [weightHistory, setWeightHistory] = useState([]);
+  // mon objectif nutritionnel (Nutrition › Objectifs), relié à ma courbe de poids
+  const [myNutriSettings, setMyNutriSettings] = useState(null);
+  useEffect(() => {
+    if (!currentUser?.uid) return;
+    getDoc(doc(db, "users", currentUser.uid, "nutrition", "settings"))
+      .then((d) => setMyNutriSettings(d.exists() ? d.data() : null))
+      .catch(() => null);
+  }, [currentUser?.uid]);
   const [lastWeightDate, setLastWeightDate] = useState(null);
   const [canUpdateWeight, setCanUpdateWeight] = useState(true);
   const [weightLoaded, setWeightLoaded] = useState(false); // évite d'afficher l'alerte pesée avant la lecture
@@ -1657,6 +1677,25 @@ export default function Dashboard() {
     load();
   }, [userRole, currentUser, customGroups]);
 
+  const closeAthleteDetail = () => {
+    setShowAthleteDetail(null);
+    setAthleteDetails(null);
+    setDetailedAthleteRMHistory({});
+    setAcwrHistory([]);
+  };
+  // Échap ferme la fiche athlète (pas pendant une saisie, ni quand une boîte de dialogue est ouverte)
+  useEffect(() => {
+    if (!showAthleteDetail) return;
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      closeAthleteDetail();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showAthleteDetail]); // eslint-disable-line react-hooks/exhaustive-deps
   const loadAthleteDetail = async (athlete) => {
     if (currentUser?.uid && athlete?.id) {
       setChatPrevSeen(chatSeen(currentUser.uid, athlete.id));
@@ -1761,6 +1800,10 @@ export default function Dashboard() {
       const weightData = whSnap.docs
         .map((d) => ({ weight: d.data().weight, date: d.data().date }))
         .sort((a, b) => a.date.localeCompare(b.date));
+      // objectif nutritionnel (Nutrition › Objectifs) : relié à la courbe du poids
+      const nutriSettings = await getDoc(doc(db, "users", athlete.id, "nutrition", "settings"))
+        .then((d) => (d.exists() ? d.data() : null))
+        .catch(() => null);
 
       const allW = (await getWorkoutDocs({ since: daysAgoStr(WINDOW.analysis) })).docs.map((d) => ({
         id: d.id,
@@ -1799,6 +1842,7 @@ export default function Dashboard() {
         dailyScore,
         weeklyAvg,
         weightHistory: weightData,
+        nutritionSettings: nutriSettings,
         todayWorkout: todayW,
         sessions: [...uWorkouts].sort((a, b) =>
           (b.date || "").localeCompare(a.date || "")
@@ -3430,42 +3474,15 @@ export default function Dashboard() {
 
           {weightHistory.length > 1 && (
             <div style={{ marginTop: 15 }}>
-              <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 10 }}>
-                📈 Évolution du poids
-              </div>
-              <ResponsiveContainer width="100%" height={180}>
-                <AreaChart data={weightHistory}>
-                  <defs>
-                    <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#e0a13d" stopOpacity={0.6} />
-                      <stop offset="95%" stopColor="#e0a13d" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
-                  <XAxis
-                    dataKey="date"
-                    stroke="#a8a199"
-                    fontSize={10}
-                    tickFormatter={(d) => d.slice(5)}
-                  />
-                  <YAxis
-                    stroke="#a8a199"
-                    fontSize={10}
-                    domain={["auto", "auto"]}
-                  />
-                  <Tooltip
-                    contentStyle={CHART_TOOLTIP}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="weight"
-                    name="Poids (kg)"
-                    stroke="#e0a13d"
-                    strokeWidth={2}
-                    fill="url(#wGrad)"
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
+              <div style={{ fontSize: 13, color: "#a8a199", marginBottom: 10 }}>📈 Évolution du poids et objectif</div>
+              <WeightGoalChart
+                you
+                height={190}
+                points={weightHistory}
+                settings={myNutriSettings}
+                orientation={hasMorph(userProfile?.position) ? evaluateMorph(userProfile.position, userProfile.level, Number(weightHistory.slice(-1)[0]?.weight) || Number(userProfile?.weight), Number(userProfile?.bodyFat) || null, userProfile?.bodyFatMethod || "dxa")?.orientation : null}
+                onGoNutrition={() => navigate("/nutrition?tab=objectifs")}
+              />
             </div>
           )}
             </>
@@ -3531,29 +3548,37 @@ export default function Dashboard() {
         overflowX: "clip", // « clip » et pas « hidden » : laisse fonctionner les en-têtes collants
       }}
     >
-      {/* 🧪 Athlète test absent : création directe (superadmin uniquement, invisible pour tous les autres) */}
-      {isSuperAdmin && !loading && !athletes.some((a) => a.isTest) && (
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "10px 14px", marginBottom: 14, borderRadius: 12, background: "#151310", border: "1px dashed #e0a13d88" }}>
-          <span style={{ fontSize: 13.5, color: "#f3f0ea" }}>
-            <b>🧪 Athlète test</b> <span style={{ color: "#a8a199" }}>· pas encore créé. ~4 mois de fausses données (séances, wellness, blessure, RM, bilans) visibles seulement par toi.</span>
+      {/* 🧪 Athlète test (superadmin uniquement, invisible pour tous les autres) : créer · masquer partout · afficher */}
+      {isSuperAdmin && !loading && testInfo && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "8px 14px", marginBottom: 14, borderRadius: 12, background: "#151310", border: `1px dashed ${testInfo.exists && !testInfo.hidden ? "#3a342a" : "#e0a13d88"}` }}>
+          <span style={{ fontSize: 13, color: "#f3f0ea" }}>
+            <b>🧪 Athlète test</b>{" "}
+            <span style={{ color: "#a8a199" }}>
+              {!testInfo.exists
+                ? "· pas encore créé. ~4 mois de fausses données (séances, wellness, blessure, RM, bilans, nutrition) visibles seulement par toi."
+                : testInfo.hidden
+                ? "· masqué partout (Dashboard, Athlètes, Tests, Séances, Nutrition…)."
+                : "· visible seulement par toi. Masque-le pour retrouver une appli « réelle »."}
+            </span>
           </span>
           <button
             type="button"
-            className="pt-btn pt-btn--accent pt-btn--sm"
+            className={!testInfo.exists ? "pt-btn pt-btn--accent pt-btn--sm" : "pt-btn pt-btn--sm"}
             disabled={testCreating}
             onClick={async () => {
               setTestCreating(true);
               try {
-                await createTestAthlete({ db, coachUid: currentUser.uid });
+                if (!testInfo.exists) await createTestAthlete({ db, coachUid: currentUser.uid });
+                else await setTestHidden({ db, coachUid: currentUser.uid, hidden: !testInfo.hidden });
                 invalidateQueryCache("");
                 window.location.reload();
               } catch (e) {
                 setTestCreating(false);
-                await alert("Création impossible : " + (e?.message || e) + "\n(Vérifie que les règles Firestore à jour sont publiées.)");
+                await alert("Action impossible : " + (e?.message || e) + "\n(Vérifie que les règles Firestore à jour sont publiées.)");
               }
             }}
           >
-            {testCreating ? "Création… (≈ 10 s)" : "Créer l'athlète test"}
+            {testCreating ? "…" : !testInfo.exists ? "Créer l'athlète test" : testInfo.hidden ? "👁 Afficher" : "🙈 Masquer partout"}
           </button>
         </div>
       )}
@@ -3887,6 +3912,32 @@ export default function Dashboard() {
               padding: isMobileView() ? 14 : 26,
             }}
           >
+            {/* Barre « ← Dashboard » toujours visible en haut de la fiche (même système que la séance) : on peut
+                quitter la fiche à tout moment, même tout en bas. Échap ferme aussi. */}
+            <div
+              style={{
+                position: "sticky",
+                top: isMobileView() ? -8 : -20,
+                zIndex: 30,
+                height: 54,
+                boxSizing: "border-box",
+                margin: isMobileView() ? "-14px -14px 12px" : "-26px -26px 16px",
+                padding: isMobileView() ? "0 10px" : "0 18px",
+                background: "#151310",
+                borderBottom: "1px solid #2a2620",
+                borderRadius: "14px 14px 0 0",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <button type="button" onClick={closeAthleteDetail} className="pt-btn" style={{ flexShrink: 0, fontWeight: 800 }}>
+                ← {isMobileView() ? "Dashboard" : "Retour au dashboard"}
+              </button>
+              <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 800, color: "#f3f0ea", fontSize: 15 }}>
+                {getAthleteName(showAthleteDetail)}
+              </span>
+            </div>
             {(() => {
               const nm = getAthleteName(showAthleteDetail) || "";
               const ini = nm.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
@@ -3925,15 +3976,7 @@ export default function Dashboard() {
                   <button className={coachToolsPanel ? "pt-btn pt-btn--primary" : "pt-btn"} onClick={() => setCoachToolsPanel((v) => !v)} title="Choisir et classer les outils de la fiche">
                     👁 Outils
                   </button>
-                  <button
-                    className="pt-btn"
-                    onClick={() => {
-                      setShowAthleteDetail(null);
-                      setAthleteDetails(null);
-                      setDetailedAthleteRMHistory({});
-                      setAcwrHistory([]);
-                    }}
-                  >
+                  <button className="pt-btn" onClick={closeAthleteDetail}>
                     ✕ Fermer
                   </button>
                   </div>
@@ -4217,6 +4260,24 @@ export default function Dashboard() {
                 document.getElementById(`pt-pole-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
               }}
             />
+            {/* 🏥 Retour au jeu : en haut de la fiche et en pleine largeur dès qu'une blessure est en cours */}
+            {fInjury && (
+              <RtpCard
+                key={fInjury.inj.id}
+                injury={fInjury.inj}
+                status={fInjury.st}
+                state={fRtp}
+                pain={fPain}
+                painHistory={fPainHist}
+                monitor={painMonitor(fPainHist)}
+                injuredGroup={fInGroup || !!fInjury}
+                injuries={fa.injuries}
+                onSaveTests={(t) => saveRtpTests(fInjury.inj, t)}
+                saving={rtpSaving}
+                onSave={(rtp) => saveRtp(fInjury.inj, rtp)}
+                onPlan={(st) => syncRtpPlan({ db, coachUid: (isSuperAdmin && coachIdsOf(fa)[0]) || currentUser.uid, athleteUid: fa.id, injury: fInjury.inj, state: st, today: fToday })}
+              />
+            )}
             <CoachChatCard
               sessions={athleteDetails.sessions || []}
               uid={showAthleteDetail.id}
@@ -4656,9 +4717,7 @@ export default function Dashboard() {
                     });
                   }}
                 />
-              ) : fInjury ? (
-                <RtpCard key={fInjury.inj.id} injury={fInjury.inj} status={fInjury.st} state={fRtp} pain={fPain} painHistory={fPainHist} monitor={painMonitor(fPainHist)} injuredGroup={fInGroup || !!fInjury} injuries={fa.injuries} onSaveTests={(t) => saveRtpTests(fInjury.inj, t)} saving={rtpSaving} onSave={(rtp) => saveRtp(fInjury.inj, rtp)} />
-              ) : null },
+              ) : null /* blessure en cours : la carte Retour au jeu est affichée en haut de la fiche, pleine largeur */ },
               { key: "cmjSessions", pole: "recup", label: "🦘 Évolution CMJ (fatigue)", node: (
                 <>
             {showAthleteDetail.cmjEntries && showAthleteDetail.cmjEntries.length > 1 && (
@@ -5405,72 +5464,22 @@ export default function Dashboard() {
                   <SectionToggleBtn sectionKey="weight" />
                 </div>
                 {sectionVisibility.weight && (
-                <>
-                <ResponsiveContainer width="100%" height={220}>
-                  <AreaChart data={athleteDetails.weightHistory}>
-                    <defs>
-                      <linearGradient id="pGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop
-                          offset="5%"
-                          stopColor="#e0a13d"
-                          stopOpacity={0.7}
-                        />
-                        <stop
-                          offset="95%"
-                          stopColor="#e0a13d"
-                          stopOpacity={0}
-                        />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.16)" />
-                    <XAxis
-                      dataKey="date"
-                      stroke="#a8a199"
-                      fontSize={11}
-                      tickFormatter={(d) => d.slice(5)}
-                    />
-                    <YAxis
-                      stroke="#a8a199"
-                      fontSize={11}
-                      domain={["auto", "auto"]}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#0d0c0a",
-                        border: "1px solid rgba(255, 255, 255, 0.05)",
-                        borderRadius: 8,
-                        fontSize: 12,
-                      }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="weight"
-                      name="Poids (kg)"
-                      stroke="#e0a13d"
-                      strokeWidth={2}
-                      fill="url(#pGrad)"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-                <div
-                  style={{
-                    textAlign: "center",
-                    marginTop: 10,
-                    fontSize: 13,
-                    color: "#a8a199",
-                  }}
-                >
-                  Poids actuel:{" "}
-                  <strong style={{ color: "#e0a13d" }}>
-                    {
-                      athleteDetails.weightHistory[
-                        athleteDetails.weightHistory.length - 1
-                      ].weight
-                    }{" "}
-                    kg
-                  </strong>
-                </div>
-                </>
+                  <WeightGoalChart
+                    points={athleteDetails.weightHistory}
+                    settings={athleteDetails.nutritionSettings}
+                    orientation={
+                      hasMorph(showAthleteDetail.position)
+                        ? evaluateMorph(
+                            showAthleteDetail.position,
+                            showAthleteDetail.level,
+                            Number(athleteDetails.weightHistory.slice(-1)[0]?.weight) || Number(showAthleteDetail.weight),
+                            Number(showAthleteDetail.bodyFat) || null,
+                            showAthleteDetail.bodyFatMethod || "dxa"
+                          )?.orientation
+                        : null
+                    }
+                    onGoNutrition={() => navigate(`/nutrition?tab=objectifs&athlete=${showAthleteDetail.id}`)}
+                  />
                 )}
               </div>
             )}

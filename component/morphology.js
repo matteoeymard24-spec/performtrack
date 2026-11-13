@@ -23,7 +23,7 @@
      L'écart-type est élargi de 10 % aux niveaux amateurs (populations plus hétérogènes).
    • Masse maigre = poids × (1 − % de masse grasse de référence DXA) : pros avants 17,8 %, arrières 14,8 %
      (Posthumus et al. 2020, Sports 8(6):85), + 0,5 à 4,5 points aux niveaux inférieurs (Fontana 2015).
-   • Note /20 : moyenne du niveau = 10, argent = 15, or = 20, moyenne − 2 écarts-types = 0
+   • Note /20 : moyenne du niveau = 10, argent = 15, or = 20, moyenne − 4 écarts-types = 0 (barème plus doux que les qualités physiques)
      (même logique que le reste de l'app : 10/20 = le standard du niveau).
    • Normalisation de la force (radar) : exposants de Crewther et al. 2009 (J Sports Sci 27:1575) ; masse de
      référence = moyenne du poste au niveau.
@@ -66,6 +66,7 @@ export const SILVER_SD = 0.6;
 export const GOLD_SD = 1.4;
 const r1 = (x) => Math.round(x * 10) / 10;
 
+const RED_O = "#d9695a";
 export const hasMorph = (poste) => !!PRO_DATA[poste];
 
 /* Moyenne / écart-type / taille du poste à un niveau (sans niveau : Pro D2) */
@@ -122,28 +123,90 @@ export const refMassFor = (poste, levelId) => {
   return R ? R.m : null;
 };
 
-/* Note /20 : moyenne − 2 écarts-types = 0, moyenne = 10, argent = 15, or = 20 (plafonnée à 20) */
+/* Note /20 de la masse : moyenne − 4 écarts-types = 0, moyenne = 10, argent = 15, or = 20 (plafonnée à 20).
+   Barème plus doux sous la moyenne que celui des qualités physiques (− 2 ET = 0) : la masse est de
+   l'anthropométrie (gabarit, génétique, âge), pas une qualité qui se travaille au même rythme ;
+   un athlète plus léger que la moyenne du poste ne doit pas « s'effondrer » sur le radar. */
+export const MASS_ZERO_SD = 4;
 function noteOf(value, mean, sd) {
   if (!(sd > 0)) return null;
   const z = (value - mean) / sd;
   let n;
-  if (z <= 0) n = 10 + 5 * z;
+  if (z <= 0) n = 10 + (10 / MASS_ZERO_SD) * z;
   else if (z <= SILVER_SD) n = 10 + (5 * z) / SILVER_SD;
   else n = 15 + (5 * (z - SILVER_SD)) / (GOLD_SD - SILVER_SD);
   return Math.max(0, Math.min(20, n));
 }
 
-/* Évalue la morphologie. bw en kg, bf en % (optionnel). Note /20 de l'axe « Masse » + détails */
-export function evaluateMorph(poste, levelId, bw, bf) {
+/* Masse grasse de référence du poste au niveau, selon la méthode de mesure (les plis cutanés donnent
+   des valeurs plus basses que la DXA) + marge tolérée avant pénalité (≈ 1 écart-type DXA, plis : 3 points). */
+export function bfReference(poste, levelId, method = "dxa") {
+  const R = massRef(poste, levelId);
+  if (!R) return null;
+  const fw = FORWARDS.includes(poste);
+  if (method === "dxa") return { ref: r1(R.bfPct), tol: fw ? BF_DXA.forwards[1] : Math.max(2, BF_DXA.backs[1]), method };
+  // impédancemètre : valeurs proches de la DXA en moyenne mais bien moins précises → marge plus large
+  if (method === "impedance") return { ref: r1(R.bfPct), tol: fw ? 4 : 3, method };
+  const lvl = LEVELS.find((l) => l.id === levelId) ? levelId : "prod2";
+  return { ref: r1((fw ? BF_SKINFOLD.forwards : BF_SKINFOLD.backs) + (BF_ADD[lvl] || 0)), tol: 3, method };
+}
+export const FAT_PENALTY_PER_PT = 0.8; // points /20 retirés par point de % de gras au-delà de la marge
+export const FAT_PENALTY_MAX = 8;
+
+/* Évalue la morphologie. bw en kg, bf en % (optionnel), method "dxa" | "plis"… Note /20 de l'axe « Masse » + détails.
+   Avec le % de gras : note sur la MASSE MAIGRE, moins une pénalité si le gras dépasse la référence du poste
+   (un pilier lourd mais trop gras n'est pas « dans les standards ») ; orientation prise de masse / recomposition /
+   perte de poids / maintien. */
+export function evaluateMorph(poste, levelId, bw, bf, method = "dxa") {
   const R = massRef(poste, levelId);
   if (!R || !(bw > 0)) return null;
+  const hasBf = bf > 0 && bf < 60;
+  const ffm = hasBf ? bw * (1 - bf / 100) : null;
   const lean = 1 - R.bfPct / 100;
-  const ffm = bf > 0 && bf < 60 ? bw * (1 - bf / 100) : null;
   const nBm = noteOf(bw, R.m, R.sd);
   const nFfm = ffm != null ? noteOf(ffm, R.m * lean, R.sd * lean) : null;
-  const note = r1(nFfm != null ? nFfm : nBm);
+  const B = bfReference(poste, levelId, method);
+  const fatExcess = hasBf && B ? r1(bf - B.ref) : null;
+  const fatPenalty = fatExcess != null && fatExcess > B.tol ? Math.min(FAT_PENALTY_MAX, (fatExcess - B.tol) * FAT_PENALTY_PER_PT) : 0;
+  const note = r1(Math.max(0, (nFfm != null ? nFfm : nBm) - fatPenalty));
   const t = medalTargets(poste, levelId);
   const medal = (v, set) => (v >= set.gold ? "gold" : v >= set.silver ? "silver" : v >= set.bronze ? "bronze" : null);
+
+  /* Orientation */
+  let orientation;
+  const fatHigh = fatExcess != null && fatExcess > B.tol;
+  if (hasBf) {
+    // cible : au moins la masse maigre de l'argent du poste, avec le % de gras de référence
+    const tFfm = Math.max(ffm, t.ffm.silver);
+    const tBw = tFfm / (1 - B.ref / 100);
+    const muscle = r1(tFfm - ffm); // kg de masse maigre à gagner
+    const fatNow = bw - ffm;
+    const fatLose = r1(Math.max(0, fatNow - (tBw - tFfm))); // kg de gras à perdre
+    const net = r1(tBw - bw); // variation de poids visée
+    const tgt = `objectif ≈ ${r1(tBw)} kg à ${B.ref} % de gras`;
+    if (!fatHigh && muscle <= 0.5)
+      orientation = { id: "maintien", label: "Maintien", color: "#4fae7d", text: `Masse maigre au standard du poste et gras dans la norme (${bf} % pour ${B.ref} % de référence) : garder ce gabarit.` };
+    else if (!fatHigh)
+      orientation = { id: "prise", label: "Prise de masse", color: "#5b9bd5", kg: muscle, text: `Gras correct (${bf} %), masse maigre sous le standard : ≈ ${muscle} kg de muscle à gagner pour l'argent du poste (${t.ffm.silver} kg de masse maigre). Bloc d'hypertrophie + léger surplus calorique.` };
+    else if (muscle <= 0.5)
+      orientation = { id: "perte", label: "Perte de poids", color: RED_O, kg: fatLose, text: `Masse maigre au standard, mais trop de gras (${bf} % pour ${B.ref} % de référence) : ≈ ${fatLose} kg de gras à perdre (${tgt}) en gardant le muscle. Déficit modéré, muscu maintenue.` };
+    else if (fatLose < 1)
+      orientation = { id: "prise", label: "Prise de masse (propre)", color: "#5b9bd5", kg: muscle, text: `Gras un peu au-dessus de la référence (${bf} % pour ${B.ref} %), mais le vrai manque est le muscle : ≈ ${muscle} kg de masse maigre à gagner (${tgt}). Prendre du muscle SANS ajouter de gras : surplus calorique léger, muscu lourde, protéines élevées, suivre le % de gras.` };
+    else if (net <= -2)
+      orientation = { id: "perte", label: "Perte de poids", color: RED_O, kg: -net, text: `Trop de gras (${bf} % pour ${B.ref} % de référence) et masse maigre sous le standard : ≈ ${fatLose} kg de gras à perdre et ≈ ${muscle} kg de muscle à gagner, soit ≈ ${-net} kg de moins sur la balance (${tgt}). Léger déficit, muscu lourde, protéines élevées.` };
+    else
+      orientation = { id: "recompo", label: net >= 2 ? "Recomposition (+ muscle)" : "Recomposition", color: "#d9a441", kg: muscle, text: `Trop de gras (${bf} % pour ${B.ref} % de référence) et masse maigre sous le standard : ≈ ${fatLose} kg de gras à perdre et ≈ ${muscle} kg de muscle à gagner (${tgt}, ${net >= 0 ? "+" : ""}${net} kg). Muscu lourde, calories à l'équilibre, protéines élevées.` };
+  } else {
+    const gap = r1(t.bm.silver - bw);
+    orientation =
+      gap > 0
+        ? { id: "prise", label: "Prise de masse ?", color: "#5b9bd5", kg: gap, text: `${gap} kg sous l'argent du poste (${t.bm.silver} kg). Renseigne le % de masse grasse : sans lui, impossible de savoir s'il faut du muscle ou si le poids est déjà trop gras.` }
+        : { id: "inconnu", label: "À préciser", color: "#a8a199", text: `Poids au standard du poste, mais sans % de masse grasse on ne sait pas si c'est du muscle ou du gras : renseigne-le pour une note et une orientation fiables.` };
+  }
+
+  // poids cible : masse maigre de l'argent du poste au % de gras de référence (avec le % de gras), sinon l'argent du poste
+  const targetBw = hasBf && B ? r1(Math.max(ffm, t.ffm.silver) / (1 - B.ref / 100)) : orientation.id === "prise" ? t.bm.silver : null;
+  orientation = { ...orientation, targetBw, text: orientation.text.replace(/(\d)\.(\d)/g, "$1,$2") }; // décimales à la française
   return {
     note,
     basis: nFfm != null ? "masse maigre" : "poids du corps",
@@ -152,6 +215,11 @@ export function evaluateMorph(poste, levelId, bw, bf) {
     bw,
     ffm: ffm != null ? r1(ffm) : null,
     fatKg: ffm != null ? r1(bw - ffm) : null,
+    bfRef: B ? B.ref : null,
+    bfTol: B ? B.tol : null,
+    fatExcess,
+    fatPenalty: r1(fatPenalty),
+    orientation,
     target: { bm: t.bm.silver, ffm: t.ffm.silver },
     medals: t,
     medal: ffm != null ? medal(ffm, t.ffm) : medal(bw, t.bm),
@@ -159,3 +227,15 @@ export function evaluateMorph(poste, levelId, bw, bf) {
     gapFfm: ffm != null ? r1(t.ffm.silver - ffm) : null,
   };
 }
+
+/* Orientation du bilan → objectif nutritionnel (GOALS de nutritionData.js) : { goal, rate (kg/sem), targetWeight } */
+export function nutritionGoalFor(orientation) {
+  if (!orientation) return null;
+  const tw = orientation.targetBw || null;
+  if (orientation.id === "perte") return { goal: "seche", rate: (orientation.kg || 0) >= 6 ? 0.5 : 0.25, targetWeight: tw };
+  if (orientation.id === "prise") return { goal: "prise", rate: 0.25, targetWeight: tw };
+  if (orientation.id === "recompo") return { goal: "recompo", rate: 0, targetWeight: tw };
+  if (orientation.id === "maintien") return { goal: "maintien", rate: 0, targetWeight: null };
+  return null;
+}
+

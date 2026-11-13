@@ -163,7 +163,13 @@ export function loadDynamics(dailyLoads, today, redi = null) {
      loadFull    : charge des 7 derniers jours ≥ rtpLoadFull % de sa charge hebdo d'avant blessure
      chronic     : charge des 28 derniers jours ≥ rtpLoadFull % de sa charge d'avant blessure
    Données enregistrées sur la blessure : rtp = { v: 2, stage (1-6, 7 = performance retrouvée),
-   checks: { idCritère: true }, history: [{ stage, date }], updatedAt }.
+   checks: { idCritère: true }, history: [{ stage, date }], tests, updatedAt,
+   — décisions du coach (la trame reste, il l'adapte à la blessure) —
+     custom: { étape: [{ id, t }] }        critères ajoutés par le coach (cases à cocher)
+     off: { idCritère: true }              critères de la trame retirés par le coach
+     content: { étape: "texte" }           « Au programme » réécrit par le coach (repris dans la planif)
+     customTests: [{ id, label, unit, hint, stage, min }]  tests de retour terrain ajoutés par le coach ;
+                                           avec stage + min : critère auto « LSI ≥ min % » à cette étape }.
    --------------------------------------------------------------------- */
 export const RTP_N = 6;
 export const RTP_PHASES = [
@@ -296,6 +302,19 @@ export const RTP_TESTS = [
   { id: "speed", label: "Vitesse max", hint: "actuelle / d'avant blessure (km/h)", unit: "km/h" },
   { id: "perf", label: "Tests de performance", hint: "moyenne sprint, CMJ, force : actuel / d'avant blessure (même unité)", unit: "" },
 ];
+/* Tests standard + tests ajoutés par le coach sur cette blessure */
+export const rtpTestsOf = (rtp) => [
+  ...RTP_TESTS,
+  ...((rtp && rtp.customTests) || []).map((t) => ({
+    id: t.id,
+    label: t.label,
+    unit: t.unit || "",
+    hint: t.hint || `côté blessé (ou actuel) / côté sain (ou avant blessure)${t.unit ? ` (${t.unit})` : ""}`,
+    custom: true,
+    stage: t.stage || null,
+    min: t.min || null,
+  })),
+];
 export const lsiOf = (t) => (t && Number(t.inj) > 0 && Number(t.ref) > 0 ? Math.round((Number(t.inj) / Number(t.ref)) * 100) : null);
 const TEST_RULES = { force80: ["force", 80], force90: ["force", 90], hop90: ["hop", 90], ybal90: ["ybal", 90], speed90: ["speed", 90], perf95: ["perf", 95] };
 
@@ -369,6 +388,10 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
   const rtp = normalizeRtp(inj?.rtp) || { v: 2, stage: 1, checks: {}, history: [] };
   const checks = rtp.checks || {};
   const tests = rtp.tests || {};
+  const customTests = rtp.customTests || [];
+  const off = rtp.off || {};
+  const custom = rtp.custom || {};
+  const content = rtp.content || {};
   const load = rtpLoadCheck(dailyLoads, inj?.date, today);
   const painToday = opts.wellnessToday !== undefined ? zonePainOf(opts.wellnessToday, inj) : null;
   const p = { loadPartial: TH("rtpLoadPartial"), loadFull: TH("rtpLoadFull") };
@@ -378,6 +401,11 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     if (kind === "loadPartial") return load.pct == null ? null : load.pct >= p.loadPartial;
     if (kind === "loadFull") return load.pct == null ? null : load.pct >= p.loadFull;
     if (kind === "chronic") return load.chronicPct == null ? null : load.chronicPct >= p.loadFull;
+    if (kind.startsWith("ct:")) {
+      const ct = customTests.find((t) => t.id === kind.slice(3));
+      const v = lsiOf(tests[ct?.id]);
+      return v == null || !ct ? null : v >= Number(ct.min);
+    }
     if (TEST_RULES[kind]) {
       const [tid, min] = TEST_RULES[kind];
       let v = lsiOf(tests[tid]);
@@ -390,6 +418,11 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
   const autoNote = (kind) => {
     if (kind === "painRest" || kind === "painLoad") return `Douleur saisie aujourd'hui sur la zone : ${painToday}/10`;
     if (kind === "chronic") return `${load.chronic} UA par semaine sur 28 jours, soit ${load.chronicPct} % de ses ${load.usual} UA habituels`;
+    if (kind.startsWith("ct:")) {
+      const ct = customTests.find((t) => t.id === kind.slice(3));
+      const t = tests[ct?.id];
+      return `test « ${ct?.label} » : ${lsiOf(t)} %${t?.date ? ` (${t.date.slice(8, 10)}/${t.date.slice(5, 7)})` : ""}`;
+    }
     if (TEST_RULES[kind]) {
       const [tid] = TEST_RULES[kind];
       const t = tests[tid];
@@ -399,7 +432,14 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     return `${load.current} UA sur 7 jours, soit ${load.pct} % de ses ${load.usual} UA habituels`;
   };
   const stages = rtpStagesFor(inj?.tissueType).map((st) => {
-    const criteria = st.criteria.map((c) => {
+    // trame (sans les critères retirés) + tests perso à seuil + cases du coach
+    const tpl = st.criteria.filter((c) => !off[c.id]);
+    const fromTests = customTests
+      .filter((t) => Number(t.stage) === st.id && Number(t.min) > 0)
+      .map((t) => ({ id: `ct_${t.id}`, t: `${t.label} ≥ ${t.min} % du côté sain (ou d'avant blessure)`, auto: `ct:${t.id}`, own: true, test: t.id }));
+    const mine = (custom[st.id] || []).map((c) => ({ id: c.id, t: c.t, own: true }));
+    const hiddenTpl = st.criteria.filter((c) => off[c.id]).map((c) => ({ id: c.id, t: c.t }));
+    const criteria = [...tpl, ...fromTests, ...mine].map((c) => {
       const t = c.t.replace("{loadPartial}", p.loadPartial).replace("{loadFull}", p.loadFull);
       if (c.auto) {
         const ok = autoValue(c.auto);
@@ -408,7 +448,15 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
       }
       return { ...c, t, ok: !!checks[c.id] };
     });
-    return { ...st, criteria, complete: criteria.every((c) => c.ok) };
+    return {
+      ...st,
+      tplContent: st.content,
+      content: content[st.id] ? content[st.id] : st.content,
+      ownContent: !!content[st.id],
+      hiddenTpl,
+      criteria,
+      complete: criteria.every((c) => c.ok),
+    };
   });
   const stage = Math.max(1, Math.min(RTP_N + 1, Number(rtp.stage) || 1));
   // étapes déjà franchies : validées par le coach, on ne les « décoche » pas avec les données du jour
@@ -448,19 +496,26 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     started: !!inj?.rtp,
     tissue: inj?.tissueType || null,
     tests,
+    testsList: rtpTestsOf(rtp),
+    customTests,
     updatedAt: rtp.updatedAt || null,
   };
 }
 
 /* Patch à enregistrer quand le coach change d'étape ou coche un critère (garde l'historique daté) */
-export function rtpPatch(inj, { stage, checks }, today) {
+export function rtpPatch(inj, upd, today) {
   const cur = normalizeRtp(inj?.rtp) || { v: 2, stage: 1, checks: {}, history: [] };
+  const stage = upd.stage != null ? upd.stage : cur.stage || 1;
   let history = [...(cur.history || [])];
   if (stage !== cur.stage) {
     history = history.filter((h) => h.stage < stage); // revenir en arrière efface les entrées suivantes
     if (stage > 1) history.push({ stage, date: today });
   }
-  return { v: 2, stage, checks: checks || cur.checks || {}, history: history.slice(-12), tests: cur.tests || {}, updatedAt: new Date().toISOString() };
+  const keep = {};
+  ["checks", "custom", "off", "content", "customTests"].forEach((k) => {
+    if (upd[k] !== undefined) keep[k] = upd[k];
+  });
+  return { ...cur, ...keep, v: 2, stage, history: history.slice(-12), tests: cur.tests || {}, updatedAt: new Date().toISOString() };
 }
 
 /* Patch « rtp » après saisie des tests de retour (garde l'étape et les critères) */

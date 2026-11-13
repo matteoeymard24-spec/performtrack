@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { evaluateStrength, groupByPattern, posteLabel, levelLabel, noteColor } from "./norms";
-import { refMassFor, hasMorph, evaluateMorph, FORWARDS, BF_DXA, BF_SKINFOLD } from "./morphology";
+import { refMassFor, hasMorph, evaluateMorph, nutritionGoalFor, FORWARDS, BF_DXA, BF_SKINFOLD } from "./morphology";
 
 const MUTED = "#a8a199";
 const TEXT = "#f3f0ea";
@@ -93,7 +93,8 @@ const inputSt = { background: "#0d0c0a", color: TEXT, border: "1px solid #2a2620
 /* Radar des qualités physiques par poste et par niveau + profil + morphologie (masse, masse maigre, masse grasse).
    domainNotes : notes /20 par domaine (Tests.jsx) ; rmDocs : [{name, kg}] ; weight / height / bodyFat : profil athlète ;
    onSaveProfile(patch) : enregistre taille / % masse grasse dans le profil (facultatif). */
-export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level, weight, height, bodyFat, bodyFatMethod, onSaveProfile = null }) {
+const fr1 = (x) => String(Math.round(Number(x) * 10) / 10).replace(".", ",");
+export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level, weight, height, bodyFat, bodyFatMethod, onSaveProfile = null, onGoNutrition = null }) {
   const [mode, setMode] = useState("rel"); // "rel" = force ramenée à la masse (allométrique), "abs" = kg bruts
   const [localW, setLocalW] = useState("");
   const [hIn, setHIn] = useState(height ? String(height) : "");
@@ -134,7 +135,7 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
   const forceRel = useMemo(() => (scaleLow != null ? forceOf(scaleLow, scaleUp) : null), [rmDocs, sport, poste, level, scaleLow, scaleUp]); // eslint-disable-line react-hooks/exhaustive-deps
   const forceAxes = useRel ? forceRel : forceAbs;
 
-  const morph = useMemo(() => (hasMorph(poste) && bw ? evaluateMorph(poste, level, bw, bf) : null), [poste, level, bw, bf]);
+  const morph = useMemo(() => (hasMorph(poste) && bw ? evaluateMorph(poste, level, bw, bf, mIn) : null), [poste, level, bw, bf, mIn]);
 
   const values = AXES.map((a) => {
     if (a.id === "mobilite") return domainNotes?.mobilite?.avg ?? null;
@@ -232,6 +233,21 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
         </div>
         {!bw && <div style={{ fontSize: 11, color: "#d9a441", marginTop: 6 }}>Renseigne le poids pour activer la morphologie et le ratio de force.</div>}
         {bw && !bf && <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>Sans % de masse grasse, la note « Masse » ne repose que sur le poids (elle ne distingue pas muscle et gras).</div>}
+        {morph && morph.fatExcess != null && (
+          <div style={{ fontSize: 11.5, marginTop: 6, color: morph.fatPenalty > 0 ? "#e08a3d" : "#4fae7d" }}>
+            Masse grasse {fr1(bf)} % pour {fr1(morph.bfRef)} % de référence au poste ({mIn === "dxa" ? "DXA" : mIn === "impedance" ? "impédancemètre" : "plis cutanés"}, marge + {fr1(morph.bfTol)}) :{" "}
+            {morph.fatPenalty > 0
+              ? `${fr1(morph.fatExcess)} points de trop → note « Masse » baissée de ${fr1(morph.fatPenalty)} (calculée sur la masse maigre : ${fr1(morph.noteFfm)}/20).`
+              : "dans la norme, pas de pénalité."}
+          </div>
+        )}
+        {morph && (
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 6 }}>
+            Barème « Masse » plus doux que celui des qualités physiques : la moyenne du poste vaut 10/20, la note n'atteint 0 qu'à 4 écarts-types
+            sous la moyenne (2 pour les qualités). C'est de l'anthropométrie, pas une qualité qui se travaille au même rythme. Avec le % de gras,
+            la note se calcule sur la masse maigre et baisse si le gras dépasse la référence du poste.
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
@@ -292,17 +308,18 @@ export default function PhysicalRadar({ domainNotes, rmDocs, sport, poste, level
           ) : (
             <div style={{ color: "#4fae7d" }}>Toutes les qualités testées atteignent la cible du poste.</div>
           )}
-          {massLow && (
-            <div style={{ color: "#e08a3d", marginTop: 4 }}>
-              🏋️ <strong>Masse sous le standard du poste.</strong>{" "}
-              {bfHigh
-                ? `La masse grasse (${bf} %) est élevée pour ce groupe : priorité à la recomposition (perdre du gras tout en gardant ou gagnant du muscle), pas à la prise de poids brute.`
-                : morph.gapFfm != null && morph.gapFfm > 0
-                ? `Il manque environ ${morph.gapFfm} kg de masse maigre pour atteindre l'argent du poste à ce niveau (${morph.target.ffm} kg) : priorité à un bloc d'hypertrophie avec surplus calorique contrôlé.`
-                : morph.gapBm > 0
-                ? `Il manque environ ${morph.gapBm} kg pour atteindre l'argent du poste à ce niveau (${morph.target.bm} kg) : priorité à un bloc d'hypertrophie. Renseigne le % de masse grasse pour savoir si c'est du muscle qu'il faut gagner.`
-                : ""}
-              {forceOkForWeight ? " Sa force est correcte pour son poids : c'est la masse qui limite, pas la qualité de force." : ""}
+          {morph?.orientation && (massLow || bfHigh || morph.fatPenalty > 0 || morph.orientation.id !== "maintien") && (
+            <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: `${morph.orientation.color}14`, border: `1px solid ${morph.orientation.color}55` }}>
+              <div style={{ fontWeight: 800, color: morph.orientation.color }}>🏋️ Orientation masse : {morph.orientation.label}</div>
+              <div style={{ color: TEXT, marginTop: 2, lineHeight: 1.45 }}>
+                {morph.orientation.text}
+                {forceOkForWeight && morph.orientation.id === "prise" ? " Sa force est correcte pour son poids : c'est la masse qui limite, pas la qualité de force." : ""}
+              </div>
+              {onGoNutrition && nutritionGoalFor(morph.orientation) && (
+                <button type="button" className="pt-btn pt-btn--sm" style={{ marginTop: 8 }} onClick={onGoNutrition}>
+                  🍽️ Régler l'objectif nutritionnel en conséquence →
+                </button>
+              )}
             </div>
           )}
           {rated.length < AXES.length && (

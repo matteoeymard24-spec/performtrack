@@ -1333,7 +1333,19 @@ export default function PlanningPanel({
               {open && (
                 <div style={{ marginTop: 8 }}>
                   {c.notes && <div style={{ color: MUTED, fontSize: 12, whiteSpace: "pre-wrap", marginBottom: 8 }}>{c.notes}</div>}
-                  {isAdmin && (
+                  {isAdmin && c.rtp && (
+                    // cycle écrit par le retour au jeu (rtpPlan.js) : réécrit à chaque mise à jour de la carte → pas d'édition ici
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+                      <span style={{ fontSize: 12, color: "#f0c2b8", lineHeight: 1.4, flex: "1 1 220px" }}>
+                        🏥 Géré par le retour au jeu : modifie le programme et les critères dans la fiche de l'athlète (carte « Retour au jeu »), ce
+                        cycle se met à jour tout seul.
+                      </span>
+                      <button disabled={busy} onClick={() => toggleHidden(c)} className="pt-btn">
+                        {c.hidden ? "👁 Réafficher" : "🙈 Masquer"}
+                      </button>
+                    </div>
+                  )}
+                  {isAdmin && !c.rtp && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
                       <button onClick={() => { setFForm(null); setForm({ ...c, model: c.model || "bloc", _dur: Math.max(0, diffDays(c.startDate, c.endDate)) }); }} className="pt-btn">✏️ Modifier</button>
                       {c.level !== "micro" && c.model !== "ondulation" && (

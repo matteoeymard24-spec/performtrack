@@ -47,7 +47,7 @@ export function DialogHost() {
   return (
     <>
       {dlg && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div style={{ background: "#151310", border: "2px solid #e0a13d", borderRadius: 12, padding: 20, maxWidth: 460, width: "100%", maxHeight: "85vh", overflowY: "auto", color: "#f3f0ea", boxSizing: "border-box" }}>
             <div style={{ whiteSpace: "pre-wrap", fontSize: 15, lineHeight: 1.5, marginBottom: 18 }}>{dlg.message}</div>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

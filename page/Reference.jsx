@@ -35,7 +35,7 @@ import { VBT_LOSS_WARN, VBT_LOSS_STOP } from "../component/vbt";
 import { Z_LOOKBACK_WEEKS, Z_MIN_WEEKS, Z_SD_FLOOR_CV, Z_SD_FLOOR_MIN } from "../component/weekRealized";
 import { ZONES, DEFAULT_CS_VMA_RATIO, HR_MIN_EFFORT_SEC } from "../component/drillBank";
 import { LEVELS, LEVEL_ORDER, FAMILY_RATIO, FAMILY_LABEL, BRONCO_RECORD_S } from "../component/rugbyLevels";
-import { PRO_DATA, MASS_RATIO, BF_ADD, BF_DXA, BF_SKINFOLD, SILVER_SD, GOLD_SD, medalTargets } from "../component/morphology";
+import { PRO_DATA, MASS_RATIO, BF_ADD, BF_DXA, BF_SKINFOLD, SILVER_SD, GOLD_SD, MASS_ZERO_SD, FAT_PENALTY_PER_PT, FAT_PENALTY_MAX, medalTargets } from "../component/morphology";
 import { HIP_THRUST_FACTOR, BROAD_SD } from "../component/norms";
 import { BLOCK_TYPES } from "../component/blockType";
 
@@ -499,8 +499,13 @@ z-score vs historique propre (28 j) : ≤ −0,5 en baisse · ≤ −1,5 très d
       {/* ============ MORPHO ============ */}
       <FoldCard id="morpho" fold={fold} title="📏 Morphologie (poids, taille, masse maigre)">
         <F>{`bronze = moyenne du niveau · argent = moyenne + ${fr(SILVER_SD, 1)} écart-type · or = moyenne + ${fr(GOLD_SD, 1)} écart-type
-note /20 : moyenne − 2 ET = 0 · moyenne = 10 · argent = 15 · or = 20
-masse maigre = poids × (1 − % de gras de référence DXA du niveau)`}</F>
+note /20 de la masse : moyenne − ${MASS_ZERO_SD} ET = 0 · moyenne = 10 · argent = 15 · or = 20
+  (plus doux que les qualités physiques, où − 2 ET = 0 : la masse est de l'anthropométrie, pas une qualité)
+masse maigre = poids × (1 − % de gras de référence DXA du niveau)
+avec le % de gras : note = note de la masse maigre − ${FAT_PENALTY_PER_PT} × (gras − référence − marge), plafonné à ${FAT_PENALTY_MAX} points
+  référence = % de gras du poste au niveau (DXA ; plis cutanés : référence plus basse ; impédancemètre : marge plus large)
+orientation : prise de masse · prise de masse propre · recomposition · perte de poids · maintien
+  (cible = masse maigre de l'argent du poste au % de gras de référence)`}</F>
         <T
           head={["Poste", "Top 14 (moy / ET / n)", "Pro D2 (moy / ET / n)", "XV de France", "Intl 🥉/🥈/🥇"]}
           rows={Object.entries(PRO_DATA).map(([k, d]) => {

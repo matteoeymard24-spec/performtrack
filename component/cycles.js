@@ -43,6 +43,7 @@ export const PHASES = [
   { id: "charge", label: "Semaine de charge", color: "#c46a3a", models: [] }, // ancienne phase, plus proposée
   { id: "decharge", label: "Décharge", color: "#7fb77e", models: ["bloc", "ondulation"] },
   { id: "transition", label: "Transition", color: "#4fae7d", models: ["bloc", "ondulation"] },
+  { id: "reathle", label: "Réathlétisation", color: "#d9695a", models: ["bloc", "ondulation"] }, // cycles créés par le retour au jeu (rtpPlan.js)
   { id: "autre", label: "Autre", color: "#8a8378", models: ["bloc", "ondulation"] },
 ];
 export const phasesOfModel = (m) => PHASES.filter((p) => p.models.includes(m || "bloc"));

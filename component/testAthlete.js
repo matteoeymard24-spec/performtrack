@@ -9,14 +9,18 @@
      → récidive précoce. Une semaine sans séance, puis réathlé individuelle qui remonte.
    • Retour au jeu à l'étape 4 (terrain), avec historique daté, critères cochés et tests de retour.
    • Wellness presque tous les jours (fatigue qui monte avec la charge, douleur de la zone qui décroît).
+   • Objectif nutritionnel (prise de masse depuis J-42, poids cible) et courbe de poids qui le suit.
+   • Retour au jeu adapté par le coach (critères à lui, programme réécrit, test 505) + cycles de réathlé dans sa planif.
    • Bilans (page Tests) : 3 campagnes (pré-saison, mi-saison, retour de blessure avec déficit ischio droit).
    • RM avec historique : bas du corps recalé après la blessure puis en remontée, RDL pas retesté, haut du
      corps stable ; CMJ, VMA, poids hebdomadaire. 3 séances à venir.
    Tout porte isTest / testOf : « Supprimer » enlève exactement ces documents.
    ===================================================================== */
-import { collection, doc, getDocs, query, where, writeBatch, Timestamp, deleteDoc } from "firebase/firestore";
+import { collection, doc, getDocs, query, where, writeBatch, Timestamp, deleteDoc, updateDoc } from "firebase/firestore";
 import { removeUserFromGroups } from "./injuredGroup";
 import { getTest, computeResult, toStoredResult } from "./testsCalc";
+import { rtpState, RTP_N } from "./coachSynthesis";
+import { syncRtpPlan, rtpCycleId } from "./rtpPlan";
 
 export const testAthleteId = (coachUid) => `test_${coachUid}`;
 
@@ -54,6 +58,7 @@ const TEMPLATES = {
 };
 
 const INJURY_DAY = -30;
+const GOAL_DAY = -42; // début de l'objectif nutritionnel (prise de masse)
 const OLD_INJURY_DAY = -100;
 
 /* Planning des séances : [offset, modèle, RPE prévu, RPE ressenti | null (non faite), durée réelle] */
@@ -121,6 +126,8 @@ export async function createTestAthlete({ db, coachUid }) {
     level: "federale3",
     weight: 92,
     height: 183,
+    bodyFat: 24,
+    bodyFatMethod: "dxa",
     coachId: coachUid,
     coachIds: [coachUid],
     createdAt: nowTs,
@@ -242,7 +249,19 @@ export async function createTestAthlete({ db, coachUid }) {
     rtp: {
       v: 2,
       stage: 4,
-      checks: { s1a: true, s1b: true, s1c: true, s2a: true, s2b: true, m2: true, s3a: true, m3: true },
+      checks: { s1a: true, s1b: true, s1c: true, s2a: true, s2b: true, m2: true, s3a: true, m3: true, c_demo1: true },
+      // décisions du coach (critères à lui, programme réécrit, test terrain perso) : voir RtpCard
+      custom: {
+        4: [
+          { id: "c_demo1", t: "3 × 8 nordiques lents sans douleur (≤ 2/10)" },
+          { id: "c_demo2", t: "Accélérations 20 m à 95 % sans appréhension" },
+        ],
+        5: [{ id: "c_demo3", t: "2 séances de contact progressif sans douleur le lendemain" }],
+      },
+      content: {
+        4: "Lundi : vitesse linéaire 6 × 30 m à 90-95 %. Mercredi : appuis prévus puis réactifs (mirror drill), 505. Vendredi : jeu à toucher 4 × 4 min. + 2 séances de muscu (nordiques, RDL, hip thrust).",
+      },
+      customTests: [{ id: "t_demo505", label: "505 agility", unit: "s", stage: 4, min: 92 }],
       history: [
         { stage: 2, date: isoDay(INJURY_DAY + 6) },
         { stage: 3, date: isoDay(INJURY_DAY + 13) },
@@ -251,10 +270,12 @@ export async function createTestAthlete({ db, coachUid }) {
       tests: {
         force: { inj: 88, ref: 100, date: isoDay(-3) },
         speed: { inj: 28.5, ref: 31, date: isoDay(-2) },
+        t_demo505: { inj: 2.45, ref: 2.6, date: isoDay(-1) }, // temps : référence d'avant / temps actuel
       },
       updatedAt: isoTs(-2),
     },
   });
+  const curInj = { id: `${uid}_cur`, ...ops[ops.length - 1].data }; // blessure en cours (pour sa planif de réathlé)
 
   // RM (+ CMJ, VMA)
   RM_PLAN.forEach((rm) => {
@@ -344,8 +365,30 @@ export async function createTestAthlete({ db, coachUid }) {
     });
   });
 
+  // Objectif nutritionnel (Nutrition › Objectifs), aligné sur l'orientation du bilan (prise de masse propre)
+  put(doc(db, "users", uid, "nutrition", "settings"), {
+    sex: "M",
+    age: 24,
+    height: 183,
+    weight: 92,
+    bodyFat: 24,
+    pal: 1.9,
+    goal: "prise",
+    rate: 0.25,
+    targetWeight: 110.3,
+    goalSince: isoDay(GOAL_DAY),
+    diet: "omni",
+    proteinPerKg: "",
+    fatPct: "",
+    customFoods: [],
+    mySupps: [],
+    testOf: uid,
+    updatedAt: isoTs(GOAL_DAY, 10),
+  });
   for (let d = -112; d <= 0; d += 7) {
-    put(doc(db, "users", uid, "weight_history", isoDay(d)), { weight: Math.round((92 + (r() - 0.5) * 1.2 - (d > INJURY_DAY ? 0.8 : 0)) * 10) / 10, date: isoDay(d), testOf: uid });
+    // stable avant l'objectif nutritionnel (J-42), puis prise lente ≈ +0,18 kg/sem (objectif : +0,25)
+    const base = d < GOAL_DAY ? 91.3 : 91.3 + (0.18 * (d - GOAL_DAY)) / 7;
+    put(doc(db, "users", uid, "weight_history", isoDay(d)), { weight: Math.round((base + (r() - 0.5) * 0.5) * 10) / 10, date: isoDay(d), testOf: uid });
   }
 
   // écriture par lots de 400
@@ -354,7 +397,15 @@ export async function createTestAthlete({ db, coachUid }) {
     ops.slice(i, i + 400).forEach((o) => b.set(o.ref, o.data));
     await b.commit();
   }
-  return { uid, docs: ops.length };
+  // planif individuelle : cycles « 🏥 Réathlé · Étape N » écrits comme le fait la carte Retour au jeu
+  let planDocs = 0;
+  try {
+    const st = rtpState(curInj, [], isoDay(0));
+    planDocs = (await syncRtpPlan({ db, coachUid, athleteUid: uid, injury: curInj, state: st, today: isoDay(0) })).written || 0;
+  } catch (e) {
+    console.warn("[testAthlete] planif réathlé", e?.message || e);
+  }
+  return { uid, docs: ops.length + planDocs };
 }
 
 export async function deleteTestAthlete({ db, coachUid }) {
@@ -376,8 +427,16 @@ export async function deleteTestAthlete({ db, coachUid }) {
     refs.slice(i, i + 400).forEach((ref) => b.delete(ref));
     await b.commit();
   }
+  // cycles de réathlé de sa planif individuelle
+  for (let n = 1; n <= RTP_N; n++) await deleteDoc(doc(db, "cycles", rtpCycleId(`${uid}_cur`, n))).catch(() => null);
   // le retirer des groupes (dont le groupe « Blessés ») : sinon il y resterait comme membre fantôme
   await removeUserFromGroups(db, uid);
   await deleteDoc(doc(db, "users", uid)).catch(() => null);
   return refs.length;
 }
+
+/* Masquer / afficher l'athlète test partout dans l'appli (filtré dans getScopedUserDocs) */
+export async function setTestHidden({ db, coachUid, hidden }) {
+  await updateDoc(doc(db, "users", testAthleteId(coachUid)), { testHidden: !!hidden });
+}
+

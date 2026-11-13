@@ -1290,7 +1290,8 @@ export default function Workout() {
   useEffect(() => {
     if (userRole !== "admin" || customGroups.length === 0) return;
     if (allUserIds.length === 0) return; // pas encore chargés
-    const known = new Set(allUserIds);
+    // l'athlète test masqué n'est pas chargé (getScopedUserDocs) : il ne doit PAS être retiré de ses groupes
+    const known = { has: (id) => allUserIds.includes(id) || String(id).startsWith("test_") };
     const dirty = customGroups.filter(
       (g) =>
         (g.athleteIds || []).some((id) => !known.has(id)) ||
