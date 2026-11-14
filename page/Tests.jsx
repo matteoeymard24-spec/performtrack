@@ -1,7 +1,7 @@
 import { InjuryForm, InjuryTimeline, todayLocal } from "../component/InjuryHistory";
 import { syncInjuredGroup, joinInjuredGroupSelf } from "../component/injuredGroup";
 import { coachIdsOf } from "../component/coachScope";
-import { activeInjury, normalizeRtp, rtpTestsPatch, rtpTestsOf } from "../component/coachSynthesis";
+import { activeInjury, normalizeRtp, rtpTestsPatch, rtpTestsOf, rtpRegionOf } from "../component/coachSynthesis";
 import { RtpTestsForm } from "../component/CoachFiche";
 import TestProgress from "../component/TestProgress";
 import React, { useEffect, useMemo, useState } from "react";
@@ -1858,7 +1858,7 @@ export default function Tests() {
                         <RtpTestsForm
                           key={act.inj.id}
                           tests={normalizeRtp(act.inj.rtp)?.tests || {}}
-                          list={rtpTestsOf(normalizeRtp(act.inj.rtp))}
+                          list={rtpTestsOf(normalizeRtp(act.inj.rtp), rtpRegionOf(act.inj))}
                           onSave={async (t) => {
                             const rtp = rtpTestsPatch(act.inj, t);
                             await updateDoc(doc(db, "injuries", act.inj.id), { rtp });

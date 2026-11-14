@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { SYNTH_LEVELS, RTP_N, RTP_PHASES, RTP_TESTS, normalizeRtp } from "./coachSynthesis";
+import { SYNTH_LEVELS, RTP_N, RTP_PHASES, RTP_TESTS, RTP_REGIONS, phaseOfStage, normalizeRtp } from "./coachSynthesis";
 import { fmtDateFr, InjuryForm, injuryRecurrences } from "./InjuryHistory";
 import { REGIONS } from "./injuryRm";
 
@@ -605,22 +605,135 @@ function CustomTestsEditor({ rtp, saving, onSave }) {
   );
 }
 
+/* Barre des 6 étapes, cliquables : couleur de la phase, ✓ si franchie, cases cochées x/y */
+function StageRail({ state, selected, onSelect }) {
+  return (
+    <div role="tablist" aria-label="Étapes du retour au jeu" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 112px), 1fr))", gap: 6, marginBottom: 12 }}>
+      {state.stages.map((s) => {
+        const ph = phaseOfStage(s.id);
+        const done = state.cleared || s.id < state.stage;
+        const isCur = !state.cleared && s.id === state.stage;
+        const sel = s.id === selected;
+        const n = s.criteria.filter((c) => c.ok).length;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            role="tab"
+            aria-selected={sel}
+            onClick={() => onSelect(s.id)}
+            style={{
+              textAlign: "left",
+              cursor: "pointer",
+              padding: "8px 9px",
+              borderRadius: 10,
+              border: `${sel ? 2 : 1}px solid ${sel ? AMBER : isCur ? ph.color : BORDER}`,
+              background: sel ? "rgba(224,161,61,0.10)" : isCur ? `${ph.color}14` : "#0d0c0a",
+              color: TEXT,
+              borderTop: `4px solid ${done ? GREEN : ph.color}${done || isCur ? "" : "66"}`,
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 800, color: done ? GREEN : isCur ? ph.color : MUTED }}>
+              <span>
+                {done ? "✓ " : ""}Étape {s.id}
+              </span>
+              <span style={{ fontVariantNumeric: "tabular-nums", color: n === s.criteria.length ? GREEN : MUTED }}>
+                {n}/{s.criteria.length}
+              </span>
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.25, marginTop: 2, color: done || isCur ? TEXT : "#c9c1b5" }}>
+              {s.icon} {s.short}
+            </div>
+            {isCur && <div style={{ fontSize: 10.5, fontWeight: 800, color: ph.color, marginTop: 2 }}>EN COURS</div>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Nom / objectif d'une étape, modifiables par le coach (rtp.stageEdit) */
+function StageTitleEditor({ s, rtp, saving, onSave }) {
+  const [ed, setEd] = useState(null);
+  if (!ed)
+    return (
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <span style={{ width: 42, height: 42, borderRadius: 21, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 21, background: "#1a1610", border: `2px solid ${AMBER}`, flexShrink: 0 }}>{s.icon}</span>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, lineHeight: 1.25 }}>
+            {s.label}
+            {s.ownLabel && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: BLUE, border: `1px solid ${BLUE}55`, borderRadius: 999, padding: "0 6px", verticalAlign: "middle" }}>à toi</span>}
+          </div>
+          <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>🎯 {s.goal}</div>
+        </div>
+        <button type="button" className="pt-btn pt-btn--sm" onClick={() => setEd({ label: s.label, goal: s.goal })} title="Renommer l'étape et changer son objectif (pour cette blessure)">
+          ✏️
+        </button>
+      </div>
+    );
+  const save = (reset) => {
+    const next = { ...(rtp.stageEdit || {}) };
+    const label = String(ed.label || "").trim();
+    const goal = String(ed.goal || "").trim();
+    if (reset || ((!label || label === s.tplLabel) && (!goal || goal === s.tplGoal))) delete next[s.id];
+    else next[s.id] = { ...(label && label !== s.tplLabel ? { label: label.slice(0, 80) } : {}), ...(goal && goal !== s.tplGoal ? { goal: goal.slice(0, 300) } : {}) };
+    onSave({ stageEdit: next });
+    setEd(null);
+  };
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <input value={ed.label} onChange={(e) => setEd({ ...ed, label: e.target.value })} maxLength={80} aria-label="Nom de l'étape" style={inputSt} />
+      <textarea value={ed.goal} onChange={(e) => setEd({ ...ed, goal: e.target.value })} maxLength={300} rows={2} aria-label="Objectif de l'étape" style={{ ...inputSt, resize: "vertical" }} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" className="pt-btn pt-btn--accent pt-btn--sm" disabled={saving} onClick={() => save(false)}>
+          Enregistrer
+        </button>
+        <button type="button" className="pt-btn pt-btn--sm" onClick={() => setEd(null)}>
+          Annuler
+        </button>
+        {s.ownLabel && (
+          <button type="button" className="pt-btn pt-btn--sm" disabled={saving} onClick={() => save(true)}>
+            Rétablir la trame
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const autoSynced = new Set(); // planif de réathlé écrite une fois par blessure et par ouverture de l'appli
+
 export function RtpCard({ injury, status, state, onSave, saving, pain, painHistory, monitor, injuredGroup, onSaveTests, injuries, onPlan }) {
-  const [open, setOpen] = useState(0);
+  const [sel, setSel] = useState(state.cleared ? RTP_N : state.stage);
   const [testsOpen, setTestsOpen] = useState(false);
   const [planMsg, setPlanMsg] = useState("");
   const pendingPlan = React.useRef(false);
   const rec = injuries ? injuryRecurrences(injuries)[injury?.id] : null;
   const rtp = normalizeRtp(injury?.rtp) || { checks: {} };
-  // planif : réécrite une fois la blessure enregistrée et l'état recalculé
-  React.useEffect(() => {
-    if (!pendingPlan.current || !onPlan) return;
-    pendingPlan.current = false;
+  const runPlan = (st) => {
+    if (!onPlan) return;
     setPlanMsg("Mise à jour de sa planif…");
-    onPlan(state)
+    onPlan(st)
       .then(() => setPlanMsg(`✓ Planif à jour (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })})`))
       .catch((e) => setPlanMsg("❌ Planif non mise à jour : " + (e?.message || e)));
+  };
+  // planif réécrite après chaque modification (une fois la blessure enregistrée et l'état recalculé)
+  React.useEffect(() => {
+    if (!pendingPlan.current) return;
+    pendingPlan.current = false;
+    runPlan(state);
   }, [state.updatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+  // et une fois à l'ouverture : une blessure suivie avant cette fonction a aussi sa planif
+  React.useEffect(() => {
+    if (!injury?.id || autoSynced.has(injury.id)) return;
+    autoSynced.add(injury.id);
+    runPlan(state);
+  }, [injury?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // l'étape en cours change → on la montre
+  React.useEffect(() => {
+    setSel(state.cleared ? RTP_N : state.stage);
+  }, [state.stage, state.cleared]);
   if (!injury) return null;
   const save = async (upd) => {
     pendingPlan.current = true;
@@ -628,9 +741,13 @@ export function RtpCard({ injury, status, state, onSave, saving, pain, painHisto
   };
   const setStage = (n) => save({ stage: n });
   const name = injury.name || injury.zone || "Blessure";
-  const cur = state.cleared ? null : state.stages[state.stage - 1];
   const ph = state.phase;
+  const s = state.stages[Math.max(1, Math.min(RTP_N, sel)) - 1];
+  const isCur = !state.cleared && s.id === state.stage;
+  const isDone = state.cleared || s.id < state.stage;
+  const doneDate = isDone ? state.entered?.[s.id + 1] : null;
   const nTests = Object.keys(state.tests || {}).length;
+  const R = RTP_REGIONS[state.region];
   return (
     <div style={{ ...CARD, border: `1px solid ${RED}88`, padding: 0, overflow: "hidden" }}>
       {/* En-tête */}
@@ -646,9 +763,28 @@ export function RtpCard({ injury, status, state, onSave, saving, pain, painHisto
               {status?.back ? ` · retour estimé ${fmtDateFr(status.back, { day: "numeric", month: "short" })}` : ""}
             </div>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 800, color: "#12100c", background: state.cleared ? GREEN : ph.color, borderRadius: 999, padding: "4px 12px", whiteSpace: "nowrap" }}>
-            {state.cleared ? "✓ Performance retrouvée" : `Étape ${state.stage}/${RTP_N} · ${ph.short}`}
-          </span>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: MUTED }} title="La trame s'adapte à la région : course plus tôt pour le haut du corps, gestes et contact progressifs, tests adaptés">
+              Trame :
+              <select
+                value={state.region}
+                disabled={saving}
+                onChange={(e) => save({ region: e.target.value === state.autoRegion ? null : e.target.value })}
+                aria-label="Région du corps (adapte la trame)"
+                style={{ background: "#0d0c0a", color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "4px 6px", fontSize: 12.5, fontWeight: 700 }}
+              >
+                {Object.entries(RTP_REGIONS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v.icon} {v.label}
+                    {k === state.autoRegion ? " (détecté)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#12100c", background: state.cleared ? GREEN : ph.color, borderRadius: 999, padding: "4px 12px", whiteSpace: "nowrap" }}>
+              {state.cleared ? "✓ Performance retrouvée" : `Étape ${state.stage}/${RTP_N} · ${ph.short}`}
+            </span>
+          </div>
         </div>
         {rec && (
           <div style={{ fontSize: 12.5, color: rec.kind === "early" ? "#f0c2b8" : "#f0d9ae", marginTop: 8, lineHeight: 1.45 }}>
@@ -659,108 +795,49 @@ export function RtpCard({ injury, status, state, onSave, saving, pain, painHisto
       </div>
 
       <div style={{ padding: "12px 18px 16px" }}>
-        <RtpContinuum state={state} injury={injury} status={status} details={false} />
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))", gap: 16, alignItems: "start" }}>
-        <div style={{ minWidth: 0 }}>
-        {/* Étape en cours */}
-        {cur && (
-          <div style={{ borderRadius: 12, border: `2px solid ${ph.color}88`, background: `${ph.color}0d`, padding: 14, marginBottom: 14 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
-              <span style={{ width: 44, height: 44, borderRadius: 22, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 22, background: "#1a1610", border: `2px solid ${AMBER}`, flexShrink: 0 }}>{cur.icon}</span>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: ph.color }}>
-                  Étape en cours · {cur.id}/{RTP_N}
-                  {state.daysIn(cur.id) != null ? ` · depuis ${state.daysIn(cur.id)} j` : ""}
-                </div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: TEXT, lineHeight: 1.25 }}>{cur.label}</div>
-                <div style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>🎯 {cur.goal}</div>
-              </div>
-            </div>
-            <StageEditor key={cur.id} s={cur} isCur isDone={false} saving={saving} rtp={rtp} onSave={save} onStage={setStage} highlight />
-          </div>
-        )}
-        {state.cleared && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", padding: 12, borderRadius: 12, border: `1px solid ${GREEN}66`, marginBottom: 14 }}>
-            <span style={{ fontSize: 14, color: GREEN, fontWeight: 800 }}>✓ Retour à la performance validé</span>
-            <button type="button" className="pt-btn" disabled={saving} onClick={() => setStage(RTP_N)}>
-              Rouvrir le suivi
-            </button>
-          </div>
-        )}
-
+        <div style={{ fontSize: 11.5, fontWeight: 800, color: MUTED, letterSpacing: 0.4, textTransform: "uppercase", marginBottom: 6 }}>
+          Les étapes <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>· clique pour voir ce qui est coché{R ? ` · trame ${R.label.toLowerCase()}` : ""}</span>
         </div>
-        <div style={{ minWidth: 0 }}>
-        {/* Planif */}
-        {onPlan && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: "#c9c1b5", padding: "8px 10px", borderRadius: 10, background: "#0d0c0a", border: `1px solid ${BORDER}`, marginBottom: 12 }}>
-            <span style={{ flex: 1, minWidth: 200, lineHeight: 1.45 }}>
-              📅 L'étape en cours (programme, critères, tests) est écrite dans <b>sa planif individuelle</b>, mise à jour à chaque modification.
-              {injuredGroup && !state.cleared && state.stage < 5 ? " Il est dans le groupe Blessés : il ne voit que sa planif et ses séances de réathlé." : ""}
-            </span>
-            <button
-              type="button"
-              className="pt-btn pt-btn--sm"
-              disabled={saving}
-              onClick={() => {
-                setPlanMsg("Mise à jour de sa planif…");
-                onPlan(state)
-                  .then(() => setPlanMsg(`✓ Planif à jour (${new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })})`))
-                  .catch((e) => setPlanMsg("❌ " + (e?.message || e)));
-              }}
-            >
-              Mettre à jour maintenant
-            </button>
-            {planMsg && <span style={{ width: "100%", fontSize: 12, color: planMsg.startsWith("✓") ? GREEN : planMsg.startsWith("❌") ? RED : MUTED }}>{planMsg}</span>}
-          </div>
-        )}
+        <StageRail state={state} selected={s.id} onSelect={setSel} />
 
-        {painHistory && <ZonePainStrip history={painHistory} monitor={monitor} />}
+        {/* Étape sélectionnée */}
+        <div style={{ borderRadius: 12, border: `2px solid ${isCur ? ph.color + "88" : isDone ? GREEN + "55" : BORDER}`, background: isCur ? `${ph.color}0d` : "#0f0e0b", padding: 14, marginBottom: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, textTransform: "uppercase", color: isCur ? ph.color : isDone ? GREEN : MUTED, marginBottom: 6 }}>
+            Étape {s.id}/{RTP_N} ·{" "}
+            {isCur
+              ? `en cours${state.daysIn(s.id) != null ? ` depuis ${state.daysIn(s.id)} j` : ""}`
+              : isDone
+              ? `franchie${doneDate ? ` le ${fmtDateFr(doneDate, { day: "numeric", month: "short" })}` : ""}${state.daysIn(s.id) != null ? ` (${state.daysIn(s.id)} j)` : ""}`
+              : "à venir · tu peux préparer ses critères"}
+          </div>
+          <StageTitleEditor key={`t${s.id}`} s={s} rtp={rtp} saving={saving} onSave={save} />
+          <div style={{ marginTop: 10 }}>
+            <StageEditor key={s.id} s={s} isCur={isCur} isDone={false} saving={saving} rtp={rtp} onSave={save} onStage={setStage} highlight />
+          </div>
+          {!isCur && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
+              <button type="button" className="pt-btn pt-btn--sm" disabled={saving} onClick={() => setStage(s.id)}>
+                {isDone ? `Revenir à l'étape ${s.id}` : `Passer directement à l'étape ${s.id}`}
+              </button>
+              {isDone && s.criteria.some((c) => !c.ok) && <span style={{ fontSize: 12, color: "#d9a441" }}>Étape franchie avec des critères non cochés.</span>}
+            </div>
+          )}
+          {state.cleared && s.id === RTP_N && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+              <span style={{ fontSize: 13.5, color: GREEN, fontWeight: 800 }}>✓ Retour à la performance validé</span>
+              <button type="button" className="pt-btn pt-btn--sm" disabled={saving} onClick={() => setStage(RTP_N)}>
+                Rouvrir le suivi
+              </button>
+            </div>
+          )}
+        </div>
+
         {pain?.onInjury && (
           <div style={{ fontSize: 13, color: "#f0d9ae", background: "rgba(217,105,90,0.12)", border: `1px solid ${RED}55`, borderRadius: 10, padding: "8px 11px", marginBottom: 12, lineHeight: 1.45 }}>
             ⚠️ Douleur de {pain.onInjury.v}/10 déclarée aujourd'hui sur la zone ({pain.onInjury.label}) : ne pas valider l'étape suivante tant qu'elle persiste.
           </div>
         )}
-
-        {/* Toutes les étapes */}
-        <div style={{ fontSize: 11.5, fontWeight: 800, color: MUTED, letterSpacing: 0.4, textTransform: "uppercase", margin: "6px 0 2px" }}>
-          Toutes les étapes <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600 }}>· prépare les critères des suivantes</span>
-        </div>
-        {state.stages.map((s) => {
-          if (cur && s.id === cur.id) return null;
-          const isDone = state.cleared || s.id < state.stage;
-          const isOpen = open === s.id;
-          const d = state.daysIn(s.id);
-          const own = s.criteria.filter((c) => c.own).length;
-          return (
-            <div key={s.id} style={{ borderTop: `1px solid ${BORDER}`, padding: "8px 0" }}>
-              <button
-                type="button"
-                onClick={() => setOpen(isOpen ? 0 : s.id)}
-                aria-expanded={isOpen}
-                style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", padding: 0, cursor: "pointer", color: TEXT, textAlign: "left" }}
-              >
-                <span style={{ width: 26, height: 26, borderRadius: 13, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, background: isDone ? GREEN : "#1a1815", color: isDone ? "#12100c" : MUTED }}>
-                  {isDone ? "✓" : s.id}
-                </span>
-                <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: isDone ? "#c9c1b5" : MUTED }}>
-                  {s.icon} {s.label}
-                  {isDone && d != null ? <span style={{ fontWeight: 600 }}> · {d} j</span> : null}
-                </span>
-                <span style={{ fontSize: 12, color: MUTED, whiteSpace: "nowrap" }}>
-                  {own ? <span style={{ color: BLUE }}>{own} à toi · </span> : null}
-                  {s.criteria.length} critère{s.criteria.length > 1 ? "s" : ""} {isOpen ? "▾" : "▸"}
-                </span>
-              </button>
-              {isOpen && (
-                <div style={{ margin: "8px 0 4px 36px" }}>
-                  <div style={{ fontSize: 12.5, color: MUTED, marginBottom: 4 }}>🎯 {s.goal}</div>
-                  <StageEditor key={s.id} s={s} isCur={false} isDone={isDone} saving={saving} rtp={rtp} onSave={save} onStage={setStage} />
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {painHistory && <ZonePainStrip history={painHistory} monitor={monitor} />}
 
         {/* Tests */}
         {onSaveTests && (
@@ -794,11 +871,23 @@ export function RtpCard({ injury, status, state, onSave, saving, pain, painHisto
             )}
           </div>
         )}
-        </div>
-        </div>
+
+        {/* Planif */}
+        {onPlan && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: "#c9c1b5", borderTop: `1px solid ${BORDER}`, paddingTop: 10, marginTop: 10 }}>
+            <span style={{ flex: "1 1 220px", lineHeight: 1.45 }}>
+              📅 L'étape en cours est écrite dans <b>sa planif individuelle</b> (Séances › Planification), mise à jour à chaque modification.
+              {injuredGroup && !state.cleared && state.stage < 5 ? " Dans le groupe Blessés, il ne voit que sa planif et ses séances de réathlé." : ""}
+            </span>
+            <button type="button" className="pt-btn pt-btn--sm" disabled={saving} onClick={() => runPlan(state)}>
+              Mettre à jour maintenant
+            </button>
+            {planMsg && <span style={{ width: "100%", fontSize: 12, color: planMsg.startsWith("✓") ? GREEN : planMsg.startsWith("❌") ? RED : MUTED }}>{planMsg}</span>}
+          </div>
+        )}
         <div style={{ fontSize: 11, color: "#6f6a62", marginTop: 12 }}>
-          Trame de réathlétisation (Ardern 2016, Taberner 2019, Silbernagel 2007) que tu adaptes à la blessure : elle ne remplace pas l'avis du
-          médecin ou du kiné, qui décident du retour.
+          Trame de réathlétisation (Ardern 2016, Taberner 2019, Silbernagel 2007) adaptée à la région et au tissu, que tu ajustes à la blessure :
+          elle ne remplace pas l'avis du médecin ou du kiné, qui décident du retour.
         </div>
       </div>
     </div>

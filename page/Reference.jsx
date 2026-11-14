@@ -251,6 +251,17 @@ contrainte habituelle = moyenne des contraintes des 4 semaines précédentes`}</
               .join(" · "),
           ])}
         />
+        <H>Trame adaptée à la région du corps</H>
+        <P>
+          La trame ci-dessus est celle du bas du corps. La région est déduite de la zone de la blessure (modifiable sur la carte).
+          <b> Haut du corps</b> : course et conditionnement dès l'étape 2 (la zone ne porte pas le poids du corps) ; l'étape 3 devient
+          « renforcement & reprise des gestes » (passes, ratio rotateurs externes / internes ≥ 66 %), l'étape 4 « gestes du poste »
+          (plaquage sur sac / bouclier, test fonctionnel du membre supérieur type CKCUEST ≥ 90 %), l'étape 5 le contact progressif ; la
+          force de la zone reste le verrou (≥ 80 % puis ≥ 90 %). <b>Tronc</b> : gainage (écart droite / gauche ≤ 10 %), mouvements lourds dos
+          neutre ≥ 80 % puis ≥ 90 % du RM d'avant blessure, rotations chargées, mêlée / ruck progressifs. Tests proposés selon la région
+          (sauts unipodaux et vitesse : bas du corps ; CKCUEST et Y-balance sur les mains : haut du corps ; gainage : tronc).
+        </P>
+        <Ref>Davies GJ et al. — Closed Kinetic Chain Upper Extremity Stability Test (CKCUEST), reliability · Gorman PP et al. 2012, J Strength Cond Res 26:3043 (Y-balance haut du corps) · Byram IR et al. 2010, Am J Sports Med 38:1375 (force des rotateurs de l'épaule et blessure) · McGill SM et al. 1999, Arch Phys Med Rehabil 80:941 (endurance du tronc).</Ref>
         <H>Critères calculés</H>
         <P>
           Douleur de la zone : lue chaque jour sur le schéma corporel du wellness (zone reconnue par les mots communs avec le nom ou la

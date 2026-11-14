@@ -19,6 +19,7 @@ import { baseRpe } from "./rpePredict";
 import { monotonyStrain, resumeInfo } from "./loadMetrics";
 import { zoneLabel, PAIN_TYPES } from "./BodyScan";
 import { sameZoneText, injuryText } from "./injuryZones";
+import { injuryRegion } from "./injuryRm";
 import { mondayOf } from "./cycles";
 import { injuryStatus } from "./InjuryHistory";
 import { STRENGTH_NORMS, findRM, evaluateStrength, hasNorms } from "./norms";
@@ -168,6 +169,8 @@ export function loadDynamics(dailyLoads, today, redi = null) {
      custom: { étape: [{ id, t }] }        critères ajoutés par le coach (cases à cocher)
      off: { idCritère: true }              critères de la trame retirés par le coach
      content: { étape: "texte" }           « Au programme » réécrit par le coach (repris dans la planif)
+     region: "lower" | "upper" | "trunk"   région choisie par le coach (sinon déduite de la zone) : adapte la trame
+     stageEdit: { étape: { label, goal } } nom / objectif d'étape réécrits par le coach
      customTests: [{ id, label, unit, hint, stage, min }]  tests de retour terrain ajoutés par le coach ;
                                            avec stage + min : critère auto « LSI ≥ min % » à cette étape }.
    --------------------------------------------------------------------- */
@@ -282,29 +285,133 @@ const BASE_STAGES = [
   },
 ];
 
-/* Étapes pour un tissu donné (critères communs + propres au tissu, insérés avant les critères de charge) */
-export function rtpStagesFor(tissue) {
-  const extra = TISSUE_CRITERIA[tissue] || {};
-  return BASE_STAGES.map((s) => {
-    const add = extra[s.id] || [];
-    if (!add.length) return s;
-    const i = s.criteria.findIndex((c) => c.auto && c.auto.startsWith("load"));
-    const criteria = i < 0 ? [...s.criteria, ...add] : [...s.criteria.slice(0, i), ...add, ...s.criteria.slice(i)];
-    return { ...s, criteria };
+/* ===== Adaptation à la RÉGION du corps (haut du corps / bas du corps / tronc) =====
+   La trame de base est pensée pour le bas du corps. Haut du corps : la course et le conditionnement reviennent
+   tôt (la zone ne porte pas le poids du corps), mais la FONCTION de la zone (force, gestes, contact) reste le
+   verrou : force ≥ 80 % puis ≥ 90 % sur les mouvements du haut du corps, tests fonctionnels du membre supérieur
+   (CKCUEST, Y-balance haut du corps), ratio rotateurs externes / internes, contact progressif.
+   Tronc : gainage et mouvements lourds dos neutre, rotations chargées, contact progressif.
+   Remplacements par id (les critères changent d'id quand leur sens change, pour ne pas reprendre une case cochée). */
+export const RTP_REGIONS = {
+  lower: { label: "Bas du corps", icon: "🦵" },
+  upper: { label: "Haut du corps", icon: "💪" },
+  trunk: { label: "Tronc / dos / cou", icon: "🧱" },
+};
+const REGION_STAGES = {
+  upper: {
+    1: { content: "Soins (kiné), protection de la zone (attelle si prescrite), mobilité douce. Bas du corps et cardio (vélo, course en ligne) maintenus si la zone est protégée et indolore." },
+    2: {
+      content: "Mobilité de l'épaule / du bras, isométrie puis renforcement léger de la zone, gainage. Course et conditionnement repris normalement (bras libres, sans contrainte sur la zone).",
+      replace: { s2b: { id: "u2b", t: "Gestes du quotidien (au-dessus de la tête, pousser, tirer) sans douleur" } },
+      add: [{ id: "u2c", t: "Course et conditionnement repris sans douleur de la zone (dès cette étape pour le haut du corps)" }],
+    },
+    3: {
+      short: "Gestes",
+      label: "Renforcement & reprise des gestes",
+      goal: "Charger la zone en salle (poussées, tirages, rotateurs) et reprendre les gestes du rugby à faible intensité.",
+      content: "Musculation progressive du haut du corps (développé, tirage, rotateurs externes / internes), passes et réceptions à faible intensité, appuis sur les mains. Course et conditionnement en charge normale.",
+      replace: { s3a: { id: "u3a", t: "Passes et réceptions à faible intensité sans douleur, pendant et le lendemain" } },
+      add: [{ id: "u3c", t: "Ratio rotateurs externes / internes ≥ 66 % et rotateurs externes ≥ 90 % du côté sain (épaule)" }],
+    },
+    4: {
+      label: "Réathlé terrain : gestes du poste",
+      goal: "Gestes du poste à pleine intensité sans opposition : passes longues, plaquage sur sac / bouclier, ruck sans opposition.",
+      content: "Gestes explosifs du haut du corps (lancers de médecine-ball, pompes pliométriques), passes longues, plaquages sur sac puis bouclier, jeu sans contact.",
+      replace: { s4a: { id: "u4a", t: "Gestes du poste à pleine intensité (passes longues, plaquage sur sac / bouclier) sans douleur ni appréhension" } },
+      add: [{ id: "u4c", t: "Test fonctionnel du haut du corps (CKCUEST / lancer unilatéral) ≥ 90 % de la référence", auto: "upfun90" }],
+    },
+    5: {
+      content: "Séances collectives complètes, contact progressif : chute → plaquage sur sac → opposition réduite → plein contact.",
+      replace: { s5a: { id: "u5a", t: "Contact progressif validé (plaquages et rucks en opposition réelle) une semaine complète, sans réaction de la zone ni appréhension" } },
+    },
+  },
+  trunk: {
+    1: { content: "Soins (kiné), positions antalgiques, marche, mobilité douce. Cardio sans choc (vélo) selon la douleur." },
+    2: {
+      content: "Mobilité du tronc, gainage progressif (planche, latéral, Sorensen), respiration, renforcement des membres sans charge axiale.",
+      add: [{ id: "k2c", t: "Gainage tenu sans douleur (planche, latéral, Sorensen), écart droite / gauche ≤ 10 %" }],
+    },
+    3: {
+      goal: "Remettre de la charge axiale (squat, soulevé dos neutre) et la course en ligne.",
+      content: "Mouvements lourds dos neutre (squat, soulevé de terre, hip thrust), rotations contrôlées, course linéaire, sauts bilatéraux.",
+      replace: { s3b: { id: "k3b", t: "Mouvements lourds (squat, soulevé de terre) ≥ 80 % du RM d'avant blessure, dos neutre, sans douleur", auto: "force80" } },
+    },
+    4: {
+      content: "Sprints, changements de direction, lancers rotatifs chargés, gestes du poste sans contact.",
+      replace: { s4b: { id: "k4b", t: "Mouvements lourds ≥ 90 % du RM d'avant blessure, sans douleur le lendemain", auto: "force90" } },
+      add: [{ id: "k4c", t: "Rotations et flexions du tronc chargées (lancers rotatifs) sans douleur" }],
+    },
+    5: {
+      content: "Séances collectives complètes, contact progressif (plaquages, rucks, mêlée selon le poste).",
+      replace: { s5a: { id: "k5a", t: "Une semaine complète, contact et mêlée / ruck compris, sans réaction de la zone" } },
+    },
+  },
+};
+/* Critères de tissu propres à la région (sinon ceux du bas du corps) */
+const REGION_TISSUE = {
+  upper: {
+    muscle: {
+      3: [{ id: "um3", t: "Étirement actif indolore (bras en élévation et rotation complètes)" }],
+      4: [{ id: "um4", t: "Gestes explosifs (lancers, passes longues) à pleine intensité sans douleur" }],
+    },
+    ligament: {
+      2: [{ id: "ul2", t: "Appui stable sur les mains (planche) 30 s sans douleur ni appréhension" }],
+      3: [{ id: "ul3", t: "Y-balance haut du corps ≥ 90 % du côté sain", auto: "ybal90" }],
+      4: [{ id: "ul4", t: "Test d'appréhension négatif et stabilité en position de plaquage" }],
+    },
+    os: {
+      2: [{ id: "uo2", t: "Gestes du quotidien sans douleur, consolidation confirmée par le médecin" }],
+      3: [{ id: "uo3", t: "Appuis sur les mains et impacts progressifs sans douleur osseuse le lendemain" }],
+    },
+  },
+  trunk: {
+    muscle: { 3: [{ id: "km3", t: "Flexion, extension et rotation du tronc indolores en charge" }] },
+    ligament: { 2: [{ id: "kl2", t: "Gainage statique tenu sans douleur, mobilité complète" }] },
+    os: {
+      2: [{ id: "ko2", t: "Respiration profonde et toux sans douleur, consolidation confirmée par le médecin" }],
+      3: [{ id: "ko3", t: "Course et impacts progressifs sans douleur le lendemain" }],
+    },
+  },
+};
+
+/* Région retenue pour une blessure : choix du coach (rtp.region), sinon déduite de la zone, sinon bas du corps */
+export function rtpRegionOf(inj) {
+  const r = normalizeRtp(inj?.rtp)?.region;
+  if (RTP_REGIONS[r]) return r;
+  const a = injuryRegion(inj);
+  return RTP_REGIONS[a] ? a : "lower";
+}
+
+/* Étapes pour un tissu et une région (critères communs → adaptés à la région → + critères du tissu, insérés avant ceux de charge) */
+export function rtpStagesFor(tissue, region = "lower") {
+  const R = REGION_STAGES[region] || {};
+  const extra = (REGION_TISSUE[region] && REGION_TISSUE[region][tissue]) || TISSUE_CRITERIA[tissue] || {};
+  return BASE_STAGES.map((s0) => {
+    const r = R[s0.id] || {};
+    let crit = s0.criteria.map((c) => (r.replace && r.replace[c.id] ? r.replace[c.id] : c));
+    const add = [...(r.add || []), ...(extra[s0.id] || [])];
+    if (add.length) {
+      const i = crit.findIndex((c) => c.auto && c.auto.startsWith("load"));
+      crit = i < 0 ? [...crit, ...add] : [...crit.slice(0, i), ...add, ...crit.slice(i)];
+    }
+    return { ...s0, ...(r.short ? { short: r.short } : {}), ...(r.label ? { label: r.label } : {}), ...(r.goal ? { goal: r.goal } : {}), ...(r.content ? { content: r.content } : {}), criteria: crit };
   });
 }
 /* Tests de retour : valeur côté blessé (ou actuelle) et valeur de référence (côté sain ou d'avant blessure).
    LSI = blessé ÷ référence × 100 (indice de symétrie). Saisis dans la fiche (coach) ou Tests › Bilan. */
 export const RTP_TESTS = [
-  { id: "force", label: "Force de la zone", hint: "côté blessé / côté sain (isométrie, dynamomètre) ou RM actuel / RM d'avant blessure", unit: "" },
-  { id: "hop", label: "Sauts unipodaux", hint: "distance ou triple saut : jambe blessée / jambe saine (cm)", unit: "cm" },
-  { id: "ybal", label: "Y-balance", hint: "portée composite : côté blessé / côté sain (% ou cm)", unit: "" },
-  { id: "speed", label: "Vitesse max", hint: "actuelle / d'avant blessure (km/h)", unit: "km/h" },
-  { id: "perf", label: "Tests de performance", hint: "moyenne sprint, CMJ, force : actuel / d'avant blessure (même unité)", unit: "" },
+  { id: "force", label: "Force de la zone", hint: "côté blessé / côté sain (isométrie, dynamomètre) ou RM actuel / RM d'avant blessure", unit: "", regions: ["lower", "upper", "trunk"] },
+  { id: "hop", label: "Sauts unipodaux", hint: "distance ou triple saut : jambe blessée / jambe saine (cm)", unit: "cm", regions: ["lower"] },
+  { id: "ybal", label: "Y-balance", hint: "portée composite : côté blessé / côté sain (bas du corps, ou haut du corps en appui sur les mains)", unit: "", regions: ["lower", "upper"] },
+  { id: "upfun", label: "Test fonctionnel haut du corps", hint: "CKCUEST (touches en 15 s) ou lancer unilatéral : côté blessé / côté sain (ou d'avant blessure)", unit: "", regions: ["upper"] },
+  { id: "core", label: "Gainage", hint: "temps tenu : côté faible / côté fort, ou actuel / d'avant blessure (s)", unit: "s", regions: ["trunk"] },
+  { id: "speed", label: "Vitesse max", hint: "actuelle / d'avant blessure (km/h)", unit: "km/h", regions: ["lower", "trunk"] },
+  { id: "perf", label: "Tests de performance", hint: "moyenne sprint, CMJ, force : actuel / d'avant blessure (même unité)", unit: "", regions: ["lower", "upper", "trunk"] },
 ];
 /* Tests standard + tests ajoutés par le coach sur cette blessure */
-export const rtpTestsOf = (rtp) => [
-  ...RTP_TESTS,
+export const rtpTestsOf = (rtp, region = "lower") => [
+  // tests de la région + tout test standard déjà saisi (on ne cache jamais une valeur existante)
+  ...RTP_TESTS.filter((t) => (t.regions || []).includes(region) || (rtp && rtp.tests && rtp.tests[t.id])),
   ...((rtp && rtp.customTests) || []).map((t) => ({
     id: t.id,
     label: t.label,
@@ -316,7 +423,7 @@ export const rtpTestsOf = (rtp) => [
   })),
 ];
 export const lsiOf = (t) => (t && Number(t.inj) > 0 && Number(t.ref) > 0 ? Math.round((Number(t.inj) / Number(t.ref)) * 100) : null);
-const TEST_RULES = { force80: ["force", 80], force90: ["force", 90], hop90: ["hop", 90], ybal90: ["ybal", 90], speed90: ["speed", 90], perf95: ["perf", 95] };
+const TEST_RULES = { force80: ["force", 80], force90: ["force", 90], hop90: ["hop", 90], ybal90: ["ybal", 90], upfun90: ["upfun", 90], core90: ["core", 90], speed90: ["speed", 90], perf95: ["perf", 95] };
 
 /* Étapes sans critère de tissu (page Référence, libellés) */
 export const RTP_STAGES = BASE_STAGES;
@@ -392,6 +499,10 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
   const off = rtp.off || {};
   const custom = rtp.custom || {};
   const content = rtp.content || {};
+  const stageEdit = rtp.stageEdit || {};
+  // région : choisie par le coach (rtp.region), sinon déduite de la zone (injuryRm.js → injuryZones.js) ; défaut bas du corps
+  const autoRegion = injuryRegion(inj);
+  const region = RTP_REGIONS[rtp.region] ? rtp.region : RTP_REGIONS[autoRegion] ? autoRegion : "lower";
   const load = rtpLoadCheck(dailyLoads, inj?.date, today);
   const painToday = opts.wellnessToday !== undefined ? zonePainOf(opts.wellnessToday, inj) : null;
   const p = { loadPartial: TH("rtpLoadPartial"), loadFull: TH("rtpLoadFull") };
@@ -427,11 +538,14 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
       const [tid] = TEST_RULES[kind];
       const t = tests[tid];
       if (!t && tid === "force") return `RM retestés depuis la blessure : ${opts.rmRecovery} % de ceux d'avant`;
-      return `test « ${RTP_TESTS.find((x) => x.id === tid).label} » : ${lsiOf(t)} %${t.date ? ` (${t.date.slice(8, 10)}/${t.date.slice(5, 7)})` : ""}`;
+      return `test « ${(RTP_TESTS.find((x) => x.id === tid) || { label: tid }).label} » : ${lsiOf(t)} %${t.date ? ` (${t.date.slice(8, 10)}/${t.date.slice(5, 7)})` : ""}`;
     }
     return `${load.current} UA sur 7 jours, soit ${load.pct} % de ses ${load.usual} UA habituels`;
   };
-  const stages = rtpStagesFor(inj?.tissueType).map((st) => {
+  const stages = rtpStagesFor(inj?.tissueType, region).map((st0) => {
+    // nom / objectif réécrits par le coach
+    const ed = stageEdit[st0.id] || {};
+    const st = { ...st0, tplLabel: st0.label, tplGoal: st0.goal, label: ed.label || st0.label, goal: ed.goal || st0.goal, ownLabel: !!(ed.label || ed.goal) };
     // trame (sans les critères retirés) + tests perso à seuil + cases du coach
     const tpl = st.criteria.filter((c) => !off[c.id]);
     const fromTests = customTests
@@ -459,12 +573,13 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     };
   });
   const stage = Math.max(1, Math.min(RTP_N + 1, Number(rtp.stage) || 1));
-  // étapes déjà franchies : validées par le coach, on ne les « décoche » pas avec les données du jour
+  // étapes déjà franchies : on montre ce que le coach avait VRAIMENT coché (cases manuelles) ; les critères automatiques
+  // sont réputés atteints au passage (les données du jour ne doivent pas les « décocher » après coup)
   stages.forEach((st) => {
     if (st.id < stage) {
       st.passed = true;
-      st.complete = true;
-      st.criteria = st.criteria.map((c) => ({ ...c, ok: true, note: null }));
+      st.criteria = st.criteria.map((c) => (c.kind ? { ...c, ok: true, auto: true, note: "atteint au passage de l'étape" } : c));
+      st.complete = st.criteria.every((c) => c.ok);
     }
   });
   // dates d'entrée dans chaque étape (l'étape 1 commence le jour de la blessure)
@@ -496,7 +611,9 @@ export function rtpState(inj, dailyLoads, today, opts = {}) {
     started: !!inj?.rtp,
     tissue: inj?.tissueType || null,
     tests,
-    testsList: rtpTestsOf(rtp),
+    testsList: rtpTestsOf(rtp, region),
+    region,
+    autoRegion: RTP_REGIONS[autoRegion] ? autoRegion : null,
     customTests,
     updatedAt: rtp.updatedAt || null,
   };
@@ -512,7 +629,7 @@ export function rtpPatch(inj, upd, today) {
     if (stage > 1) history.push({ stage, date: today });
   }
   const keep = {};
-  ["checks", "custom", "off", "content", "customTests"].forEach((k) => {
+  ["checks", "custom", "off", "content", "customTests", "region", "stageEdit"].forEach((k) => {
     if (upd[k] !== undefined) keep[k] = upd[k];
   });
   return { ...cur, ...keep, v: 2, stage, history: history.slice(-12), tests: cur.tests || {}, updatedAt: new Date().toISOString() };

@@ -5032,6 +5032,9 @@ export default function Workout() {
     // athlète du groupe « Blessés » : planification du groupe Blessés + la sienne (plus celle de son équipe)
     const injuredOf = (uid) => injuredScopes(uid, customGroups);
     if (filterAthlete) return injuredOf(filterAthlete.id) ? [...injuredOf(filterAthlete.id), userScope(filterAthlete.id)] : ["total", ...groupsOf(filterAthlete.id), userScope(filterAthlete.id)];
+    // groupe 🏥 Blessés : sa planif + la planif individuelle (réathlé) de chacun de ses membres, PAS celle de l'équipe
+    // (les blessés ne la voient pas : le coach doit voir la même chose qu'eux)
+    if (filterGroup && filterGroup.system === "injured") return [filterGroup.id, ...(filterGroup.athleteIds || []).map((u) => userScope(u))];
     if (filterGroup) return ["total", filterGroup.id];
     if (isAdminLike) return null;
     if (injuredOf(currentUser.uid)) return [...injuredOf(currentUser.uid), userScope(currentUser.uid)];
