@@ -2803,6 +2803,10 @@ export default function Workout() {
         return;
       }
       e.preventDefault();
+      // près du haut / du bas de l'écran : la page défile pour atteindre le calendrier
+      const edge = 90;
+      if (t.clientY < edge) window.scrollBy(0, -Math.ceil((edge - t.clientY) / 6));
+      else if (t.clientY > window.innerHeight - edge) window.scrollBy(0, Math.ceil((t.clientY - (window.innerHeight - edge)) / 6));
       setTouchGhost((g) => (g ? { ...g, x: t.clientX, y: t.clientY } : g));
       setDragOverDate(dateAt(t));
     };
@@ -5188,7 +5192,12 @@ export default function Workout() {
             outline: dragOverDate === dateStr ? "2px dashed #e0a13d" : "none",
             // Aujourd'hui n'est plus teinté en orange (ça ressemblait à un jour avec séance) :
             // seul son numéro est dans une pastille orange (voir plus bas).
-            background: fxMain ? `${fxMain.color}2e` : dSt ? `${dSt.color}24` : "#1a1815",
+            // jour de match : rayures de la couleur du match (jamais confondu avec un statut de séance)
+            background: fxMain
+              ? `repeating-linear-gradient(135deg, ${fxMain.color}40 0 6px, ${fxMain.color}14 6px 12px)`
+              : dSt
+              ? `${dSt.color}24`
+              : "#1a1815",
             border: isSelected
               ? "2px solid #f3f0ea"
               : fxMain
@@ -11306,6 +11315,11 @@ export default function Workout() {
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 12 }}>
+                  {isAdminLike && (
+                    <div style={{ fontSize: 12, color: "#a8a199", lineHeight: 1.4 }}>
+                      ↔️ {isMobileView() ? "Appui long sur une séance, puis glisse-la sur un jour du calendrier pour la déplacer." : "Glisse une séance sur un jour du calendrier pour la déplacer."}
+                    </div>
+                  )}
                   {events
                     .filter(
                       (e) => calendarDateOf(e) === selectedDate && isEventVisibleToFilter(e)
@@ -11394,20 +11408,6 @@ export default function Workout() {
                             </div>
                           );
                         })()}
-                        {isAdminLike && (
-                          <label
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#a8a199", margin: "0 0 8px 0" }}
-                          >
-                            ↔️ Déplacer au
-                            <input
-                              type="date"
-                              value=""
-                              onChange={(e) => e.target.value && moveSessionToDate(session.id, e.target.value)}
-                              style={{ background: "#1a1815", color: "#f3f0ea", border: "1px solid #2a2620", borderRadius: 6, padding: "4px 6px", fontSize: 14 }}
-                            />
-                          </label>
-                        )}
                         <div style={{ fontSize: 13, color: "#a8a199" }}>
                           <span
                             style={{

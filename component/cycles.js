@@ -220,9 +220,10 @@ export function buildWeeks(parent, { lastIsDeload }) {
    de "Tous", de ses groupes ET les siens.
    --------------------------------------------------------------------- */
 export const FIXTURE_KINDS = [
-  { id: "match", label: "Match officiel", icon: "🏉", color: "#d9534f" },
-  { id: "amical", label: "Match amical", icon: "🤝", color: "#e0a13d" },
-  { id: "tournoi", label: "Tournoi / compétition", icon: "🏆", color: "#c9a227" },
+  // couleurs distinctes des statuts de séance (vert faite, orange en partie, rouge non faite, jaune en cours)
+  { id: "match", label: "Match officiel", icon: "🏉", color: "#8e6bd8" },
+  { id: "amical", label: "Match amical", icon: "🤝", color: "#3aa6b9" },
+  { id: "tournoi", label: "Tournoi / compétition", icon: "🏆", color: "#5b8def" },
   { id: "autre", label: "Autre échéance", icon: "📌", color: "#8a8378" },
 ];
 export const kindOf = (id) => FIXTURE_KINDS.find((k) => k.id === id) || FIXTURE_KINDS[0];

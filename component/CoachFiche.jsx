@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { SYNTH_LEVELS, RTP_N, RTP_PHASES, RTP_TESTS, RTP_REGIONS, phaseOfStage, normalizeRtp } from "./coachSynthesis";
 import { fmtDateFr, InjuryForm, injuryRecurrences } from "./InjuryHistory";
 import { REGIONS } from "./injuryRm";
+import { TH } from "./thresholdsCore";
 
 /* =====================================================================
    CoachFiche.jsx — cartes de la fiche athlète (vue coach), affichage seulement.
@@ -702,6 +703,112 @@ function StageTitleEditor({ s, rtp, saving, onSave }) {
   );
 }
 
+/* Charge d'entraînement : semaine en cours vs charge habituelle d'avant blessure (rtpLoadCheck de coachSynthesis.js).
+   Barres = charge de chaque semaine glissante (4 semaines avant la blessure, puis depuis) ; lignes = habituelle (100 %),
+   seuils des étapes 4 (rtpLoadPartial) et 5-6 (rtpLoadFull). */
+function RtpLoadBlock({ load, injuryDate }) {
+  const W = 560;
+  const H = 150;
+  const PAD = { l: 34, r: 8, t: 10, b: 24 };
+  if (!load) return null;
+  const weeks = load.weeks || [];
+  const usual = load.usual;
+  const partial = TH("rtpLoadPartial");
+  const full = TH("rtpLoadFull");
+  const hasAny = weeks.some((w) => w.load > 0);
+  const pctCol = (p) => (p == null ? MUTED : p >= full ? GREEN : p >= partial ? "#d9a441" : RED);
+  const fmtD = (d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
+  const max = Math.max(1, usual || 0, ...weeks.map((w) => w.load)) * 1.12;
+  const iw = W - PAD.l - PAD.r;
+  const ih = H - PAD.t - PAD.b;
+  const bw = weeks.length ? iw / weeks.length : iw;
+  const y = (v) => PAD.t + ih - (v / max) * ih;
+  const ticks = [0, Math.round(max / 2), Math.round(max)];
+  return (
+    <div style={{ borderRadius: 12, border: `1px solid ${BORDER}`, background: "#0f0e0b", padding: 12, marginBottom: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+        <span style={{ fontSize: 14.5, fontWeight: 800, color: TEXT }}>📊 Charge d'entraînement</span>
+        <span style={{ fontSize: 11.5, color: MUTED }}>charge interne (RPE × durée, UA) · semaines glissantes de 7 jours</span>
+      </div>
+      {!usual ? (
+        <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.5 }}>
+          Pas de charge enregistrée dans les 4 semaines avant la blessure : pas de référence « habituelle » pour comparer.
+          {hasAny ? ` Charge des 7 derniers jours : ${load.current} UA.` : ""}
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 10 }}>
+            <div style={{ padding: "8px 10px", borderRadius: 10, background: "#151310", border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700 }}>Cette semaine (7 j)</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: pctCol(load.pct), fontVariantNumeric: "tabular-nums" }}>{load.pct} %</div>
+              <div style={{ fontSize: 11, color: MUTED }}>{load.current} UA sur {usual} UA habituels</div>
+            </div>
+            <div style={{ padding: "8px 10px", borderRadius: 10, background: "#151310", border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700 }}>4 dernières semaines</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: pctCol(load.chronicPct), fontVariantNumeric: "tabular-nums" }}>{load.chronicPct} %</div>
+              <div style={{ fontSize: 11, color: MUTED }}>{load.chronic} UA / sem. en moyenne</div>
+            </div>
+            <div style={{ padding: "8px 10px", borderRadius: 10, background: "#151310", border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 11, color: MUTED, fontWeight: 700 }}>Habituelle (avant blessure)</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: TEXT, fontVariantNumeric: "tabular-nums" }}>{usual} UA</div>
+              <div style={{ fontSize: 11, color: MUTED }}>moyenne des 4 semaines avant le {fmtD(injuryDate)}</div>
+            </div>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ minWidth: 460, display: "block" }} role="img" aria-label={`Charge par semaine : cette semaine ${load.pct} % de la charge habituelle`}>
+              {ticks.map((t) => (
+                <g key={t}>
+                  <line x1={PAD.l} x2={W - PAD.r} y1={y(t)} y2={y(t)} stroke={BORDER} strokeWidth="1" />
+                  <text x={PAD.l - 5} y={y(t) + 3.5} textAnchor="end" fontSize="10" fill={MUTED}>
+                    {t}
+                  </text>
+                </g>
+              ))}
+              {weeks.map((w, i) => {
+                const p = usual ? Math.round((w.load / usual) * 100) : null;
+                const x = PAD.l + i * bw + bw * 0.16;
+                const h = Math.max(0, PAD.t + ih - y(w.load));
+                return (
+                  <g key={w.end}>
+                    <rect x={x} y={y(w.load)} width={bw * 0.68} height={h} rx="3" fill={w.pre ? "#4a443a" : pctCol(p)} opacity={w.pre ? 1 : 0.9}>
+                      <title>{`${fmtD(w.start)} → ${fmtD(w.end)} : ${w.load} UA${p != null ? ` (${p} %)` : ""}${w.pre ? " · avant blessure" : ""}`}</title>
+                    </rect>
+                    <text x={x + bw * 0.34} y={H - 8} textAnchor="middle" fontSize="9.5" fill={w.pre ? "#6f6a62" : MUTED}>
+                      {fmtD(w.end)}
+                    </text>
+                  </g>
+                );
+              })}
+              {weeks.some((w) => w.pre) && weeks.some((w) => !w.pre) && (
+                <line x1={PAD.l + weeks.filter((w) => w.pre).length * bw} x2={PAD.l + weeks.filter((w) => w.pre).length * bw} y1={PAD.t} y2={PAD.t + ih} stroke={RED} strokeWidth="1.5" strokeDasharray="3 3" />
+              )}
+              {[
+                { v: usual, c: TEXT, l: "habituelle" },
+                { v: (usual * full) / 100, c: GREEN, l: `${full} %` },
+                { v: (usual * partial) / 100, c: "#d9a441", l: `${partial} %` },
+              ].map((r) => (
+                <g key={r.l}>
+                  <line x1={PAD.l} x2={W - PAD.r} y1={y(r.v)} y2={y(r.v)} stroke={r.c} strokeWidth="1.3" strokeDasharray={r.l === "habituelle" ? "0" : "5 4"} opacity="0.85" />
+                  <text x={r.l === "habituelle" ? PAD.l + 4 : W - PAD.r - 2} y={y(r.v) - 3} textAnchor={r.l === "habituelle" ? "start" : "end"} fontSize="9.5" fill={r.c}>
+                    {r.l}
+                  </text>
+                </g>
+              ))}
+            </svg>
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 11.5, color: MUTED, marginTop: 4 }}>
+            <span><span style={{ color: "#8a8378" }}>■</span> avant blessure</span>
+            <span><span style={{ color: RED }}>┆</span> blessure</span>
+            <span>
+              Repères du retour au jeu : <span style={{ color: "#d9a441" }}>≥ {partial} %</span> étape 4 · <span style={{ color: GREEN }}>≥ {full} %</span> étapes 5-6
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 const autoSynced = new Set(); // planif de réathlé écrite une fois par blessure et par ouverture de l'appli
 
 export function RtpCard({ injury, status, state, onSave, saving, pain, painHistory, monitor, injuredGroup, onSaveTests, injuries, onPlan }) {
@@ -831,6 +938,8 @@ export function RtpCard({ injury, status, state, onSave, saving, pain, painHisto
             </div>
           )}
         </div>
+
+        <RtpLoadBlock load={state.load} injuryDate={injury.date} />
 
         {pain?.onInjury && (
           <div style={{ fontSize: 13, color: "#f0d9ae", background: "rgba(217,105,90,0.12)", border: `1px solid ${RED}55`, borderRadius: 10, padding: "8px 11px", marginBottom: 12, lineHeight: 1.45 }}>

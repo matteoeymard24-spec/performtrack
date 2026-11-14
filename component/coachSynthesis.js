@@ -446,7 +446,20 @@ export function rtpLoadCheck(dailyLoads, injuryDate, today) {
   const usual = Math.round(sumWindow(dailyLoads, before, 28) / 4);
   const current = Math.round(sumWindow(dailyLoads, today, 7));
   const chronic = Math.round(sumWindow(dailyLoads, today, 28) / 4);
+  // semaines glissantes (7 jours finissant à `end`) : 4 semaines avant la blessure puis chaque semaine depuis (12 au plus)
+  const weeks = [];
+  const nSince = Math.min(8, Math.max(1, Math.ceil((Date.parse(`${today}T12:00:00`) - Date.parse(`${injuryDate}T12:00:00`)) / (7 * 86400000))));
+  for (let k = 3; k >= 0; k--) {
+    const end = addDays(before, -7 * k);
+    weeks.push({ end, start: addDays(end, -6), load: Math.round(sumWindow(dailyLoads, end, 7)), pre: true });
+  }
+  for (let k = nSince - 1; k >= 0; k--) {
+    const end = addDays(today, -7 * k);
+    if (addDays(end, -6) <= before) continue; // semaine qui chevauche la blessure : on ne mélange pas avant / après
+    weeks.push({ end, start: addDays(end, -6), load: Math.round(sumWindow(dailyLoads, end, 7)), pre: false });
+  }
   return {
+    weeks,
     usual: usual > 0 ? usual : null,
     current,
     chronic,
